@@ -1,9 +1,8 @@
-using System;
-using System.Text;
-using System.Windows.Forms;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
-using System.Drawing;
+using System.Globalization;
+using System.Text;
+// ...
 
 
 namespace AudioHexViewer
@@ -23,20 +22,88 @@ namespace AudioHexViewer
         private readonly DateTime[] lastChangeRight = new DateTime[24];
         private readonly TimeSpan bitStabilityThreshold = TimeSpan.FromSeconds(0.4);
 
-        // --- Indicateur de saturation ---
-        private DateTime? lastSaturationTime = null;
-        private readonly TimeSpan saturationHoldTime = TimeSpan.FromSeconds(1);
-
         // Saturation par voie
         private DateTime? lastSatLeft = null;
         private DateTime? lastSatRight = null;
-        private readonly TimeSpan satHoldTime = TimeSpan.FromSeconds(1);
+        private readonly TimeSpan satDisplayTime = TimeSpan.FromSeconds(1.5);   // durée totale d’affichage SAT
+        private readonly TimeSpan satBlinkPeriod = TimeSpan.FromMilliseconds(400); // période du clignotement
+        private bool isCurrentlySatLeft = false;
+        private bool isCurrentlySatRight = false;
+
 
 
         // --- Enregistrement 1 seconde ---
         private bool isRecordingOneSecond = false;
         private int recordSamplesNeeded = 0;
         private int recordSamplesCollected = 0;
+
+        // Seuils dBFS pour le bargraphe
+        private const double DbMin = -120.0;      // plancher d'affichage
+        private const double DbBlueToGreen = -60.0;
+        private const double DbGreenToOrange = -20.0;
+        private const double DbOrangeToRed = -6.0;
+        private const int LedCount = 50; // nombre de segments "LED" par barre
+
+        // --- Calibration tension ---
+        // G et D séparées
+        private double calibGainLeft = 1.0;
+        private double calibOffsetLeft = 0.0;
+        private bool calibValidLeft = false;
+
+        private double calibGainRight = 1.0;
+        private double calibOffsetRight = 0.0;
+        private bool calibValidRight = false;
+
+        // Codes 24 bits mémorisés en continu
+        private int lastCodeLeft;
+        private int lastCodeRight;
+
+        // Timer de calibration (moyenne)
+        private readonly System.Windows.Forms.Timer calibTimer;
+        private int calibTicks = 0;
+        private int calibTicksTarget = 0;
+        private long calibAccum = 0;
+
+        private enum CalStage
+        {
+            None,
+            Positive,
+            Negative
+        }
+
+        private enum CalChannel
+        {
+            None,
+            Left,
+            Right
+        }
+
+        private CalStage calibStage = CalStage.None;
+        private CalChannel calibChannel = CalChannel.None;
+
+        // Flags pour savoir quoi calibrer
+        private bool calibDoLeft = false;
+        private bool calibDoRight = false;
+
+        // Variables intermédiaires
+        private double calibCodePos = 0.0;
+        private double calibCodeNeg = 0.0;
+        private double calibVPos = 0.0;
+        private double calibVNeg = 0.0;
+
+        // Rafraîchissement tension max
+        private readonly TimeSpan voltageUpdateInterval = TimeSpan.FromMilliseconds(250);
+        private DateTime lastVoltageUpdate = DateTime.MinValue;
+        private double displayVoltsLeft = 0.0;
+        private double displayVoltsRight = 0.0;
+
+        private double DbToPercent(double db)
+        {
+            // mappe [DbMin..0] vers [0..100]
+            if (db <= DbMin) return 0.0;
+            if (db >= 0.0) return 100.0;
+            return (db - DbMin) / (0.0 - DbMin) * 100.0;
+        }
 
         private class RecordFrame
         {
@@ -67,19 +134,27 @@ namespace AudioHexViewer
 
             comboDevices.SelectedIndexChanged += comboDevices_SelectedIndexChanged;
 
-            // Remplissage de la liste des sample rates
-            comboSampleRate.Items.Clear();
-            comboSampleRate.Items.Add("Auto (mix format)");
-            comboSampleRate.Items.Add("44100");
-            comboSampleRate.Items.Add("88200");
-            comboSampleRate.Items.Add("176400");
-            comboSampleRate.Items.Add("352800");
-            comboSampleRate.Items.Add("48000");
-            comboSampleRate.Items.Add("96000");
-            comboSampleRate.Items.Add("192000");
-            comboSampleRate.Items.Add("384000");
-            comboSampleRate.SelectedIndex = 0; // Auto par défaut
+            // Timer calibration
+            calibTimer = new System.Windows.Forms.Timer();
+            calibTimer.Interval = 50;
+            calibTimer.Tick += CalibTimer_Tick;
 
+            // Charger la calibration existante
+            LoadCalibration();
+
+
+            // Créer les repères dBFS au-dessus des barres
+            CreateDbMarkers(
+                barLeftLevel,
+                new[] { "-120", "-60", "-20", "-6", "0" },
+                new[] { -115, DbBlueToGreen, DbGreenToOrange, DbOrangeToRed, 0.0 }
+            );
+
+            CreateDbMarkers(
+                barRightLevel,
+                new[] { "-120", "-60", "-20", "-6", "0" },
+                new[] { -115, DbBlueToGreen, DbGreenToOrange, DbOrangeToRed, 0.0 }
+            );
 
         }
 
@@ -110,8 +185,49 @@ namespace AudioHexViewer
 
             return $"{paddedLabel} : {value}";
         }
+        //
+        private void menuAbout_Click(object? sender, EventArgs e)
+        {
+            MessageBox.Show(
+                "AudioHexViewer\n\n" +
+                "Affichage des données audio 24 bits, bargraph dBFS, saturation,\n" +
+                "enregistrement CSV et calibration tension.\n\n" +
+                "OnE Audio Projects",
+                "About",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
 
+        private void menuOpenCal_Click(object? sender, EventArgs e)
+        {
+            string path = GetCalibrationFilePath();
+            if (!File.Exists(path))
+            {
+                MessageBox.Show("Aucun fichier de calibration trouvé.",
+                                "Open calibration file",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Information);
+                return;
+            }
 
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = path,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Impossible d'ouvrir le fichier de calibration : " + ex.Message,
+                                "Open calibration file",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error);
+            }
+        }
+
+        //
         private void LoadInputDevices()
         {
             // Gestionnaire de périphériques audio
@@ -165,28 +281,6 @@ namespace AudioHexViewer
 
                     capture.StartRecording();
 
-                    // 2) On vérifie le sample rate demandé vs celui réellement utilisé
-                    string srText = comboSampleRate.SelectedItem as string ?? "Auto (mix format)";
-                    bool isAuto = srText.StartsWith("Auto", StringComparison.OrdinalIgnoreCase);
-
-                    if (!isAuto)
-                    {
-                        if (int.TryParse(srText, out int wantedRate))
-                        {
-                            if (currentFormat != null && currentFormat.SampleRate != wantedRate)
-                            {
-                                MessageBox.Show(
-                                    $"Tu as choisi {wantedRate} Hz, " +
-                                    $"mais le périphérique (en mode partagé) est actuellement à {currentFormat.SampleRate} Hz.\n\n" +
-                                    "Pour utiliser exactement ce taux, change le réglage dans les propriétés audio Windows (onglet Statistiques avancées).",
-                                    "Sample rate différent",
-                                    MessageBoxButtons.OK,
-                                    MessageBoxIcon.Warning
-                                );
-                            }
-                        }
-                    }
-
                     // 3) UI
                     btnStart.Text = "STOP";
                     UpdateDeviceInfo();
@@ -223,7 +317,7 @@ namespace AudioHexViewer
         }
 
         // ajouté à cause des erreurs enntre ICI ...
-       
+
         private void LblSatLeft_Click(object sender, EventArgs e)
         {
         }
@@ -246,6 +340,361 @@ namespace AudioHexViewer
 
         // ... et là
         //
+        //
+        //
+        private void btnCalV_Click(object sender, EventArgs e)
+        {
+            if (capture == null || currentFormat == null)
+            {
+                MessageBox.Show("Démarre la capture (READ) avant de lancer la calibration.",
+                                "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (calibTimer.Enabled || calibStage != CalStage.None)
+            {
+                MessageBox.Show("Une calibration est déjà en cours.",
+                                "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // Demander quelles voies calibrer
+            var rLeft = MessageBox.Show("Calibrer la voie GAUCHE ?", "Calibration",
+                                        MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            calibDoLeft = (rLeft == DialogResult.Yes);
+
+            var rRight = MessageBox.Show("Calibrer la voie DROITE ?", "Calibration",
+                                         MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            calibDoRight = (rRight == DialogResult.Yes);
+
+            if (!calibDoLeft && !calibDoRight)
+            {
+                MessageBox.Show("Aucune voie à calibrer. Calibration annulée.",
+                                "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // Avertir si calibration existante
+            if ((calibDoLeft && calibValidLeft) || (calibDoRight && calibValidRight))
+            {
+                var r = MessageBox.Show(
+                    "Une calibration existe déjà pour au moins une voie. Voulez-vous la remplacer ?",
+                    "Calibration",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+
+                if (r != DialogResult.Yes)
+                    return;
+            }
+
+            // On commence par la voie gauche si demandée, sinon la droite
+            if (calibDoLeft)
+            {
+                StartChannelCalibration(CalChannel.Left);
+            }
+            else
+            {
+                StartChannelCalibration(CalChannel.Right);
+            }
+        }
+        //
+        //
+        private void StartChannelCalibration(CalChannel channel)
+        {
+            calibChannel = channel;
+
+            string chanName = (channel == CalChannel.Left) ? "GAUCHE" : "DROITE";
+
+            MessageBox.Show(
+                $"Voie {chanName} :\r\n" +
+                "Applique une tension POSITIVE (1 à 5 V),\r\n" +
+                "puis clique sur OK pour démarrer la mesure sur ~1 s.",
+                "Calibration +V",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+
+            calibStage = CalStage.Positive;
+            calibAccum = 0;
+            calibTicks = 0;
+            double durationSeconds = 1.0;  // facilement modifiable
+            calibTicksTarget = (int)(durationSeconds * 1000.0 / calibTimer.Interval);
+
+            calibTimer.Start();
+        }
+
+        //
+        //
+        private void CalibTimer_Tick(object? sender, EventArgs e)
+        {
+            int code = 0;
+
+            if (calibChannel == CalChannel.Left)
+                code = lastCodeLeft;
+            else if (calibChannel == CalChannel.Right)
+                code = lastCodeRight;
+            else
+                return;
+
+            calibAccum += code;
+            calibTicks++;
+
+            if (calibTicks >= calibTicksTarget)
+            {
+                calibTimer.Stop();
+
+                double avgCode = calibTicks > 0 ? (double)calibAccum / calibTicks : 0.0;
+
+                if (calibStage == CalStage.Positive)
+                {
+                    calibCodePos = avgCode;
+                    calibStage = CalStage.None;
+                    FinishPositiveCalibration();
+                }
+                else if (calibStage == CalStage.Negative)
+                {
+                    calibCodeNeg = avgCode;
+                    calibStage = CalStage.None;
+                    FinishNegativeCalibration();
+                }
+            }
+        }
+
+        //
+        private void FinishPositiveCalibration()
+        {
+            string chanName = (calibChannel == CalChannel.Left) ? "GAUCHE" : "DROITE";
+
+            string? input = Microsoft.VisualBasic.Interaction.InputBox(
+                $"Voie {chanName} :\r\n" +
+                "Mesure terminée.\r\n" +
+                "Saisis la valeur de la tension POSITIVE appliquée (en volts, ex: 2.500) :",
+                "Calibration +V",
+                "2.500");
+
+            if (!double.TryParse(input.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out calibVPos))
+            {
+                MessageBox.Show("Valeur non valide, calibration annulée.",
+                                "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                calibStage = CalStage.None;
+                calibChannel = CalChannel.None;
+                return;
+            }
+
+            MessageBox.Show(
+                $"Voie {chanName} :\r\n" +
+                "Maintenant, applique une tension NÉGATIVE (1 à 5 V),\r\n" +
+                "puis clique sur OK pour démarrer la mesure sur ~1 s.",
+                "Calibration -V",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+
+            calibStage = CalStage.Negative;
+            calibAccum = 0;
+            calibTicks = 0;
+            double durationSeconds = 1.0;
+            calibTicksTarget = (int)(durationSeconds * 1000.0 / calibTimer.Interval);
+            calibTimer.Start();
+        }
+
+        //
+        private void FinishNegativeCalibration()
+        {
+            string chanName = (calibChannel == CalChannel.Left) ? "GAUCHE" : "DROITE";
+
+            string? input = Microsoft.VisualBasic.Interaction.InputBox(
+                $"Voie {chanName} :\r\n" +
+                "Mesure terminée.\r\n" +
+                "Saisis la valeur de la tension NÉGATIVE appliquée (en volts, ex: -2.500) :",
+                "Calibration -V",
+                "-2.500");
+
+            if (!double.TryParse(input.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out calibVNeg))
+            {
+                MessageBox.Show("Valeur non valide, calibration annulée.",
+                                "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                calibStage = CalStage.None;
+                calibChannel = CalChannel.None;
+                return;
+            }
+
+            if (Math.Abs(calibCodePos - calibCodeNeg) < 1.0)
+            {
+                MessageBox.Show("Codes de calibration trop proches, impossible de calculer gain/offset.",
+                                "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                calibStage = CalStage.None;
+                calibChannel = CalChannel.None;
+                return;
+            }
+
+            double gain = (calibVPos - calibVNeg) / (calibCodePos - calibCodeNeg);
+            double offset = calibVPos - gain * calibCodePos;
+
+            if (calibChannel == CalChannel.Left)
+            {
+                calibGainLeft = gain;
+                calibOffsetLeft = offset;
+                calibValidLeft = true;
+            }
+            else if (calibChannel == CalChannel.Right)
+            {
+                calibGainRight = gain;
+                calibOffsetRight = offset;
+                calibValidRight = true;
+            }
+
+            MessageBox.Show(
+                $"Voie {chanName} : calibration terminée.\r\n\r\n" +
+                $"Gain   = {gain:F8} V/code\r\n" +
+                $"Offset = {offset:F8} V",
+                "Calibration",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+
+            // Passer à l'autre voie si demandé
+            if (calibChannel == CalChannel.Left && calibDoRight)
+            {
+                // On a fini gauche, on passe à droite
+                StartChannelCalibration(CalChannel.Right);
+            }
+            else if (calibChannel == CalChannel.Right && calibDoLeft)
+            {
+                // (si un jour tu veux inverser l'ordre)
+                StartChannelCalibration(CalChannel.Left);
+            }
+            else
+            {
+                // fin totale
+                calibStage = CalStage.None;
+                calibChannel = CalChannel.None;
+                SaveCalibration();
+            }
+        }
+
+        //
+        //
+        private string GetCalibrationFilePath()
+        {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            return Path.Combine(baseDir, "AudioHexViewer.cal");
+        }
+
+        private void SaveCalibration()
+        {
+            string path = GetCalibrationFilePath();
+
+            try
+            {
+                using (var sw = new StreamWriter(path, false))
+                {
+                    sw.WriteLine("GainLeft=" + calibGainLeft.ToString("R", CultureInfo.InvariantCulture));
+                    sw.WriteLine("OffsetLeft=" + calibOffsetLeft.ToString("R", CultureInfo.InvariantCulture));
+                    sw.WriteLine("ValidLeft=" + calibValidLeft);
+
+                    sw.WriteLine("GainRight=" + calibGainRight.ToString("R", CultureInfo.InvariantCulture));
+                    sw.WriteLine("OffsetRight=" + calibOffsetRight.ToString("R", CultureInfo.InvariantCulture));
+                    sw.WriteLine("ValidRight=" + calibValidRight);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Erreur lors de l'écriture de la calibration : " + ex.Message,
+                                "Calibration",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error);
+            }
+        }
+
+        private void LoadCalibration()
+        {
+            string path = GetCalibrationFilePath();
+            if (!File.Exists(path))
+            {
+                calibValidLeft = false;
+                calibValidRight = false;
+                return;
+            }
+
+            try
+            {
+                string[] lines = File.ReadAllLines(path);
+
+                double gL = 1.0, oL = 0.0;
+                double gR = 1.0, oR = 0.0;
+                bool vL = false, vR = false;
+                bool gLOk = false, oLOk = false, gROk = false, oROk = false;
+
+                foreach (var line in lines)
+                {
+                    var parts = line.Split('=', 2);
+                    if (parts.Length != 2) continue;
+
+                    string key = parts[0].Trim();
+                    string val = parts[1].Trim();
+
+                    if (string.Equals(key, "GainLeft", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (double.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out gL))
+                            gLOk = true;
+                    }
+                    else if (string.Equals(key, "OffsetLeft", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (double.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out oL))
+                            oLOk = true;
+                    }
+                    else if (string.Equals(key, "ValidLeft", StringComparison.OrdinalIgnoreCase))
+                    {
+                        bool.TryParse(val, out vL);
+                    }
+                    else if (string.Equals(key, "GainRight", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (double.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out gR))
+                            gROk = true;
+                    }
+                    else if (string.Equals(key, "OffsetRight", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (double.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out oR))
+                            oROk = true;
+                    }
+                    else if (string.Equals(key, "ValidRight", StringComparison.OrdinalIgnoreCase))
+                    {
+                        bool.TryParse(val, out vR);
+                    }
+                }
+
+                if (gLOk && oLOk)
+                {
+                    calibGainLeft = gL;
+                    calibOffsetLeft = oL;
+                    calibValidLeft = vL;
+                }
+                else
+                {
+                    calibValidLeft = false;
+                }
+
+                if (gROk && oROk)
+                {
+                    calibGainRight = gR;
+                    calibOffsetRight = oR;
+                    calibValidRight = vR;
+                }
+                else
+                {
+                    calibValidRight = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                calibValidLeft = false;
+                calibValidRight = false;
+                MessageBox.Show("Erreur lors de la lecture de la calibration : " + ex.Message,
+                                "Calibration",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error);
+            }
+        }
+
+
         //
         //
         private void btnRecord_Click(object sender, EventArgs e)
@@ -316,90 +765,140 @@ namespace AudioHexViewer
         //débute de ProcessBuffer
         private void ProcessBuffer(byte[] buffer, int bytesRecorded)
         {
-        if (currentFormat == null)
-            return;
+            if (currentFormat == null)
+                return;
 
-        // On s'attend à du float 32 bits stéréo
-        if (currentFormat.Encoding != WaveFormatEncoding.IeeeFloat ||
-            currentFormat.BitsPerSample != 32)
-        {
-            return;
-        }
-
-        int channels = currentFormat.Channels;
-        if (channels < 2)
-            return;
-
-        int bytesPerSample = 4; // 32 bits float
-        int blockAlign = bytesPerSample * channels;
-
-        if (bytesRecorded < blockAlign)
-            return;
-        // ---------- Calcul du dernier frame pour affichage détaillé ----------
-        int lastFrameIndex = bytesRecorded - blockAlign;
-
-        float leftF = BitConverter.ToSingle(buffer, lastFrameIndex);
-        float rightF = BitConverter.ToSingle(buffer, lastFrameIndex + bytesPerSample);
-
-        const int Max24 = 1 << 23;      // 8388608
-        const int Max24Pos = Max24 - 1; // +0x7FFFFF
-        const int Min24Neg = -Max24;    // -0x800000
-
-        float scaledL = leftF * Max24;
-        float scaledR = rightF * Max24;
-
-        int left24 = (int)Math.Truncate(scaledL);
-        int right24 = (int)Math.Truncate(scaledR);
-
-        if (left24 > Max24Pos) left24 = Max24Pos;
-        if (left24 < Min24Neg) left24 = Min24Neg;
-        if (right24 > Max24Pos) right24 = Max24Pos;
-        if (right24 < Min24Neg) right24 = Min24Neg;
-
-        // ---- SATURATION PAR VOIE ----
-        if (left24 == Max24Pos || left24 == Min24Neg)
-            lastSatLeft = DateTime.Now;
-        if (right24 == Max24Pos || right24 == Min24Neg)
-            lastSatRight = DateTime.Now;
-
-        uint left24u = unchecked((uint)(left24 & 0xFFFFFF));
-        uint right24u = unchecked((uint)(right24 & 0xFFFFFF));
-        // ---------- RECORD 1 SECONDE ----------
-        if (isRecordingOneSecond)
-        {
-            int bytesPerFrame = currentFormat.Channels * 4;
-            int frameCount = bytesRecorded / bytesPerFrame;
-
-            for (int i = 0; i < frameCount; i++)
+            // On s'attend à du float 32 bits stéréo
+            if (currentFormat.Encoding != WaveFormatEncoding.IeeeFloat ||
+                currentFormat.BitsPerSample != 32)
             {
-                int idx = i * bytesPerFrame;
+                return;
+            }
 
-                float lf = BitConverter.ToSingle(buffer, idx);
-                float rf = BitConverter.ToSingle(buffer, idx + 4);
+            int channels = currentFormat.Channels;
+            if (channels < 2)
+                return;
 
-                float sL = lf * Max24;
-                float sR = rf * Max24;
+            int bytesPerSample = 4; // 32 bits float
+            int blockAlign = bytesPerSample * channels;
 
-                int L = (int)Math.Truncate(sL);
-                int R = (int)Math.Truncate(sR);
+            if (bytesRecorded < blockAlign)
+                return;
+            // ---------- Calcul du dernier frame pour affichage détaillé ----------
+            int lastFrameIndex = bytesRecorded - blockAlign;
 
-                if (L > Max24Pos) L = Max24Pos;
-                if (L < Min24Neg) L = Min24Neg;
-                if (R > Max24Pos) R = Max24Pos;
-                if (R < Min24Neg) R = Min24Neg;
+            float leftF = BitConverter.ToSingle(buffer, lastFrameIndex);
+            float rightF = BitConverter.ToSingle(buffer, lastFrameIndex + bytesPerSample);
 
-                recordBuffer.Add(new RecordFrame() { Left = L, Right = R });
-                recordSamplesCollected++;
+            const int Max24 = 1 << 23;      // 8388608
+            const int Max24Pos = Max24 - 1; // +0x7FFFFF
+            const int Min24Neg = -Max24;    // -0x800000
 
-                if (recordSamplesCollected >= recordSamplesNeeded)
+            float scaledL = leftF * Max24;
+            float scaledR = rightF * Max24;
+
+            int left24 = (int)Math.Truncate(scaledL);
+            int right24 = (int)Math.Truncate(scaledR);
+
+            // Mémoriser le dernier code 24 bits
+            lastCodeLeft = left24;
+            lastCodeRight = right24;
+
+            double instVoltsLeft = 0.0;
+            double instVoltsRight = 0.0;
+
+            if (calibValidLeft)
+                instVoltsLeft = calibGainLeft * left24 + calibOffsetLeft;
+
+            if (calibValidRight)
+                instVoltsRight = calibGainRight * right24 + calibOffsetRight;
+
+            // Filtre d’affichage 4 Hz
+            var now = DateTime.Now;
+            if (now - lastVoltageUpdate >= voltageUpdateInterval)
+            {
+                lastVoltageUpdate = now;
+                displayVoltsLeft = instVoltsLeft;
+                displayVoltsRight = instVoltsRight;
+            }
+
+
+
+
+
+            if (left24 > Max24Pos) left24 = Max24Pos;
+            if (left24 < Min24Neg) left24 = Min24Neg;
+            if (right24 > Max24Pos) right24 = Max24Pos;
+            if (right24 < Min24Neg) right24 = Min24Neg;
+
+            // ---- SATURATION PAR VOIE ----
+            bool sampleSatLeft = (left24 == Max24Pos || left24 == Min24Neg);
+            bool sampleSatRight = (right24 == Max24Pos || right24 == Min24Neg);
+
+            var nowSat = DateTime.Now;
+
+            // Voie gauche : on ne date QUE le début de saturation
+            if (sampleSatLeft && !isCurrentlySatLeft)
+            {
+                isCurrentlySatLeft = true;
+                lastSatLeft = nowSat;  // début de la saturation
+            }
+            else if (!sampleSatLeft && isCurrentlySatLeft)
+            {
+                // fin de la saturation continue
+                isCurrentlySatLeft = false;
+            }
+
+            // Voie droite
+            if (sampleSatRight && !isCurrentlySatRight)
+            {
+                isCurrentlySatRight = true;
+                lastSatRight = nowSat;
+            }
+            else if (!sampleSatRight && isCurrentlySatRight)
+            {
+                isCurrentlySatRight = false;
+            }
+
+
+            uint left24u = unchecked((uint)(left24 & 0xFFFFFF));
+            uint right24u = unchecked((uint)(right24 & 0xFFFFFF));
+            // ---------- RECORD 1 SECONDE ----------
+            if (isRecordingOneSecond)
+            {
+                int bytesPerFrame = currentFormat.Channels * 4;
+                int frameCount = bytesRecorded / bytesPerFrame;
+
+                for (int i = 0; i < frameCount; i++)
                 {
-                    isRecordingOneSecond = false;
-                    SaveRecordingToCsv();
-                    MessageBox.Show("Enregistrement terminé (1 seconde).");
-                    break;
+                    int idx = i * bytesPerFrame;
+
+                    float lf = BitConverter.ToSingle(buffer, idx);
+                    float rf = BitConverter.ToSingle(buffer, idx + 4);
+
+                    float sL = lf * Max24;
+                    float sR = rf * Max24;
+
+                    int L = (int)Math.Truncate(sL);
+                    int R = (int)Math.Truncate(sR);
+
+                    if (L > Max24Pos) L = Max24Pos;
+                    if (L < Min24Neg) L = Min24Neg;
+                    if (R > Max24Pos) R = Max24Pos;
+                    if (R < Min24Neg) R = Min24Neg;
+
+                    recordBuffer.Add(new RecordFrame() { Left = L, Right = R });
+                    recordSamplesCollected++;
+
+                    if (recordSamplesCollected >= recordSamplesNeeded)
+                    {
+                        isRecordingOneSecond = false;
+                        SaveRecordingToCsv();
+                        MessageBox.Show("Enregistrement terminé (1 seconde).");
+                        break;
+                    }
                 }
             }
-        }
             // ---------- Calcul du niveau crête sur ce buffer (pour les VU) ----------
             int bytesPerFrameAll = currentFormat.Channels * 4;
             int totalFrames = bytesRecorded / bytesPerFrameAll;
@@ -457,7 +956,7 @@ namespace AudioHexViewer
             if (levelLeft > 100) levelLeft = 100;
             if (levelRight < 0) levelRight = 0;
             if (levelRight > 100) levelRight = 100;
-           // ---------- Texte existant ----------
+            // ---------- Texte existant ----------
             string leftHex24 = "0x" + left24u.ToString("X6");
             string rightHex24 = "0x" + right24u.ToString("X6");
 
@@ -470,6 +969,10 @@ namespace AudioHexViewer
             leftText.AppendLine(FormatRow("Decimal (24b)", left24.ToString()));
             leftText.AppendLine(FormatRow("Hex (24 bits)", leftHex24));
             leftText.AppendLine(FormatRow("Binary (24b)", leftBits));
+            if (calibValidLeft)
+                leftText.AppendLine(FormatRow("Voltage (V)", displayVoltsLeft.ToString("F4", CultureInfo.InvariantCulture)));
+            else
+                leftText.AppendLine(FormatRow("Voltage (V)", "N/A"));
 
             var rightText = new StringBuilder();
             rightText.AppendLine(FormatRow("Float", rightF.ToString("G9")));
@@ -477,29 +980,98 @@ namespace AudioHexViewer
             rightText.AppendLine(FormatRow("Decimal (24b)", right24.ToString()));
             rightText.AppendLine(FormatRow("Hex (24 bits)", rightHex24));
             rightText.AppendLine(FormatRow("Binary (24b)", rightBits));
+            if (calibValidRight)
+                rightText.AppendLine(FormatRow("Voltage (V)", displayVoltsRight.ToString("F4", CultureInfo.InvariantCulture)));
+            else
+                rightText.AppendLine(FormatRow("Voltage (V)", "N/A"));
 
             // ---------- Mise à jour UI ----------
             BeginInvoke((Action)(() =>
             {
-            txtLeft.Text = leftText.ToString();
-            txtRight.Text = rightText.ToString();
+                txtLeft.Text = leftText.ToString();
+                txtRight.Text = rightText.ToString();
 
-            ColorBinaryXs(txtLeft, "Binary (24b)");
-            ColorBinaryXs(txtRight, "Binary (24b)");
+                ColorBinaryXs(txtLeft, "Binary (24b)");
+                ColorBinaryXs(txtRight, "Binary (24b)");
 
-            // SAT LEDs
-            bool satL = lastSatLeft.HasValue && (DateTime.Now - lastSatLeft.Value) < satHoldTime;
-            bool satR = lastSatRight.HasValue && (DateTime.Now - lastSatRight.Value) < satHoldTime;
+                // SAT LEDs
+                //bool satL = lastSatLeft.HasValue && (DateTime.Now - lastSatLeft.Value) < satHoldTime;
+                //bool satR = lastSatRight.HasValue && (DateTime.Now - lastSatRight.Value) < satHoldTime;
 
-            ledSatLeft.BackColor = satL ? Color.Red : Color.Gray;
-            ledSatRight.BackColor = satR ? Color.Red : Color.Gray;
+                //ledSatLeft.BackColor = satL ? Color.Red : Color.Gray;
+                //ledSatRight.BackColor = satR ? Color.Red : Color.Gray;
 
-            // Bargraphs dBFS
-            barLeftLevel.Value = levelLeft;
-            barRightLevel.Value = levelRight;
+                // Bargraphs dBFS (Panel custom)
+                UpdateLevelBar(barLeftLevel, levelLeft);
+                UpdateLevelBar(barRightLevel, levelRight);
 
-                lblLeftLevel.Text = double.IsNegativeInfinity(dbLeft) ? "- dBFS" : $"{dbLeft:F1} dBFS";
-                lblRightLevel.Text = double.IsNegativeInfinity(dbRight) ? "- dBFS" : $"{dbRight:F1} dBFS";
+                var nowUi = DateTime.Now;
+
+                // --- Voie gauche ---
+                bool satLActive =
+                    isCurrentlySatLeft || (lastSatLeft.HasValue && (nowUi - lastSatLeft.Value) < satDisplayTime);
+
+                if (satLActive)
+                {
+                    // temps écoulé depuis la saturation
+                    var elapsed = nowUi - lastSatLeft.Value;
+                    // on alterne ON / OFF toutes satBlinkPeriod/2
+                    bool blinkOn = ((int)(elapsed.TotalMilliseconds / (satBlinkPeriod.TotalMilliseconds / 2))) % 2 == 0;
+
+                    if (blinkOn)
+                    {
+                        lblLeftLevel.Text = "      SAT";
+                        lblLeftLevel.ForeColor = Color.Red;
+                        lblLeftLevel.Font = new Font(lblLeftLevel.Font, FontStyle.Bold);
+
+                    }
+                    else
+                    {
+                        lblLeftLevel.Text = ""; // ou "- dBFS" si tu veux quelque chose quand c’est “off”
+                        lblLeftLevel.ForeColor = Color.Red;
+
+                    }
+                }
+                else
+                {
+                    // Affichage normal dBFS
+                    lblLeftLevel.Text = double.IsNegativeInfinity(dbLeft) ? "- dBFS" : $"{dbLeft:F1} dBFS";
+                    lblLeftLevel.ForeColor = Color.Black;
+                    lblLeftLevel.Font = new Font(lblLeftLevel.Font, FontStyle.Regular);
+
+                }
+
+                // ---Voie droite-- -
+                bool satRActive =
+                    isCurrentlySatRight ||
+                    (lastSatRight.HasValue && (nowUi - lastSatRight.Value) < satDisplayTime);
+
+                if (satRActive)
+                {
+                    var elapsed = nowUi - lastSatRight.Value;
+                    bool blinkOn = ((int)(elapsed.TotalMilliseconds / (satBlinkPeriod.TotalMilliseconds / 2))) % 2 == 0;
+
+                    if (blinkOn)
+                    {
+                        lblRightLevel.Text = "      SAT";
+                        lblRightLevel.ForeColor = Color.Red;
+                        lblRightLevel.Font = new Font(lblRightLevel.Font, FontStyle.Bold);
+                    }
+                    else
+                    {
+                        lblRightLevel.Text = "";
+                        lblRightLevel.ForeColor = Color.Red;
+                    }
+                }
+                else
+                {
+                    lblRightLevel.Text = double.IsNegativeInfinity(dbRight) ? "- dBFS" : $"{dbRight:F1} dBFS";
+                    lblRightLevel.ForeColor = Color.Black;
+                    lblRightLevel.Font = new Font(lblRightLevel.Font, FontStyle.Regular);
+                }
+
+
+
             }));
         }
 
@@ -642,7 +1214,158 @@ namespace AudioHexViewer
             DeviceDatabox.Text = sb.ToString();
         }
 
+        private void CreateDbMarkers(Panel bar, string[] labels, double[] dbValues)
+        {
+            if (bar == null || labels == null || dbValues == null)
+                return;
+            if (labels.Length != dbValues.Length)
+                return;
+
+            int n = labels.Length;
+
+            for (int i = 0; i < n; i++)
+            {
+                double db = dbValues[i];
+                double percent = DbToPercent(db); // 0..100
+
+                // Position X relative à la barre
+                int x = bar.Left + (int)(bar.Width * percent / 100.0);
+
+                var lbl = new Label();
+                lbl.AutoSize = true;
+                lbl.Text = labels[i];
+                lbl.Font = new Font(Font.FontFamily, 7); // petite police
+                lbl.Top = bar.Top - lbl.Height + 10;      // juste au-dessus de la barre
+                lbl.Left = x - lbl.PreferredWidth / 2;   // centré sur la position
+
+                Controls.Add(lbl);
+                lbl.BringToFront();
+            }
+        }
+
+
+        private void UpdateLevelBar(Panel panel, int levelPercent)
+        {
+            if (panel == null || panel.Width <= 0 || panel.Height <= 0)
+                return;
+
+            // Clamp niveau
+            if (levelPercent < 0) levelPercent = 0;
+            if (levelPercent > 100) levelPercent = 100;
+
+            // On crée (ou récupère) un tableau de petits panneaux pour simuler les LEDs
+            Panel[] leds;
+            if (panel.Tag is Panel[] arr && arr.Length == LedCount)
+            {
+                leds = arr;
+            }
+            else
+            {
+                leds = new Panel[LedCount];
+                panel.Controls.Clear();
+
+                int totalWidth = panel.ClientSize.Width;
+                int spacing = 1; // espace entre LEDs (tu peux mettre 0 si tu veux un ruban plein)
+
+                for (int i = 0; i < LedCount; i++)
+                {
+                    var led = new Panel();
+
+                    // Position en coordonnées "continues"
+                    double xStart = (double)i / LedCount * totalWidth;
+                    double xEnd = (double)(i + 1) / LedCount * totalWidth;
+
+                    int left = (int)Math.Round(xStart);
+                    int right = (int)Math.Round(xEnd);
+                    int width = right - left;
+
+                    // On enlève un tout petit peu pour garder un "gap" (optionnel)
+                    if (width > spacing)
+                        width -= spacing;
+
+                    led.Top = 0;
+                    led.Left = left;
+                    led.Width = Math.Max(1, width);
+                    led.Height = panel.Height;
+                    led.BackColor = Color.DarkGray; // LED éteinte
+                    led.BorderStyle = BorderStyle.None;
+
+                    panel.Controls.Add(led);
+                    leds[i] = led;
+                }
+
+
+                panel.Tag = leds;
+            }
+
+            // Pré-calcul des pourcentages des frontières de couleurs
+            double pBlueEnd = DbToPercent(DbBlueToGreen);    // fin bleu
+            double pGreenEnd = DbToPercent(DbGreenToOrange);  // fin vert
+            double pOrangeEnd = DbToPercent(DbOrangeToRed);    // fin orange
+
+            int totalW = panel.Width;
+            if (totalW <= 0) return;
+
+            for (int i = 0; i < LedCount; i++)
+            {
+                var led = leds[i];
+
+                // Position de cette LED en % de la barre (centre de la LED)
+                double ledCenterPercent = ((i + 0.5) / LedCount) * 100.0;
+
+                // Allumée ou éteinte selon le niveau
+                bool isOn = ledCenterPercent <= levelPercent;
+
+                if (!isOn)
+                {
+                    led.BackColor = Color.DarkGray; // LED éteinte
+                    continue;
+                }
+
+                // Couleur en fonction de sa position (% -> zone de dB)
+                if (ledCenterPercent <= pBlueEnd)
+                {
+                    led.BackColor = Color.Blue;
+                }
+                else if (ledCenterPercent <= pGreenEnd)
+                {
+                    led.BackColor = Color.Lime;
+                }
+                else if (ledCenterPercent <= pOrangeEnd)
+                {
+                    led.BackColor = Color.Orange;
+                }
+                else
+                {
+                    led.BackColor = Color.Red;
+                }
+            }
+        }
+
+
+
+
         private void ledSatLeft_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void label3_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void label6_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void label7_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void label2_Click_1(object sender, EventArgs e)
         {
 
         }

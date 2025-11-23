@@ -12,7 +12,12 @@
 	  <PublishSingleFile>true</PublishSingleFile>
 	  <PublishTrimmed>false</PublishTrimmed>
 	  <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+	  <ApplicationIcon>AudioHexViewer_big.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="AudioHexViewer_big.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.2.1" />
