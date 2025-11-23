@@ -23,6 +23,29 @@ namespace AudioHexViewer
         private readonly DateTime[] lastChangeRight = new DateTime[24];
         private readonly TimeSpan bitStabilityThreshold = TimeSpan.FromSeconds(0.4);
 
+        // --- Indicateur de saturation ---
+        private DateTime? lastSaturationTime = null;
+        private readonly TimeSpan saturationHoldTime = TimeSpan.FromSeconds(1);
+
+        // Saturation par voie
+        private DateTime? lastSatLeft = null;
+        private DateTime? lastSatRight = null;
+        private readonly TimeSpan satHoldTime = TimeSpan.FromSeconds(1);
+
+
+        // --- Enregistrement 1 seconde ---
+        private bool isRecordingOneSecond = false;
+        private int recordSamplesNeeded = 0;
+        private int recordSamplesCollected = 0;
+
+        private class RecordFrame
+        {
+            public int Left;
+            public int Right;
+        }
+
+        private List<RecordFrame> recordBuffer = new List<RecordFrame>();
+
 
         public Form1()
         {
@@ -199,99 +222,287 @@ namespace AudioHexViewer
             }
         }
 
+        // ajouté à cause des erreurs enntre ICI ...
+       
+        private void LblSatLeft_Click(object sender, EventArgs e)
+        {
+        }
+
+        private void barLeftLevel_Click(object sender, EventArgs e)
+        {
+        }
+        private void lblLeftLevel_Click(object sender, EventArgs e)
+        {
+        }
+
+        private void barRightLevel_Click(object sender, EventArgs e)
+        {
+        }
+
+        private void label2_Click(object sender, EventArgs e)
+        {
+            // Handler laissé vide pour satisfaire le Designer
+        }
+
+        // ... et là
+        //
+        //
+        //
+        private void btnRecord_Click(object sender, EventArgs e)
+        {
+            if (currentFormat == null)
+            {
+                MessageBox.Show("Démarre la lecture (READ) avant d'enregistrer.");
+                return;
+            }
+
+            if (isRecordingOneSecond)
+            {
+                MessageBox.Show("Un enregistrement est déjà en cours.");
+                return;
+            }
+
+            // On démarre l'enregistrement
+            isRecordingOneSecond = true;
+            recordSamplesCollected = 0;
+            recordBuffer.Clear();
+
+            recordSamplesNeeded = currentFormat.SampleRate;  // exactement 1 seconde
+
+            MessageBox.Show($"Enregistrement 1 seconde démarré ({recordSamplesNeeded} échantillons).");
+        }
+
+        private void SaveRecordingToCsv()
+        {
+            try
+            {
+                string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+                string file = Path.Combine(desktop, $"audio_record_{DateTime.Now:HHmmss}.csv");
+
+                using (var sw = new StreamWriter(file))
+                {
+                    sw.WriteLine("Index;Left_decimal;Right_decimal;Left_hex;Right_hex");
+                    int index = 0;
+
+                    foreach (var f in recordBuffer)
+                    {
+                        uint hl = (uint)(f.Left & 0xFFFFFF);
+                        uint hr = (uint)(f.Right & 0xFFFFFF);
+
+                        sw.WriteLine($"{index};{f.Left};{f.Right};0x{hl:X6};0x{hr:X6}");
+                        index++;
+                    }
+                }
+
+                MessageBox.Show($"Fichier enregistré :\n{file}");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Erreur CSV : " + ex.Message);
+            }
+        }
 
 
         private void btnStop_Click(object sender, EventArgs e)
         {
-         
+
         }
 
         private void Capture_DataAvailable(object? sender, WaveInEventArgs e)
         {
             ProcessBuffer(e.Buffer, e.BytesRecorded);
         }
+
+        //débute de ProcessBuffer
         private void ProcessBuffer(byte[] buffer, int bytesRecorded)
         {
-            if (currentFormat == null)
-                return;
+        if (currentFormat == null)
+            return;
 
-            int channels = currentFormat.Channels;
-            if (channels < 2)
-                return;
+        // On s'attend à du float 32 bits stéréo
+        if (currentFormat.Encoding != WaveFormatEncoding.IeeeFloat ||
+            currentFormat.BitsPerSample != 32)
+        {
+            return;
+        }
 
-            // On sait que tu es en IEEE float 32 bits, 2 canaux
-            int bytesPerSample = 4;          // 4 octets = 32 bits float
-            int blockAlign = bytesPerSample * channels; // 8 octets par frame stéréo
+        int channels = currentFormat.Channels;
+        if (channels < 2)
+            return;
 
-            if (bytesRecorded < blockAlign)
-                return;
+        int bytesPerSample = 4; // 32 bits float
+        int blockAlign = bytesPerSample * channels;
 
-            // Dernier frame stéréo du buffer
-            int lastFrameIndex = bytesRecorded - blockAlign;
+        if (bytesRecorded < blockAlign)
+            return;
+        // ---------- Calcul du dernier frame pour affichage détaillé ----------
+        int lastFrameIndex = bytesRecorded - blockAlign;
 
-            // Lecture des floats
-            float leftF = BitConverter.ToSingle(buffer, lastFrameIndex);
-            float rightF = BitConverter.ToSingle(buffer, lastFrameIndex + bytesPerSample);
+        float leftF = BitConverter.ToSingle(buffer, lastFrameIndex);
+        float rightF = BitConverter.ToSingle(buffer, lastFrameIndex + bytesPerSample);
 
-            const int Max24 = 1 << 23;      // 8388608
-            const int Max24Pos = Max24 - 1;    // +0x7FFFFF
-            const int Min24Neg = -Max24;       // -0x800000
+        const int Max24 = 1 << 23;      // 8388608
+        const int Max24Pos = Max24 - 1; // +0x7FFFFF
+        const int Min24Neg = -Max24;    // -0x800000
 
-            float scaledL = leftF * Max24;
-            float scaledR = rightF * Max24;
+        float scaledL = leftF * Max24;
+        float scaledR = rightF * Max24;
 
-            // Arrondi vers zéro
-            int left24 = (int)Math.Truncate(scaledL);
-            int right24 = (int)Math.Truncate(scaledR);
+        int left24 = (int)Math.Truncate(scaledL);
+        int right24 = (int)Math.Truncate(scaledR);
 
-            // Clip dans la plage int24
-            if (left24 > Max24Pos) left24 = Max24Pos;
-            if (left24 < Min24Neg) left24 = Min24Neg;
-            if (right24 > Max24Pos) right24 = Max24Pos;
-            if (right24 < Min24Neg) right24 = Min24Neg;
+        if (left24 > Max24Pos) left24 = Max24Pos;
+        if (left24 < Min24Neg) left24 = Min24Neg;
+        if (right24 > Max24Pos) right24 = Max24Pos;
+        if (right24 < Min24Neg) right24 = Min24Neg;
 
+        // ---- SATURATION PAR VOIE ----
+        if (left24 == Max24Pos || left24 == Min24Neg)
+            lastSatLeft = DateTime.Now;
+        if (right24 == Max24Pos || right24 == Min24Neg)
+            lastSatRight = DateTime.Now;
 
-            uint left24u = unchecked((uint)(left24 & 0xFFFFFF));
-            uint right24u = unchecked((uint)(right24 & 0xFFFFFF));
+        uint left24u = unchecked((uint)(left24 & 0xFFFFFF));
+        uint right24u = unchecked((uint)(right24 & 0xFFFFFF));
+        // ---------- RECORD 1 SECONDE ----------
+        if (isRecordingOneSecond)
+        {
+            int bytesPerFrame = currentFormat.Channels * 4;
+            int frameCount = bytesRecorded / bytesPerFrame;
 
+            for (int i = 0; i < frameCount; i++)
+            {
+                int idx = i * bytesPerFrame;
+
+                float lf = BitConverter.ToSingle(buffer, idx);
+                float rf = BitConverter.ToSingle(buffer, idx + 4);
+
+                float sL = lf * Max24;
+                float sR = rf * Max24;
+
+                int L = (int)Math.Truncate(sL);
+                int R = (int)Math.Truncate(sR);
+
+                if (L > Max24Pos) L = Max24Pos;
+                if (L < Min24Neg) L = Min24Neg;
+                if (R > Max24Pos) R = Max24Pos;
+                if (R < Min24Neg) R = Min24Neg;
+
+                recordBuffer.Add(new RecordFrame() { Left = L, Right = R });
+                recordSamplesCollected++;
+
+                if (recordSamplesCollected >= recordSamplesNeeded)
+                {
+                    isRecordingOneSecond = false;
+                    SaveRecordingToCsv();
+                    MessageBox.Show("Enregistrement terminé (1 seconde).");
+                    break;
+                }
+            }
+        }
+            // ---------- Calcul du niveau crête sur ce buffer (pour les VU) ----------
+            int bytesPerFrameAll = currentFormat.Channels * 4;
+            int totalFrames = bytesRecorded / bytesPerFrameAll;
+
+            int peakLeftAbs = 0;
+            int peakRightAbs = 0;
+
+            for (int i = 0; i < totalFrames; i++)
+            {
+                int idx = i * bytesPerFrameAll;
+
+                float lf = BitConverter.ToSingle(buffer, idx);
+                float rf = BitConverter.ToSingle(buffer, idx + 4);
+
+                float sL = lf * Max24;
+                float sR = rf * Max24;
+
+                int L = (int)Math.Truncate(sL);
+                int R = (int)Math.Truncate(sR);
+
+                if (L > Max24Pos) L = Max24Pos;
+                if (L < Min24Neg) L = Min24Neg;
+                if (R > Max24Pos) R = Max24Pos;
+                if (R < Min24Neg) R = Min24Neg;
+
+                int absL = Math.Abs(L);
+                int absR = Math.Abs(R);
+
+                if (absL > peakLeftAbs) peakLeftAbs = absL;
+                if (absR > peakRightAbs) peakRightAbs = absR;
+            }
+            // Conversion en dBFS
+            double dbLeft, dbRight;
+            const double fullScale = Max24Pos; // 0x7FFFFF
+
+            if (peakLeftAbs == 0)
+                dbLeft = double.NegativeInfinity;
+            else
+                dbLeft = 20.0 * Math.Log10(peakLeftAbs / fullScale);
+
+            if (peakRightAbs == 0)
+                dbRight = double.NegativeInfinity;
+            else
+                dbRight = 20.0 * Math.Log10(peakRightAbs / fullScale);
+
+            // On clip à -120 dBFS pour l'affichage
+            double dbLeftClamped = double.IsNegativeInfinity(dbLeft) ? -120.0 : Math.Max(dbLeft, -120.0);
+            double dbRightClamped = double.IsNegativeInfinity(dbRight) ? -120.0 : Math.Max(dbRight, -120.0);
+
+            // Mapping [-120, 0] dB -> [0, 100]
+            int levelLeft = (int)Math.Round((dbLeftClamped + 120.0) / 120.0 * 100.0);
+            int levelRight = (int)Math.Round((dbRightClamped + 120.0) / 120.0 * 100.0);
+
+            if (levelLeft < 0) levelLeft = 0;
+            if (levelLeft > 100) levelLeft = 100;
+            if (levelRight < 0) levelRight = 0;
+            if (levelRight > 100) levelRight = 100;
+           // ---------- Texte existant ----------
             string leftHex24 = "0x" + left24u.ToString("X6");
             string rightHex24 = "0x" + right24u.ToString("X6");
 
-            //string leftBinRaw24 = Convert.ToString(left24u, 2).PadLeft(24, '0');
-            //string rightBinRaw24 = Convert.ToString(right24u, 2).PadLeft(24, '0');
-
-            //string leftBin24 = GroupBits(leftBinRaw24, 4);
-            //string rightBin24 = GroupBits(rightBinRaw24, 4);
-
-            // Binaire avec stabilité (bits qui changent trop vite -> 'x')
-            string leftBinStable = FormatBitsWithStability(left24u, lastBitsLeft, lastChangeLeft);
-            string rightBinStable = FormatBitsWithStability(right24u, lastBitsRight, lastChangeRight);
+            string leftBits = FormatBitsWithStability(left24u, lastBitsLeft, lastChangeLeft);
+            string rightBits = FormatBitsWithStability(right24u, lastBitsRight, lastChangeRight);
 
             var leftText = new StringBuilder();
             leftText.AppendLine(FormatRow("Float", leftF.ToString("G9")));
-            leftText.AppendLine(FormatRow("scaled (x2^23)", scaledL.ToString("G9")));
-            leftText.AppendLine(FormatRow("Décimal (24b)", left24.ToString()));
+            leftText.AppendLine(FormatRow("Scaled x2^23", scaledL.ToString("G9")));
+            leftText.AppendLine(FormatRow("Decimal (24b)", left24.ToString()));
             leftText.AppendLine(FormatRow("Hex (24 bits)", leftHex24));
-            leftText.AppendLine(FormatRow("Bin (24 bits)", leftBinStable));
+            leftText.AppendLine(FormatRow("Binary (24b)", leftBits));
 
             var rightText = new StringBuilder();
             rightText.AppendLine(FormatRow("Float", rightF.ToString("G9")));
-            rightText.AppendLine(FormatRow("scaled (x2^23)", scaledL.ToString("G9")));
-            rightText.AppendLine(FormatRow("Décimal (24b)", right24.ToString()));
+            rightText.AppendLine(FormatRow("Scaled x2^23", scaledR.ToString("G9")));
+            rightText.AppendLine(FormatRow("Decimal (24b)", right24.ToString()));
             rightText.AppendLine(FormatRow("Hex (24 bits)", rightHex24));
-            rightText.AppendLine(FormatRow("Bin (24 bits)", rightBinStable));
+            rightText.AppendLine(FormatRow("Binary (24b)", rightBits));
 
-            this.BeginInvoke((Action)(() =>
+            // ---------- Mise à jour UI ----------
+            BeginInvoke((Action)(() =>
             {
-                txtLeft.Text = leftText.ToString();
-                txtRight.Text = rightText.ToString();
+            txtLeft.Text = leftText.ToString();
+            txtRight.Text = rightText.ToString();
 
-                /// Coloration des 'x' en rouge sur la ligne "Bin (24 bits)"
-                ColorBinaryXs(txtLeft, "Bin (24 bits)");
-                ColorBinaryXs(txtRight, "Bin (24 bits)");
+            ColorBinaryXs(txtLeft, "Binary (24b)");
+            ColorBinaryXs(txtRight, "Binary (24b)");
+
+            // SAT LEDs
+            bool satL = lastSatLeft.HasValue && (DateTime.Now - lastSatLeft.Value) < satHoldTime;
+            bool satR = lastSatRight.HasValue && (DateTime.Now - lastSatRight.Value) < satHoldTime;
+
+            ledSatLeft.BackColor = satL ? Color.Red : Color.Gray;
+            ledSatRight.BackColor = satR ? Color.Red : Color.Gray;
+
+            // Bargraphs dBFS
+            barLeftLevel.Value = levelLeft;
+            barRightLevel.Value = levelRight;
+
+                lblLeftLevel.Text = double.IsNegativeInfinity(dbLeft) ? "- dBFS" : $"{dbLeft:F1} dBFS";
+                lblRightLevel.Text = double.IsNegativeInfinity(dbRight) ? "- dBFS" : $"{dbRight:F1} dBFS";
             }));
-
         }
+
         private void Capture_RecordingStopped(object? sender, StoppedEventArgs e)
         {
             if (e.Exception != null)
@@ -431,7 +642,10 @@ namespace AudioHexViewer
             DeviceDatabox.Text = sb.ToString();
         }
 
+        private void ledSatLeft_Click(object sender, EventArgs e)
+        {
 
+        }
     }
 
 }
