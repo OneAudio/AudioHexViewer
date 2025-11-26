@@ -31,6 +31,8 @@ namespace AudioHexViewer
         private bool isCurrentlySatRight = false;
 
 
+        private bool captureOutput = false; // false = IN (capture), true = OUT (loopback)
+
 
         // --- Enregistrement 1 seconde ---
         private bool isRecordingOneSecond = false;
@@ -38,11 +40,11 @@ namespace AudioHexViewer
         private int recordSamplesCollected = 0;
 
         // Seuils dBFS pour le bargraphe
-        private const double DbMin = -120.0;      // plancher d'affichage
-        private const double DbBlueToGreen = -60.0;
-        private const double DbGreenToOrange = -20.0;
+        private const double DbMin = -80.0;      // plancher d'affichage
+        private const double DbBlueToGreen = -36.0;
+        private const double DbGreenToOrange = -12.0;
         private const double DbOrangeToRed = -6.0;
-        private const int LedCount = 50; // nombre de segments "LED" par barre
+        private const int LedCount = 40; // nombre de segments "LED" par barre
 
         // --- Calibration tension ---
         // G et D séparées
@@ -130,7 +132,9 @@ namespace AudioHexViewer
             }
 
             comboDevices.DisplayMember = "FriendlyName";
-            LoadInputDevices();
+            LoadDevices();
+
+            UpdateStartButtonAppearance();
 
             comboDevices.SelectedIndexChanged += comboDevices_SelectedIndexChanged;
 
@@ -142,18 +146,17 @@ namespace AudioHexViewer
             // Charger la calibration existante
             LoadCalibration();
 
-
             // Créer les repères dBFS au-dessus des barres
             CreateDbMarkers(
                 barLeftLevel,
-                new[] { "-120", "-60", "-20", "-6", "0" },
-                new[] { -115, DbBlueToGreen, DbGreenToOrange, DbOrangeToRed, 0.0 }
+                new[] { "-80", "-36", "-12", "-6", "0" },
+                new[] { -80, DbBlueToGreen, DbGreenToOrange, DbOrangeToRed, 0.0 }
             );
 
             CreateDbMarkers(
                 barRightLevel,
-                new[] { "-120", "-60", "-20", "-6", "0" },
-                new[] { -115, DbBlueToGreen, DbGreenToOrange, DbOrangeToRed, 0.0 }
+                new[] { "-80", "-36", "-12", "-6", "0" },
+                new[] { -80, DbBlueToGreen, DbGreenToOrange, DbOrangeToRed, 0.0 }
             );
 
         }
@@ -186,6 +189,36 @@ namespace AudioHexViewer
             return $"{paddedLabel} : {value}";
         }
         //
+        //
+        private void menuDeviceInfo_Click(object? sender, EventArgs e)
+        {
+            string text = BuildDeviceInfoText();
+
+            using (var dlg = new Form())
+            {
+                dlg.Text = "Audio device info";
+                dlg.StartPosition = FormStartPosition.CenterParent;
+                dlg.Size = new Size(500, 350);
+                dlg.MinimizeBox = false;
+                dlg.MaximizeBox = false;
+                dlg.ShowIcon = false;
+
+                var box = new RichTextBox();
+                box.Dock = DockStyle.Fill;
+                box.ReadOnly = true;
+                box.BorderStyle = BorderStyle.None;
+                box.Font = new Font(FontFamily.GenericMonospace, 9f);
+                box.Text = text;
+                box.BackColor = SystemColors.Window;
+
+                dlg.Controls.Add(box);
+
+                dlg.ShowDialog(this);
+            }
+        }
+
+        //
+        //
         private void menuAbout_Click(object? sender, EventArgs e)
         {
             MessageBox.Show(
@@ -197,6 +230,26 @@ namespace AudioHexViewer
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
+
+        //
+        private void UpdateStartButtonAppearance()
+        {
+            if (capture == null)
+            {
+                // Mode arrêt --> bouton READ vert
+                btnStart.Text = "READ";
+                btnStart.BackColor = Color.SeaGreen;
+                btnStart.ForeColor = Color.White;
+            }
+            else
+            {
+                // Mode en cours de capture --> bouton STOP rouge
+                btnStart.Text = "STOP";
+                btnStart.BackColor = Color.Firebrick;
+                btnStart.ForeColor = Color.White;
+            }
+        }
+        //
 
         private void menuOpenCal_Click(object? sender, EventArgs e)
         {
@@ -228,27 +281,26 @@ namespace AudioHexViewer
         }
 
         //
-        private void LoadInputDevices()
+        private void LoadDevices()
         {
-            // Gestionnaire de périphériques audio
-            var enumerator = new MMDeviceEnumerator();
-            var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
-
             comboDevices.Items.Clear();
 
+            var enumerator = new MMDeviceEnumerator();
+
+            // IN -> périphériques de capture, OUT -> périphériques de rendu
+            var flow = captureOutput ? DataFlow.Render : DataFlow.Capture;
+
+            var devices = enumerator.EnumerateAudioEndPoints(flow, DeviceState.Active);
             foreach (var dev in devices)
             {
-                // On associe l'objet MMDevice directement à l'item
+                // Tu avais déjà un DeviceItem qui expose FriendlyName
                 comboDevices.Items.Add(dev);
             }
 
             if (comboDevices.Items.Count > 0)
-            {
                 comboDevices.SelectedIndex = 0;
-            }
-
-            UpdateDeviceInfo();
         }
+
         private void comboDevices_SelectedIndexChanged(object? sender, EventArgs e)
         {
             // On n’est plus en train de capturer si on change de device
@@ -264,7 +316,7 @@ namespace AudioHexViewer
             {
                 if (comboDevices.SelectedItem is not MMDevice dev)
                 {
-                    MessageBox.Show("Sélectionne un périphérique d'entrée audio.");
+                    MessageBox.Show("Sélectionne un périphérique audio.");
                     return;
                 }
 
@@ -272,8 +324,19 @@ namespace AudioHexViewer
 
                 try
                 {
-                    // 1) On démarre la capture comme avant (mode partagé, mix format)
-                    capture = new WasapiCapture(selectedDevice);
+                    // === ICI : on choisit IN ou OUT ===
+                    if (!captureOutput)
+                    {
+                        // Mode IN : périphérique d'entrée (micro / ADC)
+                        capture = new WasapiCapture(selectedDevice);
+                    }
+                    else
+                    {
+                        // Mode OUT : périphérique de sortie (loopback)
+                        capture = new WasapiLoopbackCapture(selectedDevice);
+                    }
+                    // ================================
+
                     currentFormat = capture.WaveFormat;
 
                     capture.DataAvailable += Capture_DataAvailable;
@@ -281,15 +344,16 @@ namespace AudioHexViewer
 
                     capture.StartRecording();
 
-                    // 3) UI
-                    btnStart.Text = "STOP";
+                    UpdateStartButtonAppearance();
                     UpdateDeviceInfo();
                 }
                 catch (Exception ex)
                 {
                     MessageBox.Show("Erreur lors du démarrage de la capture : " + ex.Message);
                     capture = null;
-                    btnStart.Text = "READ";
+                    //btnStart.Text = "READ";
+                    currentFormat = null;
+                    UpdateStartButtonAppearance();   // remet en mode READ vert
                     UpdateDeviceInfo();
                 }
             }
@@ -300,6 +364,7 @@ namespace AudioHexViewer
                 try
                 {
                     capture.DataAvailable -= Capture_DataAvailable;
+                    capture.RecordingStopped -= Capture_RecordingStopped;
                     capture.StopRecording();
                 }
                 catch
@@ -311,8 +376,26 @@ namespace AudioHexViewer
                 capture = null;
                 currentFormat = null;
 
-                btnStart.Text = "READ";
+                UpdateStartButtonAppearance();       // remet READ vert
                 UpdateDeviceInfo();
+            }
+        }
+
+        private void rbInput_CheckedChanged(object? sender, EventArgs e)
+        {
+            if (rbInput.Checked)
+            {
+                captureOutput = false;  // mode IN
+                LoadDevices();
+            }
+        }
+
+        private void rbOutput_CheckedChanged(object? sender, EventArgs e)
+        {
+            if (rbOutput.Checked)
+            {
+                captureOutput = true;   // mode OUT
+                LoadDevices();
             }
         }
 
@@ -1166,53 +1249,92 @@ namespace AudioHexViewer
             string raw = new string(bits);
             return GroupBits(raw, 4); // On réutilise ta fonction de groupement par 4 bits
         }
-        private void UpdateDeviceInfo()
+        //
+        //
+        private string BuildDeviceInfoText()
         {
-            if (DeviceDatabox == null)
-                return;
-
-            if (comboDevices.SelectedItem is not MMDevice dev)
-            {
-                DeviceDatabox.Clear();
-                DeviceDatabox.AppendText("No device selected.");
-                return;
-            }
-
             var sb = new StringBuilder();
 
-            // Infos de base sur le device
-            sb.AppendLine("Selected device");
-            sb.AppendLine("----------------");
-            sb.AppendLine($"Name        : {dev.FriendlyName}");
-            sb.AppendLine($"ID          : {dev.ID}");
-            sb.AppendLine($"Data flow   : {dev.DataFlow}");
-            sb.AppendLine($"State       : {dev.State}");
-            sb.AppendLine();
-
-            // Format mixeur Windows (MixFormat)
-            var mix = dev.AudioClient.MixFormat;
-            sb.AppendLine("Mix format (Windows)");
-            sb.AppendLine("--------------------");
-            sb.AppendLine($"Encoding    : {mix.Encoding}");
-            sb.AppendLine($"Sample rate : {mix.SampleRate} Hz");
-            sb.AppendLine($"Bits/sample : {mix.BitsPerSample}");
-            sb.AppendLine($"Channels    : {mix.Channels}");
-            sb.AppendLine();
-
-            // Format réellement utilisé par la capture (si en cours)
-            if (currentFormat != null)
+            if (selectedDevice == null)
             {
-                sb.AppendLine("Capture format (app)");
-                sb.AppendLine("--------------------");
-                sb.AppendLine($"Encoding    : {currentFormat.Encoding}");
-                sb.AppendLine($"Sample rate : {currentFormat.SampleRate} Hz");
-                sb.AppendLine($"Bits/sample : {currentFormat.BitsPerSample}");
-                sb.AppendLine($"Channels    : {currentFormat.Channels}");
+                sb.AppendLine("Selected device : (none)");
+                sb.AppendLine();
+                sb.AppendLine("Capture not started.");
+                return sb.ToString();
             }
 
-            DeviceDatabox.Clear();
-            DeviceDatabox.Text = sb.ToString();
+            var dev = selectedDevice;
+
+            WaveFormat? fmt = currentFormat;
+            if (fmt == null)
+            {
+                try
+                {
+                    fmt = dev.AudioClient.MixFormat;
+                }
+                catch
+                {
+                    fmt = null;
+                }
+            }
+
+            sb.AppendLine("Selected device");
+            sb.AppendLine(new string('-', 40));
+
+            sb.AppendLine($"Name   : {dev.FriendlyName}");
+            sb.AppendLine($"ID     : {dev.ID}");
+            sb.AppendLine();
+
+            sb.AppendLine("Endpoint");
+            sb.AppendLine($"  Type : {(captureOutput ? "Output (Render)" : "Input  (Capture)")}");
+            sb.AppendLine($"  State: {dev.State}");
+            sb.AppendLine();
+
+            sb.AppendLine("Format (Windows)");
+            if (fmt != null)
+            {
+                string enc;
+                if (fmt.Encoding == WaveFormatEncoding.IeeeFloat)
+                    enc = "IEEE Float";
+                else if (fmt.Encoding == WaveFormatEncoding.Pcm)
+                    enc = "PCM";
+                else
+                    enc = fmt.Encoding.ToString();
+
+                sb.AppendLine($"  {fmt.Channels} ch, {fmt.BitsPerSample} bits, {fmt.SampleRate} Hz");
+                sb.AppendLine($"  {enc}");
+            }
+            else
+            {
+                sb.AppendLine("  (unknown)");
+            }
+
+            sb.AppendLine();
+
+            sb.AppendLine("Capture status");
+            if (capture == null)
+            {
+                sb.AppendLine("  Idle (not capturing)");
+            }
+            else
+            {
+                sb.AppendLine("  Active");
+                sb.AppendLine($"  Mode : {(captureOutput ? "OUT (loopback on output)" : "IN (device input)")}");
+            }
+
+            return sb.ToString();
         }
+        /// <summary>
+        /// 
+        //
+        /// </summary>
+        private void UpdateDeviceInfo()
+        {
+            string text = BuildDeviceInfoText();
+    
+        }
+
+
 
         private void CreateDbMarkers(Panel bar, string[] labels, double[] dbValues)
         {
@@ -1249,13 +1371,13 @@ namespace AudioHexViewer
             if (panel == null || panel.Width <= 0 || panel.Height <= 0)
                 return;
 
-            // Clamp niveau
+            // Clamp
             if (levelPercent < 0) levelPercent = 0;
             if (levelPercent > 100) levelPercent = 100;
 
-            // On crée (ou récupère) un tableau de petits panneaux pour simuler les LEDs
+            // Récupérer / créer les LEDs
             Panel[] leds;
-            if (panel.Tag is Panel[] arr && arr.Length == LedCount)
+            if (panel.Tag is Panel[] arr && arr.Length == LedCount && panel.Controls.Count == LedCount)
             {
                 leds = arr;
             }
@@ -1265,13 +1387,19 @@ namespace AudioHexViewer
                 panel.Controls.Clear();
 
                 int totalWidth = panel.ClientSize.Width;
-                int spacing = 1; // espace entre LEDs (tu peux mettre 0 si tu veux un ruban plein)
+                int totalHeight = panel.ClientSize.Height;
+
+                // petites marges verticales pour ne pas coller au bord
+                int vMargin = Math.Max(1, totalHeight / 6);
+                int ledHeight = Math.Max(2, totalHeight - 2 * vMargin);
+
+                int spacing = 2; // espace horizontal entre LEDs
 
                 for (int i = 0; i < LedCount; i++)
                 {
                     var led = new Panel();
 
-                    // Position en coordonnées "continues"
+                    // découpe en bandes égales sur toute la largeur
                     double xStart = (double)i / LedCount * totalWidth;
                     double xEnd = (double)(i + 1) / LedCount * totalWidth;
 
@@ -1279,63 +1407,60 @@ namespace AudioHexViewer
                     int right = (int)Math.Round(xEnd);
                     int width = right - left;
 
-                    // On enlève un tout petit peu pour garder un "gap" (optionnel)
                     if (width > spacing)
                         width -= spacing;
 
-                    led.Top = 0;
                     led.Left = left;
                     led.Width = Math.Max(1, width);
-                    led.Height = panel.Height;
-                    led.BackColor = Color.DarkGray; // LED éteinte
+                    led.Top = vMargin;
+                    led.Height = ledHeight;
+
+                    // couleur LED éteinte
+                    led.BackColor = Color.FromArgb(64, 64, 64);
                     led.BorderStyle = BorderStyle.None;
 
                     panel.Controls.Add(led);
                     leds[i] = led;
                 }
 
-
                 panel.Tag = leds;
             }
 
-            // Pré-calcul des pourcentages des frontières de couleurs
-            double pBlueEnd = DbToPercent(DbBlueToGreen);    // fin bleu
-            double pGreenEnd = DbToPercent(DbGreenToOrange);  // fin vert
-            double pOrangeEnd = DbToPercent(DbOrangeToRed);    // fin orange
-
-            int totalW = panel.Width;
-            if (totalW <= 0) return;
+            // Pourcentage des frontières de couleur
+            double pBlueEnd = DbToPercent(DbBlueToGreen);
+            double pGreenEnd = DbToPercent(DbGreenToOrange);
+            double pOrangeEnd = DbToPercent(DbOrangeToRed);
+            double pRedEnd = 100.0;
 
             for (int i = 0; i < LedCount; i++)
             {
                 var led = leds[i];
 
-                // Position de cette LED en % de la barre (centre de la LED)
+                // Position de cette LED en % de la barre
                 double ledCenterPercent = ((i + 0.5) / LedCount) * 100.0;
 
-                // Allumée ou éteinte selon le niveau
                 bool isOn = ledCenterPercent <= levelPercent;
-
                 if (!isOn)
                 {
-                    led.BackColor = Color.DarkGray; // LED éteinte
+                    // LED éteinte
+                    led.BackColor = Color.FromArgb(64, 64, 64);
                     continue;
                 }
 
-                // Couleur en fonction de sa position (% -> zone de dB)
+                // Couleur en fonction de la zone de dB
                 if (ledCenterPercent <= pBlueEnd)
                 {
-                    led.BackColor = Color.Blue;
+                    led.BackColor = Color.FromArgb(0, 120, 215);      // bleu "Windows"
                 }
                 else if (ledCenterPercent <= pGreenEnd)
                 {
-                    led.BackColor = Color.Lime;
+                    led.BackColor = Color.Lime;                       // vert vif
                 }
                 else if (ledCenterPercent <= pOrangeEnd)
                 {
-                    led.BackColor = Color.Orange;
+                    led.BackColor = Color.Gold;                       // jaune/orange
                 }
-                else
+                else // zone rouge
                 {
                     led.BackColor = Color.Red;
                 }
@@ -1366,6 +1491,11 @@ namespace AudioHexViewer
         }
 
         private void label2_Click_1(object sender, EventArgs e)
+        {
+
+        }
+
+        private void label1_Click(object sender, EventArgs e)
         {
 
         }
