@@ -2,6 +2,9 @@ using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using System.Globalization;
 using System.Text;
+using System.IO;
+using System.Diagnostics;
+
 // ...
 
 
@@ -14,6 +17,13 @@ namespace AudioHexViewer
         private WasapiCapture? capture;   // pour la capture audio
         private MMDevice? selectedDevice; // périphérique audio choisi
         private WaveFormat? currentFormat;
+
+        // Record directory
+        private readonly string appBaseDir = AppDomain.CurrentDomain.BaseDirectory;
+        private readonly string recordsDir;
+        private string? lastRecordingPath;
+
+
 
         // Suivi de stabilité des bits (24 bits) sur 1 seconde
         private readonly bool[] lastBitsLeft = new bool[24];
@@ -30,6 +40,24 @@ namespace AudioHexViewer
         private bool isCurrentlySatLeft = false;
         private bool isCurrentlySatRight = false;
 
+        // Dernières valeurs calculées (pour l’affichage principal)
+        private double lastLeftFloat;
+        private double lastRightFloat;
+
+        private int lastLeftScaled;
+        private int lastRightScaled;
+
+        private int lastLeft24;
+        private int lastRight24;
+
+        private string lastLeftHex24 = "";
+        private string lastRightHex24 = "";
+
+        private string lastLeftBits = "";
+        private string lastRightBits = "";
+
+        private double lastLeftVolts;
+        private double lastRightVolts;
 
         private bool captureOutput = false; // false = IN (capture), true = OUT (loopback)
 
@@ -120,6 +148,30 @@ namespace AudioHexViewer
         {
             InitializeComponent();
 
+            chkShowDetails.Checked = false;
+            txtLeft.Visible = false;
+            txtRight.Visible = false;
+            this.Height = 230;   // doit être cohérent avec la valeur dans CheckedChanged
+
+            chkShowDetails.CheckAlign = ContentAlignment.MiddleRight;
+            chkShowDetails.TextAlign = ContentAlignment.MiddleLeft;
+
+            recordsDir = Path.Combine(appBaseDir, "records");
+            Directory.CreateDirectory(recordsDir);   // s’assure que le dossier existe
+
+
+            // Modes possibles pour la valeur mise en avant
+            comboDisplayMode.Items.AddRange(new object[]
+            {
+                "Float",
+                "Scaled (×2^23)",
+                "Decimal (24b)",
+                "Hex (24 bits)",
+                "Binary (24b)",
+                "Voltage (V)"
+            });
+            comboDisplayMode.SelectedIndex = 0;
+            comboDisplayMode.SelectedIndexChanged += comboDisplayMode_SelectedIndexChanged;
 
             // Init des horodatages de changements de bits
             var now = DateTime.Now;
@@ -222,13 +274,17 @@ namespace AudioHexViewer
         private void menuAbout_Click(object? sender, EventArgs e)
         {
             MessageBox.Show(
-                "AudioHexViewer\n\n" +
-                "Affichage des données audio 24 bits, bargraph dBFS, saturation,\n" +
-                "enregistrement CSV et calibration tension.\n\n" +
+                "AudioHexViewer V0.1 11/2025\n\n" +
+                "Digital audio data viewer\n" +
                 "OnE Audio Projects",
                 "About",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
+        }
+        //
+        private void comboDisplayMode_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            UpdateMainDisplayFromLastValues();
         }
 
         //
@@ -398,31 +454,28 @@ namespace AudioHexViewer
                 LoadDevices();
             }
         }
-
-        // ajouté à cause des erreurs enntre ICI ...
-
-        private void LblSatLeft_Click(object sender, EventArgs e)
-        {
-        }
-
-        private void barLeftLevel_Click(object sender, EventArgs e)
-        {
-        }
-        private void lblLeftLevel_Click(object sender, EventArgs e)
-        {
-        }
-
-        private void barRightLevel_Click(object sender, EventArgs e)
-        {
-        }
-
-        private void label2_Click(object sender, EventArgs e)
-        {
-            // Handler laissé vide pour satisfaire le Designer
-        }
-
-        // ... et là
         //
+        //
+        private void chkShowDetails_CheckedChanged(object? sender, EventArgs e)
+        {
+            bool visible = chkShowDetails.Checked;
+
+            txtLeft.Visible = visible;
+            txtRight.Visible = visible;
+
+            // Optionnel : ajuster la taille globale de la fenêtre
+            // si tu veux qu'elle se "raccourcisse" quand on cache les détails.
+            // Par ex :
+            //
+            if (visible)
+            {
+                // Hauteur quand les détails sont affichés
+                this.Height = 335;
+            }
+            else
+                // Hauteur quand les détails sont cachés
+                this.Height = 230;
+        }
         //
         //
         private void btnCalV_Click(object sender, EventArgs e)
@@ -686,7 +739,36 @@ namespace AudioHexViewer
                                 MessageBoxIcon.Error);
             }
         }
+        //
+        private void menuOpenLastRecording_Click(object? sender, EventArgs e)
+        {
+            if (string.IsNullOrEmpty(lastRecordingPath) || !File.Exists(lastRecordingPath))
+            {
+                MessageBox.Show(
+                    "Aucun enregistrement disponible pour le moment.",
+                    "Info",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
 
+            try
+            {
+                Process.Start(new ProcessStartInfo(lastRecordingPath)
+                {
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    "Impossible d'ouvrir l'enregistrement : " + ex.Message,
+                    "Erreur",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+//
         private void LoadCalibration()
         {
             string path = GetCalibrationFilePath();
@@ -808,8 +890,8 @@ namespace AudioHexViewer
         {
             try
             {
-                string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-                string file = Path.Combine(desktop, $"audio_record_{DateTime.Now:HHmmss}.csv");
+                // Dossier d’enregistrement : records\audio_record_HHmmss.csv
+                string file = Path.Combine(recordsDir, $"audio_record_{DateTime.Now:HHmmss}.csv");
 
                 using (var sw = new StreamWriter(file))
                 {
@@ -826,6 +908,9 @@ namespace AudioHexViewer
                     }
                 }
 
+                // mémorise le dernier fichier enregistré
+                lastRecordingPath = file;
+
                 MessageBox.Show($"Fichier enregistré :\n{file}");
             }
             catch (Exception ex)
@@ -833,6 +918,7 @@ namespace AudioHexViewer
                 MessageBox.Show("Erreur CSV : " + ex.Message);
             }
         }
+
 
 
         private void btnStop_Click(object sender, EventArgs e)
@@ -1068,6 +1154,26 @@ namespace AudioHexViewer
             else
                 rightText.AppendLine(FormatRow("Voltage (V)", "N/A"));
 
+            // Exemple, à adapter à tes vrais noms de variables
+            lastLeftFloat = leftF;          // ton float voie gauche
+            lastRightFloat = rightF;         // ton float voie droite
+
+            lastLeftScaled = (int)Math.Round(leftF * (1 << 23));
+            lastRightScaled = (int)Math.Round(rightF * (1 << 23));
+
+            lastLeft24 = left24;
+            lastRight24 = right24;
+
+            lastLeftHex24 = leftHex24;
+            lastRightHex24 = rightHex24;
+
+            lastLeftBits = leftBits;
+            lastRightBits = rightBits;
+
+            // Pour les volts, si tu utilises displayVoltsLeft/Right :
+            lastLeftVolts = displayVoltsLeft;
+            lastRightVolts = displayVoltsRight;
+
             // ---------- Mise à jour UI ----------
             BeginInvoke((Action)(() =>
             {
@@ -1104,7 +1210,7 @@ namespace AudioHexViewer
                     if (blinkOn)
                     {
                         lblLeftLevel.Text = "      SAT";
-                        lblLeftLevel.ForeColor = Color.Red;
+                        lblLeftLevel.ForeColor = Color.Red;   // 
                         lblLeftLevel.Font = new Font(lblLeftLevel.Font, FontStyle.Bold);
 
                     }
@@ -1119,7 +1225,7 @@ namespace AudioHexViewer
                 {
                     // Affichage normal dBFS
                     lblLeftLevel.Text = double.IsNegativeInfinity(dbLeft) ? "- dBFS" : $"{dbLeft:F1} dBFS";
-                    lblLeftLevel.ForeColor = Color.Black;
+                    lblLeftLevel.ForeColor = SystemColors.HotTrack;
                     lblLeftLevel.Font = new Font(lblLeftLevel.Font, FontStyle.Regular);
 
                 }
@@ -1149,11 +1255,11 @@ namespace AudioHexViewer
                 else
                 {
                     lblRightLevel.Text = double.IsNegativeInfinity(dbRight) ? "- dBFS" : $"{dbRight:F1} dBFS";
-                    lblRightLevel.ForeColor = Color.Black;
+                    lblRightLevel.ForeColor = SystemColors.HotTrack;
                     lblRightLevel.Font = new Font(lblRightLevel.Font, FontStyle.Regular);
                 }
 
-
+                UpdateMainDisplayFromLastValues();
 
             }));
         }
@@ -1165,8 +1271,72 @@ namespace AudioHexViewer
                 MessageBox.Show("Erreur pendant la capture : " + e.Exception.Message);
             }
         }
+        //
+        //
+        private void UpdateMainDisplayFromLastValues()
+        {
+            if (comboDisplayMode.SelectedItem is not string mode)
+                mode = "Float";
 
+            // Préparer les valeurs formatées
+            string leftText = "";
+            string rightText = "";
 
+            switch (mode)
+            {
+                case "Float":
+                    leftText = lastLeftFloat.ToString("F8", CultureInfo.InvariantCulture);
+                    rightText = lastRightFloat.ToString("F8", CultureInfo.InvariantCulture);
+                    break;
+
+                case "Scaled (×2^23)":
+                    leftText = lastLeftScaled.ToString(CultureInfo.InvariantCulture);
+                    rightText = lastRightScaled.ToString(CultureInfo.InvariantCulture);
+                    break;
+
+                case "Decimal (24b)":
+                    leftText = lastLeft24.ToString();
+                    rightText = lastRight24.ToString();
+                    break;
+
+                case "Hex (24 bits)":
+                    leftText = lastLeftHex24;
+                    rightText = lastRightHex24;
+                    break;
+
+                case "Binary (24b)":
+                    leftText = lastLeftBits;
+                    rightText = lastRightBits;
+                    break;
+
+                case "Voltage (V)":
+                    // si pas calibré, on signale N/A
+                    if (calibValidLeft)
+                        leftText = lastLeftVolts.ToString("F4", CultureInfo.InvariantCulture);
+                    else
+                        leftText = "N/A";
+
+                    if (calibValidRight)
+                        rightText = lastRightVolts.ToString("F4", CultureInfo.InvariantCulture);
+                    else
+                        rightText = "N/A";
+                    break;
+
+                default:
+                    leftText = "";
+                    rightText = "";
+                    break;
+            }
+
+            // Met à jour les labels
+            lblLeftMainTitle.Text = $"{mode}";
+            lblRightMainTitle.Text = $"{mode}";
+
+            lblLeftMainValue.Text = leftText;
+            lblRightMainValue.Text = rightText;
+        }
+        //
+        //
         private void ColorBinaryXs(RichTextBox rtb, string binaryLabel)
         {
             string fullText = rtb.Text;
@@ -1331,7 +1501,7 @@ namespace AudioHexViewer
         private void UpdateDeviceInfo()
         {
             string text = BuildDeviceInfoText();
-    
+
         }
 
 
@@ -1496,6 +1666,11 @@ namespace AudioHexViewer
         }
 
         private void label1_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void label4_Click(object sender, EventArgs e)
         {
 
         }
