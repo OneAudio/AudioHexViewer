@@ -63,6 +63,14 @@ namespace AudioHexViewer
         private bool isRecordingOneSecond = false;
         private int recordSamplesNeeded = 0;
         private int recordSamplesCollected = 0;
+        private List<RecordFrame> recordBuffer = new List<RecordFrame>();
+
+        // --- Capture 1 seconde pour histogramme ---
+        private bool isHistogramCaptureActive = false;
+        private int histSamplesNeeded = 0;
+        private int histSamplesCollected = 0;
+        private List<RecordFrame> histBuffer = new List<RecordFrame>();
+
 
         // Seuils dBFS pour le bargraphe
         private const double DbMin = -80.0;      // plancher d'affichage
@@ -138,7 +146,6 @@ namespace AudioHexViewer
             public int Right;
         }
 
-        private List<RecordFrame> recordBuffer = new List<RecordFrame>();
 
 
         public Form1()
@@ -399,6 +406,37 @@ namespace AudioHexViewer
             }
         }
         //
+        private void btnHistogram_Click(object sender, EventArgs e)
+        {
+            if (currentFormat == null || capture == null)
+            {
+                MessageBox.Show("Démarre la lecture (READ) avant de lancer un histogramme.");
+                return;
+            }
+
+            if (isHistogramCaptureActive)
+            {
+                MessageBox.Show("Une capture pour histogramme est déjà en cours.");
+                return;
+            }
+
+            //if (isRecordingOneSecond)
+            //{
+            //    MessageBox.Show("Un enregistrement CSV 1 seconde est en cours. Attends la fin avant l'histogramme.");
+            //    return;
+            //}
+
+            // On (ré)initialise le buffer histogramme
+            histBuffer.Clear();
+            histSamplesCollected = 0;
+            histSamplesNeeded = currentFormat.SampleRate; // 1 seconde exacte
+
+            isHistogramCaptureActive = true;
+            btnHistogram.Enabled = false;
+
+            //MessageBox.Show($"Capture pour histogramme démarrée ({histSamplesNeeded} échantillons).");
+        }
+
         //
         private void menuOpenRecordsFolder_Click(object? sender, EventArgs e)
         {
@@ -959,7 +997,7 @@ namespace AudioHexViewer
 
             recordSamplesNeeded = currentFormat.SampleRate;  // exactement 1 seconde
 
-            MessageBox.Show($"Enregistrement 1 seconde démarré ({recordSamplesNeeded} échantillons).");
+            //MessageBox.Show($"Enregistrement 1 seconde démarré ({recordSamplesNeeded} échantillons).");
         }
 
         private void SaveRecordingToCsv()
@@ -1130,11 +1168,55 @@ namespace AudioHexViewer
                     {
                         isRecordingOneSecond = false;
                         SaveRecordingToCsv();
-                        MessageBox.Show("Enregistrement terminé (1 seconde).");
+                        //MessageBox.Show("Enregistrement terminé (1 seconde).");
                         break;
                     }
                 }
             }
+            //
+            // ---------- CAPTURE 1 SECONDE POUR HISTOGRAMME ----------
+            if (isHistogramCaptureActive)
+            {
+                int bytesPerFrame = currentFormat.Channels * 4;
+                int frameCount = bytesRecorded / bytesPerFrame;
+
+                for (int i = 0; i < frameCount; i++)
+                {
+                    int idxFrame = i * bytesPerFrame;
+
+                    float lf = BitConverter.ToSingle(buffer, idxFrame);
+                    float rf = BitConverter.ToSingle(buffer, idxFrame + 4);
+
+                    float sL = lf * Max24;
+                    float sR = rf * Max24;
+
+                    int L = (int)Math.Truncate(sL);
+                    int R = (int)Math.Truncate(sR);
+
+                    if (L > Max24Pos) L = Max24Pos;
+                    if (L < Min24Neg) L = Min24Neg;
+                    if (R > Max24Pos) R = Max24Pos;
+                    if (R < Min24Neg) R = Min24Neg;
+
+                    histBuffer.Add(new RecordFrame { Left = L, Right = R });
+                    histSamplesCollected++;
+
+                    if (histSamplesCollected >= histSamplesNeeded)
+                    {
+                        isHistogramCaptureActive = false;
+
+                        // On repasse sur le thread UI pour ouvrir la fenêtre
+                        BeginInvoke(new Action(() =>
+                        {
+                            btnHistogram.Enabled = true;
+                            ShowHistogramWindow();
+                        }));
+
+                        break;
+                    }
+                }
+            }
+            //
             // ---------- Calcul du niveau crête sur ce buffer (pour les VU) ----------
             int bytesPerFrameAll = currentFormat.Channels * 4;
             int totalFrames = bytesRecorded / bytesPerFrameAll;
@@ -1332,7 +1414,33 @@ namespace AudioHexViewer
 
             }));
         }
+        //
+        private void ShowHistogramWindow()
+        {
+            if (histBuffer.Count == 0)
+            {
+                MessageBox.Show("Pas de données disponibles pour l'histogramme.");
+                return;
+            }
 
+            // On extrait deux tableaux d'int 24 bits signés
+            int count = histBuffer.Count;
+            int[] leftSamples = new int[count];
+            int[] rightSamples = new int[count];
+
+            for (int i = 0; i < count; i++)
+            {
+                leftSamples[i] = histBuffer[i].Left;
+                rightSamples[i] = histBuffer[i].Right;
+            }
+
+            // On crée et affiche la fenêtre d'histogramme
+            var histForm = new HistogramForm(leftSamples, rightSamples);
+            histForm.StartPosition = FormStartPosition.CenterParent;
+            histForm.Show(this);  // non modal (ou ShowDialog(this) si tu préfères modale)
+        }
+
+        //
         private void Capture_RecordingStopped(object? sender, StoppedEventArgs e)
         {
             if (e.Exception != null)

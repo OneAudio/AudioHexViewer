@@ -64,6 +64,7 @@ namespace AudioHexViewer
             chkShowDetails = new CheckBox();
             label4 = new Label();
             lblDeviceSummary = new Label();
+            btnHistogram = new Button();
             menuStrip1.SuspendLayout();
             SuspendLayout();
             // 
@@ -403,6 +404,16 @@ namespace AudioHexViewer
             lblDeviceSummary.TabIndex = 0;
             lblDeviceSummary.Text = "No device selected";
             // 
+            // btnHistogram
+            // 
+            btnHistogram.Location = new Point(15, 159);
+            btnHistogram.Name = "btnHistogram";
+            btnHistogram.Size = new Size(80, 25);
+            btnHistogram.TabIndex = 0;
+            btnHistogram.Text = "Histogram";
+            btnHistogram.UseVisualStyleBackColor = true;
+            btnHistogram.Click += btnHistogram_Click;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
@@ -435,6 +446,7 @@ namespace AudioHexViewer
             Controls.Add(lblRightMainValue);
             Controls.Add(chkShowDetails);
             Controls.Add(lblDeviceSummary);
+            Controls.Add(btnHistogram);
             HelpButton = true;
             MainMenuStrip = menuStrip1;
             Name = "Form1";
@@ -479,6 +491,7 @@ namespace AudioHexViewer
         private Label label4;
         private ToolStripMenuItem menuOpenRecordsFolder;
         private Label lblDeviceSummary;
+        private Button btnHistogram;
 
     }
 }
