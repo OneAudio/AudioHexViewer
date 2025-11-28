@@ -1423,7 +1423,6 @@ namespace AudioHexViewer
                 return;
             }
 
-            // On extrait deux tableaux d'int 24 bits signés
             int count = histBuffer.Count;
             int[] leftSamples = new int[count];
             int[] rightSamples = new int[count];
@@ -1434,11 +1433,11 @@ namespace AudioHexViewer
                 rightSamples[i] = histBuffer[i].Right;
             }
 
-            // On crée et affiche la fenêtre d'histogramme
-            var histForm = new HistogramForm(leftSamples, rightSamples);
+            var histForm = new HistogramWindow(leftSamples, rightSamples);
             histForm.StartPosition = FormStartPosition.CenterParent;
-            histForm.Show(this);  // non modal (ou ShowDialog(this) si tu préfères modale)
+            histForm.Show(this);
         }
+
 
         //
         private void Capture_RecordingStopped(object? sender, StoppedEventArgs e)
