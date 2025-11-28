@@ -53,6 +53,7 @@ namespace AudioHexViewer
             menuHelp = new ToolStripMenuItem();
             menuAbout = new ToolStripMenuItem();
             menuOpenCal = new ToolStripMenuItem();
+            menuOpenRecordsFolder = new ToolStripMenuItem();
             label6 = new Label();
             label7 = new Label();
             label3 = new Label();
@@ -62,6 +63,7 @@ namespace AudioHexViewer
             lblRightMainValue = new Label();
             chkShowDetails = new CheckBox();
             label4 = new Label();
+            lblDeviceSummary = new Label();
             menuStrip1.SuspendLayout();
             SuspendLayout();
             // 
@@ -267,7 +269,7 @@ namespace AudioHexViewer
             // menuHelp
             // 
             menuHelp.Alignment = ToolStripItemAlignment.Right;
-            menuHelp.DropDownItems.AddRange(new ToolStripItem[] { menuAbout, menuOpenCal });
+            menuHelp.DropDownItems.AddRange(new ToolStripItem[] { menuAbout, menuOpenCal, menuOpenRecordsFolder });
             menuHelp.Name = "menuHelp";
             menuHelp.Size = new Size(44, 21);
             menuHelp.Text = "Help";
@@ -285,6 +287,13 @@ namespace AudioHexViewer
             menuOpenCal.Size = new Size(181, 22);
             menuOpenCal.Text = "Open calibration file";
             menuOpenCal.Click += menuOpenCal_Click;
+            // 
+            // menuOpenRecordsFolder
+            // 
+            menuOpenRecordsFolder.Name = "menuOpenRecordsFolder";
+            menuOpenRecordsFolder.Size = new Size(181, 22);
+            menuOpenRecordsFolder.Text = "Open records folder";
+            menuOpenRecordsFolder.Click += menuOpenRecordsFolder_Click;
             // 
             // label6
             // 
@@ -365,7 +374,7 @@ namespace AudioHexViewer
             // chkShowDetails
             // 
             chkShowDetails.AutoSize = true;
-            chkShowDetails.Location = new Point(781, 165);
+            chkShowDetails.Location = new Point(779, 166);
             chkShowDetails.Name = "chkShowDetails";
             chkShowDetails.Size = new Size(92, 19);
             chkShowDetails.TabIndex = 31;
@@ -381,6 +390,18 @@ namespace AudioHexViewer
             label4.Size = new Size(70, 15);
             label4.TabIndex = 37;
             label4.Text = "Data format";
+            // 
+            // lblDeviceSummary
+            // 
+            lblDeviceSummary.BackColor = Color.WhiteSmoke;
+            lblDeviceSummary.Font = new Font("Segoe UI", 8.5F);
+            lblDeviceSummary.ForeColor = Color.DimGray;
+            lblDeviceSummary.Location = new Point(757, 206);
+            lblDeviceSummary.Name = "lblDeviceSummary";
+            lblDeviceSummary.Padding = new Padding(4);
+            lblDeviceSummary.Size = new Size(116, 80);
+            lblDeviceSummary.TabIndex = 0;
+            lblDeviceSummary.Text = "No device selected";
             // 
             // Form1
             // 
@@ -413,6 +434,7 @@ namespace AudioHexViewer
             Controls.Add(lblRightMainTitle);
             Controls.Add(lblRightMainValue);
             Controls.Add(chkShowDetails);
+            Controls.Add(lblDeviceSummary);
             HelpButton = true;
             MainMenuStrip = menuStrip1;
             Name = "Form1";
@@ -455,5 +477,8 @@ namespace AudioHexViewer
         private Label lblRightMainValue;
         private CheckBox chkShowDetails;
         private Label label4;
+        private ToolStripMenuItem menuOpenRecordsFolder;
+        private Label lblDeviceSummary;
+
     }
 }

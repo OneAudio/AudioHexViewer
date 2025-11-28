@@ -2,6 +2,8 @@ using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using System.Globalization;
 using System.Text;
+using System.IO;
+using System.Diagnostics;
 
 // ...
 
@@ -239,6 +241,69 @@ namespace AudioHexViewer
             return $"{paddedLabel} : {value}";
         }
         //
+        private void UpdateDeviceSummary()
+        {
+            if (lblDeviceSummary == null)
+                return;
+
+            // Si aucun device sélectionné
+            if (comboDevices.SelectedItem is not MMDevice dev)
+            {
+                lblDeviceSummary.Text = "No device selected";
+                return;
+            }
+
+            // Type : IN / OUT
+            string typeText = captureOutput ? "Output" : "Input";
+
+            // On essaye d'avoir un format pertinent :
+            WaveFormat? fmt = currentFormat;
+            if (fmt == null)
+            {
+                try
+                {
+                    fmt = dev.AudioClient.MixFormat;
+                }
+                catch
+                {
+                    fmt = null;
+                }
+            }
+
+            string line1 = dev.FriendlyName; // ex: "Ligne (MKADC1)"
+            string line2 = $"{typeText}";
+
+            string line3 = "";
+            string line4 = "";
+
+            if (fmt != null)
+            {
+                double srKHz = fmt.SampleRate / 1000.0;
+                line3 = $"{srKHz:0.###} kHz · {fmt.BitsPerSample} bits";
+
+                string enc;
+                if (fmt.Encoding == WaveFormatEncoding.IeeeFloat)
+                    enc = "IEEE Float";
+                else if (fmt.Encoding == WaveFormatEncoding.Pcm)
+                    enc = "PCM";
+                else
+                    enc = fmt.Encoding.ToString();
+
+                line4 = enc;
+            }
+            else
+            {
+                line3 = "(unknown format)";
+            }
+
+            lblDeviceSummary.Text = string.Join(Environment.NewLine,
+                line1,
+                line2,
+                line3,
+                line4
+            );
+        }
+
         //
         private void menuDeviceInfo_Click(object? sender, EventArgs e)
         {
@@ -333,7 +398,30 @@ namespace AudioHexViewer
                                 MessageBoxIcon.Error);
             }
         }
+        //
+        //
+        private void menuOpenRecordsFolder_Click(object? sender, EventArgs e)
+        {
+            try
+            {
+                string folder = GetRecordsFolderPath();
 
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = folder,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    "Impossible d'ouvrir le dossier d'enregistrements : " + ex.Message,
+                    "Open records folder",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+        //
         //
         private void LoadDevices()
         {
@@ -360,6 +448,7 @@ namespace AudioHexViewer
             // On n’est plus en train de capturer si on change de device
             currentFormat = null;
             UpdateDeviceInfo();
+            UpdateDeviceSummary();   // 
         }
 
 
@@ -400,6 +489,7 @@ namespace AudioHexViewer
 
                     UpdateStartButtonAppearance();
                     UpdateDeviceInfo();
+                    UpdateDeviceSummary();
                 }
                 catch (Exception ex)
                 {
@@ -409,6 +499,7 @@ namespace AudioHexViewer
                     currentFormat = null;
                     UpdateStartButtonAppearance();   // remet en mode READ vert
                     UpdateDeviceInfo();
+                    UpdateDeviceSummary();
                 }
             }
             else
@@ -432,6 +523,7 @@ namespace AudioHexViewer
 
                 UpdateStartButtonAppearance();       // remet READ vert
                 UpdateDeviceInfo();
+                UpdateDeviceSummary();
             }
         }
 
@@ -441,6 +533,7 @@ namespace AudioHexViewer
             {
                 captureOutput = false;  // mode IN
                 LoadDevices();
+                UpdateDeviceSummary();
             }
         }
 
@@ -450,6 +543,7 @@ namespace AudioHexViewer
             {
                 captureOutput = true;   // mode OUT
                 LoadDevices();
+                UpdateDeviceSummary();
             }
         }
         //
@@ -711,7 +805,19 @@ namespace AudioHexViewer
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             return Path.Combine(baseDir, "AudioHexViewer.cal");
         }
+        //
+        private string GetRecordsFolderPath()
+        {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string dir = Path.Combine(baseDir, "records");
 
+            if (!Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+
+            return dir;
+        }
+
+        //
         private void SaveCalibration()
         {
             string path = GetCalibrationFilePath();
@@ -860,8 +966,8 @@ namespace AudioHexViewer
         {
             try
             {
-                string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-                string file = Path.Combine(desktop, $"audio_record_{DateTime.Now:HHmmss}.csv");
+                string folder = GetRecordsFolderPath();
+                string file = Path.Combine(folder, $"audio_record_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
 
                 using (var sw = new StreamWriter(file))
                 {
@@ -878,15 +984,15 @@ namespace AudioHexViewer
                     }
                 }
 
-                  MessageBox.Show($"Fichier enregistré :\n{file}");
+                MessageBox.Show($"Fichier enregistré :\n{file}");
             }
             catch (Exception ex)
             {
                 MessageBox.Show("Erreur CSV : " + ex.Message);
             }
         }
-
-
+        //
+        //
         private void Capture_DataAvailable(object? sender, WaveInEventArgs e)
         {
             ProcessBuffer(e.Buffer, e.BytesRecorded);
