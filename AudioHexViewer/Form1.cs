@@ -2,8 +2,6 @@ using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using System.Globalization;
 using System.Text;
-using System.IO;
-using System.Diagnostics;
 
 // ...
 
@@ -18,13 +16,7 @@ namespace AudioHexViewer
         private MMDevice? selectedDevice; // périphérique audio choisi
         private WaveFormat? currentFormat;
 
-        // Record directory
-        private readonly string appBaseDir = AppDomain.CurrentDomain.BaseDirectory;
-        private readonly string recordsDir;
-        private string? lastRecordingPath;
-
-
-
+       
         // Suivi de stabilité des bits (24 bits) sur 1 seconde
         private readonly bool[] lastBitsLeft = new bool[24];
         private readonly bool[] lastBitsRight = new bool[24];
@@ -39,6 +31,9 @@ namespace AudioHexViewer
         private readonly TimeSpan satBlinkPeriod = TimeSpan.FromMilliseconds(400); // période du clignotement
         private bool isCurrentlySatLeft = false;
         private bool isCurrentlySatRight = false;
+
+        private readonly Font levelFontRegular;
+        private readonly Font levelFontBold;
 
         // Dernières valeurs calculées (pour l’affichage principal)
         private double lastLeftFloat;
@@ -156,8 +151,11 @@ namespace AudioHexViewer
             chkShowDetails.CheckAlign = ContentAlignment.MiddleRight;
             chkShowDetails.TextAlign = ContentAlignment.MiddleLeft;
 
-            recordsDir = Path.Combine(appBaseDir, "records");
-            Directory.CreateDirectory(recordsDir);   // s’assure que le dossier existe
+            levelFontRegular = new Font("Tahoma", 12F, FontStyle.Regular);
+            levelFontBold = new Font("Tahoma", 12F, FontStyle.Bold);
+
+            lblLeftLevel.Font = levelFontRegular;
+            lblRightLevel.Font = levelFontRegular;
 
 
             // Modes possibles pour la valeur mise en avant
@@ -740,35 +738,7 @@ namespace AudioHexViewer
             }
         }
         //
-        private void menuOpenLastRecording_Click(object? sender, EventArgs e)
-        {
-            if (string.IsNullOrEmpty(lastRecordingPath) || !File.Exists(lastRecordingPath))
-            {
-                MessageBox.Show(
-                    "Aucun enregistrement disponible pour le moment.",
-                    "Info",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-                return;
-            }
-
-            try
-            {
-                Process.Start(new ProcessStartInfo(lastRecordingPath)
-                {
-                    UseShellExecute = true
-                });
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(
-                    "Impossible d'ouvrir l'enregistrement : " + ex.Message,
-                    "Erreur",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-            }
-        }
-//
+        //
         private void LoadCalibration()
         {
             string path = GetCalibrationFilePath();
@@ -890,8 +860,8 @@ namespace AudioHexViewer
         {
             try
             {
-                // Dossier d’enregistrement : records\audio_record_HHmmss.csv
-                string file = Path.Combine(recordsDir, $"audio_record_{DateTime.Now:HHmmss}.csv");
+                string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+                string file = Path.Combine(desktop, $"audio_record_{DateTime.Now:HHmmss}.csv");
 
                 using (var sw = new StreamWriter(file))
                 {
@@ -908,10 +878,7 @@ namespace AudioHexViewer
                     }
                 }
 
-                // mémorise le dernier fichier enregistré
-                lastRecordingPath = file;
-
-                MessageBox.Show($"Fichier enregistré :\n{file}");
+                  MessageBox.Show($"Fichier enregistré :\n{file}");
             }
             catch (Exception ex)
             {
@@ -920,18 +887,12 @@ namespace AudioHexViewer
         }
 
 
-
-        private void btnStop_Click(object sender, EventArgs e)
-        {
-
-        }
-
         private void Capture_DataAvailable(object? sender, WaveInEventArgs e)
         {
             ProcessBuffer(e.Buffer, e.BytesRecorded);
         }
 
-        //débute de ProcessBuffer
+        //début de ProcessBuffer
         private void ProcessBuffer(byte[] buffer, int bytesRecorded)
         {
             if (currentFormat == null)
@@ -1211,13 +1172,14 @@ namespace AudioHexViewer
                     {
                         lblLeftLevel.Text = "      SAT";
                         lblLeftLevel.ForeColor = Color.Red;   // 
-                        lblLeftLevel.Font = new Font(lblLeftLevel.Font, FontStyle.Bold);
+                        lblLeftLevel.Font = levelFontBold;
 
                     }
                     else
                     {
                         lblLeftLevel.Text = ""; // ou "- dBFS" si tu veux quelque chose quand c’est “off”
                         lblLeftLevel.ForeColor = Color.Red;
+                        lblLeftLevel.Font = levelFontBold;
 
                     }
                 }
@@ -1226,7 +1188,7 @@ namespace AudioHexViewer
                     // Affichage normal dBFS
                     lblLeftLevel.Text = double.IsNegativeInfinity(dbLeft) ? "- dBFS" : $"{dbLeft:F1} dBFS";
                     lblLeftLevel.ForeColor = SystemColors.HotTrack;
-                    lblLeftLevel.Font = new Font(lblLeftLevel.Font, FontStyle.Regular);
+                    lblLeftLevel.Font = levelFontRegular;
 
                 }
 
@@ -1242,21 +1204,22 @@ namespace AudioHexViewer
 
                     if (blinkOn)
                     {
-                        lblRightLevel.Text = "      SAT";
+                        lblRightLevel.Text = "SAT";              // plus besoin d'espaces
                         lblRightLevel.ForeColor = Color.Red;
-                        lblRightLevel.Font = new Font(lblRightLevel.Font, FontStyle.Bold);
+                        lblRightLevel.Font = levelFontBold;
                     }
                     else
                     {
-                        lblRightLevel.Text = "";
+                        lblRightLevel.Text = "";                 // éteint
                         lblRightLevel.ForeColor = Color.Red;
+                        lblRightLevel.Font = levelFontBold;
                     }
                 }
                 else
                 {
                     lblRightLevel.Text = double.IsNegativeInfinity(dbRight) ? "- dBFS" : $"{dbRight:F1} dBFS";
                     lblRightLevel.ForeColor = SystemColors.HotTrack;
-                    lblRightLevel.Font = new Font(lblRightLevel.Font, FontStyle.Regular);
+                    lblRightLevel.Font = levelFontRegular;
                 }
 
                 UpdateMainDisplayFromLastValues();
@@ -1637,43 +1600,6 @@ namespace AudioHexViewer
             }
         }
 
-
-
-
-        private void ledSatLeft_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void label3_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void label6_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void label7_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void label2_Click_1(object sender, EventArgs e)
-        {
-
-        }
-
-        private void label1_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void label4_Click(object sender, EventArgs e)
-        {
-
-        }
     }
 
 }

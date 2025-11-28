@@ -53,7 +53,6 @@ namespace AudioHexViewer
             menuHelp = new ToolStripMenuItem();
             menuAbout = new ToolStripMenuItem();
             menuOpenCal = new ToolStripMenuItem();
-            menuOpenLastRecording = new ToolStripMenuItem();
             label6 = new Label();
             label7 = new Label();
             label3 = new Label();
@@ -69,7 +68,7 @@ namespace AudioHexViewer
             // comboDevices
             // 
             comboDevices.FormattingEnabled = true;
-            comboDevices.Location = new Point(547, 159);
+            comboDevices.Location = new Point(557, 161);
             comboDevices.Name = "comboDevices";
             comboDevices.Size = new Size(186, 23);
             comboDevices.TabIndex = 0;
@@ -80,7 +79,7 @@ namespace AudioHexViewer
             btnStart.FlatAppearance.BorderSize = 0;
             btnStart.FlatStyle = FlatStyle.Flat;
             btnStart.ForeColor = Color.White;
-            btnStart.Location = new Point(739, 67);
+            btnStart.Location = new Point(757, 67);
             btnStart.Name = "btnStart";
             btnStart.Size = new Size(116, 47);
             btnStart.TabIndex = 1;
@@ -91,11 +90,11 @@ namespace AudioHexViewer
             // txtLeft
             // 
             txtLeft.Font = new Font("Consolas", 9F);
-            txtLeft.Location = new Point(11, 190);
+            txtLeft.Location = new Point(12, 190);
             txtLeft.Name = "txtLeft";
             txtLeft.ReadOnly = true;
             txtLeft.ScrollBars = RichTextBoxScrollBars.None;
-            txtLeft.Size = new Size(351, 98);
+            txtLeft.Size = new Size(360, 98);
             txtLeft.TabIndex = 5;
             txtLeft.TabStop = false;
             txtLeft.Text = "";
@@ -107,7 +106,7 @@ namespace AudioHexViewer
             txtRight.Name = "txtRight";
             txtRight.ReadOnly = true;
             txtRight.ScrollBars = RichTextBoxScrollBars.None;
-            txtRight.Size = new Size(350, 97);
+            txtRight.Size = new Size(360, 97);
             txtRight.TabIndex = 7;
             txtRight.TabStop = false;
             txtRight.Text = "";
@@ -115,19 +114,18 @@ namespace AudioHexViewer
             // label1
             // 
             label1.AutoSize = true;
-            label1.Location = new Point(490, 164);
+            label1.Location = new Point(509, 165);
             label1.Name = "label1";
             label1.Size = new Size(42, 15);
             label1.TabIndex = 5;
             label1.Text = "Device";
-            label1.Click += label1_Click;
             // 
             // label2
             // 
             label2.AutoSize = true;
             label2.Font = new Font("Tahoma", 15.75F, FontStyle.Bold, GraphicsUnit.Point, 0);
             label2.ForeColor = SystemColors.HotTrack;
-            label2.Location = new Point(12, 55);
+            label2.Location = new Point(12, 57);
             label2.Name = "label2";
             label2.Size = new Size(62, 25);
             label2.TabIndex = 6;
@@ -140,7 +138,7 @@ namespace AudioHexViewer
             btnRecord.FlatAppearance.BorderSize = 0;
             btnRecord.FlatStyle = FlatStyle.Flat;
             btnRecord.ForeColor = Color.White;
-            btnRecord.Location = new Point(796, 38);
+            btnRecord.Location = new Point(814, 38);
             btnRecord.Name = "btnRecord";
             btnRecord.Size = new Size(59, 30);
             btnRecord.TabIndex = 11;
@@ -164,7 +162,7 @@ namespace AudioHexViewer
             barLeftLevel.BorderStyle = BorderStyle.FixedSingle;
             barLeftLevel.Location = new Point(12, 38);
             barLeftLevel.Name = "barLeftLevel";
-            barLeftLevel.Size = new Size(350, 15);
+            barLeftLevel.Size = new Size(360, 15);
             barLeftLevel.TabIndex = 31;
             // 
             // barRightLevel
@@ -173,30 +171,32 @@ namespace AudioHexViewer
             barRightLevel.BorderStyle = BorderStyle.FixedSingle;
             barRightLevel.Location = new Point(383, 38);
             barRightLevel.Name = "barRightLevel";
-            barRightLevel.Size = new Size(350, 16);
+            barRightLevel.Size = new Size(360, 16);
             barRightLevel.TabIndex = 32;
             // 
             // lblLeftLevel
             // 
-            lblLeftLevel.AutoSize = true;
-            lblLeftLevel.Font = new Font("Tahoma", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            lblLeftLevel.BackColor = SystemColors.GradientInactiveCaption;
+            lblLeftLevel.Font = new Font("Tahoma", 12F, FontStyle.Regular, GraphicsUnit.Point, 0);
             lblLeftLevel.ForeColor = SystemColors.HotTrack;
-            lblLeftLevel.Location = new Point(285, 55);
+            lblLeftLevel.Location = new Point(272, 54);
             lblLeftLevel.Name = "lblLeftLevel";
-            lblLeftLevel.Size = new Size(77, 19);
+            lblLeftLevel.Size = new Size(100, 30);
             lblLeftLevel.TabIndex = 0;
             lblLeftLevel.Text = "-∞ dBFS";
+            lblLeftLevel.TextAlign = ContentAlignment.MiddleCenter;
             // 
             // lblRightLevel
             // 
-            lblRightLevel.AutoSize = true;
-            lblRightLevel.Font = new Font("Tahoma", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            lblRightLevel.BackColor = SystemColors.GradientInactiveCaption;
+            lblRightLevel.Font = new Font("Tahoma", 12F, FontStyle.Regular, GraphicsUnit.Point, 0);
             lblRightLevel.ForeColor = SystemColors.HotTrack;
-            lblRightLevel.Location = new Point(656, 56);
+            lblRightLevel.Location = new Point(643, 54);
             lblRightLevel.Name = "lblRightLevel";
-            lblRightLevel.Size = new Size(77, 19);
+            lblRightLevel.Size = new Size(100, 30);
             lblRightLevel.TabIndex = 0;
             lblRightLevel.Text = "-∞ dBFS";
+            lblRightLevel.TextAlign = ContentAlignment.MiddleCenter;
             // 
             // btnCalV
             // 
@@ -204,7 +204,7 @@ namespace AudioHexViewer
             btnCalV.FlatAppearance.BorderSize = 0;
             btnCalV.FlatStyle = FlatStyle.Flat;
             btnCalV.ForeColor = Color.White;
-            btnCalV.Location = new Point(739, 38);
+            btnCalV.Location = new Point(757, 38);
             btnCalV.Name = "btnCalV";
             btnCalV.Size = new Size(59, 30);
             btnCalV.TabIndex = 12;
@@ -216,7 +216,7 @@ namespace AudioHexViewer
             // 
             rbInput.AutoSize = true;
             rbInput.Checked = true;
-            rbInput.Location = new Point(437, 164);
+            rbInput.Location = new Point(452, 165);
             rbInput.Name = "rbInput";
             rbInput.Size = new Size(37, 19);
             rbInput.TabIndex = 20;
@@ -228,7 +228,7 @@ namespace AudioHexViewer
             // rbOutput
             // 
             rbOutput.AutoSize = true;
-            rbOutput.Location = new Point(383, 163);
+            rbOutput.Location = new Point(383, 165);
             rbOutput.Name = "rbOutput";
             rbOutput.Size = new Size(48, 19);
             rbOutput.TabIndex = 21;
@@ -241,7 +241,7 @@ namespace AudioHexViewer
             // 
             comboDisplayMode.DropDownStyle = ComboBoxStyle.DropDownList;
             comboDisplayMode.FormattingEnabled = true;
-            comboDisplayMode.Location = new Point(739, 136);
+            comboDisplayMode.Location = new Point(757, 136);
             comboDisplayMode.Name = "comboDisplayMode";
             comboDisplayMode.Size = new Size(116, 23);
             comboDisplayMode.TabIndex = 30;
@@ -252,7 +252,7 @@ namespace AudioHexViewer
             menuStrip1.Items.AddRange(new ToolStripItem[] { menuDeviceInfo, menuHelp });
             menuStrip1.Location = new Point(0, 0);
             menuStrip1.Name = "menuStrip1";
-            menuStrip1.Size = new Size(867, 25);
+            menuStrip1.Size = new Size(883, 25);
             menuStrip1.TabIndex = 0;
             menuStrip1.Text = "menuStrip1";
             // 
@@ -267,7 +267,7 @@ namespace AudioHexViewer
             // menuHelp
             // 
             menuHelp.Alignment = ToolStripItemAlignment.Right;
-            menuHelp.DropDownItems.AddRange(new ToolStripItem[] { menuAbout, menuOpenCal, menuOpenLastRecording });
+            menuHelp.DropDownItems.AddRange(new ToolStripItem[] { menuAbout, menuOpenCal });
             menuHelp.Name = "menuHelp";
             menuHelp.Size = new Size(44, 21);
             menuHelp.Text = "Help";
@@ -286,34 +286,25 @@ namespace AudioHexViewer
             menuOpenCal.Text = "Open calibration file";
             menuOpenCal.Click += menuOpenCal_Click;
             // 
-            // menuOpenLastRecording
-            // 
-            menuOpenLastRecording.Name = "menuOpenLastRecording";
-            menuOpenLastRecording.Size = new Size(181, 22);
-            menuOpenLastRecording.Text = "Open last recording";
-            menuOpenLastRecording.Click += menuOpenLastRecording_Click;
-            // 
             // label6
             // 
             label6.AutoSize = true;
             label6.Font = new Font("Segoe UI", 7F);
-            label6.Location = new Point(164, 56);
+            label6.Location = new Point(43, 25);
             label6.Name = "label6";
             label6.Size = new Size(52, 12);
             label6.TabIndex = 17;
             label6.Text = "dBFS Level";
-            label6.Click += label6_Click;
             // 
             // label7
             // 
             label7.AutoSize = true;
             label7.Font = new Font("Segoe UI", 7F);
-            label7.Location = new Point(534, 56);
+            label7.Location = new Point(413, 25);
             label7.Name = "label7";
             label7.Size = new Size(52, 12);
             label7.TabIndex = 18;
             label7.Text = "dBFS Level";
-            label7.Click += label7_Click;
             // 
             // label3
             // 
@@ -333,7 +324,7 @@ namespace AudioHexViewer
             lblLeftMainTitle.Font = new Font("Tahoma", 12F);
             lblLeftMainTitle.Location = new Point(12, 85);
             lblLeftMainTitle.Name = "lblLeftMainTitle";
-            lblLeftMainTitle.Size = new Size(350, 30);
+            lblLeftMainTitle.Size = new Size(360, 30);
             lblLeftMainTitle.TabIndex = 33;
             lblLeftMainTitle.Text = "Float";
             lblLeftMainTitle.TextAlign = ContentAlignment.MiddleCenter;
@@ -344,7 +335,7 @@ namespace AudioHexViewer
             lblLeftMainValue.Font = new Font("Segoe UI", 16F, FontStyle.Bold);
             lblLeftMainValue.Location = new Point(12, 115);
             lblLeftMainValue.Name = "lblLeftMainValue";
-            lblLeftMainValue.Size = new Size(350, 35);
+            lblLeftMainValue.Size = new Size(360, 35);
             lblLeftMainValue.TabIndex = 34;
             lblLeftMainValue.Text = "0.000000";
             lblLeftMainValue.TextAlign = ContentAlignment.MiddleCenter;
@@ -355,7 +346,7 @@ namespace AudioHexViewer
             lblRightMainTitle.Font = new Font("Tahoma", 12F);
             lblRightMainTitle.Location = new Point(383, 85);
             lblRightMainTitle.Name = "lblRightMainTitle";
-            lblRightMainTitle.Size = new Size(350, 30);
+            lblRightMainTitle.Size = new Size(360, 30);
             lblRightMainTitle.TabIndex = 35;
             lblRightMainTitle.Text = "Float";
             lblRightMainTitle.TextAlign = ContentAlignment.MiddleCenter;
@@ -366,7 +357,7 @@ namespace AudioHexViewer
             lblRightMainValue.Font = new Font("Segoe UI", 16F, FontStyle.Bold);
             lblRightMainValue.Location = new Point(383, 115);
             lblRightMainValue.Name = "lblRightMainValue";
-            lblRightMainValue.Size = new Size(350, 35);
+            lblRightMainValue.Size = new Size(360, 35);
             lblRightMainValue.TabIndex = 36;
             lblRightMainValue.Text = "0.000000";
             lblRightMainValue.TextAlign = ContentAlignment.MiddleCenter;
@@ -374,7 +365,7 @@ namespace AudioHexViewer
             // chkShowDetails
             // 
             chkShowDetails.AutoSize = true;
-            chkShowDetails.Location = new Point(763, 165);
+            chkShowDetails.Location = new Point(781, 165);
             chkShowDetails.Name = "chkShowDetails";
             chkShowDetails.Size = new Size(92, 19);
             chkShowDetails.TabIndex = 31;
@@ -385,18 +376,17 @@ namespace AudioHexViewer
             // label4
             // 
             label4.AutoSize = true;
-            label4.Location = new Point(771, 118);
+            label4.Location = new Point(757, 118);
             label4.Name = "label4";
-            label4.Size = new Size(84, 15);
+            label4.Size = new Size(70, 15);
             label4.TabIndex = 37;
-            label4.Text = "Display format";
-            label4.Click += label4_Click;
+            label4.Text = "Data format";
             // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(867, 295);
+            ClientSize = new Size(883, 295);
             Controls.Add(label4);
             Controls.Add(label3);
             Controls.Add(label7);
@@ -465,6 +455,5 @@ namespace AudioHexViewer
         private Label lblRightMainValue;
         private CheckBox chkShowDetails;
         private Label label4;
-        private ToolStripMenuItem menuOpenLastRecording;
     }
 }
