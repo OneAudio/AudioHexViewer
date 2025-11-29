@@ -32,16 +32,18 @@
             splitContainerMain = new SplitContainer();
             chartHistogram = new System.Windows.Forms.DataVisualization.Charting.Chart();
             panelStats = new Panel();
-            lblRightMinMax = new Label();
-            lblRightRms = new Label();
-            lblRightDC = new Label();
-            lblRightSamples = new Label();
+            grpRightStats = new GroupBox();
             lblRightHeader = new Label();
-            lblLeftMinMax = new Label();
-            lblLeftRms = new Label();
-            lblLeftDC = new Label();
-            lblLeftSamples = new Label();
+            lblRightSamples = new Label();
+            lblRightDC = new Label();
+            lblRightRms = new Label();
+            lblRightMinMax = new Label();
+            grpLeftStats = new GroupBox();
             lblLeftHeader = new Label();
+            lblLeftSamples = new Label();
+            lblLeftDC = new Label();
+            lblLeftRms = new Label();
+            lblLeftMinMax = new Label();
             panelTop.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)numBinPow).BeginInit();
             ((System.ComponentModel.ISupportInitialize)numRangePow).BeginInit();
@@ -51,6 +53,8 @@
             splitContainerMain.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)chartHistogram).BeginInit();
             panelStats.SuspendLayout();
+            grpRightStats.SuspendLayout();
+            grpLeftStats.SuspendLayout();
             SuspendLayout();
             // 
             // panelTop
@@ -66,13 +70,13 @@
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 0);
             panelTop.Name = "panelTop";
-            panelTop.Size = new Size(984, 80);
+            panelTop.Size = new Size(895, 80);
             panelTop.TabIndex = 0;
             // 
             // btnSaveSettings
             // 
             btnSaveSettings.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnSaveSettings.Location = new Point(885, 12);
+            btnSaveSettings.Location = new Point(796, 12);
             btnSaveSettings.Name = "btnSaveSettings";
             btnSaveSettings.Size = new Size(87, 23);
             btnSaveSettings.TabIndex = 9;
@@ -160,8 +164,8 @@
             // splitContainerMain.Panel2
             // 
             splitContainerMain.Panel2.Controls.Add(panelStats);
-            splitContainerMain.Size = new Size(984, 381);
-            splitContainerMain.SplitterDistance = 799;
+            splitContainerMain.Size = new Size(895, 381);
+            splitContainerMain.SplitterDistance = 726;
             splitContainerMain.TabIndex = 1;
             // 
             // chartHistogram
@@ -169,127 +173,142 @@
             chartHistogram.Dock = DockStyle.Fill;
             chartHistogram.Location = new Point(0, 0);
             chartHistogram.Name = "chartHistogram";
-            chartHistogram.Size = new Size(799, 381);
+            chartHistogram.Size = new Size(726, 381);
             chartHistogram.TabIndex = 0;
             chartHistogram.Text = "chartHistogram";
             // 
             // panelStats
             // 
             panelStats.BackColor = Color.WhiteSmoke;
-            panelStats.Controls.Add(lblRightMinMax);
-            panelStats.Controls.Add(lblRightRms);
-            panelStats.Controls.Add(lblRightDC);
-            panelStats.Controls.Add(lblRightSamples);
-            panelStats.Controls.Add(lblRightHeader);
-            panelStats.Controls.Add(lblLeftMinMax);
-            panelStats.Controls.Add(lblLeftRms);
-            panelStats.Controls.Add(lblLeftDC);
-            panelStats.Controls.Add(lblLeftSamples);
-            panelStats.Controls.Add(lblLeftHeader);
+            panelStats.Controls.Add(grpRightStats);
+            panelStats.Controls.Add(grpLeftStats);
             panelStats.Dock = DockStyle.Fill;
             panelStats.Location = new Point(0, 0);
             panelStats.Name = "panelStats";
             panelStats.Padding = new Padding(8);
-            panelStats.Size = new Size(181, 381);
+            panelStats.Size = new Size(165, 381);
             panelStats.TabIndex = 0;
             // 
-            // lblRightMinMax
+            // grpRightStats
             // 
-            lblRightMinMax.AutoSize = true;
-            lblRightMinMax.Location = new Point(11, 212);
-            lblRightMinMax.Name = "lblRightMinMax";
-            lblRightMinMax.Size = new Size(67, 15);
-            lblRightMinMax.TabIndex = 9;
-            lblRightMinMax.Text = "Min/Max: -";
-            // 
-            // lblRightRms
-            // 
-            lblRightRms.AutoSize = true;
-            lblRightRms.Location = new Point(11, 192);
-            lblRightRms.Name = "lblRightRms";
-            lblRightRms.Size = new Size(42, 15);
-            lblRightRms.TabIndex = 8;
-            lblRightRms.Text = "RMS: -";
-            // 
-            // lblRightDC
-            // 
-            lblRightDC.AutoSize = true;
-            lblRightDC.Location = new Point(11, 172);
-            lblRightDC.Name = "lblRightDC";
-            lblRightDC.Size = new Size(67, 15);
-            lblRightDC.TabIndex = 7;
-            lblRightDC.Text = "DC offset: -";
-            // 
-            // lblRightSamples
-            // 
-            lblRightSamples.AutoSize = true;
-            lblRightSamples.Location = new Point(11, 152);
-            lblRightSamples.Name = "lblRightSamples";
-            lblRightSamples.Size = new Size(62, 15);
-            lblRightSamples.TabIndex = 6;
-            lblRightSamples.Text = "Samples: -";
+            grpRightStats.Controls.Add(lblRightHeader);
+            grpRightStats.Controls.Add(lblRightSamples);
+            grpRightStats.Controls.Add(lblRightDC);
+            grpRightStats.Controls.Add(lblRightRms);
+            grpRightStats.Controls.Add(lblRightMinMax);
+            grpRightStats.ForeColor = Color.Black;
+            grpRightStats.Location = new Point(8, 193);
+            grpRightStats.Name = "grpRightStats";
+            grpRightStats.Size = new Size(152, 176);
+            grpRightStats.TabIndex = 1;
+            grpRightStats.TabStop = false;
+            grpRightStats.Enter += grpRightStats_Enter;
             // 
             // lblRightHeader
             // 
             lblRightHeader.AutoSize = true;
             lblRightHeader.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            lblRightHeader.Location = new Point(11, 130);
+            lblRightHeader.ForeColor = Color.OrangeRed;
+            lblRightHeader.Location = new Point(10, 10);
             lblRightHeader.Name = "lblRightHeader";
             lblRightHeader.Size = new Size(44, 15);
-            lblRightHeader.TabIndex = 5;
+            lblRightHeader.TabIndex = 0;
             lblRightHeader.Text = "RIGHT";
             // 
-            // lblLeftMinMax
+            // lblRightSamples
             // 
-            lblLeftMinMax.AutoSize = true;
-            lblLeftMinMax.Location = new Point(11, 90);
-            lblLeftMinMax.Name = "lblLeftMinMax";
-            lblLeftMinMax.Size = new Size(67, 15);
-            lblLeftMinMax.TabIndex = 4;
-            lblLeftMinMax.Text = "Min/Max: -";
+            lblRightSamples.AutoSize = true;
+            lblRightSamples.Location = new Point(12, 40);
+            lblRightSamples.Name = "lblRightSamples";
+            lblRightSamples.Size = new Size(0, 15);
+            lblRightSamples.TabIndex = 1;
             // 
-            // lblLeftRms
+            // lblRightDC
             // 
-            lblLeftRms.AutoSize = true;
-            lblLeftRms.Location = new Point(11, 70);
-            lblLeftRms.Name = "lblLeftRms";
-            lblLeftRms.Size = new Size(42, 15);
-            lblLeftRms.TabIndex = 3;
-            lblLeftRms.Text = "RMS: -";
+            lblRightDC.AutoSize = true;
+            lblRightDC.Location = new Point(12, 60);
+            lblRightDC.Name = "lblRightDC";
+            lblRightDC.Size = new Size(0, 15);
+            lblRightDC.TabIndex = 2;
             // 
-            // lblLeftDC
+            // lblRightRms
             // 
-            lblLeftDC.AutoSize = true;
-            lblLeftDC.Location = new Point(11, 50);
-            lblLeftDC.Name = "lblLeftDC";
-            lblLeftDC.Size = new Size(67, 15);
-            lblLeftDC.TabIndex = 2;
-            lblLeftDC.Text = "DC offset: -";
+            lblRightRms.AutoSize = true;
+            lblRightRms.Location = new Point(12, 80);
+            lblRightRms.Name = "lblRightRms";
+            lblRightRms.Size = new Size(0, 15);
+            lblRightRms.TabIndex = 3;
             // 
-            // lblLeftSamples
+            // lblRightMinMax
             // 
-            lblLeftSamples.AutoSize = true;
-            lblLeftSamples.Location = new Point(11, 30);
-            lblLeftSamples.Name = "lblLeftSamples";
-            lblLeftSamples.Size = new Size(62, 15);
-            lblLeftSamples.TabIndex = 1;
-            lblLeftSamples.Text = "Samples: -";
+            lblRightMinMax.AutoSize = true;
+            lblRightMinMax.Location = new Point(12, 100);
+            lblRightMinMax.Name = "lblRightMinMax";
+            lblRightMinMax.Size = new Size(0, 15);
+            lblRightMinMax.TabIndex = 4;
+            // 
+            // grpLeftStats
+            // 
+            grpLeftStats.Controls.Add(lblLeftHeader);
+            grpLeftStats.Controls.Add(lblLeftSamples);
+            grpLeftStats.Controls.Add(lblLeftDC);
+            grpLeftStats.Controls.Add(lblLeftRms);
+            grpLeftStats.Controls.Add(lblLeftMinMax);
+            grpLeftStats.ForeColor = Color.Black;
+            grpLeftStats.Location = new Point(8, 8);
+            grpLeftStats.Name = "grpLeftStats";
+            grpLeftStats.Size = new Size(149, 179);
+            grpLeftStats.TabIndex = 0;
+            grpLeftStats.TabStop = false;
             // 
             // lblLeftHeader
             // 
             lblLeftHeader.AutoSize = true;
             lblLeftHeader.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            lblLeftHeader.Location = new Point(11, 8);
+            lblLeftHeader.ForeColor = Color.DodgerBlue;
+            lblLeftHeader.Location = new Point(10, 10);
             lblLeftHeader.Name = "lblLeftHeader";
             lblLeftHeader.Size = new Size(32, 15);
             lblLeftHeader.TabIndex = 0;
             lblLeftHeader.Text = "LEFT";
             // 
+            // lblLeftSamples
+            // 
+            lblLeftSamples.AutoSize = true;
+            lblLeftSamples.Location = new Point(12, 40);
+            lblLeftSamples.Name = "lblLeftSamples";
+            lblLeftSamples.Size = new Size(0, 15);
+            lblLeftSamples.TabIndex = 1;
+            // 
+            // lblLeftDC
+            // 
+            lblLeftDC.AutoSize = true;
+            lblLeftDC.Location = new Point(12, 60);
+            lblLeftDC.Name = "lblLeftDC";
+            lblLeftDC.Size = new Size(0, 15);
+            lblLeftDC.TabIndex = 2;
+            // 
+            // lblLeftRms
+            // 
+            lblLeftRms.AutoSize = true;
+            lblLeftRms.Location = new Point(12, 80);
+            lblLeftRms.Name = "lblLeftRms";
+            lblLeftRms.Size = new Size(0, 15);
+            lblLeftRms.TabIndex = 3;
+            // 
+            // lblLeftMinMax
+            // 
+            lblLeftMinMax.AutoSize = true;
+            lblLeftMinMax.Location = new Point(12, 100);
+            lblLeftMinMax.Name = "lblLeftMinMax";
+            lblLeftMinMax.Size = new Size(0, 15);
+            lblLeftMinMax.TabIndex = 4;
+            // 
             // HistogramWindow
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(984, 461);
+            ClientSize = new Size(895, 461);
             Controls.Add(splitContainerMain);
             Controls.Add(panelTop);
             Name = "HistogramWindow";
@@ -304,7 +323,10 @@
             splitContainerMain.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)chartHistogram).EndInit();
             panelStats.ResumeLayout(false);
-            panelStats.PerformLayout();
+            grpRightStats.ResumeLayout(false);
+            grpRightStats.PerformLayout();
+            grpLeftStats.ResumeLayout(false);
+            grpLeftStats.PerformLayout();
             ResumeLayout(false);
 
         }
@@ -333,5 +355,8 @@
         private System.Windows.Forms.Label lblLeftHeader;
         public Panel panelStats;
         private Button btnSaveSettings;
+        private System.Windows.Forms.GroupBox grpLeftStats;
+        private System.Windows.Forms.GroupBox grpRightStats;
+
     }
 }

@@ -6,6 +6,7 @@ using System.IO;
 using System.Text.Json;
 
 
+
 namespace AudioHexViewer
 {
     public partial class HistogramWindow : Form
@@ -31,10 +32,7 @@ namespace AudioHexViewer
         private static HistogramSettings? cachedSettings;
 
         private static string SettingsFilePath =>
-            Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "AudioHexViewer",
-                "HistogramSettings.json");
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "HistogramSettings.json");
 
 
         private void LoadSettingsIfAny()
@@ -158,8 +156,31 @@ namespace AudioHexViewer
             InitChart();
             InitDefaults();
             RebuildHistogram();
+
+            grpLeftStats.Paint += (s, e) => DrawColoredBorder(grpLeftStats, e, Color.DodgerBlue);
+            grpRightStats.Paint += (s, e) => DrawColoredBorder(grpRightStats, e, Color.OrangeRed);
+
+
+
+         }
+        //
+        //
+        private void DrawColoredBorder(GroupBox gb, PaintEventArgs e, Color color)
+        {
+            // Rectangle légèrement à l’intérieur pour éviter d'écraser la bordure système
+            Rectangle r = gb.ClientRectangle;
+            r.X += 2;
+            r.Y += 8;   // pour laisser le texte du GroupBox
+            r.Width -= 4;
+            r.Height -= 10;
+
+            using (var pen = new Pen(color, 1))
+            {
+                e.Graphics.DrawRectangle(pen, r);
+            }
         }
 
+        //
         private void InitChart()
         {
             var area = new ChartArea("HistogramArea");
@@ -175,7 +196,7 @@ namespace AudioHexViewer
 
         private void InitDefaults()
         {
-            
+
             ApplySettingsOrDefaults(); // a voir ?
         }
 
@@ -519,14 +540,14 @@ namespace AudioHexViewer
             {
                 double rmsL = Math.Sqrt(leftSumSqWin / (double)leftCountWin);
                 lblLeftSamples.Text = $"Samples: {leftCountWin}";
-                lblLeftDC.Text = $"DC offset (raw): {dcOffsetL} LSB";
+                lblLeftDC.Text = $"DC Offset: {dcOffsetL} LSB";
                 lblLeftRms.Text = $"RMS: {rmsL:F2} LSB";
                 lblLeftMinMax.Text = $"Min/Max: {leftMin} / {leftMax}";
             }
             else
             {
                 lblLeftSamples.Text = "Samples: 0";
-                lblLeftDC.Text = $"DC offset (raw): {dcOffsetL} LSB";
+                lblLeftDC.Text = $"DC Offset: {dcOffsetL} LSB";
                 lblLeftRms.Text = "RMS: -";
                 lblLeftMinMax.Text = "Min/Max: -";
             }
@@ -535,14 +556,14 @@ namespace AudioHexViewer
             {
                 double rmsR = Math.Sqrt(rightSumSqWin / (double)rightCountWin);
                 lblRightSamples.Text = $"Samples: {rightCountWin}";
-                lblRightDC.Text = $"DC offset (raw): {dcOffsetR} LSB";
+                lblRightDC.Text = $"DC Offset: {dcOffsetR} LSB";
                 lblRightRms.Text = $"RMS: {rmsR:F2} LSB";
                 lblRightMinMax.Text = $"Min/Max: {rightMin} / {rightMax}";
             }
             else
             {
                 lblRightSamples.Text = "Samples: 0";
-                lblRightDC.Text = $"DC offset (raw): {dcOffsetR} LSB";
+                lblRightDC.Text = $"DC Offset: {dcOffsetR} LSB";
                 lblRightRms.Text = "RMS: -";
                 lblRightMinMax.Text = "Min/Max: -";
             }
@@ -553,5 +574,9 @@ namespace AudioHexViewer
             SaveSettingsToFile();
         }
 
+        private void grpRightStats_Enter(object sender, EventArgs e)
+        {
+
+        }
     }
 }
