@@ -27,6 +27,8 @@ namespace AudioHexViewer
             public int BinLsb { get; set; } = 1;      // 1 LSB/bin
 
             public int SplitterDistance { get; set; } = 740;
+            public int RecordMs { get; set; } = 1000;
+
         }
 
         private static HistogramSettings? cachedSettings;
@@ -109,6 +111,12 @@ namespace AudioHexViewer
                 _updatingBin = false;
                 lastBinLsb = binLsb;
 
+                // Record time (ms)
+                int recMs = s.RecordMs;
+                if (recMs < (int)numRecordTimeMs.Minimum) recMs = (int)numRecordTimeMs.Minimum;
+                if (recMs > (int)numRecordTimeMs.Maximum) recMs = (int)numRecordTimeMs.Maximum;
+                numRecordTimeMs.Value = recMs;
+
                 // Splitter
                 try
                 {
@@ -135,35 +143,150 @@ namespace AudioHexViewer
                 numBinPow.Value = binLsb;
                 _updatingBin = false;
                 lastBinLsb = binLsb;
+
+
             }
+
 
             ResetStatsLabels();
         }
 
 
 
-        private readonly int[] leftSamples;
-        private readonly int[] rightSamples;
+        public delegate (int[] Left, int[] Right) SampleProvider(int durationMs);
+
+        private readonly SampleProvider _provider;
+        private readonly int _sampleRate;
+
+        private int[] leftSamples = Array.Empty<int>();
+        private int[] rightSamples = Array.Empty<int>();
+
+        private System.Windows.Forms.Timer liveTimer;
+        private bool isLive = false;
 
         private const int MaxBins = 256;
 
-        public HistogramWindow(int[] leftSamples, int[] rightSamples)
+        public HistogramWindow(SampleProvider provider, int sampleRate)
         {
-            this.leftSamples = leftSamples ?? Array.Empty<int>();
-            this.rightSamples = rightSamples ?? Array.Empty<int>();
+            _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+            _sampleRate = sampleRate;
 
             InitializeComponent();
             InitChart();
             InitDefaults();
-            RebuildHistogram();
+            SetupLiveTimer();
 
             grpLeftStats.Paint += (s, e) => DrawColoredBorder(grpLeftStats, e, Color.DodgerBlue);
             grpRightStats.Paint += (s, e) => DrawColoredBorder(grpRightStats, e, Color.OrangeRed);
 
-
-
-         }
+            // Premier calcul d'histo avec la durée courante (par ex. 1000 ms)
+            AcquireOnce();
+        }
         //
+        private void SetupLiveTimer()
+        {
+            liveTimer = new System.Windows.Forms.Timer();
+            liveTimer.Tick += LiveTimer_Tick;
+            liveTimer.Interval = (int)numRecordTimeMs.Value; // par défaut, même durée que la fenêtre
+        }
+
+        private void AcquireOnce()
+        {
+            if (_provider == null)
+                return;
+
+            int durationMs = (int)numRecordTimeMs.Value;
+            if (durationMs < 10) durationMs = 10;
+
+            // 👉 ICI on appelle Form1 via le délégué
+            var (left, right) = _provider(durationMs);
+
+            leftSamples = left ?? Array.Empty<int>();
+            rightSamples = right ?? Array.Empty<int>();
+
+            RebuildHistogram();
+        }
+
+        //
+        private void LiveTimer_Tick(object? sender, EventArgs e)
+        {
+            // Si la fenêtre est en train de se fermer / détruite, on coupe le LIVE
+            if (this.IsDisposed || !this.IsHandleCreated)
+            {
+                if (liveTimer != null)
+                    liveTimer.Stop();
+                return;
+            }
+
+            try
+            {
+                AcquireOnce();
+            }
+            catch (Exception ex)
+            {
+                // Sécurité : on coupe le LIVE si quelque chose tourne mal
+                if (liveTimer != null)
+                    liveTimer.Stop();
+
+                isLive = false;
+                btnLive.Text = "LIVE";
+
+                MessageBox.Show("Erreur dans le mode LIVE : " + ex.Message,
+                                "Histogram LIVE",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error);
+            }
+        }
+        //
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (liveTimer != null)
+            {
+                liveTimer.Stop();
+                liveTimer.Dispose();
+                liveTimer = null!;
+            }
+
+            base.OnFormClosing(e);
+        }
+
+        //
+        //
+        private void btnOnce_Click(object sender, EventArgs e)
+        {
+            AcquireOnce();
+        }
+        //
+        private void btnLive_Click(object sender, EventArgs e)
+        {
+            if (!isLive)
+            {
+                isLive = true;
+                btnLive.Text = "STOP LIVE";
+
+                int durationMs = (int)numRecordTimeMs.Value;
+                if (durationMs < 10) durationMs = 10;
+                liveTimer.Interval = durationMs;
+
+                liveTimer.Start();
+            }
+            else
+            {
+                isLive = false;
+                btnLive.Text = "LIVE";
+                liveTimer.Stop();
+            }
+        }
+        //
+        private void numRecordTimeMs_ValueChanged(object sender, EventArgs e)
+        {
+            if (liveTimer != null && liveTimer.Enabled)
+            {
+                int durationMs = (int)numRecordTimeMs.Value;
+                if (durationMs < 10) durationMs = 10;
+                liveTimer.Interval = durationMs;
+            }
+        }
         //
         private void DrawColoredBorder(GroupBox gb, PaintEventArgs e, Color color)
         {
@@ -209,6 +332,7 @@ namespace AudioHexViewer
                 Channel = comboChannel.SelectedItem as string ?? "Both",
                 RangeLsb = (int)numRangePow.Value,
                 BinLsb = (int)numBinPow.Value,
+                RecordMs = (int)numRecordTimeMs.Value,
                 SplitterDistance = splitContainerMain.SplitterDistance
             };
 

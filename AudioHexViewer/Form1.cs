@@ -66,10 +66,11 @@ namespace AudioHexViewer
         private List<RecordFrame> recordBuffer = new List<RecordFrame>();
 
         // --- Capture 1 seconde pour histogramme ---
-        private bool isHistogramCaptureActive = false;
-        private int histSamplesNeeded = 0;
-        private int histSamplesCollected = 0;
         private List<RecordFrame> histBuffer = new List<RecordFrame>();
+
+        // Historique continu pour l'histogramme (tampon roulant)
+        private readonly object histLock = new object();
+        private const int MaxHistogramSeconds = 10; // on garde jusqu'à 10 s d'historique
 
 
         // Seuils dBFS pour le bargraphe
@@ -145,7 +146,44 @@ namespace AudioHexViewer
             public int Left;
             public int Right;
         }
+        //
+        private (int[] Left, int[] Right) GetRecentSamplesMs(int durationMs)
+        {
+            if (currentFormat == null || durationMs <= 0 || histBuffer == null)
+                return (Array.Empty<int>(), Array.Empty<int>());
 
+            int sampleRate = currentFormat.SampleRate;
+            int samplesNeeded = sampleRate * durationMs / 1000;
+            if (samplesNeeded <= 0) samplesNeeded = 1;
+
+            int[] left, right;
+
+            lock (histLock)
+            {
+                if (histBuffer.Count == 0)
+                    return (Array.Empty<int>(), Array.Empty<int>());
+
+                int count = histBuffer.Count;
+                if (samplesNeeded > count)
+                    samplesNeeded = count;
+
+                int startIndex = count - samplesNeeded;
+
+                left = new int[samplesNeeded];
+                right = new int[samplesNeeded];
+
+                for (int i = 0; i < samplesNeeded; i++)
+                {
+                    var s = histBuffer[startIndex + i];
+                    left[i] = s.Left;
+                    right[i] = s.Right;
+                }
+            }
+
+            return (left, right);
+        }
+
+        //
 
 
         public Form1()
@@ -414,28 +452,15 @@ namespace AudioHexViewer
                 return;
             }
 
-            if (isHistogramCaptureActive)
+            if (histBuffer == null || histBuffer.Count == 0)
             {
-                MessageBox.Show("Une capture pour histogramme est déjà en cours.");
+                MessageBox.Show("Pas encore suffisamment de données pour l'histogramme.");
                 return;
             }
 
-            //if (isRecordingOneSecond)
-            //{
-            //    MessageBox.Show("Un enregistrement CSV 1 seconde est en cours. Attends la fin avant l'histogramme.");
-            //    return;
-            //}
-
-            // On (ré)initialise le buffer histogramme
-            histBuffer.Clear();
-            histSamplesCollected = 0;
-            histSamplesNeeded = currentFormat.SampleRate; // 1 seconde exacte
-
-            isHistogramCaptureActive = true;
-            btnHistogram.Enabled = false;
-
-            //MessageBox.Show($"Capture pour histogramme démarrée ({histSamplesNeeded} échantillons).");
+            ShowHistogramWindow();
         }
+
 
         //
         private void menuOpenRecordsFolder_Click(object? sender, EventArgs e)
@@ -1174,48 +1199,45 @@ namespace AudioHexViewer
                 }
             }
             //
-            // ---------- CAPTURE 1 SECONDE POUR HISTOGRAMME ----------
-            if (isHistogramCaptureActive)
+            // ---------- HISTOGRAMME : tampon roulant continu ----------
             {
                 int bytesPerFrame = currentFormat.Channels * 4;
                 int frameCount = bytesRecorded / bytesPerFrame;
 
-                for (int i = 0; i < frameCount; i++)
+                if (frameCount > 0)
                 {
-                    int idxFrame = i * bytesPerFrame;
+                    int maxSamples = currentFormat.SampleRate * MaxHistogramSeconds;
 
-                    float lf = BitConverter.ToSingle(buffer, idxFrame);
-                    float rf = BitConverter.ToSingle(buffer, idxFrame + 4);
-
-                    float sL = lf * Max24;
-                    float sR = rf * Max24;
-
-                    int L = (int)Math.Truncate(sL);
-                    int R = (int)Math.Truncate(sR);
-
-                    if (L > Max24Pos) L = Max24Pos;
-                    if (L < Min24Neg) L = Min24Neg;
-                    if (R > Max24Pos) R = Max24Pos;
-                    if (R < Min24Neg) R = Min24Neg;
-
-                    histBuffer.Add(new RecordFrame { Left = L, Right = R });
-                    histSamplesCollected++;
-
-                    if (histSamplesCollected >= histSamplesNeeded)
+                    lock (histLock)
                     {
-                        isHistogramCaptureActive = false;
-
-                        // On repasse sur le thread UI pour ouvrir la fenêtre
-                        BeginInvoke(new Action(() =>
+                        for (int i = 0; i < frameCount; i++)
                         {
-                            btnHistogram.Enabled = true;
-                            ShowHistogramWindow();
-                        }));
+                            int idxFrame = i * bytesPerFrame;
 
-                        break;
+                            float lf = BitConverter.ToSingle(buffer, idxFrame);
+                            float rf = BitConverter.ToSingle(buffer, idxFrame + 4);
+
+                            float sL = lf * Max24;
+                            float sR = rf * Max24;
+
+                            int L = (int)Math.Truncate(sL);
+                            int R = (int)Math.Truncate(sR);
+
+                            if (L > Max24Pos) L = Max24Pos;
+                            if (L < Min24Neg) L = Min24Neg;
+                            if (R > Max24Pos) R = Max24Pos;
+                            if (R < Min24Neg) R = Min24Neg;
+
+                            histBuffer.Add(new RecordFrame { Left = L, Right = R });
+                        }
+
+                        // On ne garde que les N derniers échantillons (10 s max)
+                        if (histBuffer.Count > maxSamples)
+                            histBuffer.RemoveRange(0, histBuffer.Count - maxSamples);
                     }
                 }
             }
+
             //
             // ---------- Calcul du niveau crête sur ce buffer (pour les VU) ----------
             int bytesPerFrameAll = currentFormat.Channels * 4;
@@ -1415,25 +1437,45 @@ namespace AudioHexViewer
             }));
         }
         //
+        //private void ShowHistogramWindow()
+        //{
+        //    if (histBuffer.Count == 0)
+        //    {
+        //        MessageBox.Show("Pas de données disponibles pour l'histogramme.");
+        //        return;
+        //    }
+
+        //    int count = histBuffer.Count;
+        //    int[] leftSamples = new int[count];
+        //    int[] rightSamples = new int[count];
+
+        //    for (int i = 0; i < count; i++)
+        //    {
+        //        leftSamples[i] = histBuffer[i].Left;
+        //        rightSamples[i] = histBuffer[i].Right;
+        //    }
+
+        //    var histForm = new HistogramWindow(leftSamples, rightSamples);
+        //    histForm.StartPosition = FormStartPosition.CenterParent;
+        //    histForm.Show(this);
+        //}
         private void ShowHistogramWindow()
         {
-            if (histBuffer.Count == 0)
+            if (currentFormat == null)
             {
-                MessageBox.Show("Pas de données disponibles pour l'histogramme.");
+                MessageBox.Show("Démarre la capture avant d'ouvrir l'histogramme.");
                 return;
             }
 
-            int count = histBuffer.Count;
-            int[] leftSamples = new int[count];
-            int[] rightSamples = new int[count];
-
-            for (int i = 0; i < count; i++)
+            if (histBuffer == null || histBuffer.Count == 0)
             {
-                leftSamples[i] = histBuffer[i].Left;
-                rightSamples[i] = histBuffer[i].Right;
+                MessageBox.Show("Pas encore de données disponibles pour l'histogramme.");
+                return;
             }
 
-            var histForm = new HistogramWindow(leftSamples, rightSamples);
+            int sampleRate = currentFormat.SampleRate;
+
+            var histForm = new HistogramWindow(GetRecentSamplesMs, sampleRate);
             histForm.StartPosition = FormStartPosition.CenterParent;
             histForm.Show(this);
         }

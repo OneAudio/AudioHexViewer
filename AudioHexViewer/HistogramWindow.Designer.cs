@@ -29,6 +29,10 @@
             chkAC = new CheckBox();
             lblChannel = new Label();
             comboChannel = new ComboBox();
+            btnLive = new Button();
+            btnOnce = new Button();
+            numRecordTimeMs = new NumericUpDown();
+            lblRecordTime = new Label();
             splitContainerMain = new SplitContainer();
             chartHistogram = new System.Windows.Forms.DataVisualization.Charting.Chart();
             panelStats = new Panel();
@@ -47,6 +51,7 @@
             panelTop.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)numBinPow).BeginInit();
             ((System.ComponentModel.ISupportInitialize)numRangePow).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)numRecordTimeMs).BeginInit();
             ((System.ComponentModel.ISupportInitialize)splitContainerMain).BeginInit();
             splitContainerMain.Panel1.SuspendLayout();
             splitContainerMain.Panel2.SuspendLayout();
@@ -67,6 +72,10 @@
             panelTop.Controls.Add(chkAC);
             panelTop.Controls.Add(lblChannel);
             panelTop.Controls.Add(comboChannel);
+            panelTop.Controls.Add(btnLive);
+            panelTop.Controls.Add(btnOnce);
+            panelTop.Controls.Add(numRecordTimeMs);
+            panelTop.Controls.Add(lblRecordTime);
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 0);
             panelTop.Name = "panelTop";
@@ -87,7 +96,7 @@
             // lblBinPow
             // 
             lblBinPow.AutoSize = true;
-            lblBinPow.Location = new Point(295, 39);
+            lblBinPow.Location = new Point(295, 48);
             lblBinPow.Name = "lblBinPow";
             lblBinPow.Size = new Size(81, 15);
             lblBinPow.TabIndex = 6;
@@ -96,7 +105,7 @@
             // lblRangePow
             // 
             lblRangePow.AutoSize = true;
-            lblRangePow.Location = new Point(190, 39);
+            lblRangePow.Location = new Point(190, 48);
             lblRangePow.Name = "lblRangePow";
             lblRangePow.Size = new Size(64, 15);
             lblRangePow.TabIndex = 5;
@@ -104,7 +113,7 @@
             // 
             // numBinPow
             // 
-            numBinPow.Location = new Point(295, 9);
+            numBinPow.Location = new Point(295, 14);
             numBinPow.Maximum = new decimal(new int[] { 1024, 0, 0, 0 });
             numBinPow.Name = "numBinPow";
             numBinPow.Size = new Size(81, 23);
@@ -113,7 +122,7 @@
             // 
             // numRangePow
             // 
-            numRangePow.Location = new Point(190, 9);
+            numRangePow.Location = new Point(190, 14);
             numRangePow.Maximum = new decimal(new int[] { 8388608, 0, 0, 0 });
             numRangePow.Name = "numRangePow";
             numRangePow.Size = new Size(81, 23);
@@ -123,7 +132,7 @@
             // chkAC
             // 
             chkAC.AutoSize = true;
-            chkAC.Location = new Point(85, 39);
+            chkAC.Location = new Point(60, 47);
             chkAC.Name = "chkAC";
             chkAC.Size = new Size(85, 19);
             chkAC.TabIndex = 2;
@@ -134,7 +143,7 @@
             // lblChannel
             // 
             lblChannel.AutoSize = true;
-            lblChannel.Location = new Point(12, 12);
+            lblChannel.Location = new Point(3, 20);
             lblChannel.Name = "lblChannel";
             lblChannel.Size = new Size(51, 15);
             lblChannel.TabIndex = 1;
@@ -145,11 +154,51 @@
             comboChannel.DropDownStyle = ComboBoxStyle.DropDownList;
             comboChannel.FormattingEnabled = true;
             comboChannel.Items.AddRange(new object[] { "Left", "Right", "Both" });
-            comboChannel.Location = new Point(70, 9);
+            comboChannel.Location = new Point(60, 14);
             comboChannel.Name = "comboChannel";
             comboChannel.Size = new Size(100, 23);
             comboChannel.TabIndex = 0;
             comboChannel.SelectedIndexChanged += comboChannel_SelectedIndexChanged;
+            // 
+            // btnLive
+            // 
+            btnLive.Location = new Point(579, 43);
+            btnLive.Name = "btnLive";
+            btnLive.Size = new Size(60, 25);
+            btnLive.TabIndex = 12;
+            btnLive.Text = "LIVE";
+            btnLive.UseVisualStyleBackColor = true;
+            btnLive.Click += btnLive_Click;
+            // 
+            // btnOnce
+            // 
+            btnOnce.Location = new Point(666, 43);
+            btnOnce.Name = "btnOnce";
+            btnOnce.Size = new Size(60, 25);
+            btnOnce.TabIndex = 11;
+            btnOnce.Text = "ONCE";
+            btnOnce.UseVisualStyleBackColor = true;
+            btnOnce.Click += btnOnce_Click;
+            // 
+            // numRecordTimeMs
+            // 
+            numRecordTimeMs.Location = new Point(656, 14);
+            numRecordTimeMs.Maximum = new decimal(new int[] { 10000, 0, 0, 0 });
+            numRecordTimeMs.Minimum = new decimal(new int[] { 10, 0, 0, 0 });
+            numRecordTimeMs.Name = "numRecordTimeMs";
+            numRecordTimeMs.Size = new Size(70, 23);
+            numRecordTimeMs.TabIndex = 10;
+            numRecordTimeMs.Value = new decimal(new int[] { 1000, 0, 0, 0 });
+            numRecordTimeMs.ValueChanged += numRecordTimeMs_ValueChanged;
+            // 
+            // lblRecordTime
+            // 
+            lblRecordTime.AutoSize = true;
+            lblRecordTime.Location = new Point(579, 17);
+            lblRecordTime.Name = "lblRecordTime";
+            lblRecordTime.Size = new Size(78, 15);
+            lblRecordTime.TabIndex = 9;
+            lblRecordTime.Text = "Window (ms)";
             // 
             // splitContainerMain
             // 
@@ -317,6 +366,7 @@
             panelTop.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)numBinPow).EndInit();
             ((System.ComponentModel.ISupportInitialize)numRangePow).EndInit();
+            ((System.ComponentModel.ISupportInitialize)numRecordTimeMs).EndInit();
             splitContainerMain.Panel1.ResumeLayout(false);
             splitContainerMain.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)splitContainerMain).EndInit();
@@ -357,6 +407,11 @@
         private Button btnSaveSettings;
         private System.Windows.Forms.GroupBox grpLeftStats;
         private System.Windows.Forms.GroupBox grpRightStats;
+        private System.Windows.Forms.Label lblRecordTime;
+        private System.Windows.Forms.NumericUpDown numRecordTimeMs;
+        private System.Windows.Forms.Button btnOnce;
+        private System.Windows.Forms.Button btnLive;
+
 
     }
 }
