@@ -17,6 +17,12 @@
 
   <ItemGroup>
     <Compile Remove="Class1.cs" />
+    <Compile Remove="HistogramWindow.cs" />
+    <Compile Remove="HistogramWindow.Designer.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Remove="HistogramWindow.resx" />
   </ItemGroup>
 
   <ItemGroup>

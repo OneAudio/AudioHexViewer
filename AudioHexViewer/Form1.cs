@@ -100,6 +100,13 @@ namespace AudioHexViewer
         private int calibTicksTarget = 0;
         private long calibAccum = 0;
 
+        private HistogramControl? histogramControl;
+
+        private int baseFormHeight;
+        private bool histogramVisible = false;
+
+
+
         private enum CalStage
         {
             None,
@@ -189,6 +196,9 @@ namespace AudioHexViewer
         public Form1()
         {
             InitializeComponent();
+
+            baseFormHeight = this.Height;   // hauteur sans histogramme
+            panelHistogram.Visible = false; // au cas où
 
             chkShowDetails.Checked = false;
             txtLeft.Visible = false;
@@ -446,20 +456,27 @@ namespace AudioHexViewer
         //
         private void btnHistogram_Click(object sender, EventArgs e)
         {
-            if (currentFormat == null || capture == null)
+            if (!histogramVisible)
             {
-                MessageBox.Show("Démarre la lecture (READ) avant de lancer un histogramme.");
-                return;
-            }
+                // On affiche la zone histogramme
+                ShowHistogramArea();
 
-            if (histBuffer == null || histBuffer.Count == 0)
+                // On agrandit la fenêtre pour laisser la place au panel
+                this.Height = baseFormHeight + panelHistogram.Height;
+                histogramVisible = true;
+            }
+            else
             {
-                MessageBox.Show("Pas encore suffisamment de données pour l'histogramme.");
-                return;
-            }
+                // On cache la zone histogramme
+                panelHistogram.Visible = false;
 
-            ShowHistogramWindow();
+                // On revient à la hauteur de base
+                this.Height = baseFormHeight;
+                histogramVisible = false;
+            }
         }
+
+
 
 
         //
@@ -1459,26 +1476,22 @@ namespace AudioHexViewer
         //    histForm.StartPosition = FormStartPosition.CenterParent;
         //    histForm.Show(this);
         //}
-        private void ShowHistogramWindow()
+        private void ShowHistogramArea()
         {
-            if (currentFormat == null)
+            if (histogramControl == null)
             {
-                MessageBox.Show("Démarre la capture avant d'ouvrir l'histogramme.");
-                return;
+                int sampleRate = currentFormat?.SampleRate ?? 48000;
+
+                histogramControl = new HistogramControl(GetRecentSamplesMs, sampleRate);
+                histogramControl.Dock = DockStyle.Fill;
+
+                panelHistogram.Controls.Clear();
+                panelHistogram.Controls.Add(histogramControl);
             }
 
-            if (histBuffer == null || histBuffer.Count == 0)
-            {
-                MessageBox.Show("Pas encore de données disponibles pour l'histogramme.");
-                return;
-            }
-
-            int sampleRate = currentFormat.SampleRate;
-
-            var histForm = new HistogramWindow(GetRecentSamplesMs, sampleRate);
-            histForm.StartPosition = FormStartPosition.CenterParent;
-            histForm.Show(this);
+            panelHistogram.Visible = true;
         }
+
 
 
         //

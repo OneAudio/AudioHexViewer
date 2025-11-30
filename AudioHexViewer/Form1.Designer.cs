@@ -65,6 +65,7 @@ namespace AudioHexViewer
             label4 = new Label();
             lblDeviceSummary = new Label();
             btnHistogram = new Button();
+            panelHistogram = new Panel();
             menuStrip1.SuspendLayout();
             SuspendLayout();
             // 
@@ -105,7 +106,7 @@ namespace AudioHexViewer
             // txtRight
             // 
             txtRight.Font = new Font("Consolas", 9F);
-            txtRight.Location = new Point(383, 190);
+            txtRight.Location = new Point(383, 191);
             txtRight.Name = "txtRight";
             txtRight.ReadOnly = true;
             txtRight.ScrollBars = RichTextBoxScrollBars.None;
@@ -397,10 +398,10 @@ namespace AudioHexViewer
             lblDeviceSummary.BackColor = Color.WhiteSmoke;
             lblDeviceSummary.Font = new Font("Segoe UI", 8.5F);
             lblDeviceSummary.ForeColor = Color.DimGray;
-            lblDeviceSummary.Location = new Point(757, 206);
+            lblDeviceSummary.Location = new Point(749, 194);
             lblDeviceSummary.Name = "lblDeviceSummary";
             lblDeviceSummary.Padding = new Padding(4);
-            lblDeviceSummary.Size = new Size(116, 80);
+            lblDeviceSummary.Size = new Size(126, 94);
             lblDeviceSummary.TabIndex = 0;
             lblDeviceSummary.Text = "No device selected";
             // 
@@ -414,12 +415,25 @@ namespace AudioHexViewer
             btnHistogram.UseVisualStyleBackColor = true;
             btnHistogram.Click += btnHistogram_Click;
             // 
+            // panelHistogram
+            // 
+            panelHistogram.CausesValidation = false;
+            panelHistogram.Dock = DockStyle.Bottom;
+            panelHistogram.Location = new Point(0, -155);
+            panelHistogram.Name = "panelHistogram";
+            panelHistogram.Size = new Size(883, 450);
+            panelHistogram.TabIndex = 38;
+            panelHistogram.Visible = false;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(883, 295);
+            Controls.Add(lblDeviceSummary);
+            Controls.Add(txtLeft);
             Controls.Add(label4);
+            Controls.Add(txtRight);
             Controls.Add(label3);
             Controls.Add(label7);
             Controls.Add(label6);
@@ -433,8 +447,6 @@ namespace AudioHexViewer
             Controls.Add(comboDevices);
             Controls.Add(comboDisplayMode);
             Controls.Add(btnRecord);
-            Controls.Add(txtLeft);
-            Controls.Add(txtRight);
             Controls.Add(barLeftLevel);
             Controls.Add(lblLeftLevel);
             Controls.Add(barRightLevel);
@@ -445,8 +457,8 @@ namespace AudioHexViewer
             Controls.Add(lblRightMainTitle);
             Controls.Add(lblRightMainValue);
             Controls.Add(chkShowDetails);
-            Controls.Add(lblDeviceSummary);
             Controls.Add(btnHistogram);
+            Controls.Add(panelHistogram);
             HelpButton = true;
             MainMenuStrip = menuStrip1;
             Name = "Form1";
@@ -492,6 +504,6 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuOpenRecordsFolder;
         private Label lblDeviceSummary;
         private Button btnHistogram;
-
+        private Panel panelHistogram;
     }
 }
