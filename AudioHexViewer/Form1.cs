@@ -18,7 +18,7 @@ namespace AudioHexViewer
         private MMDevice? selectedDevice; // périphérique audio choisi
         private WaveFormat? currentFormat;
 
-       
+
         // Suivi de stabilité des bits (24 bits) sur 1 seconde
         private readonly bool[] lastBitsLeft = new bool[24];
         private readonly bool[] lastBitsRight = new bool[24];
@@ -207,6 +207,9 @@ namespace AudioHexViewer
 
             chkShowDetails.CheckAlign = ContentAlignment.MiddleRight;
             chkShowDetails.TextAlign = ContentAlignment.MiddleLeft;
+
+            chkHistoOnce.CheckAlign = ContentAlignment.MiddleRight;
+            chkHistoOnce.TextAlign = ContentAlignment.MiddleLeft;
 
             levelFontRegular = new Font("Tahoma", 12F, FontStyle.Regular);
             levelFontBold = new Font("Tahoma", 12F, FontStyle.Bold);
@@ -564,17 +567,54 @@ namespace AudioHexViewer
                     capture.DataAvailable += Capture_DataAvailable;
                     capture.RecordingStopped += Capture_RecordingStopped;
 
+                    // Démarrage de la capture audio
                     capture.StartRecording();
 
+                    // On met à jour l'apparence du bouton (il passe en STOP rouge)
                     UpdateStartButtonAppearance();
                     UpdateDeviceInfo();
                     UpdateDeviceSummary();
+
+                    // --- NOUVEAU : démarrer l'histogramme en fonction du mode Once ---
+                    if (histogramControl != null)
+                    {
+                        bool onceMode = chkHistoOnce.Checked;   // case à cocher dans Form1
+                        histogramControl.StartFromRun(onceMode);
+
+                        if (onceMode)
+                        {
+                            // En mode Once : on arrête immédiatement la capture et on repasse en READ
+                            try
+                            {
+                                capture.DataAvailable -= Capture_DataAvailable;
+                                capture.RecordingStopped -= Capture_RecordingStopped;
+                                capture.StopRecording();
+                            }
+                            catch
+                            {
+                                // on ignore les erreurs de StopRecording
+                            }
+
+                            histogramControl.StopFromRun();
+
+                            capture.Dispose();
+                            capture = null;
+                            currentFormat = null;
+
+                            // Remet le bouton en mode READ vert
+                            UpdateStartButtonAppearance();
+                            UpdateDeviceInfo();
+                            UpdateDeviceSummary();
+
+                            return; // on sort ici, pas de capture continue
+                        }
+                    }
+                    // --- FIN NOUVEAU ---
                 }
                 catch (Exception ex)
                 {
                     MessageBox.Show("Erreur lors du démarrage de la capture : " + ex.Message);
                     capture = null;
-                    //btnStart.Text = "READ";
                     currentFormat = null;
                     UpdateStartButtonAppearance();   // remet en mode READ vert
                     UpdateDeviceInfo();
@@ -596,6 +636,12 @@ namespace AudioHexViewer
                     // on ignore les erreurs de StopRecording
                 }
 
+                // On arrête aussi l'histogramme s'il tourne
+                if (histogramControl != null)
+                {
+                    histogramControl.StopFromRun();
+                }
+
                 capture.Dispose();
                 capture = null;
                 currentFormat = null;
@@ -605,6 +651,8 @@ namespace AudioHexViewer
                 UpdateDeviceSummary();
             }
         }
+
+
 
         private void rbInput_CheckedChanged(object? sender, EventArgs e)
         {
@@ -1117,7 +1165,7 @@ namespace AudioHexViewer
             const int Max24Pos = Max24 - 1; // +0x7FFFFF
             const int Min24Neg = -Max24;    // -0x800000
 
-           
+
             int left24 = (int)Math.Truncate(leftF * Max24);
             int right24 = (int)Math.Truncate(rightF * Max24);
 
@@ -1510,7 +1558,7 @@ namespace AudioHexViewer
         private void UpdateMainDisplayFromLastValues()
         {
             if (comboDisplayMode.SelectedItem is not string mode)
-                mode = "Decimal (24b)" ;// mode par défaut
+                mode = "Decimal (24b)";// mode par défaut
 
             // Préparer les valeurs formatées
             string leftText = "";
@@ -1864,6 +1912,33 @@ namespace AudioHexViewer
                     led.BackColor = Color.Red;
                 }
             }
+        }
+
+        private void saveHistogramSettingsToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (histogramControl == null)
+            {
+                MessageBox.Show("L'histogramme n'est pas encore initialisé.", "Histogram settings",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            try
+            {
+                histogramControl.SaveHistogramSettings();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Erreur lors de la sauvegarde des réglages d'histogramme :\n" + ex.Message,
+                    "Histogram settings",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void alwaysOnTopToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            // Le ToolStripMenuItem appelle ce handler après avoir changé son état Checked
+            this.TopMost = alwaysOnTopToolStripMenuItem.Checked;
         }
 
     }

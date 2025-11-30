@@ -43,14 +43,11 @@
             panelStats = new Panel();
             chartHistogram = new System.Windows.Forms.DataVisualization.Charting.Chart();
             splitContainerMain = new SplitContainer();
-            btnSaveSettings = new Button();
             lblBinPow = new Label();
             lblRangePow = new Label();
             chkAC = new CheckBox();
             lblChannel = new Label();
             comboChannel = new ComboBox();
-            btnLive = new Button();
-            btnOnce = new Button();
             lblRecordTime = new Label();
             panelTop = new Panel();
             lblWindowInfo = new Label();
@@ -111,9 +108,9 @@
             grpLeftStats.Controls.Add(lblLeftRms);
             grpLeftStats.Controls.Add(lblLeftMinMax);
             grpLeftStats.ForeColor = Color.Black;
-            grpLeftStats.Location = new Point(3, 12);
+            grpLeftStats.Location = new Point(3, 3);
             grpLeftStats.Name = "grpLeftStats";
-            grpLeftStats.Size = new Size(125, 180);
+            grpLeftStats.Size = new Size(134, 180);
             grpLeftStats.TabIndex = 0;
             grpLeftStats.TabStop = false;
             // 
@@ -176,9 +173,9 @@
             grpRightStats.Controls.Add(lblRightRms);
             grpRightStats.Controls.Add(lblRightMinMax);
             grpRightStats.ForeColor = Color.Black;
-            grpRightStats.Location = new Point(3, 198);
+            grpRightStats.Location = new Point(3, 189);
             grpRightStats.Name = "grpRightStats";
-            grpRightStats.Size = new Size(125, 180);
+            grpRightStats.Size = new Size(134, 180);
             grpRightStats.TabIndex = 1;
             grpRightStats.TabStop = false;
             // 
@@ -191,7 +188,7 @@
             panelStats.Location = new Point(0, 0);
             panelStats.Name = "panelStats";
             panelStats.Padding = new Padding(8);
-            panelStats.Size = new Size(148, 398);
+            panelStats.Size = new Size(148, 435);
             panelStats.TabIndex = 0;
             // 
             // chartHistogram
@@ -199,14 +196,14 @@
             chartHistogram.Dock = DockStyle.Fill;
             chartHistogram.Location = new Point(0, 0);
             chartHistogram.Name = "chartHistogram";
-            chartHistogram.Size = new Size(760, 398);
+            chartHistogram.Size = new Size(760, 435);
             chartHistogram.TabIndex = 0;
             chartHistogram.Text = "chartHistogram";
             // 
             // splitContainerMain
             // 
             splitContainerMain.Dock = DockStyle.Fill;
-            splitContainerMain.Location = new Point(0, 99);
+            splitContainerMain.Location = new Point(0, 62);
             splitContainerMain.Name = "splitContainerMain";
             // 
             // splitContainerMain.Panel1
@@ -216,25 +213,14 @@
             // splitContainerMain.Panel2
             // 
             splitContainerMain.Panel2.Controls.Add(panelStats);
-            splitContainerMain.Size = new Size(912, 398);
+            splitContainerMain.Size = new Size(912, 435);
             splitContainerMain.SplitterDistance = 760;
             splitContainerMain.TabIndex = 3;
-            // 
-            // btnSaveSettings
-            // 
-            btnSaveSettings.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnSaveSettings.Location = new Point(802, 15);
-            btnSaveSettings.Name = "btnSaveSettings";
-            btnSaveSettings.Size = new Size(90, 25);
-            btnSaveSettings.TabIndex = 9;
-            btnSaveSettings.Text = "Save settings";
-            btnSaveSettings.UseVisualStyleBackColor = true;
-            btnSaveSettings.Click += btnSaveSettings_Click;
             // 
             // lblBinPow
             // 
             lblBinPow.AutoSize = true;
-            lblBinPow.Location = new Point(332, 40);
+            lblBinPow.Location = new Point(315, 40);
             lblBinPow.Name = "lblBinPow";
             lblBinPow.Size = new Size(81, 15);
             lblBinPow.TabIndex = 6;
@@ -243,7 +229,7 @@
             // lblRangePow
             // 
             lblRangePow.AutoSize = true;
-            lblRangePow.Location = new Point(202, 40);
+            lblRangePow.Location = new Point(178, 40);
             lblRangePow.Name = "lblRangePow";
             lblRangePow.Size = new Size(64, 15);
             lblRangePow.TabIndex = 5;
@@ -263,7 +249,7 @@
             // lblChannel
             // 
             lblChannel.AutoSize = true;
-            lblChannel.Location = new Point(3, 20);
+            lblChannel.Location = new Point(3, 17);
             lblChannel.Name = "lblChannel";
             lblChannel.Size = new Size(51, 15);
             lblChannel.TabIndex = 1;
@@ -280,26 +266,6 @@
             comboChannel.TabIndex = 0;
             comboChannel.Click += comboChannel_SelectedIndexChanged;
             // 
-            // btnLive
-            // 
-            btnLive.Location = new Point(617, 14);
-            btnLive.Name = "btnLive";
-            btnLive.Size = new Size(60, 25);
-            btnLive.TabIndex = 12;
-            btnLive.Text = "LIVE";
-            btnLive.UseVisualStyleBackColor = true;
-            btnLive.Click += btnLive_Click;
-            // 
-            // btnOnce
-            // 
-            btnOnce.Location = new Point(617, 49);
-            btnOnce.Name = "btnOnce";
-            btnOnce.Size = new Size(60, 25);
-            btnOnce.TabIndex = 11;
-            btnOnce.Text = "ONCE";
-            btnOnce.UseVisualStyleBackColor = true;
-            btnOnce.Click += btnOnce_Click;
-            // 
             // lblRecordTime
             // 
             lblRecordTime.AutoSize = true;
@@ -315,25 +281,22 @@
             panelTop.Controls.Add(comboSampleWin);
             panelTop.Controls.Add(comboBinLsb);
             panelTop.Controls.Add(comboRangeLsb);
-            panelTop.Controls.Add(btnSaveSettings);
             panelTop.Controls.Add(lblBinPow);
             panelTop.Controls.Add(lblRangePow);
             panelTop.Controls.Add(chkAC);
             panelTop.Controls.Add(lblChannel);
             panelTop.Controls.Add(comboChannel);
-            panelTop.Controls.Add(btnLive);
-            panelTop.Controls.Add(btnOnce);
             panelTop.Controls.Add(lblRecordTime);
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 0);
             panelTop.Name = "panelTop";
-            panelTop.Size = new Size(912, 99);
+            panelTop.Size = new Size(912, 62);
             panelTop.TabIndex = 2;
             // 
             // lblWindowInfo
             // 
             lblWindowInfo.AutoSize = true;
-            lblWindowInfo.Location = new Point(461, 59);
+            lblWindowInfo.Location = new Point(588, 17);
             lblWindowInfo.Name = "lblWindowInfo";
             lblWindowInfo.Size = new Size(38, 15);
             lblWindowInfo.TabIndex = 17;
@@ -407,14 +370,11 @@
         public Panel panelStats;
         private System.Windows.Forms.DataVisualization.Charting.Chart chartHistogram;
         private SplitContainer splitContainerMain;
-        private Button btnSaveSettings;
         private Label lblBinPow;
         private Label lblRangePow;
         private CheckBox chkAC;
         private Label lblChannel;
         private ComboBox comboChannel;
-        private Button btnLive;
-        private Button btnOnce;
         private Label lblRecordTime;
         private Panel panelTop;
         private ComboBox comboSampleWin;

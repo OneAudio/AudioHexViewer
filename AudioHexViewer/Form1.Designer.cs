@@ -54,6 +54,7 @@ namespace AudioHexViewer
             menuAbout = new ToolStripMenuItem();
             menuOpenCal = new ToolStripMenuItem();
             menuOpenRecordsFolder = new ToolStripMenuItem();
+            saveHistogramSettingsToolStripMenuItem = new ToolStripMenuItem();
             label6 = new Label();
             label7 = new Label();
             label3 = new Label();
@@ -66,6 +67,8 @@ namespace AudioHexViewer
             lblDeviceSummary = new Label();
             btnHistogram = new Button();
             panelHistogram = new Panel();
+            chkHistoOnce = new CheckBox();
+            alwaysOnTopToolStripMenuItem = new ToolStripMenuItem();
             menuStrip1.SuspendLayout();
             SuspendLayout();
             // 
@@ -245,7 +248,7 @@ namespace AudioHexViewer
             // 
             comboDisplayMode.DropDownStyle = ComboBoxStyle.DropDownList;
             comboDisplayMode.FormattingEnabled = true;
-            comboDisplayMode.Location = new Point(757, 136);
+            comboDisplayMode.Location = new Point(256, 162);
             comboDisplayMode.Name = "comboDisplayMode";
             comboDisplayMode.Size = new Size(116, 23);
             comboDisplayMode.TabIndex = 30;
@@ -271,7 +274,7 @@ namespace AudioHexViewer
             // menuHelp
             // 
             menuHelp.Alignment = ToolStripItemAlignment.Right;
-            menuHelp.DropDownItems.AddRange(new ToolStripItem[] { menuAbout, menuOpenCal, menuOpenRecordsFolder });
+            menuHelp.DropDownItems.AddRange(new ToolStripItem[] { menuAbout, menuOpenCal, menuOpenRecordsFolder, saveHistogramSettingsToolStripMenuItem, alwaysOnTopToolStripMenuItem });
             menuHelp.Name = "menuHelp";
             menuHelp.Size = new Size(44, 21);
             menuHelp.Text = "Help";
@@ -279,23 +282,30 @@ namespace AudioHexViewer
             // menuAbout
             // 
             menuAbout.Name = "menuAbout";
-            menuAbout.Size = new Size(181, 22);
+            menuAbout.Size = new Size(199, 22);
             menuAbout.Text = "About";
             menuAbout.Click += menuAbout_Click;
             // 
             // menuOpenCal
             // 
             menuOpenCal.Name = "menuOpenCal";
-            menuOpenCal.Size = new Size(181, 22);
+            menuOpenCal.Size = new Size(199, 22);
             menuOpenCal.Text = "Open calibration file";
             menuOpenCal.Click += menuOpenCal_Click;
             // 
             // menuOpenRecordsFolder
             // 
             menuOpenRecordsFolder.Name = "menuOpenRecordsFolder";
-            menuOpenRecordsFolder.Size = new Size(181, 22);
+            menuOpenRecordsFolder.Size = new Size(199, 22);
             menuOpenRecordsFolder.Text = "Open records folder";
             menuOpenRecordsFolder.Click += menuOpenRecordsFolder_Click;
+            // 
+            // saveHistogramSettingsToolStripMenuItem
+            // 
+            saveHistogramSettingsToolStripMenuItem.Name = "saveHistogramSettingsToolStripMenuItem";
+            saveHistogramSettingsToolStripMenuItem.Size = new Size(199, 22);
+            saveHistogramSettingsToolStripMenuItem.Text = "Save histogram settings";
+            saveHistogramSettingsToolStripMenuItem.Click += saveHistogramSettingsToolStripMenuItem_Click;
             // 
             // label6
             // 
@@ -376,7 +386,7 @@ namespace AudioHexViewer
             // chkShowDetails
             // 
             chkShowDetails.AutoSize = true;
-            chkShowDetails.Location = new Point(779, 166);
+            chkShowDetails.Location = new Point(781, 162);
             chkShowDetails.Name = "chkShowDetails";
             chkShowDetails.Size = new Size(92, 19);
             chkShowDetails.TabIndex = 31;
@@ -387,11 +397,11 @@ namespace AudioHexViewer
             // label4
             // 
             label4.AutoSize = true;
-            label4.Location = new Point(757, 118);
+            label4.Location = new Point(151, 167);
             label4.Name = "label4";
-            label4.Size = new Size(70, 15);
+            label4.Size = new Size(99, 15);
             label4.TabIndex = 37;
-            label4.Text = "Data format";
+            label4.Text = "Main data format";
             // 
             // lblDeviceSummary
             // 
@@ -425,14 +435,35 @@ namespace AudioHexViewer
             panelHistogram.TabIndex = 38;
             panelHistogram.Visible = false;
             // 
+            // chkHistoOnce
+            // 
+            chkHistoOnce.AutoSize = true;
+            chkHistoOnce.Location = new Point(819, 137);
+            chkHistoOnce.Name = "chkHistoOnce";
+            chkHistoOnce.Size = new Size(54, 19);
+            chkHistoOnce.TabIndex = 0;
+            chkHistoOnce.Text = "Once";
+            chkHistoOnce.UseVisualStyleBackColor = true;
+            // 
+            // alwaysOnTopToolStripMenuItem
+            // 
+            alwaysOnTopToolStripMenuItem.CheckOnClick = true;
+            alwaysOnTopToolStripMenuItem.Name = "alwaysOnTopToolStripMenuItem";
+            alwaysOnTopToolStripMenuItem.Size = new Size(199, 22);
+            alwaysOnTopToolStripMenuItem.Text = "Always on top";
+            alwaysOnTopToolStripMenuItem.Click += alwaysOnTopToolStripMenuItem_Click;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(883, 298);
-            Controls.Add(lblDeviceSummary);
-            Controls.Add(txtLeft);
+            Controls.Add(chkHistoOnce);
             Controls.Add(label4);
+            Controls.Add(chkShowDetails);
+            Controls.Add(lblDeviceSummary);
+            Controls.Add(comboDisplayMode);
+            Controls.Add(txtLeft);
             Controls.Add(txtRight);
             Controls.Add(label3);
             Controls.Add(label7);
@@ -445,7 +476,6 @@ namespace AudioHexViewer
             Controls.Add(rbInput);
             Controls.Add(rbOutput);
             Controls.Add(comboDevices);
-            Controls.Add(comboDisplayMode);
             Controls.Add(btnRecord);
             Controls.Add(barLeftLevel);
             Controls.Add(lblLeftLevel);
@@ -456,7 +486,6 @@ namespace AudioHexViewer
             Controls.Add(lblLeftMainValue);
             Controls.Add(lblRightMainTitle);
             Controls.Add(lblRightMainValue);
-            Controls.Add(chkShowDetails);
             Controls.Add(btnHistogram);
             Controls.Add(panelHistogram);
             HelpButton = true;
@@ -505,5 +534,8 @@ namespace AudioHexViewer
         private Label lblDeviceSummary;
         private Button btnHistogram;
         private Panel panelHistogram;
+        private CheckBox chkHistoOnce;
+        private ToolStripMenuItem saveHistogramSettingsToolStripMenuItem;
+        private ToolStripMenuItem alwaysOnTopToolStripMenuItem;
     }
 }

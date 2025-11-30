@@ -279,7 +279,48 @@ namespace AudioHexViewer
 
             RebuildHistogram();
         }
+        //
+        // Appelé par Form1 quand on appuie sur RUN (btnStart)
+        public void StartFromRun(bool onceMode)
+        {
+            if (_provider == null || _sampleRate <= 0)
+                return;
 
+            if (onceMode)
+            {
+                // Acquisition unique : on lit une seule fenêtre et on ne démarre PAS le timer
+                isLive = false;
+                liveTimer?.Stop();
+                AcquireOnce();
+            }
+            else
+            {
+                // Mode continu : histogramme mis à jour en continu via le timer
+                if (liveTimer != null)
+                {
+                    int samples = GetWindowSamples();
+                    int intervalMs = (int)Math.Max(10, Math.Round((double)samples * 1000.0 / _sampleRate));
+                    liveTimer.Interval = intervalMs;
+                }
+
+                isLive = true;
+
+                // Première acquisition immédiate
+                AcquireOnce();
+
+                // Puis mises à jour régulières
+                liveTimer?.Start();
+            }
+        }
+
+        // Appelé par Form1 quand on appuie sur STOP
+        public void StopFromRun()
+        {
+            isLive = false;
+            liveTimer?.Stop();
+        }
+
+        //
         private void LiveTimer_Tick(object? sender, EventArgs e)
         {
             if (this.IsDisposed || !this.IsHandleCreated)
@@ -299,45 +340,16 @@ namespace AudioHexViewer
                     liveTimer.Stop();
 
                 isLive = false;
-                btnLive.Text = "LIVE";
 
                 MessageBox.Show("Erreur dans le mode LIVE : " + ex.Message,
-                                "Histogram LIVE",
+                                "Histogram",
                                 MessageBoxButtons.OK,
                                 MessageBoxIcon.Error);
             }
+
         }
 
-        private void btnOnce_Click(object sender, EventArgs e)
-        {
-            AcquireOnce();
-        }
-
-        private void btnLive_Click(object sender, EventArgs e)
-        {
-            if (!isLive)
-            {
-                isLive = true;
-                btnLive.Text = "STOP LIVE";
-
-                if (_sampleRate > 0)
-                {
-                    int samples = GetWindowSamples();
-                    int intervalMs = (int)Math.Max(10, Math.Round((double)samples * 1000.0 / _sampleRate));
-                    liveTimer.Interval = intervalMs;
-                }
-
-                liveTimer.Start();
-            }
-            else
-            {
-                isLive = false;
-                btnLive.Text = "LIVE";
-                liveTimer.Stop();
-            }
-        }
-
-        private void UpdateWindowInfo()
+         private void UpdateWindowInfo()
         {
             int samples = GetWindowSamples();
 
@@ -401,7 +413,13 @@ namespace AudioHexViewer
 
             ApplySettingsOrDefaults();
         }
+        //
+        public void SaveHistogramSettings()
+        {
+            SaveSettingsToFile();
+        }
 
+        //
         private void SaveSettingsToFile()
         {
             var rangeLsb = GetRangeLsb();
