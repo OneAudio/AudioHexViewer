@@ -288,10 +288,12 @@ namespace AudioHexViewer
 
             if (onceMode)
             {
-                // Acquisition unique : on lit une seule fenêtre et on ne démarre PAS le timer
+                // IMPORTANT : laisser le provider capturer les samples
+                AcquireOnce();
+
+                // puis arrêter toute mise à jour
                 isLive = false;
                 liveTimer?.Stop();
-                AcquireOnce();
             }
             else
             {
@@ -512,8 +514,8 @@ namespace AudioHexViewer
 
         private void RebuildHistogram()
         {
-            if (chartHistogram.ClientSize.Width <= 0 || chartHistogram.ClientSize.Height <= 0)
-                return;
+            // NE *PAS* tester la taille du chart ici, on veut remplir les séries
+            // et laisser le control redessiner quand il sera correctement dimensionné.
 
             if (leftSamples.Length == 0 && rightSamples.Length == 0)
             {

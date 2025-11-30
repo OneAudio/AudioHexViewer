@@ -72,6 +72,10 @@ namespace AudioHexViewer
         private readonly object histLock = new object();
         private const int MaxHistogramSeconds = 10; // on garde jusqu'à 10 s d'historique
 
+        // --- Mode "Once" pour l'histogramme ---
+        private bool histOnceActive = false;
+        private int histOnceTargetSamples = 0;
+        private int histOnceAccumSamples = 0;
 
         // Seuils dBFS pour le bargraphe
         private const double DbMin = -80.0;      // plancher d'affichage
@@ -104,6 +108,7 @@ namespace AudioHexViewer
 
         private int baseFormHeight;
         private bool histogramVisible = false;
+
 
 
 
@@ -536,7 +541,7 @@ namespace AudioHexViewer
 
         private void btnStart_Click(object sender, EventArgs e)
         {
-            // Si on n'est PAS en train de capturer -> on démarre (mode READ)
+            // Si on n'est PAS en train de capturer -> on démarre (mode READ -> RUN)
             if (capture == null)
             {
                 if (comboDevices.SelectedItem is not MMDevice dev)
@@ -567,49 +572,54 @@ namespace AudioHexViewer
                     capture.DataAvailable += Capture_DataAvailable;
                     capture.RecordingStopped += Capture_RecordingStopped;
 
+                    // --- NOUVEAU : config mode Once / Continu ---
+                    bool onceMode = chkHistoOnce.Checked;
+
+                    if (onceMode)
+                    {
+                        // On veut une acquisition de N échantillons "propres"  on vide l'historique
+                        lock (histLock)
+                        {
+                            histBuffer.Clear();
+                        }
+
+                        // Nombre de samples à acquérir = fenêtre d'histo
+                        int windowSamples = HistogramControl.LastUsedWindowSamples;
+
+                        // Si jamais l'histo n'a pas encore été ouvert, on prend 1 seconde par défaut
+                        if (windowSamples <= 0 && currentFormat != null)
+                            windowSamples = currentFormat.SampleRate;
+
+                        histOnceTargetSamples = windowSamples;
+                        histOnceAccumSamples = 0;
+                        histOnceActive = true;
+
+                        // En mode Once, on NE démarre PAS l'histogramme tout de suite :
+                        // on attend que ProcessBuffer ait accumulé N échantillons.
+                    }
+                    else
+                    {
+                        // Mode continu : pas de séquence Once
+                        histOnceActive = false;
+                        histOnceTargetSamples = 0;
+                        histOnceAccumSamples = 0;
+                    }
+                    // -------------------------------------------
+
                     // Démarrage de la capture audio
                     capture.StartRecording();
 
-                    // On met à jour l'apparence du bouton (il passe en STOP rouge)
+                    // Bouton en mode STOP rouge
                     UpdateStartButtonAppearance();
                     UpdateDeviceInfo();
                     UpdateDeviceSummary();
 
-                    // --- NOUVEAU : démarrer l'histogramme en fonction du mode Once ---
-                    if (histogramControl != null)
+                    // Si l'histogramme existe déjà et qu'on est en mode continu,
+                    // on le démarre tout de suite en "live"
+                    if (histogramControl != null && !chkHistoOnce.Checked)
                     {
-                        bool onceMode = chkHistoOnce.Checked;   // case à cocher dans Form1
-                        histogramControl.StartFromRun(onceMode);
-
-                        if (onceMode)
-                        {
-                            // En mode Once : on arrête immédiatement la capture et on repasse en READ
-                            try
-                            {
-                                capture.DataAvailable -= Capture_DataAvailable;
-                                capture.RecordingStopped -= Capture_RecordingStopped;
-                                capture.StopRecording();
-                            }
-                            catch
-                            {
-                                // on ignore les erreurs de StopRecording
-                            }
-
-                            histogramControl.StopFromRun();
-
-                            capture.Dispose();
-                            capture = null;
-                            currentFormat = null;
-
-                            // Remet le bouton en mode READ vert
-                            UpdateStartButtonAppearance();
-                            UpdateDeviceInfo();
-                            UpdateDeviceSummary();
-
-                            return; // on sort ici, pas de capture continue
-                        }
+                        histogramControl.StartFromRun(false);  // mode continu
                     }
-                    // --- FIN NOUVEAU ---
                 }
                 catch (Exception ex)
                 {
@@ -623,7 +633,10 @@ namespace AudioHexViewer
             }
             else
             {
-                // Si on est déjà en train de capturer -> clique = STOP
+                // Si on est déjà en train de capturer -> clique = STOP (on annule aussi un éventuel Once en cours)
+                histOnceActive = false;
+                histOnceTargetSamples = 0;
+                histOnceAccumSamples = 0;
 
                 try
                 {
@@ -651,6 +664,8 @@ namespace AudioHexViewer
                 UpdateDeviceSummary();
             }
         }
+
+
 
 
 
@@ -1305,6 +1320,55 @@ namespace AudioHexViewer
                         if (histBuffer.Count > maxSamples)
                             histBuffer.RemoveRange(0, histBuffer.Count - maxSamples);
                     }
+
+                    // --- NOUVEAU : gestion du mode "Once" pour l'histogramme ---
+                    if (histOnceActive)
+                    {
+                        histOnceAccumSamples += frameCount;
+
+                        if (histOnceAccumSamples >= histOnceTargetSamples)
+                        {
+                            // On a atteint (ou dépassé) la fenêtre souhaitée
+                            histOnceActive = false;
+
+                            // On bascule sur le thread UI pour :
+                            // 1) Calculer l'histogramme (une seule fois)
+                            // 2) Arrêter la capture
+                            BeginInvoke((Action)(() =>
+                            {
+                                // Sécurité : histogramControl et capture peuvent avoir changé entre-temps
+                                if (histogramControl != null)
+                                {
+                                    // Utilise le mode "once" de l'histogramme : une seule AcquireOnce()
+                                    histogramControl.StartFromRun(true);
+                                }
+
+                                if (capture != null)
+                                {
+                                    try
+                                    {
+                                        capture.DataAvailable -= Capture_DataAvailable;
+                                        capture.RecordingStopped -= Capture_RecordingStopped;
+                                        capture.StopRecording();
+                                    }
+                                    catch
+                                    {
+                                        // ignore
+                                    }
+
+                                    capture.Dispose();
+                                    capture = null;
+                                    currentFormat = null;
+                                }
+
+                                // Bouton repasse en READ vert
+                                UpdateStartButtonAppearance();
+                                UpdateDeviceInfo();
+                                UpdateDeviceSummary();
+                            }));
+                        }
+                    }
+                    // --- FIN NOUVEAU ---
                 }
             }
 
