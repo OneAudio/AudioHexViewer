@@ -46,16 +46,17 @@
             btnSaveSettings = new Button();
             lblBinPow = new Label();
             lblRangePow = new Label();
-            numBinPow = new NumericUpDown();
-            numRangePow = new NumericUpDown();
             chkAC = new CheckBox();
             lblChannel = new Label();
             comboChannel = new ComboBox();
             btnLive = new Button();
             btnOnce = new Button();
-            numRecordTimeMs = new NumericUpDown();
             lblRecordTime = new Label();
             panelTop = new Panel();
+            lblWindowInfo = new Label();
+            comboSampleWin = new ComboBox();
+            comboBinLsb = new ComboBox();
+            comboRangeLsb = new ComboBox();
             grpLeftStats.SuspendLayout();
             grpRightStats.SuspendLayout();
             panelStats.SuspendLayout();
@@ -64,9 +65,6 @@
             splitContainerMain.Panel1.SuspendLayout();
             splitContainerMain.Panel2.SuspendLayout();
             splitContainerMain.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)numBinPow).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)numRangePow).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)numRecordTimeMs).BeginInit();
             panelTop.SuspendLayout();
             SuspendLayout();
             // 
@@ -113,9 +111,9 @@
             grpLeftStats.Controls.Add(lblLeftRms);
             grpLeftStats.Controls.Add(lblLeftMinMax);
             grpLeftStats.ForeColor = Color.Black;
-            grpLeftStats.Location = new Point(8, 8);
+            grpLeftStats.Location = new Point(3, 12);
             grpLeftStats.Name = "grpLeftStats";
-            grpLeftStats.Size = new Size(149, 179);
+            grpLeftStats.Size = new Size(125, 180);
             grpLeftStats.TabIndex = 0;
             grpLeftStats.TabStop = false;
             // 
@@ -178,9 +176,9 @@
             grpRightStats.Controls.Add(lblRightRms);
             grpRightStats.Controls.Add(lblRightMinMax);
             grpRightStats.ForeColor = Color.Black;
-            grpRightStats.Location = new Point(8, 193);
+            grpRightStats.Location = new Point(3, 198);
             grpRightStats.Name = "grpRightStats";
-            grpRightStats.Size = new Size(152, 176);
+            grpRightStats.Size = new Size(125, 180);
             grpRightStats.TabIndex = 1;
             grpRightStats.TabStop = false;
             // 
@@ -193,7 +191,7 @@
             panelStats.Location = new Point(0, 0);
             panelStats.Name = "panelStats";
             panelStats.Padding = new Padding(8);
-            panelStats.Size = new Size(169, 417);
+            panelStats.Size = new Size(148, 398);
             panelStats.TabIndex = 0;
             // 
             // chartHistogram
@@ -201,14 +199,14 @@
             chartHistogram.Dock = DockStyle.Fill;
             chartHistogram.Location = new Point(0, 0);
             chartHistogram.Name = "chartHistogram";
-            chartHistogram.Size = new Size(739, 417);
+            chartHistogram.Size = new Size(760, 398);
             chartHistogram.TabIndex = 0;
             chartHistogram.Text = "chartHistogram";
             // 
             // splitContainerMain
             // 
             splitContainerMain.Dock = DockStyle.Fill;
-            splitContainerMain.Location = new Point(0, 80);
+            splitContainerMain.Location = new Point(0, 99);
             splitContainerMain.Name = "splitContainerMain";
             // 
             // splitContainerMain.Panel1
@@ -218,24 +216,25 @@
             // splitContainerMain.Panel2
             // 
             splitContainerMain.Panel2.Controls.Add(panelStats);
-            splitContainerMain.Size = new Size(912, 417);
-            splitContainerMain.SplitterDistance = 739;
+            splitContainerMain.Size = new Size(912, 398);
+            splitContainerMain.SplitterDistance = 760;
             splitContainerMain.TabIndex = 3;
             // 
             // btnSaveSettings
             // 
             btnSaveSettings.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnSaveSettings.Location = new Point(1508, 12);
+            btnSaveSettings.Location = new Point(802, 15);
             btnSaveSettings.Name = "btnSaveSettings";
-            btnSaveSettings.Size = new Size(87, 23);
+            btnSaveSettings.Size = new Size(90, 25);
             btnSaveSettings.TabIndex = 9;
             btnSaveSettings.Text = "Save settings";
             btnSaveSettings.UseVisualStyleBackColor = true;
+            btnSaveSettings.Click += btnSaveSettings_Click;
             // 
             // lblBinPow
             // 
             lblBinPow.AutoSize = true;
-            lblBinPow.Location = new Point(295, 48);
+            lblBinPow.Location = new Point(332, 40);
             lblBinPow.Name = "lblBinPow";
             lblBinPow.Size = new Size(81, 15);
             lblBinPow.TabIndex = 6;
@@ -244,34 +243,16 @@
             // lblRangePow
             // 
             lblRangePow.AutoSize = true;
-            lblRangePow.Location = new Point(190, 48);
+            lblRangePow.Location = new Point(202, 40);
             lblRangePow.Name = "lblRangePow";
             lblRangePow.Size = new Size(64, 15);
             lblRangePow.TabIndex = 5;
             lblRangePow.Text = "±LSB Scale";
             // 
-            // numBinPow
-            // 
-            numBinPow.Location = new Point(295, 14);
-            numBinPow.Maximum = new decimal(new int[] { 1024, 0, 0, 0 });
-            numBinPow.Name = "numBinPow";
-            numBinPow.Size = new Size(81, 23);
-            numBinPow.TabIndex = 4;
-            numBinPow.Click += numBinPow_ValueChanged;
-            // 
-            // numRangePow
-            // 
-            numRangePow.Location = new Point(190, 14);
-            numRangePow.Maximum = new decimal(new int[] { 8388608, 0, 0, 0 });
-            numRangePow.Name = "numRangePow";
-            numRangePow.Size = new Size(81, 23);
-            numRangePow.TabIndex = 3;
-            numRangePow.Click += numRangePow_ValueChanged;
-            // 
             // chkAC
             // 
             chkAC.AutoSize = true;
-            chkAC.Location = new Point(60, 47);
+            chkAC.Location = new Point(60, 39);
             chkAC.Name = "chkAC";
             chkAC.Size = new Size(85, 19);
             chkAC.TabIndex = 2;
@@ -301,7 +282,7 @@
             // 
             // btnLive
             // 
-            btnLive.Location = new Point(579, 43);
+            btnLive.Location = new Point(617, 14);
             btnLive.Name = "btnLive";
             btnLive.Size = new Size(60, 25);
             btnLive.TabIndex = 12;
@@ -311,7 +292,7 @@
             // 
             // btnOnce
             // 
-            btnOnce.Location = new Point(666, 43);
+            btnOnce.Location = new Point(617, 49);
             btnOnce.Name = "btnOnce";
             btnOnce.Size = new Size(60, 25);
             btnOnce.TabIndex = 11;
@@ -319,45 +300,72 @@
             btnOnce.UseVisualStyleBackColor = true;
             btnOnce.Click += btnOnce_Click;
             // 
-            // numRecordTimeMs
-            // 
-            numRecordTimeMs.Location = new Point(656, 14);
-            numRecordTimeMs.Maximum = new decimal(new int[] { 10000, 0, 0, 0 });
-            numRecordTimeMs.Minimum = new decimal(new int[] { 10, 0, 0, 0 });
-            numRecordTimeMs.Name = "numRecordTimeMs";
-            numRecordTimeMs.Size = new Size(70, 23);
-            numRecordTimeMs.TabIndex = 10;
-            numRecordTimeMs.Value = new decimal(new int[] { 1000, 0, 0, 0 });
-            numRecordTimeMs.Click += numRecordTimeMs_ValueChanged;
-            // 
             // lblRecordTime
             // 
             lblRecordTime.AutoSize = true;
-            lblRecordTime.Location = new Point(579, 17);
+            lblRecordTime.Location = new Point(461, 40);
             lblRecordTime.Name = "lblRecordTime";
-            lblRecordTime.Size = new Size(78, 15);
+            lblRecordTime.Size = new Size(112, 15);
             lblRecordTime.TabIndex = 9;
-            lblRecordTime.Text = "Window (ms)";
+            lblRecordTime.Text = "Number of Samples";
             // 
             // panelTop
             // 
+            panelTop.Controls.Add(lblWindowInfo);
+            panelTop.Controls.Add(comboSampleWin);
+            panelTop.Controls.Add(comboBinLsb);
+            panelTop.Controls.Add(comboRangeLsb);
             panelTop.Controls.Add(btnSaveSettings);
             panelTop.Controls.Add(lblBinPow);
             panelTop.Controls.Add(lblRangePow);
-            panelTop.Controls.Add(numBinPow);
-            panelTop.Controls.Add(numRangePow);
             panelTop.Controls.Add(chkAC);
             panelTop.Controls.Add(lblChannel);
             panelTop.Controls.Add(comboChannel);
             panelTop.Controls.Add(btnLive);
             panelTop.Controls.Add(btnOnce);
-            panelTop.Controls.Add(numRecordTimeMs);
             panelTop.Controls.Add(lblRecordTime);
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 0);
             panelTop.Name = "panelTop";
-            panelTop.Size = new Size(912, 80);
+            panelTop.Size = new Size(912, 99);
             panelTop.TabIndex = 2;
+            // 
+            // lblWindowInfo
+            // 
+            lblWindowInfo.AutoSize = true;
+            lblWindowInfo.Location = new Point(461, 59);
+            lblWindowInfo.Name = "lblWindowInfo";
+            lblWindowInfo.Size = new Size(38, 15);
+            lblWindowInfo.TabIndex = 17;
+            lblWindowInfo.Text = "label1";
+            // 
+            // comboSampleWin
+            // 
+            comboSampleWin.DropDownStyle = ComboBoxStyle.DropDownList;
+            comboSampleWin.FormattingEnabled = true;
+            comboSampleWin.Location = new Point(461, 14);
+            comboSampleWin.Name = "comboSampleWin";
+            comboSampleWin.Size = new Size(121, 23);
+            comboSampleWin.TabIndex = 16;
+            comboSampleWin.SelectedIndexChanged += comboSampleWin_SelectedIndexChanged;
+            // 
+            // comboBinLsb
+            // 
+            comboBinLsb.DropDownStyle = ComboBoxStyle.DropDownList;
+            comboBinLsb.FormattingEnabled = true;
+            comboBinLsb.Location = new Point(315, 14);
+            comboBinLsb.Name = "comboBinLsb";
+            comboBinLsb.Size = new Size(121, 23);
+            comboBinLsb.TabIndex = 15;
+            // 
+            // comboRangeLsb
+            // 
+            comboRangeLsb.DropDownStyle = ComboBoxStyle.DropDownList;
+            comboRangeLsb.FormattingEnabled = true;
+            comboRangeLsb.Location = new Point(178, 14);
+            comboRangeLsb.Name = "comboRangeLsb";
+            comboRangeLsb.Size = new Size(121, 23);
+            comboRangeLsb.TabIndex = 14;
             // 
             // HistogramControl
             // 
@@ -377,9 +385,6 @@
             splitContainerMain.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)splitContainerMain).EndInit();
             splitContainerMain.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)numBinPow).EndInit();
-            ((System.ComponentModel.ISupportInitialize)numRangePow).EndInit();
-            ((System.ComponentModel.ISupportInitialize)numRecordTimeMs).EndInit();
             panelTop.ResumeLayout(false);
             panelTop.PerformLayout();
             ResumeLayout(false);
@@ -405,15 +410,16 @@
         private Button btnSaveSettings;
         private Label lblBinPow;
         private Label lblRangePow;
-        private NumericUpDown numBinPow;
-        private NumericUpDown numRangePow;
         private CheckBox chkAC;
         private Label lblChannel;
         private ComboBox comboChannel;
         private Button btnLive;
         private Button btnOnce;
-        private NumericUpDown numRecordTimeMs;
         private Label lblRecordTime;
         private Panel panelTop;
+        private ComboBox comboSampleWin;
+        private ComboBox comboBinLsb;
+        private ComboBox comboRangeLsb;
+        private Label lblWindowInfo;
     }
 }

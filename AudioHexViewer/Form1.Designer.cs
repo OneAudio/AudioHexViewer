@@ -419,9 +419,9 @@ namespace AudioHexViewer
             // 
             panelHistogram.CausesValidation = false;
             panelHistogram.Dock = DockStyle.Bottom;
-            panelHistogram.Location = new Point(0, -155);
+            panelHistogram.Location = new Point(0, -162);
             panelHistogram.Name = "panelHistogram";
-            panelHistogram.Size = new Size(883, 450);
+            panelHistogram.Size = new Size(883, 460);
             panelHistogram.TabIndex = 38;
             panelHistogram.Visible = false;
             // 
@@ -429,7 +429,7 @@ namespace AudioHexViewer
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(883, 295);
+            ClientSize = new Size(883, 298);
             Controls.Add(lblDeviceSummary);
             Controls.Add(txtLeft);
             Controls.Add(label4);

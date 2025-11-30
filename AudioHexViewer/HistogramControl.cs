@@ -12,8 +12,43 @@ namespace AudioHexViewer
         private int lastRangeLsb = 1024;
         private int lastBinLsb = 1;
 
-        private bool _updatingRange = false;
-        private bool _updatingBin = false;
+        // Table de valeurs possibles pour la portée ±LSB et LSB/bin
+        private static readonly int[] RangeLsbOptions =
+        {
+            1, 2, 4, 8, 16, 32, 64,
+            128, 256, 512, 1024,
+            2048, 4096, 8192,
+            16384, 32768, 65536,
+            131072, 262144, 524288,
+            1048576, 2097152, 4194304,
+            8388608
+        };
+
+        private static readonly int[] BinLsbOptions =
+        {
+            1, 2, 4, 8, 16, 32, 64,
+            128, 256, 512, 1024,
+            2048, 4096, 8192,
+            16384, 32768, 65536
+        };
+
+        // Fenêtres possibles en nombre d'échantillons (2^14 à 2^20)
+        private static readonly int[] SampleWindowOptions =
+        {
+            2048,    // 2^11    
+            4096,    // 2^12
+            8192,    // 2^13
+            16384,    // 2^14
+            32768,    // 2^15
+            65536,    // 2^16
+            131072,   // 2^17
+            262144,   // 2^18
+            524288,   // 2^19
+            1048576   // 2^20
+        };
+
+        // Valeur de fenêtre la plus récente (samples), accessible depuis Form1 pour le REC
+        public static int LastUsedWindowSamples { get; private set; } = 131072; // 2^17
 
         private class HistogramSettings
         {
@@ -24,132 +59,16 @@ namespace AudioHexViewer
             public int RangeLsb { get; set; } = 1024; // ±1024 LSB
             public int BinLsb { get; set; } = 1;      // 1 LSB/bin
 
-            public int SplitterDistance { get; set; } = 740;
-            public int RecordMs { get; set; } = 1000;
+            // Nombre d'échantillons de la fenêtre (pas un exposant)
+            public int RecordSamples { get; set; } = 131072; // 2^17
 
+            public int SplitterDistance { get; set; } = 740;
         }
 
         private static HistogramSettings? cachedSettings;
 
         private static string SettingsFilePath =>
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "HistogramSettings.json");
-
-
-        private void LoadSettingsIfAny()
-        {
-            if (cachedSettings != null)
-                return;
-
-            try
-            {
-                if (!File.Exists(SettingsFilePath))
-                    return;
-
-                var json = File.ReadAllText(SettingsFilePath);
-                var s = JsonSerializer.Deserialize<HistogramSettings>(json);
-
-                // On sécurise un minimum (au cas où l'ancien format traîne)
-                if (s == null || s.RangeLsb <= 0 || s.BinLsb <= 0)
-                {
-                    cachedSettings = null;
-                    return;
-                }
-
-                cachedSettings = s;
-            }
-            catch
-            {
-                // si problème, on ignore les réglages existants
-                cachedSettings = null;
-            }
-        }
-
-
-        private void ApplySettingsOrDefaults()
-        {
-            LoadSettingsIfAny();
-
-            // Valeurs par défaut "sécurisées"
-            int defaultRange = 1024;
-            int defaultBin = 1;
-
-            if (cachedSettings != null)
-            {
-                var s = cachedSettings;
-
-                // Channel
-                if (comboChannel.Items.Contains(s.Channel))
-                    comboChannel.SelectedItem = s.Channel;
-                else
-                    comboChannel.SelectedItem = "Both";
-
-                // AC
-                chkAC.Checked = s.AC;
-
-                // RangeLsb / BinLsb en respectant les Min/Max des NumericUpDown
-                int rangeLsb = s.RangeLsb;
-                int binLsb = s.BinLsb;
-
-                if (rangeLsb < numRangePow.Minimum) rangeLsb = (int)numRangePow.Minimum;
-                if (rangeLsb > numRangePow.Maximum) rangeLsb = (int)numRangePow.Maximum;
-                if (binLsb < numBinPow.Minimum) binLsb = (int)numBinPow.Minimum;
-                if (binLsb > numBinPow.Maximum) binLsb = (int)numBinPow.Maximum;
-
-                // On force à des puissances de 2
-                rangeLsb = NextPowerOfTwo(PrevPowerOfTwo(rangeLsb)); // "snap" à la puissance la plus proche > ou =
-                binLsb = NextPowerOfTwo(PrevPowerOfTwo(binLsb));
-
-                _updatingRange = true;
-                numRangePow.Value = rangeLsb;
-                _updatingRange = false;
-                lastRangeLsb = rangeLsb;
-
-                _updatingBin = true;
-                numBinPow.Value = binLsb;
-                _updatingBin = false;
-                lastBinLsb = binLsb;
-
-                // Record time (ms)
-                int recMs = s.RecordMs;
-                if (recMs < (int)numRecordTimeMs.Minimum) recMs = (int)numRecordTimeMs.Minimum;
-                if (recMs > (int)numRecordTimeMs.Maximum) recMs = (int)numRecordTimeMs.Maximum;
-                numRecordTimeMs.Value = recMs;
-
-                // Splitter
-                try
-                {
-                    if (s.SplitterDistance > 0 && s.SplitterDistance < splitContainerMain.Width - 50)
-                        splitContainerMain.SplitterDistance = s.SplitterDistance;
-                }
-                catch { }
-            }
-            else
-            {
-                // Aucun réglage sauvegardé → defaults
-                comboChannel.SelectedItem = "Both";
-                chkAC.Checked = true;
-
-                int rangeLsb = defaultRange;
-                int binLsb = defaultBin;
-
-                _updatingRange = true;
-                numRangePow.Value = rangeLsb;
-                _updatingRange = false;
-                lastRangeLsb = rangeLsb;
-
-                _updatingBin = true;
-                numBinPow.Value = binLsb;
-                _updatingBin = false;
-                lastBinLsb = binLsb;
-
-
-            }
-
-
-            ResetStatsLabels();
-        }
-
-
 
         public delegate (int[] Left, int[] Right) SampleProvider(int durationMs);
 
@@ -164,48 +83,195 @@ namespace AudioHexViewer
 
         private const int MaxBins = 256;
 
-        // 1) Constructeur utilisé par le Designer (obligatoire)
-        // 1) Constructeur utilisé par le Designer (obligatoire)
+        // 1) Constructeur utilisé par le Designer
         public HistogramControl()
         {
             InitializeComponent();
             InitChart();
             InitDefaults();
             SetupLiveTimer();
-            // On ne fait PAS InitChart / InitDefaults ici, car on n'a pas encore de provider
+            //lblWindowInfo.Text = "TEST LABEL"; // test
         }
-        //
+
         // 2) Constructeur utilisé par Form1 à l'exécution
         public HistogramControl(SampleProvider provider, int sampleRate)
-             : this()  // appelle le constructeur ci-dessus
+            : this()
         {
             _provider = provider;
             _sampleRate = sampleRate;
 
-            // Si on a déjà un peu d'historique, on calcule un premier histogramme
+            // Maintenant qu'on connaît le vrai SR, on met à jour le label
+            UpdateWindowInfo();
+
+            // Premier calcul d'histo si on a déjà un peu de données
             AcquireOnce();
 
             grpLeftStats.Paint += (s, e) => DrawColoredBorder(grpLeftStats, e, Color.DodgerBlue);
             grpRightStats.Paint += (s, e) => DrawColoredBorder(grpRightStats, e, Color.OrangeRed);
         }
-
         //
+       
+        private void LoadSettingsIfAny()
+        {
+            if (cachedSettings != null)
+                return;
+
+            try
+            {
+                if (!File.Exists(SettingsFilePath))
+                    return;
+
+                var json = File.ReadAllText(SettingsFilePath);
+                var s = JsonSerializer.Deserialize<HistogramSettings>(json);
+
+                if (s == null || s.RangeLsb <= 0 || s.BinLsb <= 0 || s.RecordSamples <= 0)
+                {
+                    cachedSettings = null;
+                    return;
+                }
+
+                cachedSettings = s;
+            }
+            catch
+            {
+                cachedSettings = null;
+            }
+        }
+
+        private int FindClosestIndex(int[] options, int target)
+        {
+            int bestIndex = 0;
+            int bestDiff = int.MaxValue;
+
+            for (int i = 0; i < options.Length; i++)
+            {
+                int diff = Math.Abs(options[i] - target);
+                if (diff < bestDiff)
+                {
+                    bestDiff = diff;
+                    bestIndex = i;
+                }
+            }
+            return bestIndex;
+        }
+
+        private int GetRangeLsb()
+        {
+            if (comboRangeLsb.SelectedIndex < 0)
+                return RangeLsbOptions[0];
+
+            return RangeLsbOptions[comboRangeLsb.SelectedIndex];
+        }
+
+        private int GetBinLsb()
+        {
+            if (comboBinLsb.SelectedIndex < 0)
+                return BinLsbOptions[0];
+
+            return BinLsbOptions[comboBinLsb.SelectedIndex];
+        }
+
+        private int GetWindowSamples()
+        {
+            if (comboSampleWin.SelectedIndex < 0)
+                return SampleWindowOptions[0];
+
+            int samples = SampleWindowOptions[comboSampleWin.SelectedIndex];
+            LastUsedWindowSamples = samples;
+            return samples;
+        }
+
+        private void ApplySettingsOrDefaults()
+        {
+            LoadSettingsIfAny();
+
+            // Valeurs par défaut
+            comboChannel.SelectedItem = "Both";
+            chkAC.Checked = true;
+
+            int defaultRange = 1024;
+            int defaultBin = 1;
+            int defaultWin = 131072; // 2^17
+
+            // Defaults initiaux
+            int idxRangeDefault = FindClosestIndex(RangeLsbOptions, defaultRange);
+            int idxBinDefault = FindClosestIndex(BinLsbOptions, defaultBin);
+            int idxWinDefault = FindClosestIndex(SampleWindowOptions, defaultWin);
+
+            comboRangeLsb.SelectedIndex = idxRangeDefault;
+            comboBinLsb.SelectedIndex = idxBinDefault;
+            comboSampleWin.SelectedIndex = idxWinDefault;
+
+            lastRangeLsb = RangeLsbOptions[idxRangeDefault];
+            lastBinLsb = BinLsbOptions[idxBinDefault];
+            LastUsedWindowSamples = SampleWindowOptions[idxWinDefault];
+
+            if (cachedSettings != null)
+            {
+                var s = cachedSettings;
+
+                // Channel
+                if (comboChannel.Items.Contains(s.Channel))
+                    comboChannel.SelectedItem = s.Channel;
+                else
+                    comboChannel.SelectedItem = "Both";
+
+                // AC
+                chkAC.Checked = s.AC;
+
+                // Range / Bin via ComboBox
+                int rangeLsb = s.RangeLsb < 1 ? 1 : s.RangeLsb;
+                int binLsb = s.BinLsb < 1 ? 1 : s.BinLsb;
+
+                int idxRange = FindClosestIndex(RangeLsbOptions, rangeLsb);
+                int idxBin = FindClosestIndex(BinLsbOptions, binLsb);
+
+                comboRangeLsb.SelectedIndex = idxRange;
+                comboBinLsb.SelectedIndex = idxBin;
+
+                lastRangeLsb = RangeLsbOptions[idxRange];
+                lastBinLsb = BinLsbOptions[idxBin];
+
+                // Fenêtre (samples)
+                int winSamples = s.RecordSamples;
+                if (winSamples <= 0)
+                    winSamples = defaultWin;
+
+                int idxWin = FindClosestIndex(SampleWindowOptions, winSamples);
+                comboSampleWin.SelectedIndex = idxWin;
+                LastUsedWindowSamples = SampleWindowOptions[idxWin];
+            }
+
+            UpdateWindowInfo();
+            ResetStatsLabels();
+        }
+
         private void SetupLiveTimer()
         {
             liveTimer = new System.Windows.Forms.Timer();
             liveTimer.Tick += LiveTimer_Tick;
-            liveTimer.Interval = (int)numRecordTimeMs.Value; // par défaut, même durée que la fenêtre
+
+            if (_sampleRate > 0)
+            {
+                int samples = GetWindowSamples();
+                int intervalMs = (int)Math.Max(10, Math.Round((double)samples * 1000.0 / _sampleRate));
+                liveTimer.Interval = intervalMs;
+            }
+            else
+            {
+                liveTimer.Interval = 1000;
+            }
         }
 
         private void AcquireOnce()
         {
-            if (_provider == null)
+            if (_provider == null || _sampleRate <= 0)
                 return;
 
-            int durationMs = (int)numRecordTimeMs.Value;
-            if (durationMs < 10) durationMs = 10;
+            int samples = GetWindowSamples();
+            double msExact = (double)samples * 1000.0 / _sampleRate;
+            int durationMs = (int)Math.Max(10, Math.Round(msExact));
 
-            // 👉 ICI on appelle Form1 via le délégué
             var (left, right) = _provider(durationMs);
 
             leftSamples = left ?? Array.Empty<int>();
@@ -214,12 +280,8 @@ namespace AudioHexViewer
             RebuildHistogram();
         }
 
-        //
-
-        //
         private void LiveTimer_Tick(object? sender, EventArgs e)
         {
-            // Si la fenêtre est en train de se fermer / détruite, on coupe le LIVE
             if (this.IsDisposed || !this.IsHandleCreated)
             {
                 if (liveTimer != null)
@@ -233,7 +295,6 @@ namespace AudioHexViewer
             }
             catch (Exception ex)
             {
-                // Sécurité : on coupe le LIVE si quelque chose tourne mal
                 if (liveTimer != null)
                     liveTimer.Stop();
 
@@ -246,14 +307,12 @@ namespace AudioHexViewer
                                 MessageBoxIcon.Error);
             }
         }
-        //
-        //
-        //
+
         private void btnOnce_Click(object sender, EventArgs e)
         {
             AcquireOnce();
         }
-        //
+
         private void btnLive_Click(object sender, EventArgs e)
         {
             if (!isLive)
@@ -261,9 +320,12 @@ namespace AudioHexViewer
                 isLive = true;
                 btnLive.Text = "STOP LIVE";
 
-                int durationMs = (int)numRecordTimeMs.Value;
-                if (durationMs < 10) durationMs = 10;
-                liveTimer.Interval = durationMs;
+                if (_sampleRate > 0)
+                {
+                    int samples = GetWindowSamples();
+                    int intervalMs = (int)Math.Max(10, Math.Round((double)samples * 1000.0 / _sampleRate));
+                    liveTimer.Interval = intervalMs;
+                }
 
                 liveTimer.Start();
             }
@@ -274,23 +336,30 @@ namespace AudioHexViewer
                 liveTimer.Stop();
             }
         }
-        //
-        private void numRecordTimeMs_ValueChanged(object sender, EventArgs e)
+
+        private void UpdateWindowInfo()
         {
-            if (liveTimer != null && liveTimer.Enabled)
+            int samples = GetWindowSamples();
+
+            // Si on ne connaît pas encore le SampleRate, on affiche au moins les samples
+            if (_sampleRate <= 0)
             {
-                int durationMs = (int)numRecordTimeMs.Value;
-                if (durationMs < 10) durationMs = 10;
-                liveTimer.Interval = durationMs;
+                lblWindowInfo.Text = $"{samples:N0} samples";
+                return;
             }
+
+            double seconds = (double)samples / _sampleRate;
+            double ms = seconds ;
+
+            lblWindowInfo.Text = $"≈ {ms:F2} s";
         }
-        //
+
+
         private void DrawColoredBorder(GroupBox gb, PaintEventArgs e, Color color)
         {
-            // Rectangle légèrement à l’intérieur pour éviter d'écraser la bordure système
             Rectangle r = gb.ClientRectangle;
             r.X += 2;
-            r.Y += 8;   // pour laisser le texte du GroupBox
+            r.Y += 8;
             r.Width -= 4;
             r.Height -= 10;
 
@@ -300,7 +369,6 @@ namespace AudioHexViewer
             }
         }
 
-        //
         private void InitChart()
         {
             var area = new ChartArea("HistogramArea");
@@ -316,20 +384,37 @@ namespace AudioHexViewer
 
         private void InitDefaults()
         {
+            // Remplissage ComboBox Range
+            comboRangeLsb.Items.Clear();
+            foreach (var v in RangeLsbOptions)
+                comboRangeLsb.Items.Add(v.ToString());
 
-            ApplySettingsOrDefaults(); // a voir ?
+            // Remplissage ComboBox Bin
+            comboBinLsb.Items.Clear();
+            foreach (var v in BinLsbOptions)
+                comboBinLsb.Items.Add(v.ToString());
+
+            // Remplissage ComboBox fenêtre (samples)
+            comboSampleWin.Items.Clear();
+            foreach (var v in SampleWindowOptions)
+                comboSampleWin.Items.Add(v.ToString("N0"));
+
+            ApplySettingsOrDefaults();
         }
 
-        //
         private void SaveSettingsToFile()
         {
+            var rangeLsb = GetRangeLsb();
+            var binLsb = GetBinLsb();
+            var winSamples = GetWindowSamples();
+
             var s = new HistogramSettings
             {
                 AC = chkAC.Checked,
                 Channel = comboChannel.SelectedItem as string ?? "Both",
-                RangeLsb = (int)numRangePow.Value,
-                BinLsb = (int)numBinPow.Value,
-                RecordMs = (int)numRecordTimeMs.Value,
+                RangeLsb = rangeLsb,
+                BinLsb = binLsb,
+                RecordSamples = winSamples,
                 SplitterDistance = splitContainerMain.SplitterDistance
             };
 
@@ -362,108 +447,49 @@ namespace AudioHexViewer
             }
         }
 
-
-        //
-
-        private int NextPowerOfTwo(int v)
-        {
-            const int max = 1 << 23;
-            if (v < 1) return 1;
-            if (v >= max) return max;
-
-            int p = 1;
-            while (p <= v && p < max)
-                p <<= 1;
-            return p;
-        }
-
-        private int PrevPowerOfTwo(int v)
-        {
-            if (v <= 1) return 1;
-
-            int p = 1;
-            const int max = 1 << 23;
-            while ((p << 1) < v && (p << 1) <= max)
-                p <<= 1;
-            return p;
-        }
-
-
         private void ResetStatsLabels()
         {
             lblLeftSamples.Text = "Samples:";
-            lblLeftDC.Text = "DC offset:";
+            lblLeftDC.Text = "DC:";
             lblLeftRms.Text = "RMS:";
             lblLeftMinMax.Text = "Min/Max:";
 
             lblRightSamples.Text = "Samples:";
-            lblRightDC.Text = "DC offset:";
+            lblRightDC.Text = "DC:";
             lblRightRms.Text = "RMS:";
             lblRightMinMax.Text = "Min/Max:";
         }
 
         private void comboChannel_SelectedIndexChanged(object sender, EventArgs e) => RebuildHistogram();
         private void chkAC_CheckedChanged(object sender, EventArgs e) => RebuildHistogram();
-        private void numRangePow_ValueChanged(object sender, EventArgs e)
+
+        private void comboRangeLsb_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (_updatingRange) return;
-
-            int requested = (int)numRangePow.Value;
-            int snapped;
-
-            if (requested > lastRangeLsb)
-            {
-                snapped = NextPowerOfTwo(lastRangeLsb);
-            }
-            else if (requested < lastRangeLsb)
-            {
-                snapped = PrevPowerOfTwo(lastRangeLsb);
-            }
-            else
-            {
-                snapped = lastRangeLsb;
-            }
-
-            if (snapped != requested)
-            {
-                _updatingRange = true;
-                numRangePow.Value = snapped;
-                _updatingRange = false;
-            }
-
-            lastRangeLsb = snapped;
+            lastRangeLsb = GetRangeLsb();
             RebuildHistogram();
         }
 
-        private void numBinPow_ValueChanged(object sender, EventArgs e)
+        private void comboBinLsb_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (_updatingBin) return;
-
-            int requested = (int)numBinPow.Value;
-            int snapped;
-
-            if (requested > lastBinLsb)
-            {
-                snapped = NextPowerOfTwo(lastBinLsb);
-            }
-            else if (requested < lastBinLsb)
-            {
-                snapped = PrevPowerOfTwo(lastBinLsb);
-            }
-            else
-            {
-                snapped = lastBinLsb;
-            }
-
-            if (snapped != requested)
-            {
-                _updatingBin = true;
-                numBinPow.Value = snapped;
-                _updatingBin = false;
-            }
-
-            lastBinLsb = snapped;
+            lastBinLsb = GetBinLsb();
             RebuildHistogram();
+        }
+
+        private void comboSampleWin_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            UpdateWindowInfo();
+
+            if (liveTimer != null && liveTimer.Enabled && _sampleRate > 0)
+            {
+                int samples = GetWindowSamples();
+                int intervalMs = (int)Math.Max(10, Math.Round((double)samples * 1000.0 / _sampleRate));
+                liveTimer.Interval = intervalMs;
+            }
+
+            if (!isLive)
+            {
+                AcquireOnce();
+            }
         }
 
         private void RebuildHistogram()
@@ -481,7 +507,7 @@ namespace AudioHexViewer
             string mode = comboChannel.SelectedItem as string ?? "Both";
             bool ac = chkAC.Checked;
 
-            int lsbRange = (int)numRangePow.Value;
+            int lsbRange = GetRangeLsb();
             if (lsbRange < 1) lsbRange = 1;
             int range = 2 * lsbRange + 1;
             if (range <= 0)
@@ -491,10 +517,9 @@ namespace AudioHexViewer
                 return;
             }
 
-            int binWidth = (int)numBinPow.Value;
+            int binWidth = GetBinLsb();
             if (binWidth < 1) binWidth = 1;
 
-            // DC offsets bruts
             int dcOffsetL = 0;
             int dcOffsetR = 0;
 
@@ -515,7 +540,6 @@ namespace AudioHexViewer
             int offsetL = ac ? dcOffsetL : 0;
             int offsetR = ac ? dcOffsetR : 0;
 
-            // Limiter le nombre de colonnes si ±LSB > 1024
             if (lsbRange > 1024)
             {
                 while (true)
@@ -523,17 +547,17 @@ namespace AudioHexViewer
                     int binCountTest = (int)Math.Ceiling(range / (double)binWidth);
                     if (binCountTest <= MaxBins) break;
 
-                    if (binWidth >= (1 << 23)) break; // sécurité
-
-                    // double la largeur de bin
                     binWidth <<= 1;
+
+                    if (binWidth >= BinLsbOptions[BinLsbOptions.Length - 1])
+                        break;
                 }
 
-                _updatingBin = true;
-                numBinPow.Value = binWidth;
-                _updatingBin = false;
+                int newIndex = FindClosestIndex(BinLsbOptions, binWidth);
+                binWidth = BinLsbOptions[newIndex];
+                comboBinLsb.SelectedIndex = newIndex;
+                lastBinLsb = binWidth;
             }
-
 
             int binCount = (int)Math.Ceiling(range / (double)binWidth);
             if (binCount <= 0)
@@ -543,8 +567,8 @@ namespace AudioHexViewer
                 return;
             }
 
-            int[] binsLeft = null;
-            int[] binsRight = null;
+            int[]? binsLeft = null;
+            int[]? binsRight = null;
 
             if (mode == "Left" || mode == "Both")
                 binsLeft = new int[binCount];
@@ -661,14 +685,14 @@ namespace AudioHexViewer
             {
                 double rmsL = Math.Sqrt(leftSumSqWin / (double)leftCountWin);
                 lblLeftSamples.Text = $"Samples: {leftCountWin}";
-                lblLeftDC.Text = $"DC Offset: {dcOffsetL} LSB";
+                lblLeftDC.Text = $"DC: {dcOffsetL} LSB";
                 lblLeftRms.Text = $"RMS: {rmsL:F2} LSB";
                 lblLeftMinMax.Text = $"Min/Max: {leftMin} / {leftMax}";
             }
             else
             {
                 lblLeftSamples.Text = "Samples: 0";
-                lblLeftDC.Text = $"DC Offset: {dcOffsetL} LSB";
+                lblLeftDC.Text = $"DC: {dcOffsetL} LSB";
                 lblLeftRms.Text = "RMS: -";
                 lblLeftMinMax.Text = "Min/Max: -";
             }
@@ -677,14 +701,14 @@ namespace AudioHexViewer
             {
                 double rmsR = Math.Sqrt(rightSumSqWin / (double)rightCountWin);
                 lblRightSamples.Text = $"Samples: {rightCountWin}";
-                lblRightDC.Text = $"DC Offset: {dcOffsetR} LSB";
+                lblRightDC.Text = $"DC: {dcOffsetR} LSB";
                 lblRightRms.Text = $"RMS: {rmsR:F2} LSB";
                 lblRightMinMax.Text = $"Min/Max: {rightMin} / {rightMax}";
             }
             else
             {
                 lblRightSamples.Text = "Samples: 0";
-                lblRightDC.Text = $"DC Offset: {dcOffsetR} LSB";
+                lblRightDC.Text = $"DC: {dcOffsetR} LSB";
                 lblRightRms.Text = "RMS: -";
                 lblRightMinMax.Text = "Min/Max: -";
             }
@@ -695,9 +719,6 @@ namespace AudioHexViewer
             SaveSettingsToFile();
         }
 
-        private void grpRightStats_Enter(object sender, EventArgs e)
-        {
 
-        }
     }
 }

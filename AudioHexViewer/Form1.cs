@@ -218,11 +218,10 @@ namespace AudioHexViewer
             // Modes possibles pour la valeur mise en avant
             comboDisplayMode.Items.AddRange(new object[]
             {
-                "Float",
-                "Scaled (×2^23)",
                 "Decimal (24b)",
                 "Hex (24 bits)",
                 "Binary (24b)",
+                "Float",
                 "Voltage (V)"
             });
             comboDisplayMode.SelectedIndex = 0;
@@ -1037,9 +1036,17 @@ namespace AudioHexViewer
             recordSamplesCollected = 0;
             recordBuffer.Clear();
 
-            recordSamplesNeeded = currentFormat.SampleRate;  // exactement 1 seconde
+            // Nombre d'échantillons correspondant à la fenêtre Histogram
+            int windowSamples = HistogramControl.LastUsedWindowSamples;
 
-            //MessageBox.Show($"Enregistrement 1 seconde démarré ({recordSamplesNeeded} échantillons).");
+            // Si l'histogramme n'a encore jamais été ouvert, on garde un fallback : 1 seconde
+            if (windowSamples <= 0 && currentFormat != null)
+                windowSamples = currentFormat.SampleRate;
+
+            recordSamplesNeeded = windowSamples;
+
+            //MessageBox.Show($"Enregistrement démarré : {recordSamplesNeeded} échantillons.");
+
         }
 
         private void SaveRecordingToCsv()
@@ -1110,11 +1117,9 @@ namespace AudioHexViewer
             const int Max24Pos = Max24 - 1; // +0x7FFFFF
             const int Min24Neg = -Max24;    // -0x800000
 
-            float scaledL = leftF * Max24;
-            float scaledR = rightF * Max24;
-
-            int left24 = (int)Math.Truncate(scaledL);
-            int right24 = (int)Math.Truncate(scaledR);
+           
+            int left24 = (int)Math.Truncate(leftF * Max24);
+            int right24 = (int)Math.Truncate(rightF * Max24);
 
             // Mémoriser le dernier code 24 bits
             lastCodeLeft = left24;
@@ -1322,7 +1327,6 @@ namespace AudioHexViewer
 
             var leftText = new StringBuilder();
             leftText.AppendLine(FormatRow("Float", leftF.ToString("G9")));
-            leftText.AppendLine(FormatRow("Scaled x2^23", scaledL.ToString("G9")));
             leftText.AppendLine(FormatRow("Decimal (24b)", left24.ToString()));
             leftText.AppendLine(FormatRow("Hex (24 bits)", leftHex24));
             leftText.AppendLine(FormatRow("Binary (24b)", leftBits));
@@ -1333,7 +1337,6 @@ namespace AudioHexViewer
 
             var rightText = new StringBuilder();
             rightText.AppendLine(FormatRow("Float", rightF.ToString("G9")));
-            rightText.AppendLine(FormatRow("Scaled x2^23", scaledR.ToString("G9")));
             rightText.AppendLine(FormatRow("Decimal (24b)", right24.ToString()));
             rightText.AppendLine(FormatRow("Hex (24 bits)", rightHex24));
             rightText.AppendLine(FormatRow("Binary (24b)", rightBits));
@@ -1507,7 +1510,7 @@ namespace AudioHexViewer
         private void UpdateMainDisplayFromLastValues()
         {
             if (comboDisplayMode.SelectedItem is not string mode)
-                mode = "Float";
+                mode = "Decimal (24b)" ;// mode par défaut
 
             // Préparer les valeurs formatées
             string leftText = "";
@@ -1518,11 +1521,6 @@ namespace AudioHexViewer
                 case "Float":
                     leftText = lastLeftFloat.ToString("F8", CultureInfo.InvariantCulture);
                     rightText = lastRightFloat.ToString("F8", CultureInfo.InvariantCulture);
-                    break;
-
-                case "Scaled (×2^23)":
-                    leftText = lastLeftScaled.ToString(CultureInfo.InvariantCulture);
-                    rightText = lastRightScaled.ToString(CultureInfo.InvariantCulture);
                     break;
 
                 case "Decimal (24b)":
