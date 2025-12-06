@@ -1552,7 +1552,7 @@ namespace AudioHexViewer
             panelHistogram.Visible = true;
         }
 
-        
+
 
         //
         private void Capture_RecordingStopped(object? sender, StoppedEventArgs e)
@@ -1950,6 +1950,10 @@ namespace AudioHexViewer
             this.TopMost = alwaysOnTopToolStripMenuItem.Checked;
         }
 
+        private void txtRight_TextChanged(object sender, EventArgs e)
+        {
+
+        }
     }
 
 }
