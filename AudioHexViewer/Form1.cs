@@ -4,6 +4,8 @@ using System.Globalization;
 using System.Text;
 using System.IO;
 using System.Diagnostics;
+using System.Text.Json;
+
 
 // ...
 
@@ -106,9 +108,21 @@ namespace AudioHexViewer
 
         private HistogramControl? histogramControl;
 
+        // Limitation de fréquence pour la mise à jour des textes (pour éviter le scintillement)
+        private DateTime lastTextDump = DateTime.MinValue;
+        private readonly TimeSpan textDumpInterval = TimeSpan.FromMilliseconds(0); // ~5 fps
+
+
+        private Form? dataFormatsWindow;
+
         private bool histogramVisible = false;
 
-
+        private class UiHistogramSettings
+        {
+            public string? DeviceId { get; set; }
+            public bool CaptureOutput { get; set; }
+            public string? MainDataFormat { get; set; }
+        }
 
 
         private enum CalStage
@@ -266,6 +280,68 @@ namespace AudioHexViewer
 
         }
 
+        private void LoadUiSettingsFromHistogramFile()
+        {
+            try
+            {
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                string path = Path.Combine(baseDir, "HistogramSettings.json");
+
+                if (!File.Exists(path))
+                    return;
+
+                string json = File.ReadAllText(path);
+                var settings = JsonSerializer.Deserialize<UiHistogramSettings>(json);
+
+                if (settings == null)
+                    return;
+
+                // 1) IN / OUT
+                // On met à jour le bool avant de cocher les boutons
+                captureOutput = settings.CaptureOutput;
+
+                if (settings.CaptureOutput)
+                {
+                    rbOutput.Checked = true;   // l’event CheckedChanged appellera LoadDevices()
+                }
+                else
+                {
+                    rbInput.Checked = true;
+                }
+
+                // À ce stade, LoadDevices() a rechargé comboDevices avec IN ou OUT
+
+                // 2) Sélection du device par ID
+                if (!string.IsNullOrEmpty(settings.DeviceId))
+                {
+                    for (int i = 0; i < comboDevices.Items.Count; i++)
+                    {
+                        if (comboDevices.Items[i] is MMDevice dev && dev.ID == settings.DeviceId)
+                        {
+                            comboDevices.SelectedIndex = i;
+                            break;
+                        }
+                    }
+                }
+
+                // 3) Mode d’affichage principal (MainDataFormat)
+                if (!string.IsNullOrEmpty(settings.MainDataFormat))
+                {
+                    int idx = comboDisplayMode.Items.IndexOf(settings.MainDataFormat);
+                    if (idx >= 0)
+                        comboDisplayMode.SelectedIndex = idx;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Erreur lors du chargement des réglages d'interface : " + ex.Message,
+                                "Histogram settings",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error);
+            }
+        }
+
+
 
         private string GroupBits(string bits, int groupSize = 4)
         {
@@ -296,13 +372,13 @@ namespace AudioHexViewer
         //
         private void UpdateDeviceSummary()
         {
-            if (lblDeviceSummary == null)
-                return;
+            //if (lblDeviceSummary == null)
+            //    return;
 
             // Si aucun device sélectionné
             if (comboDevices.SelectedItem is not MMDevice dev)
             {
-                lblDeviceSummary.Text = "No device selected";
+                //lblDeviceSummary.Text = "No device selected";
                 return;
             }
 
@@ -332,7 +408,10 @@ namespace AudioHexViewer
             if (fmt != null)
             {
                 double srKHz = fmt.SampleRate / 1000.0;
-                line3 = $"{srKHz:0.###} kHz · {fmt.BitsPerSample} bits";
+                line3 = $"Format: {srKHz:0.###} kHz {fmt.BitsPerSample} bits";
+
+                if (lblFormatInfo != null)
+                    lblFormatInfo.Text = $"Format: {srKHz:0.###} kHz {fmt.BitsPerSample} bits";
 
                 string enc;
                 if (fmt.Encoding == WaveFormatEncoding.IeeeFloat)
@@ -349,12 +428,12 @@ namespace AudioHexViewer
                 line3 = "(unknown format)";
             }
 
-            lblDeviceSummary.Text = string.Join(Environment.NewLine,
-                line1,
-                line2,
-                line3,
-                line4
-            );
+            //lblDeviceSummary.Text = string.Join(Environment.NewLine,
+            //    line1,
+            //    line2,
+            //    line3,
+            //    line4
+            //);
         }
 
         //
@@ -383,6 +462,82 @@ namespace AudioHexViewer
 
                 dlg.ShowDialog(this);
             }
+        }
+        //
+        //
+        private void menuShowAllFormats_Click(object? sender, EventArgs e)
+        {
+            // Si la fenêtre existe déjà, on la réaffiche simplement
+            if (dataFormatsWindow != null && !dataFormatsWindow.IsDisposed)
+            {
+                dataFormatsWindow.Show();
+                dataFormatsWindow.BringToFront();
+                return;
+            }
+
+            var dlg = new Form();
+            dataFormatsWindow = dlg;
+
+            dlg.Text = "All data formats";
+            dlg.StartPosition = FormStartPosition.CenterParent;
+
+            // Taille par défaut : un peu large pour faire deux colonnes
+            dlg.Size = new Size(700, 140); // Taille de la fenêtre pour 2 colonnes en popu^p
+            dlg.MinimizeBox = false;
+            dlg.MaximizeBox = true;
+            dlg.ShowIcon = false;
+
+            var split = new SplitContainer
+            {
+                Dock = DockStyle.Fill,
+                Orientation = Orientation.Vertical
+            };
+
+            // Au cas où ils auraient encore un parent (sécurité)
+            if (txtLeft.Parent != null)
+                txtLeft.Parent.Controls.Remove(txtLeft);
+            if (txtRight.Parent != null)
+                txtRight.Parent.Controls.Remove(txtRight);
+
+            txtLeft.Dock = DockStyle.Fill;
+            txtRight.Dock = DockStyle.Fill;
+            txtLeft.Visible = true;
+            txtRight.Visible = true;
+
+
+            split.Panel1.Controls.Add(txtLeft);
+            split.Panel2.Controls.Add(txtRight);
+
+            dlg.Controls.Add(split);
+
+            // Séparation au milieu à l'ouverture
+            dlg.Load += (_, __) =>
+            {
+                split.SplitterDistance = dlg.ClientSize.Width / 2;
+            };
+
+            // On garde ~50/50 si on redimensionne
+            dlg.Resize += (_, __) =>
+            {
+                split.SplitterDistance = dlg.ClientSize.Width / 2;
+            };
+
+            // Très important : ne pas détruire les contrôles à la fermeture
+            dlg.FormClosing += (s, eArgs) =>
+            {
+                if (eArgs.CloseReason == CloseReason.UserClosing)
+                {
+                    // L'utilisateur clique sur la croix de la petite fenêtre :
+                    // on cache juste, mais on ne détruit pas txtLeft / txtRight.
+                    eArgs.Cancel = true;
+                    dlg.Hide();
+                }
+                // Pour les autres cas (fermeture de l'appli, shutdown, etc.),
+                // on laisse faire (pas de Cancel).
+            };
+
+
+            dlg.Show(this);
         }
 
         //
@@ -1115,6 +1270,7 @@ namespace AudioHexViewer
 
             if (bytesRecorded < blockAlign)
                 return;
+
             // ---------- Calcul du dernier frame pour affichage détaillé ----------
             int lastFrameIndex = bytesRecorded - blockAlign;
 
@@ -1124,7 +1280,6 @@ namespace AudioHexViewer
             const int Max24 = 1 << 23;      // 8388608
             const int Max24Pos = Max24 - 1; // +0x7FFFFF
             const int Min24Neg = -Max24;    // -0x800000
-
 
             int left24 = (int)Math.Truncate(leftF * Max24);
             int right24 = (int)Math.Truncate(rightF * Max24);
@@ -1150,10 +1305,6 @@ namespace AudioHexViewer
                 displayVoltsLeft = instVoltsLeft;
                 displayVoltsRight = instVoltsRight;
             }
-
-
-
-
 
             if (left24 > Max24Pos) left24 = Max24Pos;
             if (left24 < Min24Neg) left24 = Min24Neg;
@@ -1189,9 +1340,9 @@ namespace AudioHexViewer
                 isCurrentlySatRight = false;
             }
 
-
             uint left24u = unchecked((uint)(left24 & 0xFFFFFF));
             uint right24u = unchecked((uint)(right24 & 0xFFFFFF));
+
             // ---------- RECORD 1 SECONDE ----------
             if (isRecordingOneSecond)
             {
@@ -1223,12 +1374,11 @@ namespace AudioHexViewer
                     {
                         isRecordingOneSecond = false;
                         SaveRecordingToCsv();
-                        //MessageBox.Show("Enregistrement terminé (1 seconde).");
                         break;
                     }
                 }
             }
-            //
+
             // ---------- HISTOGRAMME : tampon roulant continu ----------
             {
                 int bytesPerFrame = currentFormat.Channels * 4;
@@ -1266,25 +1416,19 @@ namespace AudioHexViewer
                             histBuffer.RemoveRange(0, histBuffer.Count - maxSamples);
                     }
 
-                    // --- NOUVEAU : gestion du mode "Once" pour l'histogramme ---
+                    // --- Mode "Once" pour l'histogramme ---
                     if (histOnceActive)
                     {
                         histOnceAccumSamples += frameCount;
 
                         if (histOnceAccumSamples >= histOnceTargetSamples)
                         {
-                            // On a atteint (ou dépassé) la fenêtre souhaitée
                             histOnceActive = false;
 
-                            // On bascule sur le thread UI pour :
-                            // 1) Calculer l'histogramme (une seule fois)
-                            // 2) Arrêter la capture
                             BeginInvoke((Action)(() =>
                             {
-                                // Sécurité : histogramControl et capture peuvent avoir changé entre-temps
                                 if (histogramControl != null)
                                 {
-                                    // Utilise le mode "once" de l'histogramme : une seule AcquireOnce()
                                     histogramControl.StartFromRun(true);
                                 }
 
@@ -1306,18 +1450,15 @@ namespace AudioHexViewer
                                     currentFormat = null;
                                 }
 
-                                // Bouton repasse en READ vert
                                 UpdateStartButtonAppearance();
                                 UpdateDeviceInfo();
                                 UpdateDeviceSummary();
                             }));
                         }
                     }
-                    // --- FIN NOUVEAU ---
                 }
             }
 
-            //
             // ---------- Calcul du niveau crête sur ce buffer (pour les VU) ----------
             int bytesPerFrameAll = currentFormat.Channels * 4;
             int totalFrames = bytesRecorded / bytesPerFrameAll;
@@ -1349,6 +1490,7 @@ namespace AudioHexViewer
                 if (absL > peakLeftAbs) peakLeftAbs = absL;
                 if (absR > peakRightAbs) peakRightAbs = absR;
             }
+
             // Conversion en dBFS
             double dbLeft, dbRight;
             const double fullScale = Max24Pos; // 0x7FFFFF
@@ -1375,6 +1517,7 @@ namespace AudioHexViewer
             if (levelLeft > 100) levelLeft = 100;
             if (levelRight < 0) levelRight = 0;
             if (levelRight > 100) levelRight = 100;
+
             // ---------- Texte existant ----------
             string leftHex24 = "0x" + left24u.ToString("X6");
             string rightHex24 = "0x" + right24u.ToString("X6");
@@ -1383,6 +1526,7 @@ namespace AudioHexViewer
             string rightBits = FormatBitsWithStability(right24u, lastBitsRight, lastChangeRight);
 
             var leftText = new StringBuilder();
+            leftText.AppendLine(FormatRow("---LEFT---", ""));
             leftText.AppendLine(FormatRow("Float", leftF.ToString("G9")));
             leftText.AppendLine(FormatRow("Decimal (24b)", left24.ToString()));
             leftText.AppendLine(FormatRow("Hex (24 bits)", leftHex24));
@@ -1393,6 +1537,7 @@ namespace AudioHexViewer
                 leftText.AppendLine(FormatRow("Voltage (V)", "N/A"));
 
             var rightText = new StringBuilder();
+            rightText.AppendLine(FormatRow("---RIGHT---", ""));
             rightText.AppendLine(FormatRow("Float", rightF.ToString("G9")));
             rightText.AppendLine(FormatRow("Decimal (24b)", right24.ToString()));
             rightText.AppendLine(FormatRow("Hex (24 bits)", rightHex24));
@@ -1402,9 +1547,9 @@ namespace AudioHexViewer
             else
                 rightText.AppendLine(FormatRow("Voltage (V)", "N/A"));
 
-            // Exemple, à adapter à tes vrais noms de variables
-            lastLeftFloat = leftF;          // ton float voie gauche
-            lastRightFloat = rightF;         // ton float voie droite
+            // Sauvegarde des dernières valeurs (si utilisé ailleurs)
+            lastLeftFloat = leftF;
+            lastRightFloat = rightF;
 
             lastLeftScaled = (int)Math.Round(leftF * (1 << 23));
             lastRightScaled = (int)Math.Round(rightF * (1 << 23));
@@ -1418,68 +1563,70 @@ namespace AudioHexViewer
             lastLeftBits = leftBits;
             lastRightBits = rightBits;
 
-            // Pour les volts, si tu utilises displayVoltsLeft/Right :
             lastLeftVolts = displayVoltsLeft;
             lastRightVolts = displayVoltsRight;
+
+            // ---------- Limitation fréquence UI texte ----------
+            var nowUi = DateTime.Now;
+            bool updateText;
+
+            if (nowUi - lastTextDump >= textDumpInterval)
+            {
+                updateText = true;
+                lastTextDump = nowUi;
+            }
+            else
+            {
+                updateText = false;
+            }
 
             // ---------- Mise à jour UI ----------
             BeginInvoke((Action)(() =>
             {
-                txtLeft.Text = leftText.ToString();
-                txtRight.Text = rightText.ToString();
+                // On ne met à jour le texte que si l'intervalle est écoulé
+                if (updateText)
+                {
+                    txtLeft.Text = leftText.ToString();
+                    txtRight.Text = rightText.ToString();
 
-                ColorBinaryXs(txtLeft, "Binary (24b)");
-                ColorBinaryXs(txtRight, "Binary (24b)");
+                    ColorBinaryXs(txtLeft, "Binary (24b)");
+                    ColorBinaryXs(txtRight, "Binary (24b)");
+                }
 
-                // SAT LEDs
-                //bool satL = lastSatLeft.HasValue && (DateTime.Now - lastSatLeft.Value) < satHoldTime;
-                //bool satR = lastSatRight.HasValue && (DateTime.Now - lastSatRight.Value) < satHoldTime;
-
-                //ledSatLeft.BackColor = satL ? Color.Red : Color.Gray;
-                //ledSatRight.BackColor = satR ? Color.Red : Color.Gray;
-
-                // Bargraphs dBFS (Panel custom)
+                // Bargraphs dBFS
                 UpdateLevelBar(barLeftLevel, levelLeft);
                 UpdateLevelBar(barRightLevel, levelRight);
 
-                var nowUi = DateTime.Now;
-
-                // --- Voie gauche ---
+                // SAT + dBFS
                 bool satLActive =
-                    isCurrentlySatLeft || (lastSatLeft.HasValue && (nowUi - lastSatLeft.Value) < satDisplayTime);
+                    isCurrentlySatLeft ||
+                    (lastSatLeft.HasValue && (nowUi - lastSatLeft.Value) < satDisplayTime);
 
                 if (satLActive)
                 {
-                    // temps écoulé depuis la saturation
                     var elapsed = nowUi - lastSatLeft.Value;
-                    // on alterne ON / OFF toutes satBlinkPeriod/2
                     bool blinkOn = ((int)(elapsed.TotalMilliseconds / (satBlinkPeriod.TotalMilliseconds / 2))) % 2 == 0;
 
                     if (blinkOn)
                     {
                         lblLeftLevel.Text = "      SAT";
-                        lblLeftLevel.ForeColor = Color.Red;   // 
+                        lblLeftLevel.ForeColor = Color.Red;
                         lblLeftLevel.Font = levelFontBold;
-
                     }
                     else
                     {
-                        lblLeftLevel.Text = ""; // ou "- dBFS" si tu veux quelque chose quand c’est “off”
+                        lblLeftLevel.Text = "";
                         lblLeftLevel.ForeColor = Color.Red;
                         lblLeftLevel.Font = levelFontBold;
-
                     }
                 }
                 else
                 {
-                    // Affichage normal dBFS
                     lblLeftLevel.Text = double.IsNegativeInfinity(dbLeft) ? "- dBFS" : $"{dbLeft:F1} dBFS";
                     lblLeftLevel.ForeColor = SystemColors.HotTrack;
                     lblLeftLevel.Font = levelFontRegular;
-
                 }
 
-                // ---Voie droite-- -
                 bool satRActive =
                     isCurrentlySatRight ||
                     (lastSatRight.HasValue && (nowUi - lastSatRight.Value) < satDisplayTime);
@@ -1491,13 +1638,13 @@ namespace AudioHexViewer
 
                     if (blinkOn)
                     {
-                        lblRightLevel.Text = "SAT";              // plus besoin d'espaces
+                        lblRightLevel.Text = "SAT";
                         lblRightLevel.ForeColor = Color.Red;
                         lblRightLevel.Font = levelFontBold;
                     }
                     else
                     {
-                        lblRightLevel.Text = "";                 // éteint
+                        lblRightLevel.Text = "";
                         lblRightLevel.ForeColor = Color.Red;
                         lblRightLevel.Font = levelFontBold;
                     }
@@ -1510,9 +1657,9 @@ namespace AudioHexViewer
                 }
 
                 UpdateMainDisplayFromLastValues();
-
             }));
         }
+
         //
         //private void ShowHistogramWindow()
         //{
@@ -1934,6 +2081,22 @@ namespace AudioHexViewer
 
             try
             {
+                // 1) Périphérique sélectionné
+                string? devId = null;
+                if (comboDevices.SelectedItem is MMDevice dev)
+                    devId = dev.ID;   // Propriété ID de MMDevice (NAudio)
+
+                // 2) Mode IN / OUT (entrée / sortie)
+                //    -> captureOutput est ton bool privé : false = entrée, true = sortie
+                bool isOutput = captureOutput;
+
+                // 3) Main data format (comboDisplayMode)
+                string? mainFormat = comboDisplayMode.SelectedItem as string;
+
+                // On pousse ces infos vers l'histogramme AVANT la sauvegarde
+                histogramControl.DeviceIdForSave = devId;
+                histogramControl.CaptureOutputForSave = isOutput;
+                histogramControl.MainDataFormatForSave = mainFormat;
                 histogramControl.SaveHistogramSettings();
             }
             catch (Exception ex)
@@ -1950,7 +2113,18 @@ namespace AudioHexViewer
             this.TopMost = alwaysOnTopToolStripMenuItem.Checked;
         }
 
-        private void txtRight_TextChanged(object sender, EventArgs e)
+        private void Form1_Load(object sender, EventArgs e)
+        {
+            LoadUiSettingsFromHistogramFile();
+
+        }
+
+        private void splitContainer1_Panel2_Paint(object sender, PaintEventArgs e)
+        {
+
+        }
+
+        private void lblFormatInfo_Click(object sender, EventArgs e)
         {
 
         }

@@ -1,8 +1,4 @@
-﻿using System;
-using System.Drawing;
-using System.IO;
-using System.Text.Json;
-using System.Windows.Forms;
+﻿using System.Text.Json;
 using System.Windows.Forms.DataVisualization.Charting;
 
 namespace AudioHexViewer
@@ -50,6 +46,12 @@ namespace AudioHexViewer
         // Valeur de fenêtre la plus récente (samples), accessible depuis Form1 pour le REC
         public static int LastUsedWindowSamples { get; private set; } = 131072; // 2^17
 
+        // Infos fournies par Form1 pour être sauvées dans HistogramSettings.json
+        public string? DeviceIdForSave { get; set; }
+        public bool CaptureOutputForSave { get; set; }
+        public string? MainDataFormatForSave { get; set; }
+
+
         private class HistogramSettings
         {
             public bool AC { get; set; } = true;
@@ -63,6 +65,11 @@ namespace AudioHexViewer
             public int RecordSamples { get; set; } = 131072; // 2^17
 
             public int SplitterDistance { get; set; } = 740;
+
+
+            public string? DeviceId { get; set; }          // ID Windows du périphérique audio
+            public bool CaptureOutput { get; set; }        // false = Input, true = Output
+            public string? MainDataFormat { get; set; }    // Valeur de comboDisplayMode ("Float", "Voltage 
         }
 
         private static HistogramSettings? cachedSettings;
@@ -81,7 +88,11 @@ namespace AudioHexViewer
         private System.Windows.Forms.Timer? liveTimer;
         private bool isLive = false;
 
-        private const int MaxBins = 256;
+        private const int MaxBins = 16384; // Nombre max de bins dans l'histogramme
+
+        // Rapport max autorisé : LSBscale / (LSB/bin)
+        private const int MaxScaleOverBin = 8192;
+
 
         // 1) Constructeur utilisé par le Designer
         public HistogramControl()
@@ -110,7 +121,7 @@ namespace AudioHexViewer
             grpRightStats.Paint += (s, e) => DrawColoredBorder(grpRightStats, e, Color.OrangeRed);
         }
         //
-       
+
         private void LoadSettingsIfAny()
         {
             if (cachedSettings != null)
@@ -351,7 +362,7 @@ namespace AudioHexViewer
 
         }
 
-         private void UpdateWindowInfo()
+        private void UpdateWindowInfo()
         {
             int samples = GetWindowSamples();
 
@@ -363,7 +374,7 @@ namespace AudioHexViewer
             }
 
             double seconds = (double)samples / _sampleRate;
-            double ms = seconds ;
+            double ms = seconds;
 
             lblWindowInfo.Text = $"≈ {ms:F2} s";
         }
@@ -429,13 +440,18 @@ namespace AudioHexViewer
             var winSamples = GetWindowSamples();
 
             var s = new HistogramSettings
-            {
+            {   
                 AC = chkAC.Checked,
                 Channel = comboChannel.SelectedItem as string ?? "Both",
                 RangeLsb = rangeLsb,
                 BinLsb = binLsb,
                 RecordSamples = winSamples,
-                SplitterDistance = splitContainerMain.SplitterDistance
+                SplitterDistance = splitContainerMain.SplitterDistance,
+
+                // >>> ajoutés :
+                DeviceId = DeviceIdForSave,
+                CaptureOutput = CaptureOutputForSave,
+                MainDataFormat = MainDataFormatForSave
             };
 
             cachedSettings = s;
@@ -563,15 +579,40 @@ namespace AudioHexViewer
             int offsetL = ac ? dcOffsetL : 0;
             int offsetR = ac ? dcOffsetR : 0;
 
+            //if (lsbRange > 1024)
+            //{
+            //    while (true)
+            //    {
+            //        int binCountTest = (int)Math.Ceiling(range / (double)binWidth);
+            //        if (binCountTest <= MaxBins) break;
+
+            //        binWidth <<= 1;
+
+            //        if (binWidth >= BinLsbOptions[BinLsbOptions.Length - 1])
+            //            break;
+            //    }
+
+            //    int newIndex = FindClosestIndex(BinLsbOptions, binWidth);
+            //    binWidth = BinLsbOptions[newIndex];
+            //    comboBinLsb.SelectedIndex = newIndex;
+            //    lastBinLsb = binWidth;
+            //}
+
             if (lsbRange > 1024)
             {
+                // On veut limiter directement le rapport :
+                //   LSBscale / (LSB/bin) <= MaxScaleOverBin
+                // soit : lsbRange / binWidth <= MaxScaleOverBin    
                 while (true)
                 {
-                    int binCountTest = (int)Math.Ceiling(range / (double)binWidth);
-                    if (binCountTest <= MaxBins) break;
+                    // Test en entier pour éviter les flottants :
+                    // lsbRange > MaxScaleOverBin * binWidth  <=>  lsbRange / binWidth > MaxScaleOverBin
+                    if (lsbRange <= MaxScaleOverBin * binWidth)
+                        break;
 
-                    binWidth <<= 1;
+                    binWidth <<= 1; // binWidth *= 2
 
+                    // on ne dépasse pas la plus grosse valeur possible dans BinLsbOptions
                     if (binWidth >= BinLsbOptions[BinLsbOptions.Length - 1])
                         break;
                 }
@@ -583,6 +624,10 @@ namespace AudioHexViewer
             }
 
             int binCount = (int)Math.Ceiling(range / (double)binWidth);
+            if (binCount > MaxBins)
+                binCount = MaxBins;
+
+            //int binCount = (int)Math.Ceiling(range / (double)binWidth);
             if (binCount <= 0)
             {
                 chartHistogram.Series.Clear();
