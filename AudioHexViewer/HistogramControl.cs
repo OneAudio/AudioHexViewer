@@ -516,6 +516,9 @@ namespace AudioHexViewer
         {
             // NE *PAS* tester la taille du chart ici, on veut remplir les séries
             // et laisser le control redessiner quand il sera correctement dimensionné.
+            // IMPORTANT : ne rien dessiner si le chart n'a pas encore de taille
+            if (chartHistogram.ClientSize.Width <= 0 || chartHistogram.ClientSize.Height <= 0)
+                return;
 
             if (leftSamples.Length == 0 && rightSamples.Length == 0)
             {

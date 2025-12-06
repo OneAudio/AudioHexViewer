@@ -106,7 +106,6 @@ namespace AudioHexViewer
 
         private HistogramControl? histogramControl;
 
-        private int baseFormHeight;
         private bool histogramVisible = false;
 
 
@@ -202,16 +201,8 @@ namespace AudioHexViewer
         {
             InitializeComponent();
 
-            baseFormHeight = this.Height;   // hauteur sans histogramme
-            panelHistogram.Visible = false; // au cas où
-
-            chkShowDetails.Checked = false;
-            txtLeft.Visible = false;
-            txtRight.Visible = false;
-            this.Height = 230;   // doit être cohérent avec la valeur dans CheckedChanged
-
-            chkShowDetails.CheckAlign = ContentAlignment.MiddleRight;
-            chkShowDetails.TextAlign = ContentAlignment.MiddleLeft;
+            //this.WindowState = FormWindowState.Maximized; // Plein écran au démarrage
+            ShowHistogramArea();
 
             chkHistoOnce.CheckAlign = ContentAlignment.MiddleRight;
             chkHistoOnce.TextAlign = ContentAlignment.MiddleLeft;
@@ -461,31 +452,6 @@ namespace AudioHexViewer
             }
         }
         //
-        private void btnHistogram_Click(object sender, EventArgs e)
-        {
-            if (!histogramVisible)
-            {
-                // On affiche la zone histogramme
-                ShowHistogramArea();
-
-                // On agrandit la fenêtre pour laisser la place au panel
-                this.Height = baseFormHeight + panelHistogram.Height;
-                histogramVisible = true;
-            }
-            else
-            {
-                // On cache la zone histogramme
-                panelHistogram.Visible = false;
-
-                // On revient à la hauteur de base
-                this.Height = baseFormHeight;
-                histogramVisible = false;
-            }
-        }
-
-
-
-
         //
         private void menuOpenRecordsFolder_Click(object? sender, EventArgs e)
         {
@@ -689,27 +655,6 @@ namespace AudioHexViewer
             }
         }
         //
-        //
-        private void chkShowDetails_CheckedChanged(object? sender, EventArgs e)
-        {
-            bool visible = chkShowDetails.Checked;
-
-            txtLeft.Visible = visible;
-            txtRight.Visible = visible;
-
-            // Optionnel : ajuster la taille globale de la fenêtre
-            // si tu veux qu'elle se "raccourcisse" quand on cache les détails.
-            // Par ex :
-            //
-            if (visible)
-            {
-                // Hauteur quand les détails sont affichés
-                this.Height = 335;
-            }
-            else
-                // Hauteur quand les détails sont cachés
-                this.Height = 230;
-        }
         //
         //
         private void btnCalV_Click(object sender, EventArgs e)
@@ -1607,7 +1552,7 @@ namespace AudioHexViewer
             panelHistogram.Visible = true;
         }
 
-
+        
 
         //
         private void Capture_RecordingStopped(object? sender, StoppedEventArgs e)
