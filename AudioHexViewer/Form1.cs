@@ -72,7 +72,9 @@ namespace AudioHexViewer
 
         // Historique continu pour l'histogramme (tampon roulant)
         private readonly object histLock = new object();
-        private const int MaxHistogramSeconds = 10; // on garde jusqu'à 10 s d'historique
+
+        //     1048576 samples / 44100 Hz = 23,78 s 
+        private const int MaxHistogramSeconds = 24; // on garde jusqu'à 24 s d'historique
 
         // --- Mode "Once" pour l'histogramme ---
         private bool histOnceActive = false;
@@ -689,6 +691,11 @@ namespace AudioHexViewer
                     // ================================
 
                     currentFormat = capture.WaveFormat;
+
+                    if (histogramControl != null && currentFormat != null)
+                    {
+                        histogramControl.UpdateSampleRate(currentFormat.SampleRate);
+                    }
 
                     capture.DataAvailable += Capture_DataAvailable;
                     capture.RecordingStopped += Capture_RecordingStopped;

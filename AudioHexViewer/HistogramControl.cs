@@ -80,7 +80,7 @@ namespace AudioHexViewer
         public delegate (int[] Left, int[] Right) SampleProvider(int durationMs);
 
         private readonly SampleProvider? _provider;
-        private readonly int _sampleRate;
+        private int _sampleRate;
 
         private int[] leftSamples = Array.Empty<int>();
         private int[] rightSamples = Array.Empty<int>();
@@ -106,13 +106,12 @@ namespace AudioHexViewer
 
         // 2) Constructeur utilisé par Form1 à l'exécution
         public HistogramControl(SampleProvider provider, int sampleRate)
-            : this()
+    : this()
         {
             _provider = provider;
-            _sampleRate = sampleRate;
 
-            // Maintenant qu'on connaît le vrai SR, on met à jour le label
-            UpdateWindowInfo();
+            // Utilise la méthode centralisée (met à jour SR + label + timer)
+            UpdateSampleRate(sampleRate);
 
             // Premier calcul d'histo si on a déjà un peu de données
             AcquireOnce();
@@ -120,6 +119,7 @@ namespace AudioHexViewer
             grpLeftStats.Paint += (s, e) => DrawColoredBorder(grpLeftStats, e, Color.DodgerBlue);
             grpRightStats.Paint += (s, e) => DrawColoredBorder(grpRightStats, e, Color.OrangeRed);
         }
+
         //
 
         private void LoadSettingsIfAny()
@@ -148,7 +148,27 @@ namespace AudioHexViewer
                 cachedSettings = null;
             }
         }
+        //
+        public void UpdateSampleRate(int sampleRate)
+        {
+            if (sampleRate <= 0)
+                return;
 
+            _sampleRate = sampleRate;
+
+            // Met à jour le texte "≈ X.XX s"
+            UpdateWindowInfo();
+
+            // Ajuste l'intervalle du timer live pour coller à la fenêtre
+            if (liveTimer != null)
+            {
+                int samples = GetWindowSamples();
+                int intervalMs = (int)Math.Max(10, Math.Round((double)samples * 1000.0 / _sampleRate));
+                liveTimer.Interval = intervalMs;
+            }
+        }
+
+        //
         private int FindClosestIndex(int[] options, int target)
         {
             int bestIndex = 0;
