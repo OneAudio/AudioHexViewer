@@ -109,6 +109,8 @@ namespace AudioHexViewer
         private long calibAccum = 0;
 
         private HistogramControl? histogramControl;
+        private SpectrumControl? spectrumControl;
+
 
         // Limitation de fréquence pour la mise à jour des textes (pour éviter le scintillement)
         private DateTime lastTextDump = DateTime.MinValue;
@@ -219,6 +221,7 @@ namespace AudioHexViewer
 
             //this.WindowState = FormWindowState.Maximized; // Plein écran au démarrage
             ShowHistogramArea();
+            ShowSpectrumArea();
 
             chkHistoOnce.CheckAlign = ContentAlignment.MiddleRight;
             chkHistoOnce.TextAlign = ContentAlignment.MiddleLeft;
@@ -699,6 +702,16 @@ namespace AudioHexViewer
 
                     capture.DataAvailable += Capture_DataAvailable;
                     capture.RecordingStopped += Capture_RecordingStopped;
+
+                    // Met à jour le sample rate des modules d’analyse
+                    if (currentFormat != null)
+                    {
+                        if (histogramControl != null)
+                            histogramControl.UpdateSampleRate(currentFormat.SampleRate);
+
+                        if (spectrumControl != null)
+                            spectrumControl.UpdateSampleRate(currentFormat.SampleRate);
+                    }
 
                     // --- NOUVEAU : config mode Once / Continu ---
                     bool onceMode = chkHistoOnce.Checked;
@@ -1705,6 +1718,25 @@ namespace AudioHexViewer
 
             panelHistogram.Visible = true;
         }
+        //
+        private void ShowSpectrumArea()
+        {
+            if (spectrumControl == null)
+            {
+                int sampleRate = currentFormat?.SampleRate ?? 48000;
+
+                spectrumControl = new SpectrumControl(GetRecentSamplesMs, sampleRate);
+                spectrumControl.Dock = DockStyle.Fill;
+
+                // tabSpectrum est l'onglet du bas
+                tabSpectrum.Controls.Clear();
+                tabSpectrum.Controls.Add(spectrumControl);
+            }
+
+            // Optionnel : sélectionner l’onglet Spectrum quand on l’ouvre
+            tabAnalysis.SelectedTab = tabSpectrum;
+        }
+
 
 
 

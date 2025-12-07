@@ -54,6 +54,8 @@
             comboSampleWin = new ComboBox();
             comboBinLsb = new ComboBox();
             comboRangeLsb = new ComboBox();
+            btnRun = new Button();
+            chkOnce = new CheckBox();
             grpLeftStats.SuspendLayout();
             grpRightStats.SuspendLayout();
             panelStats.SuspendLayout();
@@ -293,6 +295,20 @@
             panelTop.Size = new Size(912, 62);
             panelTop.TabIndex = 2;
             // 
+            // btnRun
+            btnRun.Text = "RUN";
+            btnRun.Location = new Point(740, 14);  // ajuste si besoin
+            btnRun.Size = new Size(55, 23);
+
+            // chkOnce
+            chkOnce.Text = "once";
+            chkOnce.AutoSize = true;
+            chkOnce.Location = new Point(800, 17);
+
+            // Ajout sur le panelTop
+            panelTop.Controls.Add(btnRun);
+            panelTop.Controls.Add(chkOnce);
+
             // lblWindowInfo
             // 
             lblWindowInfo.AutoSize = true;
@@ -381,5 +397,8 @@
         private ComboBox comboBinLsb;
         private ComboBox comboRangeLsb;
         private Label lblWindowInfo;
+        private Button btnRun;
+        private CheckBox chkOnce;
+
     }
 }

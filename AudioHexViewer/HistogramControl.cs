@@ -101,7 +101,7 @@ namespace AudioHexViewer
             InitChart();
             InitDefaults();
             SetupLiveTimer();
-            //lblWindowInfo.Text = "TEST LABEL"; // test
+            UpdateRunButtonAppearance();   // <-- ajouter
         }
 
         // 2) Constructeur utilisé par Form1 à l'exécution
@@ -319,12 +319,12 @@ namespace AudioHexViewer
 
             if (onceMode)
             {
-                // IMPORTANT : laisser le provider capturer les samples
+                // Acquisition unique
                 AcquireOnce();
 
-                // puis arrêter toute mise à jour
                 isLive = false;
                 liveTimer?.Stop();
+                UpdateRunButtonAppearance();
             }
             else
             {
@@ -343,14 +343,38 @@ namespace AudioHexViewer
 
                 // Puis mises à jour régulières
                 liveTimer?.Start();
+
+                UpdateRunButtonAppearance();
             }
         }
+
 
         // Appelé par Form1 quand on appuie sur STOP
         public void StopFromRun()
         {
             isLive = false;
-            liveTimer?.Stop();
+            liveTimer?.Stop();  
+            UpdateRunButtonAppearance();
+        }
+
+        //
+        private void UpdateRunButtonAppearance()
+        {
+            if (btnRun == null)
+                return;
+
+            if (isLive)
+            {
+                btnRun.Text = "STOP";
+                btnRun.BackColor = Color.Firebrick;
+                btnRun.ForeColor = Color.White;
+            }
+            else
+            {
+                btnRun.Text = "RUN";
+                btnRun.BackColor = Color.SeaGreen;
+                btnRun.ForeColor = Color.White;
+            }
         }
 
         //
@@ -445,6 +469,25 @@ namespace AudioHexViewer
                 comboSampleWin.Items.Add(v.ToString("N0"));
 
             ApplySettingsOrDefaults();
+            // --- Câblage du bouton RUN ---
+            btnRun.Click += (s, e) =>
+            {
+                bool once = chkOnce.Checked;
+
+                if (once)
+                {
+                    // Mode ONCE : un seul histogramme
+                    StartFromRun(true);
+                }
+                else
+                {
+                    // Mode continu : toggle RUN/STOP
+                    if (isLive)
+                        StopFromRun();
+                    else
+                        StartFromRun(false);
+                }
+            };
         }
         //
         public void SaveHistogramSettings()
