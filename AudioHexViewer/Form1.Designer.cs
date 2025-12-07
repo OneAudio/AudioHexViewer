@@ -44,6 +44,9 @@ namespace AudioHexViewer
             alwaysOnTopToolStripMenuItem = new ToolStripMenuItem();
             splitMain = new SplitContainer();
             lblFormatInfo = new Label();
+            tabAnalysis = new TabControl();
+            tabHistogram = new TabPage();
+            tabSpectrum = new TabPage();
             label3 = new Label();
             label7 = new Label();
             label6 = new Label();
@@ -202,7 +205,7 @@ namespace AudioHexViewer
             // 
             // splitMain.Panel2
             // 
-            splitMain.Panel2.Controls.Add(panelHistogram);
+            splitMain.Panel2.Controls.Add(tabAnalysis);
             splitMain.Panel2.Paint += splitContainer1_Panel2_Paint;
             splitMain.Size = new Size(1138, 749);
             splitMain.SplitterDistance = 160; // Height of top panel (fixed)
@@ -460,7 +463,33 @@ namespace AudioHexViewer
             btnCalV.Text = "CAL V";
             btnCalV.UseVisualStyleBackColor = false;
             btnCalV.Click += btnCalV_Click;
+            //
+            //
+            // tabAnalysis
             // 
+            tabAnalysis.Controls.Add(tabHistogram);
+            tabAnalysis.Controls.Add(tabSpectrum);
+            tabAnalysis.Dock = DockStyle.Fill;
+            tabAnalysis.Location = new Point(0, 0);
+            tabAnalysis.Name = "tabAnalysis";
+            tabAnalysis.SelectedIndex = 0;
+            tabAnalysis.Size = new Size(1138, 545);
+            tabAnalysis.TabIndex = 0;
+
+            // tabHistogram
+            // 
+            tabHistogram.Name = "tabHistogram";
+            tabHistogram.Text = "Histogram";
+            tabHistogram.UseVisualStyleBackColor = true;
+            // On met le panelHistogram *dans* cet onglet
+            tabHistogram.Controls.Add(panelHistogram);
+
+            // tabSpectrum
+            // 
+            tabSpectrum.Name = "tabSpectrum";
+            tabSpectrum.Text = "Spectrum";
+            tabSpectrum.UseVisualStyleBackColor = true;
+
             // panelHistogram
             // 
             panelHistogram.BorderStyle = BorderStyle.FixedSingle;
@@ -551,11 +580,17 @@ namespace AudioHexViewer
         private ComboBox comboDevices;
         private Button btnRecord;
         private Button btnCalV;
+        // Nouveaux contrôles pour la zone d'analyse
+        private TabControl tabAnalysis;
+        private TabPage tabHistogram;
+        private TabPage tabSpectrum;
+        //
         private Panel panelHistogram;
         private Label lblFormatInfo;
         private ToolStripMenuItem menuData;
         private ToolStripMenuItem menuShowAllFormats;
         private System.Windows.Forms.RichTextBox txtLeft;
         private System.Windows.Forms.RichTextBox txtRight;
+
     }
 }
