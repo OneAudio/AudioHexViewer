@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Linq;
 using System.Numerics;
 using System.Windows.Forms;
+using System.Windows.Forms.DataVisualization.Charting;
 using MathNet.Numerics;
 using MathNet.Numerics.IntegralTransforms;
 
@@ -55,12 +56,28 @@ namespace AudioHexViewer
 
         private bool isLive = false;
 
+        // Axes personnalisés (null = auto)
+        private double? customYMin = null;
+        private double? customYMax = null;
+        private double? customFMin = null;   // en Hz
+        private double? customFMax = null;   // en Hz
+
+        // Derniers buffers temporels utilisés (pour les stats)
+        private double[]? lastTimeLeft = null;
+        private double[]? lastTimeRight = null;
+
         public SpectrumControl()
         {
             InitializeComponent();
             InitChartAppearance();
             InitializeUiOptions();
             UpdateRunButtonAppearance();
+
+            // Clic droit sur la zone du spectre -> ouverture de la boîte d'axes
+            chartSpectrum.MouseUp += ChartSpectrum_MouseUp;
+
+            // Dessin manuel des sous-divisions log
+            chartSpectrum.PostPaint += ChartSpectrum_PostPaint;
         }
 
         public SpectrumControl(SampleProvider provider, int sampleRate)
@@ -91,12 +108,33 @@ namespace AudioHexViewer
             lblWindowInfo.Text = $"≈ {sec:F2} s";
         }
 
+        private void btnResetAvg_Click(object? sender, EventArgs e)
+        {
+            // On remet les buffers de moyenne à zéro
+            avgLeftSpectrum = null;
+            avgRightSpectrum = null;
+
+            // Optionnel : forcer un nouveau calcul immédiat
+            if (lastTimeLeft != null || lastTimeRight != null)
+            {
+                // On relance une mesure "fraîche"
+                AcquireOnce();
+            }
+            else
+            {
+                // Sinon on efface juste le graphe
+                currentLeftSpectrum = null;
+                currentRightSpectrum = null;
+                ClearSpectrum();
+            }
+        }
+
         private void InitChartAppearance()
         {
             var areas = chartSpectrum.ChartAreas;
             if (areas.Count == 0)
             {
-                var area = new System.Windows.Forms.DataVisualization.Charting.ChartArea("SpectrumArea");
+                var area = new ChartArea("SpectrumArea");
                 chartSpectrum.ChartAreas.Add(area);
             }
 
@@ -167,7 +205,7 @@ namespace AudioHexViewer
                     case 2: lastChannel = ChannelMode.Both; break;
                 }
                 // Re-dessine sans recalc FFT
-                UpdateSpectrumChartAndStats(null, null);
+                UpdateSpectrumChartAndStats();
             };
 
             // Bouton RUN
@@ -329,6 +367,10 @@ namespace AudioHexViewer
             // 8) Axe fréquence
             RebuildFreqAxis(N);
 
+            // On garde une copie des derniers buffers temps pour les stats
+            lastTimeLeft = bufL;
+            lastTimeRight = bufR;
+
             // 9) Mise à jour graphe + stats temporelles
             UpdateSpectrumChartAndStats(bufL, bufR);
         }
@@ -483,6 +525,63 @@ namespace AudioHexViewer
                 freqAxis[k] = k * df;
         }
 
+        private void ChartSpectrum_MouseUp(object? sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Right)
+            {
+                ShowAxisDialog();
+            }
+        }
+
+        private void ShowAxisDialog()
+        {
+            if (chartSpectrum.ChartAreas.Count == 0)
+                return;
+
+            var area = chartSpectrum.ChartAreas["SpectrumArea"];
+
+            // Valeurs actuelles (si custom non null, on les utilise)
+            double yMinCurrent = customYMin ?? area.AxisY.Minimum;
+            double yMaxCurrent = customYMax ?? area.AxisY.Maximum;
+            double fMinCurrent = customFMin ?? area.AxisX.Minimum;   // Hz
+            double fMaxCurrent = customFMax ?? area.AxisX.Maximum;   // Hz
+
+            using (var dlg = new SpectrumAxisDialog())
+            {
+                dlg.YMin = yMinCurrent;
+                dlg.YMax = yMaxCurrent;
+                dlg.FMinHz = fMinCurrent;   // *** en Hz ***
+                dlg.FMaxHz = fMaxCurrent;   // *** en Hz ***
+
+                if (dlg.ShowDialog(FindForm()) == DialogResult.OK)
+                {
+                    customYMin = dlg.YMin;
+                    customYMax = dlg.YMax;
+
+                    customFMin = dlg.FMinHz;   // plus de *1000
+                    customFMax = dlg.FMaxHz;
+
+                    if (customYMin >= customYMax)
+                        customYMin = customYMax - 10.0;
+
+                    if (customFMin < 0.0)
+                        customFMin = 0.0;
+                    if (customFMax <= customFMin)
+                        customFMax = customFMin + 10.0;
+
+                    UpdateSpectrumChartAndStats();
+                }
+            }
+        }
+
+
+
+        // Surcharge pratique : réutilise les derniers buffers temps connus
+        private void UpdateSpectrumChartAndStats()
+        {
+            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
+        }
+
         private void UpdateSpectrumChartAndStats(double[]? timeL, double[]? timeR)
         {
             if (chartSpectrum.ClientSize.Width <= 0 || chartSpectrum.ClientSize.Height <= 0)
@@ -496,30 +595,121 @@ namespace AudioHexViewer
 
             // --- Axe X lin / log ---
             bool useLog = (chkLogX != null && chkLogX.Checked);
-            area.AxisX.IsLogarithmic = useLog;
 
-            double fMax = _sampleRate > 0 ? _sampleRate / 2.0 : 1.0;
-            double fMin = useLog ? 1.0 : 0.0;   // en log, pas de 0 Hz
+            // En log, on évite le bin 0
+            int startIndex = useLog ? 1 : 0;
+
+            // Valeurs AUTO (sans contrainte utilisateur)
+            double fMaxAuto = _sampleRate > 0 ? _sampleRate / 2.0 : 1.0;
+            double fMinAuto;
+
+            if (useLog)
+            {
+                if (freqAxis != null && freqAxis.Length > startIndex)
+                    fMinAuto = Math.Max(freqAxis[startIndex], 1.0);
+                else
+                    fMinAuto = 1.0;
+
+                area.AxisX.IsMarginVisible = false;   // évite le “padding” à gauche
+            }
+            else
+            {
+                fMinAuto = 0.0;
+                area.AxisX.IsMarginVisible = true;
+            }
+
+            // --- Application des limites X custom (si définies) ---
+            double fMin = customFMin ?? fMinAuto;   // Hz
+            double fMax = customFMax ?? fMaxAuto;   // Hz
+
+            // Sécurités de base
+            double xMinPhys = useLog ? 1.0 : 0.0;
+            if (fMin < xMinPhys) fMin = xMinPhys;
+            if (fMax > fMaxAuto) fMax = fMaxAuto;
+            if (fMin >= fMax)
+                fMin = fMax * 0.5;
+
+            // --- Axe Y (dBFS) avec limites custom éventuelles ---
+            double yMinAuto = -200.0;
+            double yMaxAuto = 0.0;
+
+            double yMin = customYMin ?? yMinAuto;
+            double yMax = customYMax ?? yMaxAuto;
+
+            if (yMin >= yMax)
+                yMin = yMax - 10.0; // au moins 10 dB de span
+
+            // ---------------- Grilles & divisions ----------------
+
+            // Axe Y : 5 grandes divisions + 5 sous-divisions
+            double ySpan = yMax - yMin;
+            double yMajor = ySpan / 5.0;
+            if (yMajor <= 0) yMajor = 10.0;
+
+            area.AxisY.Minimum = yMin;
+            area.AxisY.Maximum = yMax;
+
+            area.AxisY.MajorGrid.Enabled = true;
+            area.AxisY.MajorGrid.Interval = yMajor;
+            area.AxisY.MajorGrid.LineDashStyle = ChartDashStyle.Solid;
+
+            area.AxisY.MinorGrid.Enabled = true;
+            area.AxisY.MinorGrid.Interval = yMajor / 5.0;
+            area.AxisY.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
+            area.AxisY.MinorGrid.LineColor = Color.LightGray;
+
+            // --- Axe X : on fixe d'abord les bornes, puis on active le log si besoin ---
 
             area.AxisX.Minimum = fMin;
             area.AxisX.Maximum = fMax;
 
-            area.AxisY.Minimum = -200.0;
-            area.AxisY.Maximum = 0.0;
+            if (useLog)
+            {
+                // en log, il FAUT des bornes > 0, sinon exception
+                if (area.AxisX.Minimum <= 0)
+                    area.AxisX.Minimum = 1.0;
+                if (area.AxisX.Maximum <= area.AxisX.Minimum)
+                    area.AxisX.Maximum = area.AxisX.Minimum * 10.0;
+
+                area.AxisX.IsLogarithmic = true;
+                area.AxisX.LogarithmBase = 10.0;
+
+                // Major = décades, Minor désactivée (sous-divisions dessinées à la main)
+                area.AxisX.MajorGrid.Enabled = true;
+                area.AxisX.MajorGrid.LineDashStyle = ChartDashStyle.Solid;
+                area.AxisX.MajorGrid.Interval = 1.0;      // 1 unité log = 1 décade
+
+                area.AxisX.MinorGrid.Enabled = false;
+            }
+            else
+            {
+                area.AxisX.IsLogarithmic = false;
+
+                // LIN X : 5 grandes divisions + 5 sous-divisions
+                double xSpan = fMax - fMin;
+                double xMajor = xSpan / 5.0;
+                if (xMajor <= 0) xMajor = xSpan;
+
+                area.AxisX.MajorGrid.Enabled = true;
+                area.AxisX.MajorGrid.LineDashStyle = ChartDashStyle.Solid;
+                area.AxisX.MajorGrid.Interval = xMajor;
+
+                area.AxisX.MinorGrid.Enabled = true;
+                area.AxisX.MinorGrid.Interval = xMajor / 5.0;
+                area.AxisX.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
+                area.AxisX.MinorGrid.LineColor = Color.LightGray;
+            }
 
             // --- Ce qu'on affiche en fonction du combo Channel ---
             string mode = comboChannel.SelectedItem as string ?? "L+R";
             bool showLeft = (mode == "Left" || mode == "L+R");
             bool showRight = (currentRightSpectrum != null) && (mode == "Right" || mode == "L+R");
 
-            // En log, on évite le bin 0
-            int startIndex = useLog ? 1 : 0;
-
             // Courbe gauche
             if (showLeft)
             {
                 var seriesL = new System.Windows.Forms.DataVisualization.Charting.Series("Left");
-                seriesL.ChartType = System.Windows.Forms.DataVisualization.Charting.SeriesChartType.FastLine;
+                seriesL.ChartType = SeriesChartType.FastLine;
                 seriesL.ChartArea = "SpectrumArea";
                 seriesL.Color = Color.DodgerBlue;
 
@@ -533,7 +723,7 @@ namespace AudioHexViewer
             if (showRight && currentRightSpectrum != null)
             {
                 var seriesR = new System.Windows.Forms.DataVisualization.Charting.Series("Right");
-                seriesR.ChartType = System.Windows.Forms.DataVisualization.Charting.SeriesChartType.FastLine;
+                seriesR.ChartType = SeriesChartType.FastLine;
                 seriesR.ChartArea = "SpectrumArea";
                 seriesR.Color = Color.OrangeRed;
 
@@ -601,6 +791,50 @@ namespace AudioHexViewer
         }
 
 
+        private void ChartSpectrum_PostPaint(object sender, ChartPaintEventArgs e)
+        {
+            var area = chartSpectrum.ChartAreas["SpectrumArea"];
+            if (e.ChartElement != area)
+                return;
+
+            bool useLog = chkLogX != null && chkLogX.Checked;
+            if (!useLog)
+                return;
+
+            double fMin = area.AxisX.Minimum;
+            double fMax = area.AxisX.Maximum;
+
+            // Sécurité : en log, on ne dessine rien si bornes invalides
+            if (fMin <= 0 || fMax <= fMin)
+                return;
+
+            // Lignes mineures log dessinées à la main : 2..9 * 10^n
+            using (Pen minorPen = new Pen(Color.FromArgb(80, Color.Gray), 1f))
+            {
+                minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
+
+                double decadeStart = Math.Pow(10, Math.Floor(Math.Log10(fMin)));
+                double decadeEnd = Math.Pow(10, Math.Ceiling(Math.Log10(fMax)));
+
+                for (double d = decadeStart; d <= decadeEnd; d *= 10.0)
+                {
+                    for (int k = 2; k <= 9; k++)
+                    {
+                        double f = d * k;
+                        if (f < fMin || f > fMax)
+                            continue;
+
+                        float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
+                        float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
+                        float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
+
+                        e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, top, xPixel, bottom);
+                    }
+                }
+            }
+        }
+
+
         private void ClearSpectrum()
         {
             foreach (var s in chartSpectrum.Series)
@@ -610,6 +844,11 @@ namespace AudioHexViewer
             lblLeftPeak.Text = "Peak:";
             lblRightRms.Text = "";
             lblRightPeak.Text = "";
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+
         }
     }
 }

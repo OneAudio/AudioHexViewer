@@ -39,6 +39,7 @@
             lblRightHeader = new Label();
             lblRightRms = new Label();
             lblRightPeak = new Label();
+            btnResetAvg = new Button();
             panelTop.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)splitMain).BeginInit();
             splitMain.Panel1.SuspendLayout();
@@ -52,6 +53,7 @@
             // 
             // panelTop
             // 
+            panelTop.Controls.Add(btnResetAvg);
             panelTop.Controls.Add(lblFftSize);
             panelTop.Controls.Add(comboFftSize);
             panelTop.Controls.Add(lblWindow);
@@ -280,6 +282,16 @@
             lblRightPeak.Size = new Size(100, 23);
             lblRightPeak.TabIndex = 2;
             // 
+            // btnResetAvg
+            // 
+            btnResetAvg.Location = new Point(450, 31);
+            btnResetAvg.Name = "btnResetAvg";
+            btnResetAvg.Size = new Size(42, 23);
+            btnResetAvg.TabIndex = 12;
+            btnResetAvg.Text = "RAZ";
+            btnResetAvg.UseVisualStyleBackColor = true;
+            btnResetAvg.Click += btnResetAvg_Click;
+            // 
             // SpectrumControl
             // 
             Controls.Add(splitMain);
@@ -331,6 +343,6 @@
         private Label lblRightRms;
         private Label lblRightPeak;
         private CheckBox chkLogX;
-
+        private Button btnResetAvg;
     }
 }

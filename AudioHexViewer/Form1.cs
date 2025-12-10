@@ -757,10 +757,10 @@ namespace AudioHexViewer
 
                     // Si l'histogramme existe déjà et qu'on est en mode continu,
                     // on le démarre tout de suite en "live"
-                    if (histogramControl != null && !chkHistoOnce.Checked)
-                    {
-                        histogramControl.StartFromRun(false);  // mode continu
-                    }
+                    //if (histogramControl != null && !chkHistoOnce.Checked)
+                    //{
+                    //    histogramControl.StartFromRun(false);  // mode continu
+                    //}
                 }
                 catch (Exception ex)
                 {
