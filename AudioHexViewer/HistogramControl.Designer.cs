@@ -10,7 +10,7 @@
         /// <summary> 
         /// Nettoyage des ressources utilisées.
         /// </summary>
-        /// <param name="disposing">true si les ressources managées doivent être supprimées ; sinon, false.</param>
+        /// <param name="disposing">true si les ressources managées doivent être supprimées ; sinon, false.</param>
         protected override void Dispose(bool disposing)
         {
             if (disposing && (components != null))
@@ -37,8 +37,8 @@
             lblRightHeader = new Label();
             lblRightSamples = new Label();
             lblRightDC = new Label();
-            lblRightRms = new Label();
             lblRightMinMax = new Label();
+            lblRightRms = new Label();
             grpRightStats = new GroupBox();
             panelStats = new Panel();
             chartHistogram = new System.Windows.Forms.DataVisualization.Charting.Chart();
@@ -70,18 +70,16 @@
             // lblLeftHeader
             // 
             lblLeftHeader.AutoSize = true;
-            lblLeftHeader.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            lblLeftHeader.ForeColor = Color.DodgerBlue;
-            lblLeftHeader.Location = new Point(10, 10);
+            lblLeftHeader.Location = new Point(6, 19);
             lblLeftHeader.Name = "lblLeftHeader";
-            lblLeftHeader.Size = new Size(32, 15);
+            lblLeftHeader.Size = new Size(36, 15);
             lblLeftHeader.TabIndex = 0;
-            lblLeftHeader.Text = "LEFT";
+            lblLeftHeader.Text = "Left : ";
             // 
             // lblLeftSamples
             // 
             lblLeftSamples.AutoSize = true;
-            lblLeftSamples.Location = new Point(12, 40);
+            lblLeftSamples.Location = new Point(0, 40);
             lblLeftSamples.Name = "lblLeftSamples";
             lblLeftSamples.Size = new Size(0, 15);
             lblLeftSamples.TabIndex = 1;
@@ -110,9 +108,9 @@
             grpLeftStats.Controls.Add(lblLeftRms);
             grpLeftStats.Controls.Add(lblLeftMinMax);
             grpLeftStats.ForeColor = Color.Black;
-            grpLeftStats.Location = new Point(3, 3);
+            grpLeftStats.Location = new Point(5, 5);
             grpLeftStats.Name = "grpLeftStats";
-            grpLeftStats.Size = new Size(134, 180);
+            grpLeftStats.Size = new Size(140, 180);
             grpLeftStats.TabIndex = 0;
             grpLeftStats.TabStop = false;
             // 
@@ -127,18 +125,16 @@
             // lblRightHeader
             // 
             lblRightHeader.AutoSize = true;
-            lblRightHeader.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            lblRightHeader.ForeColor = Color.OrangeRed;
-            lblRightHeader.Location = new Point(10, 10);
+            lblRightHeader.Location = new Point(6, 15);
             lblRightHeader.Name = "lblRightHeader";
             lblRightHeader.Size = new Size(44, 15);
             lblRightHeader.TabIndex = 0;
-            lblRightHeader.Text = "RIGHT";
+            lblRightHeader.Text = "Right : ";
             // 
             // lblRightSamples
             // 
             lblRightSamples.AutoSize = true;
-            lblRightSamples.Location = new Point(12, 40);
+            lblRightSamples.Location = new Point(0, 35);
             lblRightSamples.Name = "lblRightSamples";
             lblRightSamples.Size = new Size(0, 15);
             lblRightSamples.TabIndex = 1;
@@ -146,26 +142,26 @@
             // lblRightDC
             // 
             lblRightDC.AutoSize = true;
-            lblRightDC.Location = new Point(12, 60);
+            lblRightDC.Location = new Point(6, 55);
             lblRightDC.Name = "lblRightDC";
             lblRightDC.Size = new Size(0, 15);
             lblRightDC.TabIndex = 2;
             // 
-            // lblRightRms
-            // 
-            lblRightRms.AutoSize = true;
-            lblRightRms.Location = new Point(12, 80);
-            lblRightRms.Name = "lblRightRms";
-            lblRightRms.Size = new Size(0, 15);
-            lblRightRms.TabIndex = 3;
-            // 
             // lblRightMinMax
             // 
             lblRightMinMax.AutoSize = true;
-            lblRightMinMax.Location = new Point(12, 100);
+            lblRightMinMax.Location = new Point(6, 95);
             lblRightMinMax.Name = "lblRightMinMax";
             lblRightMinMax.Size = new Size(0, 15);
             lblRightMinMax.TabIndex = 4;
+            // 
+            // lblRightRms
+            // 
+            lblRightRms.AutoSize = true;
+            lblRightRms.Location = new Point(6, 75);
+            lblRightRms.Name = "lblRightRms";
+            lblRightRms.Size = new Size(0, 15);
+            lblRightRms.TabIndex = 3;
             // 
             // grpRightStats
             // 
@@ -175,22 +171,21 @@
             grpRightStats.Controls.Add(lblRightRms);
             grpRightStats.Controls.Add(lblRightMinMax);
             grpRightStats.ForeColor = Color.Black;
-            grpRightStats.Location = new Point(3, 189);
+            grpRightStats.Location = new Point(5, 189);
             grpRightStats.Name = "grpRightStats";
-            grpRightStats.Size = new Size(134, 180);
+            grpRightStats.Size = new Size(140, 180);
             grpRightStats.TabIndex = 1;
             grpRightStats.TabStop = false;
             // 
             // panelStats
             // 
-            panelStats.BackColor = Color.WhiteSmoke;
             panelStats.Controls.Add(grpRightStats);
             panelStats.Controls.Add(grpLeftStats);
             panelStats.Dock = DockStyle.Fill;
             panelStats.Location = new Point(0, 0);
             panelStats.Name = "panelStats";
             panelStats.Padding = new Padding(8);
-            panelStats.Size = new Size(148, 435);
+            panelStats.Size = new Size(217, 440);
             panelStats.TabIndex = 0;
             // 
             // chartHistogram
@@ -198,14 +193,14 @@
             chartHistogram.Dock = DockStyle.Fill;
             chartHistogram.Location = new Point(0, 0);
             chartHistogram.Name = "chartHistogram";
-            chartHistogram.Size = new Size(760, 435);
+            chartHistogram.Size = new Size(917, 440);
             chartHistogram.TabIndex = 0;
             chartHistogram.Text = "chartHistogram";
             // 
             // splitContainerMain
             // 
             splitContainerMain.Dock = DockStyle.Fill;
-            splitContainerMain.Location = new Point(0, 62);
+            splitContainerMain.Location = new Point(0, 60);
             splitContainerMain.Name = "splitContainerMain";
             // 
             // splitContainerMain.Panel1
@@ -215,27 +210,27 @@
             // splitContainerMain.Panel2
             // 
             splitContainerMain.Panel2.Controls.Add(panelStats);
-            splitContainerMain.Size = new Size(912, 435);
-            splitContainerMain.SplitterDistance = 760;
+            splitContainerMain.Size = new Size(1138, 440);
+            splitContainerMain.SplitterDistance = 917;
             splitContainerMain.TabIndex = 3;
             // 
             // lblBinPow
             // 
             lblBinPow.AutoSize = true;
-            lblBinPow.Location = new Point(315, 40);
+            lblBinPow.Location = new Point(325, 39);
             lblBinPow.Name = "lblBinPow";
-            lblBinPow.Size = new Size(81, 15);
-            lblBinPow.TabIndex = 6;
-            lblBinPow.Text = "LSB/bin width";
+            lblBinPow.Size = new Size(46, 15);
+            lblBinPow.TabIndex = 14;
+            lblBinPow.Text = "Bin LSB";
             // 
             // lblRangePow
             // 
             lblRangePow.AutoSize = true;
-            lblRangePow.Location = new Point(178, 40);
+            lblRangePow.Location = new Point(309, 9);
             lblRangePow.Name = "lblRangePow";
-            lblRangePow.Size = new Size(64, 15);
-            lblRangePow.TabIndex = 5;
-            lblRangePow.Text = "±LSB Scale";
+            lblRangePow.Size = new Size(62, 15);
+            lblRangePow.TabIndex = 13;
+            lblRangePow.Text = "Range LSB";
             // 
             // chkAC
             // 
@@ -246,7 +241,7 @@
             chkAC.TabIndex = 2;
             chkAC.Text = "remove DC";
             chkAC.UseVisualStyleBackColor = true;
-            chkAC.Click += chkAC_CheckedChanged;
+            chkAC.CheckedChanged += chkAC_CheckedChanged;
             // 
             // lblChannel
             // 
@@ -266,12 +261,12 @@
             comboChannel.Name = "comboChannel";
             comboChannel.Size = new Size(100, 23);
             comboChannel.TabIndex = 0;
-            comboChannel.Click += comboChannel_SelectedIndexChanged;
+            comboChannel.SelectedIndexChanged += comboChannel_SelectedIndexChanged;
             // 
             // lblRecordTime
             // 
             lblRecordTime.AutoSize = true;
-            lblRecordTime.Location = new Point(461, 40);
+            lblRecordTime.Location = new Point(646, 17);
             lblRecordTime.Name = "lblRecordTime";
             lblRecordTime.Size = new Size(112, 15);
             lblRecordTime.TabIndex = 9;
@@ -283,6 +278,8 @@
             panelTop.Controls.Add(comboSampleWin);
             panelTop.Controls.Add(comboBinLsb);
             panelTop.Controls.Add(comboRangeLsb);
+            panelTop.Controls.Add(btnRun);
+            panelTop.Controls.Add(chkOnce);
             panelTop.Controls.Add(lblBinPow);
             panelTop.Controls.Add(lblRangePow);
             panelTop.Controls.Add(chkAC);
@@ -292,27 +289,13 @@
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 0);
             panelTop.Name = "panelTop";
-            panelTop.Size = new Size(912, 62);
+            panelTop.Size = new Size(1138, 60);
             panelTop.TabIndex = 2;
             // 
-            // btnRun
-            btnRun.Text = "RUN";
-            btnRun.Location = new Point(740, 14);  // ajuste si besoin
-            btnRun.Size = new Size(55, 23);
-
-            // chkOnce
-            chkOnce.Text = "once";
-            chkOnce.AutoSize = true;
-            chkOnce.Location = new Point(800, 17);
-
-            // Ajout sur le panelTop
-            panelTop.Controls.Add(btnRun);
-            panelTop.Controls.Add(chkOnce);
-
             // lblWindowInfo
             // 
             lblWindowInfo.AutoSize = true;
-            lblWindowInfo.Location = new Point(588, 17);
+            lblWindowInfo.Location = new Point(773, 40);
             lblWindowInfo.Name = "lblWindowInfo";
             lblWindowInfo.Size = new Size(38, 15);
             lblWindowInfo.TabIndex = 17;
@@ -322,7 +305,7 @@
             // 
             comboSampleWin.DropDownStyle = ComboBoxStyle.DropDownList;
             comboSampleWin.FormattingEnabled = true;
-            comboSampleWin.Location = new Point(461, 14);
+            comboSampleWin.Location = new Point(646, 34);
             comboSampleWin.Name = "comboSampleWin";
             comboSampleWin.Size = new Size(121, 23);
             comboSampleWin.TabIndex = 16;
@@ -332,19 +315,41 @@
             // 
             comboBinLsb.DropDownStyle = ComboBoxStyle.DropDownList;
             comboBinLsb.FormattingEnabled = true;
-            comboBinLsb.Location = new Point(315, 14);
+            comboBinLsb.Location = new Point(377, 34);
             comboBinLsb.Name = "comboBinLsb";
             comboBinLsb.Size = new Size(121, 23);
             comboBinLsb.TabIndex = 15;
+            comboBinLsb.SelectedIndexChanged += comboBinLsb_SelectedIndexChanged;
             // 
             // comboRangeLsb
             // 
             comboRangeLsb.DropDownStyle = ComboBoxStyle.DropDownList;
             comboRangeLsb.FormattingEnabled = true;
-            comboRangeLsb.Location = new Point(178, 14);
+            comboRangeLsb.Location = new Point(377, 6);
             comboRangeLsb.Name = "comboRangeLsb";
             comboRangeLsb.Size = new Size(121, 23);
-            comboRangeLsb.TabIndex = 14;
+            comboRangeLsb.TabIndex = 13;
+            comboRangeLsb.SelectedIndexChanged += comboRangeLsb_SelectedIndexChanged;
+            // 
+            // btnRun
+            // 
+            btnRun.FlatStyle = FlatStyle.Flat;
+            btnRun.Location = new Point(1044, 4);
+            btnRun.Name = "btnRun";
+            btnRun.Size = new Size(79, 51);
+            btnRun.TabIndex = 18;
+            btnRun.Text = "RUN";
+            btnRun.UseVisualStyleBackColor = true;
+            // 
+            // chkOnce
+            // 
+            chkOnce.AutoSize = true;
+            chkOnce.Location = new Point(860, 35);
+            chkOnce.Name = "chkOnce";
+            chkOnce.Size = new Size(52, 19);
+            chkOnce.TabIndex = 19;
+            chkOnce.Text = "once";
+            chkOnce.UseVisualStyleBackColor = true;
             // 
             // HistogramControl
             // 
@@ -353,7 +358,7 @@
             Controls.Add(splitContainerMain);
             Controls.Add(panelTop);
             Name = "HistogramControl";
-            Size = new Size(912, 497);
+            Size = new Size(1138, 500);
             grpLeftStats.ResumeLayout(false);
             grpLeftStats.PerformLayout();
             grpRightStats.ResumeLayout(false);
@@ -380,10 +385,10 @@
         private Label lblRightHeader;
         private Label lblRightSamples;
         private Label lblRightDC;
-        private Label lblRightRms;
         private Label lblRightMinMax;
+        private Label lblRightRms;
         private GroupBox grpRightStats;
-        public Panel panelStats;
+        private Panel panelStats;
         private System.Windows.Forms.DataVisualization.Charting.Chart chartHistogram;
         private SplitContainer splitContainerMain;
         private Label lblBinPow;

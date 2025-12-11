@@ -835,16 +835,44 @@ namespace AudioHexViewer
         }
 
 
+        //private void ClearSpectrum()
+        //{
+        //    foreach (var s in chartSpectrum.Series)
+        //        s.Points.Clear();
+
+        //    lblLeftRms.Text = "RMS:";
+        //    lblLeftPeak.Text = "Peak:";
+        //    lblRightRms.Text = "";
+        //    lblRightPeak.Text = "";
+        //}
         private void ClearSpectrum()
         {
-            foreach (var s in chartSpectrum.Series)
-                s.Points.Clear();
+            // Sécuriser l’axe X quand on n’a plus de données
+            if (chartSpectrum.ChartAreas.Count > 0)
+            {
+                var area = chartSpectrum.ChartAreas[0]; // ou "SpectrumArea" si tu préfères
 
+                // On repasse en linéaire pour éviter les problèmes
+                area.AxisX.IsLogarithmic = false;
+
+                // Bornes "safe" par défaut
+                area.AxisX.Minimum = 0.0;
+                area.AxisX.Maximum = _sampleRate > 0 ? _sampleRate / 2.0 : 1.0;
+
+                area.AxisX.MajorGrid.Enabled = true;
+                area.AxisX.MinorGrid.Enabled = false;
+            }
+
+            // On vide les séries
+            chartSpectrum.Series.Clear();
+
+            // On remet les labels de stats
             lblLeftRms.Text = "RMS:";
             lblLeftPeak.Text = "Peak:";
             lblRightRms.Text = "";
             lblRightPeak.Text = "";
         }
+
 
         private void button1_Click(object sender, EventArgs e)
         {

@@ -750,7 +750,7 @@ namespace AudioHexViewer
                     // Démarrage de la capture audio
                     capture.StartRecording();
 
-                    // Bouton en mode STOP rouge
+                    // Bouton en mode STOP private void btnRead_Click(object sender, EventArgs e)
                     UpdateStartButtonAppearance();
                     UpdateDeviceInfo();
                     UpdateDeviceSummary();
@@ -790,10 +790,15 @@ namespace AudioHexViewer
                     // on ignore les erreurs de StopRecording
                 }
 
-                // On arrête aussi l'histogramme s'il tourne
+                // On arrête aussi l'histogramme et le spectre s'ils tournent
                 if (histogramControl != null)
                 {
                     histogramControl.StopFromRun();
+                }
+
+                if (spectrumControl != null)
+                {
+                    spectrumControl.StopFromRun();
                 }
 
                 capture.Dispose();

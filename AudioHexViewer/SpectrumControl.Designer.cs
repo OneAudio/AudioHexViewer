@@ -16,6 +16,7 @@
         private void InitializeComponent()
         {
             panelTop = new Panel();
+            btnResetAvg = new Button();
             lblFftSize = new Label();
             comboFftSize = new ComboBox();
             lblWindow = new Label();
@@ -39,7 +40,6 @@
             lblRightHeader = new Label();
             lblRightRms = new Label();
             lblRightPeak = new Label();
-            btnResetAvg = new Button();
             panelTop.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)splitMain).BeginInit();
             splitMain.Panel1.SuspendLayout();
@@ -69,8 +69,18 @@
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 0);
             panelTop.Name = "panelTop";
-            panelTop.Size = new Size(1000, 60);
+            panelTop.Size = new Size(1138, 60);
             panelTop.TabIndex = 1;
+            // 
+            // btnResetAvg
+            // 
+            btnResetAvg.Location = new Point(450, 31);
+            btnResetAvg.Name = "btnResetAvg";
+            btnResetAvg.Size = new Size(42, 23);
+            btnResetAvg.TabIndex = 12;
+            btnResetAvg.Text = "RAZ";
+            btnResetAvg.UseVisualStyleBackColor = true;
+            btnResetAvg.Click += btnResetAvg_Click;
             // 
             // lblFftSize
             // 
@@ -152,7 +162,7 @@
             // btnRun
             // 
             btnRun.FlatStyle = FlatStyle.Flat;
-            btnRun.Location = new Point(918, 3);
+            btnRun.Location = new Point(1044, 4);
             btnRun.Name = "btnRun";
             btnRun.Size = new Size(79, 51);
             btnRun.TabIndex = 9;
@@ -189,8 +199,8 @@
             // splitMain.Panel2
             // 
             splitMain.Panel2.Controls.Add(panelStats);
-            splitMain.Size = new Size(1000, 440);
-            splitMain.SplitterDistance = 806;
+            splitMain.Size = new Size(1138, 440);
+            splitMain.SplitterDistance = 917;
             splitMain.TabIndex = 0;
             // 
             // chartSpectrum
@@ -198,7 +208,7 @@
             chartSpectrum.Dock = DockStyle.Fill;
             chartSpectrum.Location = new Point(0, 0);
             chartSpectrum.Name = "chartSpectrum";
-            chartSpectrum.Size = new Size(806, 440);
+            chartSpectrum.Size = new Size(917, 440);
             chartSpectrum.TabIndex = 0;
             // 
             // panelStats
@@ -209,7 +219,7 @@
             panelStats.Location = new Point(0, 0);
             panelStats.Name = "panelStats";
             panelStats.Padding = new Padding(8);
-            panelStats.Size = new Size(190, 440);
+            panelStats.Size = new Size(217, 440);
             panelStats.TabIndex = 0;
             // 
             // grpLeftStats
@@ -282,22 +292,13 @@
             lblRightPeak.Size = new Size(100, 23);
             lblRightPeak.TabIndex = 2;
             // 
-            // btnResetAvg
-            // 
-            btnResetAvg.Location = new Point(450, 31);
-            btnResetAvg.Name = "btnResetAvg";
-            btnResetAvg.Size = new Size(42, 23);
-            btnResetAvg.TabIndex = 12;
-            btnResetAvg.Text = "RAZ";
-            btnResetAvg.UseVisualStyleBackColor = true;
-            btnResetAvg.Click += btnResetAvg_Click;
-            // 
             // SpectrumControl
             // 
+            BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;   // 
             Controls.Add(splitMain);
             Controls.Add(panelTop);
             Name = "SpectrumControl";
-            Size = new Size(1000, 500);
+            Size = new Size(1138, 500);
             panelTop.ResumeLayout(false);
             panelTop.PerformLayout();
             splitMain.Panel1.ResumeLayout(false);
