@@ -2,7 +2,7 @@ Chose à faire :
 --------------
 Le 11/12/2025
 
-1- Alignement des controles identique sur les deux onglets.
+1- Alignement des controles identique sur les deux onglets. == 50% fait.
 
 2- A ajouter dans l'onglet FFT :
     - Moyenne exponentielle
@@ -24,14 +24,20 @@ Le 11/12/2025
 3 - Ajout du module qui permet de prendre le contre du SR.
 (Besoin d'ajouter une combobox pour la selection du SR).
 
-4- vérouiller la dimension minimum de la GUI pour que les contrôles
+4- vérouiller la dimension minimum de la GUI pour que les contrôles     --> OK FAIT 12/12/2025
 restent toujours visibles.
 
 5 - Faire le point sur tout les paramêtres qui doivent être sauvegardés.
 (renommer "save histogram settings" par "Save settings")
+A faire à la fin plutôt.
 
 6 - Sur l'histogramme, le mode DC ne fonctionne pas.
 En DC, corriger en centrant l'histogramme sur la valeur moyenne (au lieu de 0)
 
-7- Ajouter dans le menu "Show Graphs" pour masquer ou non la fenêtre
+7- Ajouter dans le menu "Show Graphs" pour masquer ou non la fenêtre    --> OK FAIT 12/12/2025
 des onglets graphiques.
+
+8 - Vérifier si la FFT est bien calculé en tenant compte de la partie DC du signal.
+(option ac/dc à voir ?) -- > Réponsen non elle ne l'est pas !
+
+9 - La fft en mode log affiche des divisons non entière si N<65536 .

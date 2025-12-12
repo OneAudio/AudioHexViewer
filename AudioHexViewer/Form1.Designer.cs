@@ -35,6 +35,7 @@ namespace AudioHexViewer
             menuStrip1 = new MenuStrip();
             menuData = new ToolStripMenuItem();
             menuShowAllFormats = new ToolStripMenuItem();
+            menuShowGraphs = new ToolStripMenuItem();
             menuDeviceInfo = new ToolStripMenuItem();
             menuHelp = new ToolStripMenuItem();
             menuAbout = new ToolStripMenuItem();
@@ -105,7 +106,7 @@ namespace AudioHexViewer
             // 
             // menuData
             // 
-            menuData.DropDownItems.AddRange(new ToolStripItem[] { menuShowAllFormats });
+            menuData.DropDownItems.AddRange(new ToolStripItem[] { menuShowAllFormats, menuShowGraphs });
             menuData.Name = "menuData";
             menuData.Size = new Size(43, 21);
             menuData.Text = "Data";
@@ -117,6 +118,15 @@ namespace AudioHexViewer
             menuShowAllFormats.Text = "Show all data formats";
             menuShowAllFormats.Click += menuShowAllFormats_Click;
             // 
+            // menuShowGraphs
+            //
+            menuShowGraphs.CheckOnClick = true;
+            menuShowGraphs.Checked = true;                        // par défaut : les graphs sont visibles
+            menuShowGraphs.Name = "menuShowGraphs";
+            menuShowGraphs.Size = new Size(180, 22);
+            menuShowGraphs.Text = "Show graphs";
+            menuShowGraphs.Click += menuShowGraphs_Click;
+            //
             // menuDeviceInfo
             // 
             menuDeviceInfo.Name = "menuDeviceInfo";
@@ -589,6 +599,7 @@ namespace AudioHexViewer
         private Label lblFormatInfo;
         private ToolStripMenuItem menuData;
         private ToolStripMenuItem menuShowAllFormats;
+        private ToolStripMenuItem menuShowGraphs;
         private System.Windows.Forms.RichTextBox txtLeft;
         private System.Windows.Forms.RichTextBox txtRight;
 

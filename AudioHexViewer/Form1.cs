@@ -60,6 +60,16 @@ namespace AudioHexViewer
 
         private bool captureOutput = false; // false = IN (capture), true = OUT (loopback)
 
+        // Taille de la fenêtre principale (avec/sans graphes)
+        private int _heightWithGraphs;
+        private bool _hasHeightWithGraphs;
+        // Hauteur minimale de la fenêtre
+        private int _minWidth;
+        private int _minHeightNoGraphs;
+        // Désactivation temporaire du redimensionnement
+        private FormBorderStyle _borderStyleWithGraphs;
+        private bool _borderStyleSaved;
+
 
         // --- Enregistrement 1 seconde ---
         private bool isRecordingOneSecond = false;
@@ -223,6 +233,21 @@ namespace AudioHexViewer
             ShowHistogramArea();
             ShowSpectrumArea();
 
+            // Verrouille la largeur minimale à la largeur par défaut
+            this.MinimumSize = new Size(this.Width, this.MinimumSize.Height);
+
+            // Largeur et hauteur minimales = taille par défaut au démarrage
+            _minWidth = this.Width;
+            // Calcule la hauteur minimale "sans graphs" (sans bouger la fenêtre)
+            _minHeightNoGraphs = ComputeNoGraphsHeight();
+            // Hauteur avec graphs
+            _borderStyleWithGraphs = this.FormBorderStyle;
+            _borderStyleSaved = true;
+
+            // Verrouille largeur min + hauteur min (sans graphs)
+            this.MinimumSize = new Size(_minWidth, _minHeightNoGraphs);
+
+
             chkHistoOnce.CheckAlign = ContentAlignment.MiddleRight;
             chkHistoOnce.TextAlign = ContentAlignment.MiddleLeft;
 
@@ -232,6 +257,8 @@ namespace AudioHexViewer
             lblLeftLevel.Font = levelFontRegular;
             lblRightLevel.Font = levelFontRegular;
 
+            // Assurer que l'état du split correspond au menu au démarrage
+            splitMain.Panel2Collapsed = !menuShowGraphs.Checked;
 
             // Modes possibles pour la valeur mise en avant
             comboDisplayMode.Items.AddRange(new object[]
@@ -1202,8 +1229,61 @@ namespace AudioHexViewer
             }
         }
 
+        private int ComputeNoGraphsHeight()
+        {
+            int nonClientHeight = this.Height - this.ClientSize.Height;
+
+            // Hauteur nécessaire du contenu du panneau haut
+            int panel1Needed = 0;
+            foreach (Control c in splitMain.Panel1.Controls)
+                panel1Needed = Math.Max(panel1Needed, c.Bottom);
+
+            int padding = 8;
+
+            // Hauteur client cible
+            int targetClientHeight = splitMain.Top + panel1Needed + padding;
+
+            // Hauteur totale fenêtre
+            return targetClientHeight + nonClientHeight;
+        }
 
         //
+        private void menuShowGraphs_Click(object? sender, EventArgs e)
+        {
+            if (menuShowGraphs.Checked)
+            {
+                // Show graphs
+                splitMain.Panel2Collapsed = false;
+
+                // Réactiver le redimensionnement
+                if (_borderStyleSaved)
+                    this.FormBorderStyle = _borderStyleWithGraphs;
+                this.MaximizeBox = true;
+
+                if (_hasHeightWithGraphs)
+                    this.Height = _heightWithGraphs;
+
+                return;
+            }
+
+            // Hide graphs
+            _heightWithGraphs = this.Height;
+            _hasHeightWithGraphs = true;
+
+            splitMain.Panel2Collapsed = true;
+
+            // Mettre la hauteur compacte (ton code existant)
+            int targetHeight = ComputeNoGraphsHeight();
+            this.Height = Math.Max(targetHeight, this.MinimumSize.Height);
+
+            // Verrouiller complètement la taille (plus de resize possible)
+            this.FormBorderStyle = FormBorderStyle.FixedSingle;
+            this.MaximizeBox = false;
+        }
+
+
+
+
         //
         private void btnRecord_Click(object sender, EventArgs e)
         {
