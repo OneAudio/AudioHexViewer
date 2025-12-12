@@ -77,12 +77,17 @@ namespace AudioHexViewer
         private static string SettingsFilePath =>
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "HistogramSettings.json");
 
-        public delegate (int[] Left, int[] Right) SampleProvider(int durationMs);
+        public delegate (int[] Left, int[] Right) SampleProvider(int sampleCount);
 
         private readonly SampleProvider? _provider;
         private int _sampleRate;
 
+        // Pas de rafraîchissement en samples (hop). 0 => pas de hop (mise à jour = taille fenêtre)
+        private int _hopSamples = 0;
+
         private int[] leftSamples = Array.Empty<int>();
+
+        private int? _forcedWindowSamples = null;
         private int[] rightSamples = Array.Empty<int>();
 
         private System.Windows.Forms.Timer? liveTimer;
@@ -162,11 +167,50 @@ namespace AudioHexViewer
             // Ajuste l'intervalle du timer live pour coller à la fenêtre
             if (liveTimer != null)
             {
-                int samples = GetWindowSamples();
-                int intervalMs = (int)Math.Max(10, Math.Round((double)samples * 1000.0 / _sampleRate));
+                int step = _hopSamples > 0 ? _hopSamples : GetWindowSamples();
+                int intervalMs = (int)Math.Max(10, Math.Round((double)step * 1000.0 / _sampleRate));
                 liveTimer.Interval = intervalMs;
             }
         }
+
+        // Appelé par Form1 quand le paramètre Overlap change.
+        // hopSamples = nombre d'échantillons entre deux calculs (0 => pas de hop, on suit la fenêtre).
+        public void UpdateHopSamples(int hopSamples)
+        {
+            if (hopSamples < 0) hopSamples = 0;
+            _hopSamples = hopSamples;
+
+            if (liveTimer != null && _sampleRate > 0)
+            {
+                int step = _hopSamples > 0 ? _hopSamples : GetWindowSamples();
+                int intervalMs = (int)Math.Max(10, Math.Round((double)step * 1000.0 / _sampleRate));
+                liveTimer.Interval = intervalMs;
+            }
+        }
+
+        // Appelé par Form1 : force l'option "Number of Samples" pour que Histogram + Spectrum
+        // utilisent la même fenêtre d'analyse.
+        public void SetGlobalSampleSize(int samples)
+        {
+            if (samples <= 0) return;
+            _forcedWindowSamples = samples;
+
+            // Synchronise l'affichage du combo (sans obliger l'utilisateur à le toucher)
+            int idx = Array.IndexOf(SampleWindowOptions, samples);
+            if (idx >= 0 && comboSampleWin != null)
+            {
+                comboSampleWin.SelectedIndexChanged -= comboSampleWin_SelectedIndexChanged;
+                comboSampleWin.SelectedIndex = idx;
+                comboSampleWin.SelectedIndexChanged += comboSampleWin_SelectedIndexChanged;
+            }
+
+            if (comboSampleWin != null)
+                comboSampleWin.Enabled = false;
+
+            UpdateWindowInfo();
+        }
+
+
 
         //
         private int FindClosestIndex(int[] options, int target)
@@ -204,6 +248,12 @@ namespace AudioHexViewer
 
         private int GetWindowSamples()
         {
+            if (_forcedWindowSamples.HasValue && _forcedWindowSamples.Value > 0)
+            {
+                LastUsedWindowSamples = _forcedWindowSamples.Value;
+                return _forcedWindowSamples.Value;
+            }
+
             if (comboSampleWin.SelectedIndex < 0)
                 return SampleWindowOptions[0];
 
@@ -284,8 +334,8 @@ namespace AudioHexViewer
 
             if (_sampleRate > 0)
             {
-                int samples = GetWindowSamples();
-                int intervalMs = (int)Math.Max(10, Math.Round((double)samples * 1000.0 / _sampleRate));
+                int step = _hopSamples > 0 ? _hopSamples : GetWindowSamples();
+                int intervalMs = (int)Math.Max(10, Math.Round((double)step * 1000.0 / _sampleRate));
                 liveTimer.Interval = intervalMs;
             }
             else
@@ -301,9 +351,7 @@ namespace AudioHexViewer
 
             int samples = GetWindowSamples();
             double msExact = (double)samples * 1000.0 / _sampleRate;
-            int durationMs = (int)Math.Max(10, Math.Round(msExact));
-
-            var (left, right) = _provider(durationMs);
+            var (left, right) = _provider(samples);
 
             leftSamples = left ?? Array.Empty<int>();
             rightSamples = right ?? Array.Empty<int>();
@@ -331,8 +379,8 @@ namespace AudioHexViewer
                 // Mode continu : histogramme mis à jour en continu via le timer
                 if (liveTimer != null)
                 {
-                    int samples = GetWindowSamples();
-                    int intervalMs = (int)Math.Max(10, Math.Round((double)samples * 1000.0 / _sampleRate));
+                    int step = _hopSamples > 0 ? _hopSamples : GetWindowSamples();
+                int intervalMs = (int)Math.Max(10, Math.Round((double)step * 1000.0 / _sampleRate));
                     liveTimer.Interval = intervalMs;
                 }
 
@@ -580,8 +628,8 @@ namespace AudioHexViewer
 
             if (liveTimer != null && liveTimer.Enabled && _sampleRate > 0)
             {
-                int samples = GetWindowSamples();
-                int intervalMs = (int)Math.Max(10, Math.Round((double)samples * 1000.0 / _sampleRate));
+                int step = _hopSamples > 0 ? _hopSamples : GetWindowSamples();
+                int intervalMs = (int)Math.Max(10, Math.Round((double)step * 1000.0 / _sampleRate));
                 liveTimer.Interval = intervalMs;
             }
 

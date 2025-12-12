@@ -11,10 +11,12 @@ namespace AudioHexViewer
 {
     public partial class SpectrumControl : UserControl
     {
-        public delegate (int[] Left, int[] Right) SampleProvider(int durationMs);
+        public delegate (int[] Left, int[] Right) SampleProvider(int sampleCount);
 
         private readonly SampleProvider? _provider;
         private int _sampleRate;
+        // Pas de rafraîchissement en samples (hop). 0 => pas de hop (mise à jour = taille fenêtre)
+        private int _hopSamples = 0;
         private System.Windows.Forms.Timer? liveTimer;
 
         private const int Max24Pos = 0x7FFFFF; // 24-bit full scale
@@ -41,6 +43,7 @@ namespace AudioHexViewer
         };
 
         private int lastFftSize;
+        private int? _forcedFftSize = null;
         private WindowType lastWindow = WindowType.Hann;
         private ChannelMode lastChannel = ChannelMode.Left;
 
@@ -95,6 +98,44 @@ namespace AudioHexViewer
 
             UpdateWindowInfo();
         }
+
+        // Appelé par Form1 quand le paramètre Overlap change.
+        // hopSamples = nombre d'échantillons entre deux calculs (0 => pas de hop, on suit N).
+        public void UpdateHopSamples(int hopSamples)
+        {
+            if (hopSamples < 0) hopSamples = 0;
+            _hopSamples = hopSamples;
+
+            if (liveTimer != null && _sampleRate > 0 && lastFftSize > 0)
+            {
+                int step = _hopSamples > 0 ? _hopSamples : lastFftSize;
+                int intervalMs = (int)Math.Max(10, Math.Round((double)step * 1000.0 / _sampleRate));
+                liveTimer.Interval = intervalMs;
+            }
+        }
+
+        // Appelé par Form1 : force la taille FFT pour que Histogram + Spectrum utilisent la même fenêtre.
+        public void SetGlobalSampleSize(int samples)
+        {
+            if (samples <= 0) return;
+            _forcedFftSize = samples;
+            lastFftSize = samples;
+
+            int idx = Array.IndexOf(FftSizeOptions, samples);
+            if (idx >= 0 && comboFftSize != null)
+            {
+                comboFftSize.SelectedIndexChanged -= ComboFftSize_SelectedIndexChanged;
+                comboFftSize.SelectedIndex = idx;
+                comboFftSize.SelectedIndexChanged += ComboFftSize_SelectedIndexChanged;
+            }
+
+            if (comboFftSize != null)
+                comboFftSize.Enabled = false;
+
+            UpdateWindowInfo();
+        }
+
+
 
         private void UpdateWindowInfo()
         {
@@ -157,11 +198,7 @@ namespace AudioHexViewer
 
             comboFftSize.SelectedIndex = 5; // 65536
             lastFftSize = FftSizeOptions[comboFftSize.SelectedIndex];
-            comboFftSize.SelectedIndexChanged += (s, e) =>
-            {
-                lastFftSize = FftSizeOptions[comboFftSize.SelectedIndex];
-                UpdateWindowInfo();
-            };
+            comboFftSize.SelectedIndexChanged += ComboFftSize_SelectedIndexChanged;
 
             // Window
             comboWindow.Items.Clear();
@@ -227,6 +264,19 @@ namespace AudioHexViewer
             };
         }
 
+        private void ComboFftSize_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            if (_forcedFftSize.HasValue)
+                return; // taille forcée par Form1
+
+            if (comboFftSize.SelectedIndex >= 0 && comboFftSize.SelectedIndex < FftSizeOptions.Length)
+            {
+                lastFftSize = FftSizeOptions[comboFftSize.SelectedIndex];
+                UpdateWindowInfo();
+            }
+        }
+
+
         private void UpdateRunButtonAppearance()
         {
             if (isLive)
@@ -267,10 +317,8 @@ namespace AudioHexViewer
                 }
                 else
                 {
-                    int intervalMs = (int)Math.Max(
-                        10,
-                        Math.Round((double)lastFftSize * 1000.0 / _sampleRate)
-                    );
+                    int step = _hopSamples > 0 ? _hopSamples : lastFftSize;
+                    int intervalMs = (int)Math.Max(10, Math.Round((double)step * 1000.0 / _sampleRate));
                     liveTimer.Interval = intervalMs;
                 }
 
@@ -295,20 +343,26 @@ namespace AudioHexViewer
 
             // 1) Taille FFT
             int N;
-            if (comboFftSize.SelectedIndex >= 0 && comboFftSize.SelectedIndex < FftSizeOptions.Length)
-                N = FftSizeOptions[comboFftSize.SelectedIndex];
-            else
-                N = 16384;
 
+            if (_forcedFftSize.HasValue && _forcedFftSize.Value > 0)
+            {
+                N = _forcedFftSize.Value;
+            }
+            else if (comboFftSize.SelectedIndex >= 0 && comboFftSize.SelectedIndex < FftSizeOptions.Length)
+            {
+                N = FftSizeOptions[comboFftSize.SelectedIndex];
+            }
+            else
+            {
+                N = 16384;
+            }
             if (N < 512) N = 512;
             lastFftSize = N;
 
             // 2) Durée correspondant à N échantillons
             double msExact = (double)N * 1000.0 / _sampleRate;
-            int durationMs = (int)Math.Max(10, Math.Round(msExact));
-
             // 3) Récupérer L/R
-            var (left, right) = _provider(durationMs);
+            var (left, right) = _provider(N);
             var leftSamples = left ?? Array.Empty<int>();
             var rightSamples = right ?? Array.Empty<int>();
 

@@ -63,6 +63,10 @@ namespace AudioHexViewer
             chkHistoOnce = new CheckBox();
             label4 = new Label();
             comboDisplayMode = new ComboBox();
+            labelSamplesSize = new Label();
+            comboSamplesSize = new ComboBox();
+            labelOverlap = new Label();
+            comboOverlap = new ComboBox();
             label1 = new Label();
             btnStart = new Button();
             rbInput = new RadioButton();
@@ -205,6 +209,10 @@ namespace AudioHexViewer
             splitMain.Panel1.Controls.Add(chkHistoOnce);
             splitMain.Panel1.Controls.Add(label4);
             splitMain.Panel1.Controls.Add(comboDisplayMode);
+            splitMain.Panel1.Controls.Add(labelSamplesSize);
+            splitMain.Panel1.Controls.Add(comboSamplesSize);
+            splitMain.Panel1.Controls.Add(labelOverlap);
+            splitMain.Panel1.Controls.Add(comboOverlap);
             splitMain.Panel1.Controls.Add(label1);
             splitMain.Panel1.Controls.Add(btnStart);
             splitMain.Panel1.Controls.Add(rbInput);
@@ -391,6 +399,42 @@ namespace AudioHexViewer
             comboDisplayMode.Name = "comboDisplayMode";
             comboDisplayMode.Size = new Size(187, 23);
             comboDisplayMode.TabIndex = 47;
+
+            // labelSamplesSize
+            // 
+            labelSamplesSize.AutoSize = true;
+            labelSamplesSize.Location = new Point(750, 120);
+            labelSamplesSize.Name = "labelSamplesSize";
+            labelSamplesSize.Size = new Size(76, 15);
+            labelSamplesSize.TabIndex = 1000;
+            labelSamplesSize.Text = "Samples size";
+            // 
+            // comboSamplesSize
+            // 
+            comboSamplesSize.DropDownStyle = ComboBoxStyle.DropDownList;
+            comboSamplesSize.FormattingEnabled = true;
+            comboSamplesSize.Location = new Point(760, 125);
+            comboSamplesSize.Name = "comboSamplesSize";
+            comboSamplesSize.Size = new Size(120, 23);
+            comboSamplesSize.TabIndex = 1001;
+            // 
+            // labelOverlap
+            // 
+            labelOverlap.AutoSize = true;
+            labelOverlap.Location = new Point(690, 115);
+            labelOverlap.Name = "labelOverlap";
+            labelOverlap.Size = new Size(50, 15);
+            labelOverlap.TabIndex = 1002;
+            labelOverlap.Text = "Overlap";
+            // 
+            // comboOverlap
+            // 
+            comboOverlap.DropDownStyle = ComboBoxStyle.DropDownList;
+            comboOverlap.FormattingEnabled = true;
+            comboOverlap.Location = new Point(690, 131);
+            comboOverlap.Name = "comboOverlap";
+            comboOverlap.Size = new Size(70, 23);
+            comboOverlap.TabIndex = 1003;
             // 
             // label1
             // 
@@ -426,6 +470,7 @@ namespace AudioHexViewer
             rbInput.TabStop = true;
             rbInput.Text = "IN";
             rbInput.UseVisualStyleBackColor = true;
+            rbInput.CheckedChanged += rbInput_CheckedChanged;
             // 
             // rbOutput
             // 
@@ -437,6 +482,7 @@ namespace AudioHexViewer
             rbOutput.TabStop = true;
             rbOutput.Text = "OUT";
             rbOutput.UseVisualStyleBackColor = true;
+            rbOutput.CheckedChanged += rbOutput_CheckedChanged;
             // 
             // comboDevices
             // 
@@ -583,6 +629,10 @@ namespace AudioHexViewer
         private CheckBox chkHistoOnce;
         private Label label4;
         private ComboBox comboDisplayMode;
+        private Label labelSamplesSize;
+        private ComboBox comboSamplesSize;
+        private Label labelOverlap;
+        private ComboBox comboOverlap;
         private Label label1;
         private Button btnStart;
         private RadioButton rbInput;
