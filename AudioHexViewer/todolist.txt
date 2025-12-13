@@ -41,3 +41,12 @@ des onglets graphiques.
 (option ac/dc à voir ?) -- > Réponsen non elle ne l'est pas !
 
 9 - La fft en mode log affiche des divisons non entière si N<65536 .
+
+10 - On refond la partie acquisition pour qu'elle soit en nombre de sample et non en temps
+comme actuellement ! On rend commun le nombre de sample à utilisé pour l'histogramme et la FFT.
+Les aniciens controle FFT size et "sample number" sont remplacés par "sample size" dans le menu
+principale de la barre du haut.
+On ajoute également un contrôle supplémentaire qui permet d'avoir un buffer avec un "overlap"
+qui soit réglagle de manière à avoir un raffraichissement plus rapide.
+La valeur de l'overlap est aussi ajustable dans le menu du haut avec les valeurs suivantes :
+0% (pas d'overlap,25%,50%,75%,87.5% et 97.5%)

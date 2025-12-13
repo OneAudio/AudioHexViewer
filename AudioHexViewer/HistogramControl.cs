@@ -206,7 +206,12 @@ namespace AudioHexViewer
 
             if (comboSampleWin != null)
                 comboSampleWin.Enabled = false;
-
+                comboSampleWin.Visible = false;   // <-- ajouté
+            
+            if (lblRecordTime != null)
+            {
+                lblRecordTime.Visible = false;    // <-- ajouté
+            }
             UpdateWindowInfo();
         }
 

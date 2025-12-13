@@ -252,23 +252,10 @@ namespace AudioHexViewer
                     if (comboSamplesSize.SelectedIndex < 0) return;
                     int nSamples = opts[comboSamplesSize.SelectedIndex];
                     SetAnalysisSampleSize(nSamples);
+                    UpdateSampleSizeMenuChecks();
                 };
             }
-
-
-            // ToolStrip combo "Samples" (dans la barre de menu)
-            if (toolStripComboSampleSize != null)
-            {
-                toolStripComboSampleSize.Items.Clear();
-                int[] opts2 = new[] { 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576 };
-                foreach (int n in opts2)
-                    toolStripComboSampleSize.Items.Add(n.ToString("N0"));
-
-                int idx2 = Array.IndexOf(opts2, analysisSampleSize);
-                toolStripComboSampleSize.SelectedIndex = idx2 >= 0 ? idx2 : 6;
-            }
-
-
+            //
             // Combo "Overlap"
             if (comboOverlap != null)
             {
@@ -279,6 +266,7 @@ namespace AudioHexViewer
                 comboOverlap.SelectedIndexChanged += (s, e) =>
                 {
                     SetAnalysisOverlap(ParseOverlapPercent(comboOverlap.SelectedItem as string));
+                    UpdateOverlapMenuChecks();
                 };
             }
 
@@ -291,19 +279,9 @@ namespace AudioHexViewer
 
             spectrumControl?.SetGlobalSampleSize(analysisSampleSize);
             spectrumControl?.UpdateHopSamples(analysisHopSamples);
-        
-
-            // Sync ToolStrip "Samples" selection (si présent)
-            if (toolStripComboSampleSize != null)
-            {
-                string target = analysisSampleSize.ToString("N0");
-                int idx = toolStripComboSampleSize.Items.IndexOf(target);
-                if (idx >= 0 && toolStripComboSampleSize.SelectedIndex != idx)
-                    toolStripComboSampleSize.SelectedIndex = idx;
-            }
-
-}
-
+         }
+        //
+        //
         private static double ParseOverlapPercent(string? s)
         {
             if (string.IsNullOrWhiteSpace(s)) return 0.0;
@@ -332,47 +310,138 @@ namespace AudioHexViewer
             spectrumControl?.SetGlobalSampleSize(analysisSampleSize);
             spectrumControl?.UpdateHopSamples(analysisHopSamples);
         }
+        //
+        private readonly int[] _sampleSizeOptions = new[] { 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576 };
 
-        
-        private void toolStripComboSampleSize_SelectedIndexChanged(object? sender, EventArgs e)
+        // évite les boucles (menu -> combo -> menu)
+        private bool _updatingSampleSizeMenuUi = false;
+
+        private void InitSampleSizeMenu()
         {
-            if (_updatingSampleSizeUi) return;
-            if (toolStripComboSampleSize == null) return;
+            if (menuSampleSize == null) return;
 
-            string s = toolStripComboSampleSize.ComboBox?.SelectedItem?.ToString() 
-                       ?? toolStripComboSampleSize.SelectedItem?.ToString()
-                       ?? "";
-            s = s.Replace(" ", "").Replace(",", "");
-            if (!int.TryParse(s, out int nSamples))
-                return;
+            menuSampleSize.DropDownItems.Clear();
 
-            _updatingSampleSizeUi = true;
-            try
+            foreach (int n in _sampleSizeOptions)
             {
-                // Sync legacy ComboBox (si encore présent dans le panneau du haut)
-                if (comboSamplesSize != null)
+                var it = new ToolStripMenuItem(n.ToString("N0"))
                 {
-                    for (int i = 0; i < comboSamplesSize.Items.Count; i++)
-                    {
-                        string it = comboSamplesSize.Items[i]?.ToString() ?? "";
-                        string it2 = it.Replace(" ", "").Replace(",", "");
-                        if (it2 == nSamples.ToString())
-                        {
-                            comboSamplesSize.SelectedIndex = i;
-                            break;
-                        }
-                    }
-                }
+                    Tag = n,
+                    CheckOnClick = true
+                };
 
-                SetAnalysisSampleSize(nSamples);
+                it.Click += (s, e) =>
+                {
+                    if (_updatingSampleSizeMenuUi) return;
+
+                    int chosen = (int)((ToolStripMenuItem)s!).Tag!;
+                    _updatingSampleSizeMenuUi = true;
+                    try
+                    {
+                        SetAnalysisSampleSize(chosen);
+                        UpdateSampleSizeMenuChecks();
+                        SyncPanelSampleSizeCombo(chosen); // si tu gardes comboSamplesSize visible
+                    }
+                    finally
+                    {
+                        _updatingSampleSizeMenuUi = false;
+                    }
+                };
+
+                menuSampleSize.DropDownItems.Add(it);
             }
-            finally
+        }
+        //
+        private readonly (string Label, double Value)[] _overlapOptions =
+{
+    ("0%", 0.0),
+    ("50%", 0.5),
+    ("75%", 0.75),
+    ("87.5%", 0.875),
+    ("93.75%", 0.9375),
+};
+
+        private bool _updatingOverlapMenuUi = false;
+
+        private void InitOverlapMenu()
+        {
+            if (menuOverlap == null) return;
+
+            menuOverlap.DropDownItems.Clear();
+
+            foreach (var (label, value) in _overlapOptions)
             {
-                _updatingSampleSizeUi = false;
+                var it = new ToolStripMenuItem(label)
+                {
+                    Tag = value,
+                    CheckOnClick = true
+                };
+
+                it.Click += (s, e) =>
+                {
+                    if (_updatingOverlapMenuUi) return;
+
+                    double chosen = (double)((ToolStripMenuItem)s!).Tag!;
+                    _updatingOverlapMenuUi = true;
+                    try
+                    {
+                        SetAnalysisOverlap(chosen);
+                        UpdateOverlapMenuChecks();
+                        SyncPanelOverlapCombo(chosen); // si tu gardes comboOverlap visible
+                    }
+                    finally
+                    {
+                        _updatingOverlapMenuUi = false;
+                    }
+                };
+
+                menuOverlap.DropDownItems.Add(it);
             }
         }
 
-private void SetAnalysisOverlap(double overlap)
+        private void UpdateOverlapMenuChecks()
+        {
+            if (menuOverlap == null) return;
+
+            foreach (ToolStripMenuItem it in menuOverlap.DropDownItems)
+                it.Checked = (Math.Abs((double)it.Tag! - analysisOverlap) < 1e-12);
+        }
+
+        private void SyncPanelOverlapCombo(double overlap)
+        {
+            if (comboOverlap == null) return;
+
+            // tes items sont "0%", "50%", ... :contentReference[oaicite:9]{index=9}
+            string? label = _overlapOptions.FirstOrDefault(x => Math.Abs(x.Value - overlap) < 1e-12).Label;
+            if (label == null) return;
+
+            int idx = comboOverlap.Items.IndexOf(label);
+            if (idx >= 0 && comboOverlap.SelectedIndex != idx)
+                comboOverlap.SelectedIndex = idx;
+        }
+
+        //
+        private void UpdateSampleSizeMenuChecks()
+        {
+            if (menuSampleSize == null) return;
+
+            foreach (ToolStripMenuItem it in menuSampleSize.DropDownItems)
+                it.Checked = ((int)it.Tag! == analysisSampleSize);
+        }
+
+        private void SyncPanelSampleSizeCombo(int nSamples)
+        {
+            if (comboSamplesSize == null) return;
+
+            // tes items sont des strings formatées "N0" :contentReference[oaicite:7]{index=7}
+            string target = nSamples.ToString("N0");
+            int idx = comboSamplesSize.Items.IndexOf(target);
+            if (idx >= 0 && comboSamplesSize.SelectedIndex != idx)
+                comboSamplesSize.SelectedIndex = idx;
+        }
+
+        //
+        private void SetAnalysisOverlap(double overlap)
         {
             if (overlap < 0.0) overlap = 0.0;
             if (overlap > 0.99) overlap = 0.99;
@@ -554,6 +623,13 @@ private void SetAnalysisOverlap(double overlap)
                 new[] { "-80", "-36", "-12", "-6", "0" },
                 new[] { -80, DbBlueToGreen, DbGreenToOrange, DbOrangeToRed, 0.0 }
             );
+
+            // 
+            InitSampleSizeMenu();
+            InitOverlapMenu();
+            UpdateSampleSizeMenuChecks();
+            UpdateOverlapMenuChecks();
+
 
         }
 

@@ -48,14 +48,14 @@
             chkAC = new CheckBox();
             lblChannel = new Label();
             comboChannel = new ComboBox();
-            lblRecordTime = new Label();
             panelTop = new Panel();
             lblWindowInfo = new Label();
-            comboSampleWin = new ComboBox();
             comboBinLsb = new ComboBox();
             comboRangeLsb = new ComboBox();
             btnRun = new Button();
             chkOnce = new CheckBox();
+            lblRecordTime = new Label();
+            comboSampleWin = new ComboBox();
             grpLeftStats.SuspendLayout();
             grpRightStats.SuspendLayout();
             panelStats.SuspendLayout();
@@ -263,15 +263,6 @@
             comboChannel.TabIndex = 0;
             comboChannel.SelectedIndexChanged += comboChannel_SelectedIndexChanged;
             // 
-            // lblRecordTime
-            // 
-            lblRecordTime.AutoSize = true;
-            lblRecordTime.Location = new Point(646, 17);
-            lblRecordTime.Name = "lblRecordTime";
-            lblRecordTime.Size = new Size(112, 15);
-            lblRecordTime.TabIndex = 9;
-            lblRecordTime.Text = "Number of Samples";
-            // 
             // panelTop
             // 
             panelTop.Controls.Add(lblWindowInfo);
@@ -300,16 +291,6 @@
             lblWindowInfo.Size = new Size(38, 15);
             lblWindowInfo.TabIndex = 17;
             lblWindowInfo.Text = "label1";
-            // 
-            // comboSampleWin
-            // 
-            comboSampleWin.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboSampleWin.FormattingEnabled = true;
-            comboSampleWin.Location = new Point(646, 34);
-            comboSampleWin.Name = "comboSampleWin";
-            comboSampleWin.Size = new Size(121, 23);
-            comboSampleWin.TabIndex = 16;
-            comboSampleWin.SelectedIndexChanged += comboSampleWin_SelectedIndexChanged;
             // 
             // comboBinLsb
             // 
@@ -350,6 +331,25 @@
             chkOnce.TabIndex = 19;
             chkOnce.Text = "once";
             chkOnce.UseVisualStyleBackColor = true;
+            // 
+            // lblRecordTime
+            // 
+            lblRecordTime.AutoSize = true;
+            lblRecordTime.Location = new Point(646, 17);
+            lblRecordTime.Name = "lblRecordTime";
+            lblRecordTime.Size = new Size(112, 15);
+            lblRecordTime.TabIndex = 9;
+            lblRecordTime.Text = "Number of Samples";
+            // 
+            // comboSampleWin
+            // 
+            comboSampleWin.DropDownStyle = ComboBoxStyle.DropDownList;
+            comboSampleWin.FormattingEnabled = true;
+            comboSampleWin.Location = new Point(646, 34);
+            comboSampleWin.Name = "comboSampleWin";
+            comboSampleWin.Size = new Size(121, 23);
+            comboSampleWin.TabIndex = 16;
+            comboSampleWin.SelectedIndexChanged += comboSampleWin_SelectedIndexChanged;
             // 
             // HistogramControl
             // 
@@ -396,14 +396,13 @@
         private CheckBox chkAC;
         private Label lblChannel;
         private ComboBox comboChannel;
-        private Label lblRecordTime;
         private Panel panelTop;
-        private ComboBox comboSampleWin;
         private ComboBox comboBinLsb;
         private ComboBox comboRangeLsb;
         private Label lblWindowInfo;
         private Button btnRun;
         private CheckBox chkOnce;
-
+        private ComboBox comboSampleWin;
+        private Label lblRecordTime;
     }
 }

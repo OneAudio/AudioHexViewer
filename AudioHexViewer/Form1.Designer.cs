@@ -41,6 +41,8 @@ namespace AudioHexViewer
             menuAbout = new ToolStripMenuItem();
             menuOpenCal = new ToolStripMenuItem();
             menuOpenRecordsFolder = new ToolStripMenuItem();
+            menuSampleSize = new ToolStripMenuItem();
+            menuOverlap = new ToolStripMenuItem();
             saveHistogramSettingsToolStripMenuItem = new ToolStripMenuItem();
             alwaysOnTopToolStripMenuItem = new ToolStripMenuItem();
             splitMain = new SplitContainer();
@@ -97,16 +99,19 @@ namespace AudioHexViewer
             // menuStrip1
             // 
             menuStrip1.AutoSize = false;
-            menuStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { menuDeviceInfo, menuHelp, menuData });
+            menuStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { menuDeviceInfo, menuHelp, menuData, menuSampleSize, menuOverlap });
             menuStrip1.Location = new Point(0, 0);
             menuStrip1.Name = "menuStrip1";
             menuStrip1.Size = new Size(1138, 25);
             menuStrip1.TabIndex = 0;
             menuStrip1.Text = "menuStrip1";
+            //
             // Alignement à droite de tous les items
             menuData.Alignment = ToolStripItemAlignment.Right;
             menuHelp.Alignment = ToolStripItemAlignment.Right;
             menuDeviceInfo.Alignment = ToolStripItemAlignment.Right;
+            menuSampleSize.Alignment = ToolStripItemAlignment.Right;
+            menuOverlap.Alignment = ToolStripItemAlignment.Right;
             // 
             // menuData
             // 
@@ -145,7 +150,22 @@ namespace AudioHexViewer
             menuHelp.Name = "menuHelp";
             menuHelp.Size = new Size(44, 21);
             menuHelp.Text = "Help";
+            //
+            //
             // 
+            // menuSampleSize
+            // 
+            menuSampleSize.Name = "menuSampleSize";
+            menuSampleSize.Size = new Size(85, 21);
+            menuSampleSize.Text = "Sample size";
+
+            // 
+            // menuOverlap
+            // 
+            menuOverlap.Name = "menuOverlap";
+            menuOverlap.Size = new Size(65, 21);
+            menuOverlap.Text = "Overlap";
+
             // menuAbout
             // 
             menuAbout.Name = "menuAbout";
@@ -403,7 +423,7 @@ namespace AudioHexViewer
             // labelSamplesSize
             // 
             labelSamplesSize.AutoSize = true;
-            labelSamplesSize.Location = new Point(750, 120);
+            labelSamplesSize.Location = new Point(560, 115);
             labelSamplesSize.Name = "labelSamplesSize";
             labelSamplesSize.Size = new Size(76, 15);
             labelSamplesSize.TabIndex = 1000;
@@ -413,7 +433,7 @@ namespace AudioHexViewer
             // 
             comboSamplesSize.DropDownStyle = ComboBoxStyle.DropDownList;
             comboSamplesSize.FormattingEnabled = true;
-            comboSamplesSize.Location = new Point(760, 125);
+            comboSamplesSize.Location = new Point(560, 131);
             comboSamplesSize.Name = "comboSamplesSize";
             comboSamplesSize.Size = new Size(120, 23);
             comboSamplesSize.TabIndex = 1001;
@@ -470,7 +490,6 @@ namespace AudioHexViewer
             rbInput.TabStop = true;
             rbInput.Text = "IN";
             rbInput.UseVisualStyleBackColor = true;
-            rbInput.CheckedChanged += rbInput_CheckedChanged;
             // 
             // rbOutput
             // 
@@ -482,7 +501,6 @@ namespace AudioHexViewer
             rbOutput.TabStop = true;
             rbOutput.Text = "OUT";
             rbOutput.UseVisualStyleBackColor = true;
-            rbOutput.CheckedChanged += rbOutput_CheckedChanged;
             // 
             // comboDevices
             // 
@@ -652,6 +670,9 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuShowGraphs;
         private System.Windows.Forms.RichTextBox txtLeft;
         private System.Windows.Forms.RichTextBox txtRight;
+        private ToolStripMenuItem menuSampleSize;
+        private ToolStripMenuItem menuOverlap;
+
 
     }
 }

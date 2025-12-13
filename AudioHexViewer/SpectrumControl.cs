@@ -131,7 +131,11 @@ namespace AudioHexViewer
 
             if (comboFftSize != null)
                 comboFftSize.Enabled = false;
-
+                comboFftSize.Visible = false; // <-- ajouté
+            if (lblFftSize != null)
+            {
+                lblFftSize.Visible = false;   // <-- ajouté
+            }
             UpdateWindowInfo();
         }
 
