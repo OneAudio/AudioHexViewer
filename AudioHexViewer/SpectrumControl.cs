@@ -120,24 +120,9 @@ namespace AudioHexViewer
             if (samples <= 0) return;
             _forcedFftSize = samples;
             lastFftSize = samples;
-
-            int idx = Array.IndexOf(FftSizeOptions, samples);
-            if (idx >= 0 && comboFftSize != null)
-            {
-                comboFftSize.SelectedIndexChanged -= ComboFftSize_SelectedIndexChanged;
-                comboFftSize.SelectedIndex = idx;
-                comboFftSize.SelectedIndexChanged += ComboFftSize_SelectedIndexChanged;
-            }
-
-            if (comboFftSize != null)
-                comboFftSize.Enabled = false;
-                comboFftSize.Visible = false; // <-- ajouté
-            if (lblFftSize != null)
-            {
-                lblFftSize.Visible = false;   // <-- ajouté
-            }
             UpdateWindowInfo();
         }
+
 
 
 
@@ -195,15 +180,6 @@ namespace AudioHexViewer
 
         private void InitializeUiOptions()
         {
-            // FFT size
-            comboFftSize.Items.Clear();
-            foreach (int n in FftSizeOptions)
-                comboFftSize.Items.Add(n.ToString("N0"));
-
-            comboFftSize.SelectedIndex = 5; // 65536
-            lastFftSize = FftSizeOptions[comboFftSize.SelectedIndex];
-            comboFftSize.SelectedIndexChanged += ComboFftSize_SelectedIndexChanged;
-
             // Window
             comboWindow.Items.Clear();
             comboWindow.Items.Add("Rectangular");
@@ -267,20 +243,8 @@ namespace AudioHexViewer
                 }
             };
         }
-
-        private void ComboFftSize_SelectedIndexChanged(object? sender, EventArgs e)
-        {
-            if (_forcedFftSize.HasValue)
-                return; // taille forcée par Form1
-
-            if (comboFftSize.SelectedIndex >= 0 && comboFftSize.SelectedIndex < FftSizeOptions.Length)
-            {
-                lastFftSize = FftSizeOptions[comboFftSize.SelectedIndex];
-                UpdateWindowInfo();
-            }
-        }
-
-
+        //
+        //
         private void UpdateRunButtonAppearance()
         {
             if (isLive)
@@ -346,22 +310,13 @@ namespace AudioHexViewer
                 return;
 
             // 1) Taille FFT
-            int N;
+            int N = (_forcedFftSize.HasValue && _forcedFftSize.Value > 0)
+            ? _forcedFftSize.Value
+            : (lastFftSize > 0 ? lastFftSize : 65536);
 
-            if (_forcedFftSize.HasValue && _forcedFftSize.Value > 0)
-            {
-                N = _forcedFftSize.Value;
-            }
-            else if (comboFftSize.SelectedIndex >= 0 && comboFftSize.SelectedIndex < FftSizeOptions.Length)
-            {
-                N = FftSizeOptions[comboFftSize.SelectedIndex];
-            }
-            else
-            {
-                N = 16384;
-            }
             if (N < 512) N = 512;
             lastFftSize = N;
+
 
             // 2) Durée correspondant à N échantillons
             double msExact = (double)N * 1000.0 / _sampleRate;

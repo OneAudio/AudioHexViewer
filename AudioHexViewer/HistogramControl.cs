@@ -194,29 +194,9 @@ namespace AudioHexViewer
         {
             if (samples <= 0) return;
             _forcedWindowSamples = samples;
-
-            // Synchronise l'affichage du combo (sans obliger l'utilisateur à le toucher)
-            int idx = Array.IndexOf(SampleWindowOptions, samples);
-            if (idx >= 0 && comboSampleWin != null)
-            {
-                comboSampleWin.SelectedIndexChanged -= comboSampleWin_SelectedIndexChanged;
-                comboSampleWin.SelectedIndex = idx;
-                comboSampleWin.SelectedIndexChanged += comboSampleWin_SelectedIndexChanged;
-            }
-
-            if (comboSampleWin != null)
-                comboSampleWin.Enabled = false;
-                comboSampleWin.Visible = false;   // <-- ajouté
-            
-            if (lblRecordTime != null)
-            {
-                lblRecordTime.Visible = false;    // <-- ajouté
-            }
             UpdateWindowInfo();
         }
-
-
-
+        //
         //
         private int FindClosestIndex(int[] options, int target)
         {
@@ -259,13 +239,14 @@ namespace AudioHexViewer
                 return _forcedWindowSamples.Value;
             }
 
-            if (comboSampleWin.SelectedIndex < 0)
-                return SampleWindowOptions[0];
+            // Plus de sélection locale : on prend la dernière valeur connue ou un défaut
+            if (LastUsedWindowSamples > 0)
+                return LastUsedWindowSamples;
 
-            int samples = SampleWindowOptions[comboSampleWin.SelectedIndex];
-            LastUsedWindowSamples = samples;
-            return samples;
+            LastUsedWindowSamples = 131072;
+            return LastUsedWindowSamples;
         }
+
 
         private void ApplySettingsOrDefaults()
         {
@@ -286,7 +267,6 @@ namespace AudioHexViewer
 
             comboRangeLsb.SelectedIndex = idxRangeDefault;
             comboBinLsb.SelectedIndex = idxBinDefault;
-            comboSampleWin.SelectedIndex = idxWinDefault;
 
             lastRangeLsb = RangeLsbOptions[idxRangeDefault];
             lastBinLsb = BinLsbOptions[idxBinDefault];
@@ -324,7 +304,6 @@ namespace AudioHexViewer
                     winSamples = defaultWin;
 
                 int idxWin = FindClosestIndex(SampleWindowOptions, winSamples);
-                comboSampleWin.SelectedIndex = idxWin;
                 LastUsedWindowSamples = SampleWindowOptions[idxWin];
             }
 
@@ -516,11 +495,6 @@ namespace AudioHexViewer
             foreach (var v in BinLsbOptions)
                 comboBinLsb.Items.Add(v.ToString());
 
-            // Remplissage ComboBox fenêtre (samples)
-            comboSampleWin.Items.Clear();
-            foreach (var v in SampleWindowOptions)
-                comboSampleWin.Items.Add(v.ToString("N0"));
-
             ApplySettingsOrDefaults();
             // --- Câblage du bouton RUN ---
             btnRun.Click += (s, e) =>
@@ -625,23 +599,6 @@ namespace AudioHexViewer
         {
             lastBinLsb = GetBinLsb();
             RebuildHistogram();
-        }
-
-        private void comboSampleWin_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            UpdateWindowInfo();
-
-            if (liveTimer != null && liveTimer.Enabled && _sampleRate > 0)
-            {
-                int step = _hopSamples > 0 ? _hopSamples : GetWindowSamples();
-                int intervalMs = (int)Math.Max(10, Math.Round((double)step * 1000.0 / _sampleRate));
-                liveTimer.Interval = intervalMs;
-            }
-
-            if (!isLive)
-            {
-                AcquireOnce();
-            }
         }
 
         private void RebuildHistogram()

@@ -17,8 +17,6 @@
         {
             panelTop = new Panel();
             btnResetAvg = new Button();
-            lblFftSize = new Label();
-            comboFftSize = new ComboBox();
             lblWindow = new Label();
             comboWindow = new ComboBox();
             lblAveraging = new Label();
@@ -54,8 +52,6 @@
             // panelTop
             // 
             panelTop.Controls.Add(btnResetAvg);
-            panelTop.Controls.Add(lblFftSize);
-            panelTop.Controls.Add(comboFftSize);
             panelTop.Controls.Add(lblWindow);
             panelTop.Controls.Add(comboWindow);
             panelTop.Controls.Add(lblAveraging);
@@ -74,7 +70,7 @@
             // 
             // btnResetAvg
             // 
-            btnResetAvg.Location = new Point(450, 31);
+            btnResetAvg.Location = new Point(556, 7);
             btnResetAvg.Name = "btnResetAvg";
             btnResetAvg.Size = new Size(42, 23);
             btnResetAvg.TabIndex = 12;
@@ -82,27 +78,10 @@
             btnResetAvg.UseVisualStyleBackColor = true;
             btnResetAvg.Click += btnResetAvg_Click;
             // 
-            // lblFftSize
-            // 
-            lblFftSize.AutoSize = true;
-            lblFftSize.Location = new Point(10, 10);
-            lblFftSize.Name = "lblFftSize";
-            lblFftSize.Size = new Size(47, 15);
-            lblFftSize.TabIndex = 0;
-            lblFftSize.Text = "FFT size";
-            // 
-            // comboFftSize
-            // 
-            comboFftSize.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboFftSize.Location = new Point(70, 7);
-            comboFftSize.Name = "comboFftSize";
-            comboFftSize.Size = new Size(120, 23);
-            comboFftSize.TabIndex = 1;
-            // 
             // lblWindow
             // 
             lblWindow.AutoSize = true;
-            lblWindow.Location = new Point(210, 10);
+            lblWindow.Location = new Point(203, 10);
             lblWindow.Name = "lblWindow";
             lblWindow.Size = new Size(51, 15);
             lblWindow.TabIndex = 2;
@@ -111,7 +90,7 @@
             // comboWindow
             // 
             comboWindow.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboWindow.Location = new Point(270, 7);
+            comboWindow.Location = new Point(260, 7);
             comboWindow.Name = "comboWindow";
             comboWindow.Size = new Size(120, 23);
             comboWindow.TabIndex = 3;
@@ -119,7 +98,7 @@
             // lblAveraging
             // 
             lblAveraging.AutoSize = true;
-            lblAveraging.Location = new Point(410, 10);
+            lblAveraging.Location = new Point(426, 10);
             lblAveraging.Name = "lblAveraging";
             lblAveraging.Size = new Size(28, 15);
             lblAveraging.TabIndex = 4;
@@ -128,7 +107,7 @@
             // comboAveraging
             // 
             comboAveraging.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboAveraging.Location = new Point(450, 7);
+            comboAveraging.Location = new Point(460, 7);
             comboAveraging.Name = "comboAveraging";
             comboAveraging.Size = new Size(90, 23);
             comboAveraging.TabIndex = 5;
@@ -136,7 +115,7 @@
             // lblChannel
             // 
             lblChannel.AutoSize = true;
-            lblChannel.Location = new Point(560, 10);
+            lblChannel.Location = new Point(3, 10);
             lblChannel.Name = "lblChannel";
             lblChannel.Size = new Size(51, 15);
             lblChannel.TabIndex = 6;
@@ -145,15 +124,15 @@
             // comboChannel
             // 
             comboChannel.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboChannel.Location = new Point(625, 7);
+            comboChannel.Location = new Point(60, 7);
             comboChannel.Name = "comboChannel";
-            comboChannel.Size = new Size(90, 23);
+            comboChannel.Size = new Size(100, 23);
             comboChannel.TabIndex = 7;
             // 
             // lblWindowInfo
             // 
             lblWindowInfo.AutoSize = true;
-            lblWindowInfo.Location = new Point(730, 10);
+            lblWindowInfo.Location = new Point(860, 15);
             lblWindowInfo.Name = "lblWindowInfo";
             lblWindowInfo.Size = new Size(47, 15);
             lblWindowInfo.TabIndex = 8;
@@ -180,7 +159,7 @@
             // chkLogX
             // 
             chkLogX.AutoSize = true;
-            chkLogX.Location = new Point(70, 35);
+            chkLogX.Location = new Point(260, 35);
             chkLogX.Name = "chkLogX";
             chkLogX.Size = new Size(67, 19);
             chkLogX.TabIndex = 11;
@@ -294,7 +273,7 @@
             // 
             // SpectrumControl
             // 
-            BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;   // 
+            BorderStyle = BorderStyle.FixedSingle;
             Controls.Add(splitMain);
             Controls.Add(panelTop);
             Name = "SpectrumControl";
@@ -315,8 +294,6 @@
         #endregion
 
         private Panel panelTop;
-        private Label lblFftSize;
-        private ComboBox comboFftSize;
         private Label lblWindow;
         private ComboBox comboWindow;
         private Label lblAveraging;
