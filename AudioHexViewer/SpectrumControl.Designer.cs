@@ -38,6 +38,7 @@
             lblRightHeader = new Label();
             lblRightRms = new Label();
             lblRightPeak = new Label();
+            chkRemoveDC = new CheckBox();
             panelTop.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)splitMain).BeginInit();
             splitMain.Panel1.SuspendLayout();
@@ -51,6 +52,7 @@
             // 
             // panelTop
             // 
+            panelTop.Controls.Add(chkRemoveDC);
             panelTop.Controls.Add(btnResetAvg);
             panelTop.Controls.Add(lblWindow);
             panelTop.Controls.Add(comboWindow);
@@ -271,6 +273,16 @@
             lblRightPeak.Size = new Size(100, 23);
             lblRightPeak.TabIndex = 2;
             // 
+            // chkRemoveDC
+            // 
+            chkRemoveDC.AutoSize = true;
+            chkRemoveDC.Location = new Point(60, 35);
+            chkRemoveDC.Name = "chkRemoveDC";
+            chkRemoveDC.Size = new Size(85, 19);
+            chkRemoveDC.TabIndex = 13;
+            chkRemoveDC.Text = "remove DC";
+            chkRemoveDC.UseVisualStyleBackColor = true;
+            // 
             // SpectrumControl
             // 
             BorderStyle = BorderStyle.FixedSingle;
@@ -322,5 +334,6 @@
         private Label lblRightPeak;
         private CheckBox chkLogX;
         private Button btnResetAvg;
+        private CheckBox chkRemoveDC;
     }
 }

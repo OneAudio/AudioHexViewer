@@ -207,6 +207,20 @@ namespace AudioHexViewer
                     avgTargetCount = av[comboAveraging.SelectedIndex - 1];
             };
 
+            // Sélection AC/DC
+            if (chkRemoveDC != null)
+            {
+                chkRemoveDC.Checked = true; // pour garder le comportement actuel
+                chkRemoveDC.CheckedChanged += (s, e) =>
+                {
+                    // Si live => ça sera pris en compte au prochain tick.
+                    // Si pas live => on recalc tout de suite.
+                    if (!isLive)
+                        AcquireOnce();
+                };
+            }
+
+
             // Channel (affichage)
             comboChannel.Items.Clear();
             comboChannel.Items.Add("Left");
@@ -335,18 +349,23 @@ namespace AudioHexViewer
             double[]? bufL = leftSamples.Length > 0 ? BuildChannelBuffer(leftSamples, N) : null;
             double[]? bufR = rightSamples.Length > 0 ? BuildChannelBuffer(rightSamples, N) : null;
 
-            // 5) Supprimer DC
-            if (bufL != null)
+            // 5) Supprimer DC si demandé
+            bool removeDc = (chkRemoveDC != null && chkRemoveDC.Checked);
+
+            if (removeDc)
             {
-                double mean = bufL.Average();
-                for (int i = 0; i < bufL.Length; i++)
-                    bufL[i] -= mean;
-            }
-            if (bufR != null)
-            {
-                double mean = bufR.Average();
-                for (int i = 0; i < bufR.Length; i++)
-                    bufR[i] -= mean;
+                if (bufL != null)
+                {
+                    double mean = bufL.Average();
+                    for (int i = 0; i < bufL.Length; i++)
+                        bufL[i] -= mean;
+                }
+                if (bufR != null)
+                {
+                    double mean = bufR.Average();
+                    for (int i = 0; i < bufR.Length; i++)
+                        bufR[i] -= mean;
+                }
             }
 
             // 6) Fenêtre + FFT par voie
