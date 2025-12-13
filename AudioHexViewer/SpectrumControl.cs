@@ -44,13 +44,26 @@ namespace AudioHexViewer
 
         private int lastFftSize;
         private int? _forcedFftSize = null;
-        private WindowType lastWindow = WindowType.Hann;
-        private ChannelMode lastChannel = ChannelMode.Left;
+        private WindowType lastWindow = WindowType.Rectangular;
+        private ChannelMode lastChannel = ChannelMode.Both;
 
         // Averaging
         private int avgTargetCount = 1;
         private double[]? avgLeftSpectrum;
         private double[]? avgRightSpectrum;
+
+        // --- Batch averaging (vraie moyenne sur N frames) ---
+        private int avgFrameCount = 0;          // combien de frames accumulées
+        private double[]? avgSumLeftPower = null;   // somme des puissances (linéaire)
+        private double[]? avgSumRightPower = null;
+
+        // Moving average (glissant sur N frames)
+        private int avgRingPos = 0;        // index courant dans l’anneau
+        private int avgFillCount = 0;      // 0..N (sature à N pour l'affichage)
+
+        private double[][]? avgRingLeftPower = null;   // [N][bins]
+        private double[][]? avgRingRightPower = null;  // [N][bins]
+
 
         // Spectres courants & axe fréquence
         private double[]? currentLeftSpectrum;
@@ -122,10 +135,15 @@ namespace AudioHexViewer
             lastFftSize = samples;
             UpdateWindowInfo();
         }
+        //
+        private void UpdateAvgProgressUi(int k, int n)
+        {
+            if (lblAvgProgress == null) return;
 
-
-
-
+            if (n <= 1) lblAvgProgress.Text = "";
+            else lblAvgProgress.Text = $"{k}/{n}";
+        }
+        //
         private void UpdateWindowInfo()
         {
             if (_sampleRate <= 0 || lastFftSize <= 0)
@@ -140,24 +158,12 @@ namespace AudioHexViewer
 
         private void btnResetAvg_Click(object? sender, EventArgs e)
         {
-            // On remet les buffers de moyenne à zéro
-            avgLeftSpectrum = null;
-            avgRightSpectrum = null;
+            ResetAveragingState();
 
             // Optionnel : forcer un nouveau calcul immédiat
-            if (lastTimeLeft != null || lastTimeRight != null)
-            {
-                // On relance une mesure "fraîche"
-                AcquireOnce();
-            }
-            else
-            {
-                // Sinon on efface juste le graphe
-                currentLeftSpectrum = null;
-                currentRightSpectrum = null;
-                ClearSpectrum();
-            }
+            AcquireOnce();
         }
+
 
         private void InitChartAppearance()
         {
@@ -186,7 +192,7 @@ namespace AudioHexViewer
             comboWindow.Items.Add("Hann");
             comboWindow.Items.Add("Hamming");
             comboWindow.Items.Add("Blackman-Harris");
-            comboWindow.SelectedIndex = 1;
+            comboWindow.SelectedIndex = 0; // Fênêtre par défaut : 0= Rectangulaire
             comboWindow.SelectedIndexChanged += (s, e) =>
             {
                 lastWindow = (WindowType)comboWindow.SelectedIndex;
@@ -199,13 +205,17 @@ namespace AudioHexViewer
             foreach (int a in av)
                 comboAveraging.Items.Add(a.ToString());
             comboAveraging.SelectedIndex = 0;
+
             comboAveraging.SelectedIndexChanged += (s, e) =>
             {
                 if (comboAveraging.SelectedIndex == 0)
                     avgTargetCount = 1;
                 else
                     avgTargetCount = av[comboAveraging.SelectedIndex - 1];
+
+                ResetAveragingState();
             };
+
 
             // Sélection AC/DC
             if (chkRemoveDC != null)
@@ -226,7 +236,7 @@ namespace AudioHexViewer
             comboChannel.Items.Add("Left");
             comboChannel.Items.Add("Right");
             comboChannel.Items.Add("L+R");
-            comboChannel.SelectedIndex = 0;
+            comboChannel.SelectedIndex = 2; // Par défaut les 2 voies sont affichées
             comboChannel.SelectedIndexChanged += (s, e) =>
             {
                 switch (comboChannel.SelectedIndex)
@@ -317,7 +327,24 @@ namespace AudioHexViewer
             liveTimer?.Stop();
             UpdateRunButtonAppearance();
         }
+        //
+        private void ResetAveragingState()
+        {
+            avgFrameCount = 0;       // tu peux le garder, mais il ne servira plus au calcul
+            avgRingPos = 0;
+            avgFillCount = 0;
 
+            avgSumLeftPower = null;
+            avgSumRightPower = null;
+
+            avgRingLeftPower = null;
+            avgRingRightPower = null;
+
+            UpdateAvgProgressUi(0, avgTargetCount);
+        }
+
+
+        //
         private void AcquireOnce()
         {
             if (_provider == null || _sampleRate <= 0)
@@ -502,47 +529,128 @@ namespace AudioHexViewer
             return spectrum;
         }
 
-        private void ApplyAveraging(double[] leftNew, double[]? rightNew)
+        private void ApplyAveraging(double[] leftNewDb, double[]? rightNewDb)
         {
+            // None => pas de moyenne
             if (avgTargetCount <= 1)
             {
-                avgLeftSpectrum = null;
-                avgRightSpectrum = null;
-                currentLeftSpectrum = leftNew;
-                currentRightSpectrum = rightNew;
+                ResetAveragingState();
+                currentLeftSpectrum = leftNewDb;
+                currentRightSpectrum = rightNewDb;
+                UpdateAvgProgressUi(0, 0);
                 return;
             }
 
-            double alpha = 1.0 / avgTargetCount;
+            int bins = leftNewDb.Length;
 
-            if (avgLeftSpectrum == null || avgLeftSpectrum.Length != leftNew.Length)
+            // (Re)allocation si taille FFT change ou si N change
+            if (avgSumLeftPower == null || avgSumLeftPower.Length != bins ||
+                avgRingLeftPower == null || avgRingLeftPower.Length != avgTargetCount)
             {
-                avgLeftSpectrum = (double[])leftNew.Clone();
-            }
-            else
-            {
-                for (int i = 0; i < leftNew.Length; i++)
-                    avgLeftSpectrum[i] = (1.0 - alpha) * avgLeftSpectrum[i] + alpha * leftNew[i];
+                avgSumLeftPower = new double[bins];
+                avgRingLeftPower = new double[avgTargetCount][];
+                for (int i = 0; i < avgTargetCount; i++)
+                    avgRingLeftPower[i] = new double[bins];
+
+                avgRingPos = 0;
+                avgFillCount = 0;
             }
 
-            if (rightNew != null)
+            bool hasRight = (rightNewDb != null);
+            if (hasRight)
             {
-                if (avgRightSpectrum == null || avgRightSpectrum.Length != rightNew.Length)
-                    avgRightSpectrum = (double[])rightNew.Clone();
-                else
+                if (avgSumRightPower == null || avgSumRightPower.Length != bins ||
+                    avgRingRightPower == null || avgRingRightPower.Length != avgTargetCount)
                 {
-                    for (int i = 0; i < rightNew.Length; i++)
-                        avgRightSpectrum[i] = (1.0 - alpha) * avgRightSpectrum[i] + alpha * rightNew[i];
+                    avgSumRightPower = new double[bins];
+                    avgRingRightPower = new double[avgTargetCount][];
+                    for (int i = 0; i < avgTargetCount; i++)
+                        avgRingRightPower[i] = new double[bins];
                 }
             }
             else
             {
-                avgRightSpectrum = null;
+                avgSumRightPower = null;
+                avgRingRightPower = null;
             }
 
-            currentLeftSpectrum = avgLeftSpectrum;
-            currentRightSpectrum = avgRightSpectrum;
+            // 1) Retirer la frame la plus vieille si la fenêtre est pleine (avgFillCount == N)
+            if (avgFillCount == avgTargetCount)
+            {
+                var oldL = avgRingLeftPower![avgRingPos];
+                for (int i = 0; i < bins; i++)
+                    avgSumLeftPower![i] -= oldL[i];
+
+                if (hasRight && avgRingRightPower != null && avgSumRightPower != null)
+                {
+                    var oldR = avgRingRightPower[avgRingPos];
+                    for (int i = 0; i < bins; i++)
+                        avgSumRightPower[i] -= oldR[i];
+                }
+            }
+
+            // 2) Convert dB(amplitude) -> puissance linéaire (power = 10^(dB/10)) et stocker dans l’anneau
+            var slotL = avgRingLeftPower![avgRingPos];
+            for (int i = 0; i < bins; i++)
+            {
+                double db = leftNewDb[i];
+                double p = (db <= -200.0) ? 0.0 : Math.Pow(10.0, db / 10.0);
+                slotL[i] = p;
+                avgSumLeftPower![i] += p;
+            }
+
+            if (hasRight && rightNewDb != null && avgRingRightPower != null && avgSumRightPower != null)
+            {
+                var slotR = avgRingRightPower[avgRingPos];
+                for (int i = 0; i < bins; i++)
+                {
+                    double db = rightNewDb[i];
+                    double p = (db <= -200.0) ? 0.0 : Math.Pow(10.0, db / 10.0);
+                    slotR[i] = p;
+                    avgSumRightPower[i] += p;
+                }
+            }
+
+            // 3) Avancer dans l’anneau
+            avgRingPos++;
+            if (avgRingPos >= avgTargetCount) avgRingPos = 0;
+
+            // 4) Compteur “warm-up” : 0..N puis saturé à N (affichage seulement)
+            if (avgFillCount < avgTargetCount) avgFillCount++;
+            UpdateAvgProgressUi(avgFillCount, avgTargetCount);
+
+            // 5) Construire le spectre moyen (division par avgFillCount pendant warm-up, puis N)
+            double inv = 1.0 / avgFillCount;
+
+            var avgLeftDb = new double[bins];
+            for (int i = 0; i < bins; i++)
+            {
+                double pAvg = avgSumLeftPower![i] * inv;
+                double db = (pAvg <= 0.0) ? -200.0 : 10.0 * Math.Log10(pAvg);
+                if (db < -200.0) db = -200.0;
+                if (db > 0.0) db = 0.0;
+                avgLeftDb[i] = db;
+            }
+
+            double[]? avgRightDb = null;
+            if (hasRight && avgSumRightPower != null)
+            {
+                avgRightDb = new double[bins];
+                for (int i = 0; i < bins; i++)
+                {
+                    double pAvg = avgSumRightPower[i] * inv;
+                    double db = (pAvg <= 0.0) ? -200.0 : 10.0 * Math.Log10(pAvg);
+                    if (db < -200.0) db = -200.0;
+                    if (db > 0.0) db = 0.0;
+                    avgRightDb[i] = db;
+                }
+            }
+
+            currentLeftSpectrum = avgLeftDb;
+            currentRightSpectrum = avgRightDb;
         }
+
+
 
         private void RebuildFreqAxis(int fftSize)
         {

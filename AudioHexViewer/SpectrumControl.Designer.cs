@@ -16,6 +16,7 @@
         private void InitializeComponent()
         {
             panelTop = new Panel();
+            chkRemoveDC = new CheckBox();
             btnResetAvg = new Button();
             lblWindow = new Label();
             comboWindow = new ComboBox();
@@ -27,6 +28,7 @@
             btnRun = new Button();
             chkOnce = new CheckBox();
             chkLogX = new CheckBox();
+            lblAvgProgress = new Label();
             splitMain = new SplitContainer();
             chartSpectrum = new System.Windows.Forms.DataVisualization.Charting.Chart();
             panelStats = new Panel();
@@ -38,7 +40,6 @@
             lblRightHeader = new Label();
             lblRightRms = new Label();
             lblRightPeak = new Label();
-            chkRemoveDC = new CheckBox();
             panelTop.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)splitMain).BeginInit();
             splitMain.Panel1.SuspendLayout();
@@ -52,6 +53,7 @@
             // 
             // panelTop
             // 
+            panelTop.Controls.Add(lblAvgProgress);
             panelTop.Controls.Add(chkRemoveDC);
             panelTop.Controls.Add(btnResetAvg);
             panelTop.Controls.Add(lblWindow);
@@ -69,6 +71,16 @@
             panelTop.Name = "panelTop";
             panelTop.Size = new Size(1138, 60);
             panelTop.TabIndex = 1;
+            // 
+            // chkRemoveDC
+            // 
+            chkRemoveDC.AutoSize = true;
+            chkRemoveDC.Location = new Point(60, 35);
+            chkRemoveDC.Name = "chkRemoveDC";
+            chkRemoveDC.Size = new Size(85, 19);
+            chkRemoveDC.TabIndex = 13;
+            chkRemoveDC.Text = "remove DC";
+            chkRemoveDC.UseVisualStyleBackColor = true;
             // 
             // btnResetAvg
             // 
@@ -166,6 +178,17 @@
             chkLogX.Size = new Size(67, 19);
             chkLogX.TabIndex = 11;
             chkLogX.Text = "log freq";
+            // 
+            // lblAvgProgress
+            // 
+            lblAvgProgress.AutoSize = true;
+            lblAvgProgress.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            lblAvgProgress.ForeColor = SystemColors.HotTrack;
+            lblAvgProgress.Location = new Point(604, 7);
+            lblAvgProgress.Name = "lblAvgProgress";
+            lblAvgProgress.Size = new Size(51, 21);
+            lblAvgProgress.TabIndex = 14;
+            lblAvgProgress.Text = "label1";
             // 
             // splitMain
             // 
@@ -273,16 +296,6 @@
             lblRightPeak.Size = new Size(100, 23);
             lblRightPeak.TabIndex = 2;
             // 
-            // chkRemoveDC
-            // 
-            chkRemoveDC.AutoSize = true;
-            chkRemoveDC.Location = new Point(60, 35);
-            chkRemoveDC.Name = "chkRemoveDC";
-            chkRemoveDC.Size = new Size(85, 19);
-            chkRemoveDC.TabIndex = 13;
-            chkRemoveDC.Text = "remove DC";
-            chkRemoveDC.UseVisualStyleBackColor = true;
-            // 
             // SpectrumControl
             // 
             BorderStyle = BorderStyle.FixedSingle;
@@ -335,5 +348,6 @@
         private CheckBox chkLogX;
         private Button btnResetAvg;
         private CheckBox chkRemoveDC;
+        private Label lblAvgProgress;
     }
 }
