@@ -376,6 +376,11 @@ namespace AudioHexViewer
             double[]? bufL = leftSamples.Length > 0 ? BuildChannelBuffer(leftSamples, N) : null;
             double[]? bufR = rightSamples.Length > 0 ? BuildChannelBuffer(rightSamples, N) : null;
 
+            // Copie brute pour les stats (avant remove DC et avant fenêtre)
+            double[]? bufLRaw = (bufL != null) ? (double[])bufL.Clone() : null;
+            double[]? bufRRaw = (bufR != null) ? (double[])bufR.Clone() : null;
+
+
             // 5) Supprimer DC si demandé
             bool removeDc = (chkRemoveDC != null && chkRemoveDC.Checked);
 
@@ -427,11 +432,11 @@ namespace AudioHexViewer
             RebuildFreqAxis(N);
 
             // On garde une copie des derniers buffers temps pour les stats
-            lastTimeLeft = bufL;
-            lastTimeRight = bufR;
+            lastTimeLeft = bufLRaw;
+            lastTimeRight = bufRRaw;
 
             // 9) Mise à jour graphe + stats temporelles
-            UpdateSpectrumChartAndStats(bufL, bufR);
+            UpdateSpectrumChartAndStats(bufLRaw, bufRRaw);
         }
 
         private static double[] BuildChannelBuffer(int[] src, int N)
@@ -874,63 +879,94 @@ namespace AudioHexViewer
             }
 
             // --- Stats temporelles : LEFT ---
+            // Peak = sur brut (avec DC) ; RMS = sans DC (AC) => on retire la moyenne pour le calcul RMS uniquement
             if (timeL != null && timeL.Length > 0)
             {
-                double rmsL = 0.0;
+                // 1) Peak sur brut
                 double peakL = 0.0;
                 for (int i = 0; i < timeL.Length; i++)
                 {
                     double x = timeL[i] / (double)Max24Pos;
-                    rmsL += x * x;
                     double ax = Math.Abs(x);
                     if (ax > peakL) peakL = ax;
                 }
-                rmsL = Math.Sqrt(rmsL / timeL.Length);
-                double rmsLDb = rmsL > 0 ? 20.0 * Math.Log10(rmsL) : -200.0;
+
+                // 2) RMS AC : retirer la moyenne (DC) uniquement pour le calcul RMS
+                double meanL = 0.0;
+                for (int i = 0; i < timeL.Length; i++)
+                    meanL += timeL[i];
+                meanL /= timeL.Length;
+
+                double sumSqL = 0.0;
+                for (int i = 0; i < timeL.Length; i++)
+                {
+                    double x = (timeL[i] - meanL) / (double)Max24Pos;
+                    sumSqL += x * x;
+                }
+                double rmsL = Math.Sqrt(sumSqL / timeL.Length);
+
+                // RMS référencé "full-scale sine"
+                double rmsLDb = rmsL > 0 ? 20.0 * Math.Log10(rmsL * Math.Sqrt(2.0)) : -200.0;
+                // Peak référencé "full-scale"
                 double peakLDb = peakL > 0 ? 20.0 * Math.Log10(peakL) : -200.0;
 
                 if (rmsLDb < -200.0) rmsLDb = -200.0;
                 if (peakLDb < -200.0) peakLDb = -200.0;
 
-                lblLeftRms.Text = $"RMS:  {rmsLDb:F1} dBFS";
-                lblLeftPeak.Text = $"Peak: {peakLDb:F1} dBFS";
+                lblLeftRms.Text = $"RMS:  {rmsLDb:F2} dBFS";
+                lblLeftPeak.Text = $"Peak: {peakLDb:F2} dBFS";
             }
             else
             {
                 lblLeftRms.Text = "RMS:";
                 lblLeftPeak.Text = "Peak:";
             }
-
             // --- Stats temporelles : RIGHT ---
             if (timeR != null && timeR.Length > 0)
             {
-                double rmsR = 0.0;
+                // Peak sur brut
                 double peakR = 0.0;
                 for (int i = 0; i < timeR.Length; i++)
                 {
                     double x = timeR[i] / (double)Max24Pos;
-                    rmsR += x * x;
                     double ax = Math.Abs(x);
                     if (ax > peakR) peakR = ax;
                 }
-                rmsR = Math.Sqrt(rmsR / timeR.Length);
-                double rmsRDb = rmsR > 0 ? 20.0 * Math.Log10(rmsR) : -200.0;
+
+                // RMS AC (sans DC)
+                double meanR = 0.0;
+                for (int i = 0; i < timeR.Length; i++)
+                    meanR += timeR[i];
+                meanR /= timeR.Length;
+
+                double sumSqR = 0.0;
+                for (int i = 0; i < timeR.Length; i++)
+                {
+                    double x = (timeR[i] - meanR) / (double)Max24Pos;
+                    sumSqR += x * x;
+                }
+                double rmsR = Math.Sqrt(sumSqR / timeR.Length);
+
+                // RMS référencé "full-scale sine"
+                double rmsRDb = rmsR > 0 ? 20.0 * Math.Log10(rmsR * Math.Sqrt(2.0)) : -200.0;
+                // Peak référencé "full-scale"
                 double peakRDb = peakR > 0 ? 20.0 * Math.Log10(peakR) : -200.0;
 
                 if (rmsRDb < -200.0) rmsRDb = -200.0;
                 if (peakRDb < -200.0) peakRDb = -200.0;
 
-                lblRightRms.Text = $"RMS:  {rmsRDb:F1} dBFS";
-                lblRightPeak.Text = $"Peak: {peakRDb:F1} dBFS";
+                lblRightRms.Text = $"RMS:  {rmsRDb:F2} dBFS";
+                lblRightPeak.Text = $"Peak: {peakRDb:F2} dBFS";
             }
             else
             {
                 lblRightRms.Text = "";
                 lblRightPeak.Text = "";
             }
+
         }
-
-
+        //
+        //
         private void ChartSpectrum_PostPaint(object sender, ChartPaintEventArgs e)
         {
             var area = chartSpectrum.ChartAreas["SpectrumArea"];
