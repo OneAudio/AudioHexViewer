@@ -16,6 +16,7 @@
         private void InitializeComponent()
         {
             panelTop = new Panel();
+            lblAvgProgress = new Label();
             chkRemoveDC = new CheckBox();
             btnResetAvg = new Button();
             lblWindow = new Label();
@@ -28,10 +29,11 @@
             btnRun = new Button();
             chkOnce = new CheckBox();
             chkLogX = new CheckBox();
-            lblAvgProgress = new Label();
             splitMain = new SplitContainer();
             chartSpectrum = new System.Windows.Forms.DataVisualization.Charting.Chart();
             panelStats = new Panel();
+            chkCursorR = new CheckBox();
+            chkCursorL = new CheckBox();
             grpLeftStats = new GroupBox();
             lblLeftHeader = new Label();
             lblLeftRms = new Label();
@@ -71,6 +73,17 @@
             panelTop.Name = "panelTop";
             panelTop.Size = new Size(1138, 60);
             panelTop.TabIndex = 1;
+            // 
+            // lblAvgProgress
+            // 
+            lblAvgProgress.AutoSize = true;
+            lblAvgProgress.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            lblAvgProgress.ForeColor = SystemColors.HotTrack;
+            lblAvgProgress.Location = new Point(604, 7);
+            lblAvgProgress.Name = "lblAvgProgress";
+            lblAvgProgress.Size = new Size(51, 21);
+            lblAvgProgress.TabIndex = 14;
+            lblAvgProgress.Text = "label1";
             // 
             // chkRemoveDC
             // 
@@ -179,17 +192,6 @@
             chkLogX.TabIndex = 11;
             chkLogX.Text = "log freq";
             // 
-            // lblAvgProgress
-            // 
-            lblAvgProgress.AutoSize = true;
-            lblAvgProgress.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            lblAvgProgress.ForeColor = SystemColors.HotTrack;
-            lblAvgProgress.Location = new Point(604, 7);
-            lblAvgProgress.Name = "lblAvgProgress";
-            lblAvgProgress.Size = new Size(51, 21);
-            lblAvgProgress.TabIndex = 14;
-            lblAvgProgress.Text = "label1";
-            // 
             // splitMain
             // 
             splitMain.Dock = DockStyle.Fill;
@@ -217,6 +219,8 @@
             // 
             // panelStats
             // 
+            panelStats.Controls.Add(chkCursorR);
+            panelStats.Controls.Add(chkCursorL);
             panelStats.Controls.Add(grpLeftStats);
             panelStats.Controls.Add(grpRightStats);
             panelStats.Dock = DockStyle.Fill;
@@ -226,14 +230,32 @@
             panelStats.Size = new Size(217, 440);
             panelStats.TabIndex = 0;
             // 
+            // chkCursorR
+            // 
+            chkCursorR.AutoSize = true;
+            chkCursorR.Location = new Point(5, 408);
+            chkCursorR.Name = "chkCursorR";
+            chkCursorR.Size = new Size(71, 19);
+            chkCursorR.TabIndex = 16;
+            chkCursorR.Text = "Cursor R";
+            // 
+            // chkCursorL
+            // 
+            chkCursorL.AutoSize = true;
+            chkCursorL.Location = new Point(5, 197);
+            chkCursorL.Name = "chkCursorL";
+            chkCursorL.Size = new Size(70, 19);
+            chkCursorL.TabIndex = 15;
+            chkCursorL.Text = "Cursor L";
+            // 
             // grpLeftStats
             // 
             grpLeftStats.Controls.Add(lblLeftHeader);
             grpLeftStats.Controls.Add(lblLeftRms);
             grpLeftStats.Controls.Add(lblLeftPeak);
-            grpLeftStats.Location = new Point(5, 5);
+            grpLeftStats.Location = new Point(5, 11);
             grpLeftStats.Name = "grpLeftStats";
-            grpLeftStats.Size = new Size(140, 120);
+            grpLeftStats.Size = new Size(140, 180);
             grpLeftStats.TabIndex = 0;
             grpLeftStats.TabStop = false;
             // 
@@ -266,9 +288,9 @@
             grpRightStats.Controls.Add(lblRightHeader);
             grpRightStats.Controls.Add(lblRightRms);
             grpRightStats.Controls.Add(lblRightPeak);
-            grpRightStats.Location = new Point(5, 140);
+            grpRightStats.Location = new Point(5, 222);
             grpRightStats.Name = "grpRightStats";
-            grpRightStats.Size = new Size(140, 120);
+            grpRightStats.Size = new Size(140, 180);
             grpRightStats.TabIndex = 1;
             grpRightStats.TabStop = false;
             // 
@@ -311,6 +333,7 @@
             splitMain.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)chartSpectrum).EndInit();
             panelStats.ResumeLayout(false);
+            panelStats.PerformLayout();
             grpLeftStats.ResumeLayout(false);
             grpRightStats.ResumeLayout(false);
             ResumeLayout(false);
@@ -349,5 +372,7 @@
         private Button btnResetAvg;
         private CheckBox chkRemoveDC;
         private Label lblAvgProgress;
+        private CheckBox chkCursorR;
+        private CheckBox chkCursorL;
     }
 }

@@ -84,6 +84,32 @@ namespace AudioHexViewer
 
         private TextAnnotation? _overlayInfoAnno;
 
+        // Annotations curseur
+        private VerticalLineAnnotation? _cursorLineL;
+        private TextAnnotation? _cursorTextL;
+
+        private VerticalLineAnnotation? _cursorLineR;
+        private TextAnnotation? _cursorTextR;
+
+        // --- Etat curseurs (indépendants) ---
+        private bool _cursorLockedL = false;
+        private bool _cursorLockedR = false;
+
+        // index bin courant (snap) pour chaque curseur
+        private int _cursorIdxL = -1;
+        private int _cursorIdxR = -1;
+
+        // curseur "actif" (celui que l’on déplace quand les deux sont déverrouillés)
+        private enum ActiveCursor { Left, Right }
+        private ActiveCursor _activeCursor = ActiveCursor.Left;
+
+        // tolérance "clic sur curseur" en pixels
+        private const int CursorHitTolPx = 10;
+
+        private double _cursorFreqL = double.NaN;
+        private double _cursorFreqR = double.NaN;
+
+
 
         public SpectrumControl()
         {
@@ -98,6 +124,12 @@ namespace AudioHexViewer
 
             // Dessin manuel des sous-divisions log
             chartSpectrum.PostPaint += ChartSpectrum_PostPaint;
+
+            InitCursors();
+            chartSpectrum.MouseMove += ChartSpectrum_MouseMove;
+            chartSpectrum.MouseDoubleClick += ChartSpectrum_MouseDoubleClick;
+            chartSpectrum.MouseLeave += (s, e) => { /* optionnel : cacher texte */ };
+
         }
 
         public SpectrumControl(SampleProvider provider, int sampleRate)
@@ -288,6 +320,10 @@ namespace AudioHexViewer
         //
         private void InitializeUiOptions()
         {
+            //
+            chkCursorL.CheckedChanged += (s, e) => UpdateCursorVisibility();
+            chkCursorR.CheckedChanged += (s, e) => UpdateCursorVisibility();
+
             // Window
             comboWindow.Items.Clear();
             comboWindow.Items.Add("Rectangular");
@@ -370,6 +406,423 @@ namespace AudioHexViewer
             };
         }
         //
+        private void UpdateCursorVisibility()
+        {
+            bool onL = chkCursorL != null && chkCursorL.Checked;
+            bool onR = chkCursorR != null && chkCursorR.Checked;
+
+            if (_cursorLineL != null) _cursorLineL.Visible = onL;
+            if (_cursorTextL != null) _cursorTextL.Visible = onL;
+
+            if (_cursorLineR != null) _cursorLineR.Visible = onR;
+            if (_cursorTextR != null) _cursorTextR.Visible = onR;
+
+            chartSpectrum.Invalidate();
+        }
+        // ---------------- CURSORS ----------------
+
+        private void InitCursors()
+        {
+            // Si pas encore de ChartArea, on ne fait rien
+            if (chartSpectrum.ChartAreas.Count == 0)
+                return;
+
+            // Eviter double init
+            if (_cursorLineL != null || _cursorLineR != null || _cursorTextL != null || _cursorTextR != null)
+                return;
+
+            var area = chartSpectrum.ChartAreas["SpectrumArea"];
+
+            // --- Ligne curseur L ---
+            _cursorLineL = new VerticalLineAnnotation
+            {
+                ClipToChartArea = "SpectrumArea",
+                AxisX = area.AxisX,
+                AxisY = area.AxisY,
+                IsInfinitive = true,
+                LineDashStyle = ChartDashStyle.Dash,
+                LineWidth = 1,
+                LineColor = Color.FromArgb(180, Color.DodgerBlue),
+                Visible = false
+            };
+
+            _cursorTextL = new TextAnnotation
+            {
+                ClipToChartArea = "SpectrumArea",
+                AxisX = area.AxisX,
+                AxisY = area.AxisY,
+                IsSizeAlwaysRelative = false,
+                BackColor = Color.FromArgb(160, 230, 230, 230),
+                ForeColor = Color.FromArgb(230, 30, 30, 30),
+                Font = new Font("Segoe UI", 8.5f),
+                Alignment = ContentAlignment.TopLeft,
+                Visible = false
+            };
+
+            // --- Ligne curseur R ---
+            _cursorLineR = new VerticalLineAnnotation
+            {
+                ClipToChartArea = "SpectrumArea",
+                AxisX = area.AxisX,
+                AxisY = area.AxisY,
+                IsInfinitive = true,
+                LineDashStyle = ChartDashStyle.Dash,
+                LineWidth = 1,
+                LineColor = Color.FromArgb(180, Color.OrangeRed),
+                Visible = false
+            };
+
+            _cursorTextR = new TextAnnotation
+            {
+                ClipToChartArea = "SpectrumArea",
+                AxisX = area.AxisX,
+                AxisY = area.AxisY,
+                IsSizeAlwaysRelative = false,
+                BackColor = Color.FromArgb(160, 230, 230, 230),
+                ForeColor = Color.FromArgb(230, 30, 30, 30),
+                Font = new Font("Segoe UI", 8.5f),
+                Alignment = ContentAlignment.TopLeft,
+                Visible = false
+            };
+
+            chartSpectrum.Annotations.Add(_cursorLineL);
+            chartSpectrum.Annotations.Add(_cursorTextL);
+            chartSpectrum.Annotations.Add(_cursorLineR);
+            chartSpectrum.Annotations.Add(_cursorTextR);
+
+            // Appliquer l'état des checkbox au démarrage
+            UpdateCursorVisibility();
+        }
+
+        private void ChartSpectrum_MouseMove(object? sender, MouseEventArgs e)
+        {
+            if (freqAxis == null || freqAxis.Length == 0)
+                return;
+
+            bool onL = (chkCursorL != null && chkCursorL.Checked);
+            bool onR = (chkCursorR != null && chkCursorR.Checked);
+            if (!onL && !onR)
+                return;
+
+            bool useLog = (chkLogX != null && chkLogX.Checked);
+
+            // fréquence sous la souris (conversion log-friendly)
+            double f = GetFrequencyFromMouseX(e.X);
+
+            if (useLog && f < 1.0) f = 1.0;
+            if (!useLog && f < 0.0) f = 0.0;
+
+            int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
+
+            int idx = FindNearestFreqIndex(freqAxis, f, minIdx);
+            if (idx < 0 || idx >= freqAxis.Length)
+                return;
+
+            bool canMoveL = onL && !_cursorLockedL;
+            bool canMoveR = onR && !_cursorLockedR;
+
+            // Si les deux sont lockés : on rafraîchit juste l'affichage (valeurs suivent le spectre)
+            if (!canMoveL && !canMoveR)
+            {
+                RefreshCursorsFromCurrentSpectrum();
+                return;
+            }
+
+            if (canMoveL && !canMoveR)
+            {
+                _activeCursor = ActiveCursor.Left;
+                _cursorIdxL = idx;
+                _cursorFreqL = freqAxis[idx];
+            }
+            else if (!canMoveL && canMoveR)
+            {
+                _activeCursor = ActiveCursor.Right;
+                _cursorIdxR = idx;
+                _cursorFreqR = freqAxis[idx];
+            }
+            else
+            {
+                // Les deux peuvent bouger : déplacer celui le plus proche du pointeur
+                var area = chartSpectrum.ChartAreas["SpectrumArea"];
+
+                // Si indices non init, init
+                if (_cursorIdxL < minIdx) { _cursorIdxL = idx; _cursorFreqL = freqAxis[idx]; }
+                if (_cursorIdxR < minIdx) { _cursorIdxR = idx; _cursorFreqR = freqAxis[idx]; }
+
+                double fL = freqAxis[_cursorIdxL];
+                double fR = freqAxis[_cursorIdxR];
+
+                double xL = area.AxisX.ValueToPixelPosition(fL);
+                double xR = area.AxisX.ValueToPixelPosition(fR);
+
+                double dL = Math.Abs(e.X - xL);
+                double dR = Math.Abs(e.X - xR);
+
+                if (dL <= dR)
+                {
+                    _activeCursor = ActiveCursor.Left;
+                    _cursorIdxL = idx;
+                    _cursorFreqL = freqAxis[idx];
+                }
+                else
+                {
+                    _activeCursor = ActiveCursor.Right;
+                    _cursorIdxR = idx;
+                    _cursorFreqR = freqAxis[idx];
+                }
+            }
+
+            RefreshCursorsFromCurrentSpectrum();
+        }
+
+
+
+        //
+        private void ChartSpectrum_MouseDoubleClick(object? sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left)
+                return;
+
+            if (freqAxis == null || freqAxis.Length == 0)
+                return;
+
+            var area = chartSpectrum.ChartAreas["SpectrumArea"];
+
+            bool onL = (chkCursorL != null && chkCursorL.Checked);
+            bool onR = (chkCursorR != null && chkCursorR.Checked);
+
+            if (!onL && !onR)
+                return;
+
+            // distance en px entre clic et curseur
+            double DistPxToCursor(int idxCursor)
+            {
+                if (idxCursor < 0 || idxCursor >= freqAxis.Length) return double.PositiveInfinity;
+                double fC = freqAxis[idxCursor];
+                double xC = area.AxisX.ValueToPixelPosition(fC);
+                return Math.Abs(e.X - xC);
+            }
+
+            bool toggleLeft = false;
+            bool toggleRight = false;
+
+            double dL = onL ? DistPxToCursor(_cursorIdxL) : double.PositiveInfinity;
+            double dR = onR ? DistPxToCursor(_cursorIdxR) : double.PositiveInfinity;
+
+            if (dL <= CursorHitTolPx && dL <= dR) toggleLeft = true;
+            else if (dR <= CursorHitTolPx && dR < dL) toggleRight = true;
+            else
+            {
+                if (_activeCursor == ActiveCursor.Left && onL) toggleLeft = true;
+                else if (_activeCursor == ActiveCursor.Right && onR) toggleRight = true;
+                else if (onL) toggleLeft = true;
+                else if (onR) toggleRight = true;
+            }
+
+            // Lorsqu'on toggle, si l'index n'est pas initialisé, on le fixe depuis la position souris
+            bool useLog = (chkLogX != null && chkLogX.Checked);
+            int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
+
+            if (toggleLeft)
+            {
+                if (_cursorIdxL < minIdx)
+                {
+                    double f = GetFrequencyFromMouseX(e.X);
+                    if (useLog && f < 1.0) f = 1.0;
+                    if (!useLog && f < 0.0) f = 0.0;
+                    _cursorIdxL = FindNearestFreqIndex(freqAxis, f, minIdx);
+                }
+
+                if (_cursorIdxL >= 0 && _cursorIdxL < freqAxis.Length)
+                    _cursorFreqL = freqAxis[_cursorIdxL];
+
+                _cursorLockedL = !_cursorLockedL;
+                _activeCursor = ActiveCursor.Left;
+            }
+
+            if (toggleRight)
+            {
+                if (_cursorIdxR < minIdx)
+                {
+                    double f = GetFrequencyFromMouseX(e.X);
+                    if (useLog && f < 1.0) f = 1.0;
+                    if (!useLog && f < 0.0) f = 0.0;
+                    _cursorIdxR = FindNearestFreqIndex(freqAxis, f, minIdx);
+                }
+
+                if (_cursorIdxR >= 0 && _cursorIdxR < freqAxis.Length)
+                    _cursorFreqR = freqAxis[_cursorIdxR];
+
+                _cursorLockedR = !_cursorLockedR;
+                _activeCursor = ActiveCursor.Right;
+            }
+
+            RefreshCursorsFromCurrentSpectrum();
+        }
+
+
+        //
+        private static int FindNearestFreqIndex(double[] axis, double f)
+        {
+            return FindNearestFreqIndex(axis, f, 0);
+        }
+
+        private static int FindNearestFreqIndex(double[] axis, double f, int minIndex)
+        {
+            if (axis == null || axis.Length == 0)
+                return -1;
+
+            minIndex = Math.Max(0, Math.Min(minIndex, axis.Length - 1));
+
+            int lo = minIndex;
+            int hi = axis.Length - 1;
+
+            if (f <= axis[lo]) return lo;
+            if (f >= axis[hi]) return hi;
+
+            while (hi - lo > 1)
+            {
+                int mid = (lo + hi) / 2;
+                if (axis[mid] < f) lo = mid;
+                else hi = mid;
+            }
+
+            return (Math.Abs(axis[lo] - f) <= Math.Abs(axis[hi] - f)) ? lo : hi;
+        }
+        //
+        private static int GetMinIndexForLog(double[] axis)
+        {
+            // En mode LogX, l’axe n’accepte pas 0 Hz => on prend le premier bin >= 1 Hz
+            if (axis == null || axis.Length == 0)
+                return 0;
+
+            for (int i = 0; i < axis.Length; i++)
+            {
+                if (axis[i] >= 1.0)
+                    return i;
+            }
+            return 0;
+        }
+
+
+        private void RefreshCursorAfterRedraw()
+        {
+            if (chartSpectrum.ChartAreas.Count == 0)
+                return;
+
+            var area = chartSpectrum.ChartAreas["SpectrumArea"];
+
+            if (_cursorLineL != null) { _cursorLineL.AxisX = area.AxisX; _cursorLineL.AxisY = area.AxisY; }
+            if (_cursorTextL != null) { _cursorTextL.AxisX = area.AxisX; _cursorTextL.AxisY = area.AxisY; }
+
+            if (_cursorLineR != null) { _cursorLineR.AxisX = area.AxisX; _cursorLineR.AxisY = area.AxisY; }
+            if (_cursorTextR != null) { _cursorTextR.AxisX = area.AxisX; _cursorTextR.AxisY = area.AxisY; }
+
+            // IMPORTANT : rafraîchit les valeurs au bin fixé (LOCK) même si la souris ne bouge pas
+            RefreshCursorsFromCurrentSpectrum();
+        }
+
+
+        //
+        private void RefreshCursorsFromCurrentSpectrum()
+        {
+            if (freqAxis == null || freqAxis.Length == 0)
+                return;
+
+            if (chartSpectrum.ChartAreas.Count == 0)
+                return;
+
+            var area = chartSpectrum.ChartAreas["SpectrumArea"];
+
+            bool onL = (chkCursorL != null && chkCursorL.Checked);
+            bool onR = (chkCursorR != null && chkCursorR.Checked);
+
+            bool useLog = (chkLogX != null && chkLogX.Checked);
+            int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
+
+            // ----- Re-snap par fréquence (important quand N change) -----
+            if (!double.IsNaN(_cursorFreqL))
+                _cursorIdxL = FindNearestFreqIndex(freqAxis, _cursorFreqL, minIdx);
+
+            if (!double.IsNaN(_cursorFreqR))
+                _cursorIdxR = FindNearestFreqIndex(freqAxis, _cursorFreqR, minIdx);
+
+            // clamp log
+            if (_cursorIdxL >= 0 && _cursorIdxL < minIdx) _cursorIdxL = minIdx;
+            if (_cursorIdxR >= 0 && _cursorIdxR < minIdx) _cursorIdxR = minIdx;
+
+            // --- L ---
+            if (onL && _cursorLineL != null && _cursorTextL != null &&
+                _cursorIdxL >= minIdx && _cursorIdxL < freqAxis.Length)
+            {
+                double f = freqAxis[_cursorIdxL];
+
+                // garder fréquence exacte affichée et mémorisée
+                _cursorFreqL = f;
+
+                _cursorLineL.X = f;
+                _cursorLineL.Visible = true;
+
+                string text;
+                if (currentLeftSpectrum != null && _cursorIdxL < currentLeftSpectrum.Length)
+                {
+                    double db = currentLeftSpectrum[_cursorIdxL];
+                    text = $"{f:0.##} Hz\nL: {db:0.##} dBFS" + (_cursorLockedL ? "\n(LOCK)" : "");
+                }
+                else
+                {
+                    text = $"{f:0.##} Hz\nL: --" + (_cursorLockedL ? "\n(LOCK)" : "");
+                }
+
+                _cursorTextL.Text = text;
+                _cursorTextL.X = f;
+                _cursorTextL.Y = area.AxisY.Maximum;
+                _cursorTextL.Visible = true;
+            }
+            else
+            {
+                if (_cursorLineL != null) _cursorLineL.Visible = false;
+                if (_cursorTextL != null) _cursorTextL.Visible = false;
+            }
+
+            // --- R ---
+            if (onR && _cursorLineR != null && _cursorTextR != null &&
+                _cursorIdxR >= minIdx && _cursorIdxR < freqAxis.Length)
+            {
+                double f = freqAxis[_cursorIdxR];
+
+                _cursorFreqR = f;
+
+                _cursorLineR.X = f;
+                _cursorLineR.Visible = true;
+
+                string text;
+                if (currentRightSpectrum != null && _cursorIdxR < currentRightSpectrum.Length)
+                {
+                    double db = currentRightSpectrum[_cursorIdxR];
+                    text = $"{f:0.##} Hz\nR: {db:0.##} dBFS" + (_cursorLockedR ? "\n(LOCK)" : "");
+                }
+                else
+                {
+                    text = $"{f:0.##} Hz\nR: --" + (_cursorLockedR ? "\n(LOCK)" : "");
+                }
+
+                _cursorTextR.Text = text;
+                _cursorTextR.X = f;
+                _cursorTextR.Y = area.AxisY.Maximum;
+                _cursorTextR.Visible = true;
+            }
+            else
+            {
+                if (_cursorLineR != null) _cursorLineR.Visible = false;
+                if (_cursorTextR != null) _cursorTextR.Visible = false;
+            }
+
+            chartSpectrum.Invalidate();
+        }
+
+
+
         //
         private void UpdateRunButtonAppearance()
         {
@@ -828,6 +1281,7 @@ namespace AudioHexViewer
         private void UpdateSpectrumChartAndStats()
         {
             UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
+
         }
 
         private void UpdateSpectrumChartAndStats(double[]? timeL, double[]? timeR)
@@ -1067,8 +1521,56 @@ namespace AudioHexViewer
                 lblRightPeak.Text = "";
             }
 
+            RefreshCursorAfterRedraw();
+
         }
         //
+        private double GetFrequencyFromMouseX(int mouseX)
+        {
+            var area = chartSpectrum.ChartAreas["SpectrumArea"];
+            bool useLog = (chkLogX != null && chkLogX.Checked);
+
+            double xMinVal = area.AxisX.Minimum;
+            double xMaxVal = area.AxisX.Maximum;
+
+            if (xMaxVal <= xMinVal)
+                return xMinVal;
+
+            // Récupère les positions pixels du min/max axe X
+            double pxMin = area.AxisX.ValueToPixelPosition(xMinVal);
+            double pxMax = area.AxisX.ValueToPixelPosition(xMaxVal);
+
+            // Si quelque chose est inversé ou invalide, fallback
+            if (double.IsNaN(pxMin) || double.IsNaN(pxMax) || Math.Abs(pxMax - pxMin) < 1e-6)
+            {
+                try
+                {
+                    return area.AxisX.PixelPositionToValue(mouseX);
+                }
+                catch
+                {
+                    return xMinVal;
+                }
+            }
+
+            // Position relative 0..1 dans la zone de tracé
+            double t = (mouseX - pxMin) / (pxMax - pxMin);
+            if (t < 0.0) t = 0.0;
+            if (t > 1.0) t = 1.0;
+
+            if (!useLog)
+            {
+                return xMinVal + t * (xMaxVal - xMinVal);
+            }
+
+            // LOG : f = min * (max/min)^t
+            // (valeurs doivent être > 0)
+            double min = Math.Max(1e-12, xMinVal);
+            double max = Math.Max(min * 1.000001, xMaxVal);
+
+            return min * Math.Pow(max / min, t);
+        }
+
         //
         private void ChartSpectrum_PostPaint(object sender, ChartPaintEventArgs e)
         {
@@ -1112,18 +1614,8 @@ namespace AudioHexViewer
                 }
             }
         }
-
-
-        //private void ClearSpectrum()
-        //{
-        //    foreach (var s in chartSpectrum.Series)
-        //        s.Points.Clear();
-
-        //    lblLeftRms.Text = "RMS:";
-        //    lblLeftPeak.Text = "Peak:";
-        //    lblRightRms.Text = "";
-        //    lblRightPeak.Text = "";
-        //}
+        //
+        //
         private void ClearSpectrum()
         {
             // Sécuriser l’axe X quand on n’a plus de données
