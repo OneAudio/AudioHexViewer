@@ -82,12 +82,16 @@ namespace AudioHexViewer
         private double[]? lastTimeLeft = null;
         private double[]? lastTimeRight = null;
 
+        private TextAnnotation? _overlayInfoAnno;
+
+
         public SpectrumControl()
         {
             InitializeComponent();
             InitChartAppearance();
             InitializeUiOptions();
             UpdateRunButtonAppearance();
+            InitOverlayAnnotation();
 
             // Clic droit sur la zone du spectre -> ouverture de la boîte d'axes
             chartSpectrum.MouseUp += ChartSpectrum_MouseUp;
@@ -125,6 +129,8 @@ namespace AudioHexViewer
                 int intervalMs = (int)Math.Max(10, Math.Round((double)step * 1000.0 / _sampleRate));
                 liveTimer.Interval = intervalMs;
             }
+            UpdateOverlayInfo();
+
         }
 
         // Appelé par Form1 : force la taille FFT pour que Histogram + Spectrum utilisent la même fenêtre.
@@ -134,6 +140,8 @@ namespace AudioHexViewer
             _forcedFftSize = samples;
             lastFftSize = samples;
             UpdateWindowInfo();
+            UpdateOverlayInfo();
+
         }
         //
         private void UpdateAvgProgressUi(int k, int n)
@@ -183,7 +191,101 @@ namespace AudioHexViewer
             area0.AxisY.Minimum = -200;
             area0.AxisY.Maximum = 0;
         }
+        //
+        private void InitOverlayAnnotation()
+        {
+            // éviter de créer plusieurs fois
+            if (_overlayInfoAnno != null)
+                return;
 
+            // Vérifier qu'on a bien un ChartArea
+            if (chartSpectrum.ChartAreas.Count == 0)
+                return;
+
+            // Si une annotation du même nom existe déjà (designer / reload), on la réutilise
+            const string annoName = "OverlayInfo";
+            foreach (var a in chartSpectrum.Annotations)
+            {
+                if (a is TextAnnotation ta && ta.Name == annoName)
+                {
+                    _overlayInfoAnno = ta;
+                    return;
+                }
+            }
+
+            var anno = new TextAnnotation
+            {
+                Name = annoName,
+                Text = "",
+                Visible = false,
+
+                // Très important : coordonnées relatives (0..100)
+                IsSizeAlwaysRelative = true,
+
+                // On clippe à la zone SpectrumArea pour éviter qu'il déborde
+                ClipToChartArea = "SpectrumArea",
+
+                // Style
+                BackColor = Color.FromArgb(160, 230, 230, 230),
+                ForeColor = Color.FromArgb(230, 30, 30, 30),
+                Font = new Font("Segoe UI", 9f, FontStyle.Regular),
+
+                // Alignement du texte dans le bloc
+                Alignment = ContentAlignment.TopRight
+            };
+
+            chartSpectrum.Annotations.Add(anno);
+            _overlayInfoAnno = anno;
+        }
+        //
+        private void UpdateOverlayInfo()
+        {
+            if (_overlayInfoAnno == null)
+                return;
+
+            if (_sampleRate <= 0 || lastFftSize <= 0)
+            {
+                _overlayInfoAnno.Visible = false;
+                return;
+            }
+
+            // ---- Texte ----
+            string srText = _sampleRate >= 1000
+                ? $"{_sampleRate / 1000.0:F0} kHz"
+                : $"{_sampleRate} Hz";
+
+            int N = lastFftSize;
+
+            int hop = (_hopSamples > 0) ? _hopSamples : N;
+            hop = Math.Max(1, Math.Min(hop, N));
+            double overlapPct = 100.0 * (1.0 - (double)hop / N);
+            if (overlapPct < 0) overlapPct = 0;
+
+            _overlayInfoAnno.Text =
+                $"SR: {srText}\n" +
+                $"N = {N:N0}\n" +
+                $"Overlap: {overlapPct:F0}%";
+
+            // ---- Position (en % du chart) ----
+            // On se base sur l'InnerPlotPosition (zone interne du graphe), en coordonnées relatives 0..100.
+            var area = chartSpectrum.ChartAreas["SpectrumArea"];
+            var ip = area.InnerPlotPosition; // ElementPosition
+
+            float margin = 4.0f;    // marge en % (augmente si tu veux plus "à l'intérieur")
+            float width = 250.0f;    // largeur en % (ajuste selon ton texte)
+            float height = 15.0f;   // hauteur en %
+
+            _overlayInfoAnno.Width = width;
+            _overlayInfoAnno.Height = height;
+
+            // Top-right à l'intérieur du plot
+            _overlayInfoAnno.X = ip.X + ip.Width - margin - width;
+            _overlayInfoAnno.Y = ip.Y + margin;
+
+            _overlayInfoAnno.Visible = true;
+        }
+
+        //
         private void InitializeUiOptions()
         {
             // Window
@@ -358,6 +460,7 @@ namespace AudioHexViewer
             if (N < 512) N = 512;
             lastFftSize = N;
 
+            UpdateOverlayInfo();
 
             // 2) Durée correspondant à N échantillons
             double msExact = (double)N * 1000.0 / _sampleRate;
@@ -1047,6 +1150,10 @@ namespace AudioHexViewer
             lblLeftPeak.Text = "Peak:";
             lblRightRms.Text = "";
             lblRightPeak.Text = "";
+
+            if (_overlayInfoAnno != null)
+                _overlayInfoAnno.Visible = false;
+
         }
 
 

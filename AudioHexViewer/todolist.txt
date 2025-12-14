@@ -5,12 +5,12 @@ Le 11/12/2025
 1- Alignement des controles identique sur les deux onglets.                                     --> OK FAIT 12/12/2025
 
 2- A ajouter dans l'onglet FFT :
-    - Moyenne exponentielle
+    - Moyenne exponentielle         --> Inutile, moyenne glissant corrigée.
     - Ajout fonction peak-hold + raz
     - Curseur suiveur avec valeur f(Hz) et A(dB) visible à droite
     - Ajout des mesures suivantes :
-            -- Peak(dBFS)
-            -- RMS (dBFS)
+            -- Peak(dBFS)           --> OK FAIT 14/12/2025
+            -- RMS (dBFS)           --> OK FAIT 14/12/2025
             -- THD (-dB)
             -- THD+N
             -- SNR
@@ -40,7 +40,8 @@ des onglets graphiques.
 8 - Vérifier si la FFT est bien calculé en tenant compte de la partie DC du signal.
 (option ac/dc à voir ?) -- > Réponsen non elle ne l'est pas !                                   --> OK FAIT 13/12/2025
 
-9 - La fft en mode log affiche des divisons non entière si N<65536 .                    
+9 - La fft en mode log affiche des divisons non entières parfois.
+Obliger l'affichage a des valeurs arrondies.                   
 
 10 - On refond la partie acquisition pour qu'elle soit en nombre de sample et non en temps
 comme actuellement ! On rend commun le nombre de sample à utilisé pour l'histogramme et la FFT.
@@ -53,4 +54,4 @@ La valeur de l'overlap est aussi ajustable dans le menu du haut avec les valeurs
 
 11 - Dans la boite de dialogue de réglage des axes de la FFT, ajouter :
         --> Un bouton default (0 -200 dBFS, 0 Fs/2)
-        --> Un bouton auto Fit to Y data
+        --> Un bouton  "Fit Y data"
