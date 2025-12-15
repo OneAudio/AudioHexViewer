@@ -131,7 +131,80 @@ namespace AudioHexViewer
             chartSpectrum.MouseLeave += (s, e) => { /* optionnel : cacher texte */ };
 
         }
+        //
+        private (double yMin, double yMax) GetCurrentYRangeGlobal()
+        {
+            if (freqAxis == null || freqAxis.Length == 0)
+                return (-200.0, 0.0);
 
+            if (chartSpectrum.ChartAreas.Count == 0)
+                return (-200.0, 0.0);
+
+            var area = chartSpectrum.ChartAreas["SpectrumArea"];
+
+            // Plage X affichée (custom sinon axe)
+            double fMin = customFMin ?? area.AxisX.Minimum;
+            double fMax = customFMax ?? area.AxisX.Maximum;
+
+            if (fMax <= fMin)
+                return (-200.0, 0.0);
+
+            // Trouver indices correspondant à la plage X
+            int i0 = FindNearestFreqIndex(freqAxis, fMin);
+            int i1 = FindNearestFreqIndex(freqAxis, fMax);
+
+            if (i0 > i1) { int tmp = i0; i0 = i1; i1 = tmp; }
+
+            // En log tu caches le bin 0 (k=0) (cf. startIndex=1) :contentReference[oaicite:2]{index=2}
+            bool useLog = (chkLogX != null && chkLogX.Checked);
+            if (useLog && i0 < 1) i0 = 1;
+
+            // Sécurité bornes
+            i0 = Math.Max(0, Math.Min(i0, freqAxis.Length - 1));
+            i1 = Math.Max(0, Math.Min(i1, freqAxis.Length - 1));
+
+            const double FloorDb = -199.9; // on ignore le plancher -200
+
+            double min = double.PositiveInfinity;
+            double max = double.NegativeInfinity;
+
+            void Scan(double[]? arr)
+            {
+                if (arr == null) return;
+                int n = Math.Min(arr.Length, freqAxis.Length);
+
+                int a = Math.Min(i0, n - 1);
+                int b = Math.Min(i1, n - 1);
+
+                for (int i = a; i <= b; i++)
+                {
+                    double v = arr[i];
+                    if (double.IsNaN(v) || double.IsInfinity(v)) continue;
+
+                    // ignorer bins au plancher (sinon min reste collé à -200)
+                    if (v <= FloorDb) continue;
+
+                    if (v < min) min = v;
+                    if (v > max) max = v;
+                }
+            }
+
+            // Global sur 2 voies
+            Scan(currentLeftSpectrum);
+            Scan(currentRightSpectrum);
+
+            // Si tout est au plancher (ou pas de data), fallback
+            if (min == double.PositiveInfinity || max == double.NegativeInfinity)
+                return (-200.0, 0.0);
+
+            // Clamp final dans [-200 ; 0]
+            min = Math.Max(-200.0, min);
+            max = Math.Min(0.0, max);
+
+            return (min, max);
+        }
+
+        //
         public SpectrumControl(SampleProvider provider, int sampleRate)
             : this()
         {
@@ -1253,6 +1326,9 @@ namespace AudioHexViewer
                 dlg.YMax = yMaxCurrent;
                 dlg.FMinHz = fMinCurrent;   // *** en Hz ***
                 dlg.FMaxHz = fMaxCurrent;   // *** en Hz ***
+
+                dlg.SampleRateHz = _sampleRate;
+                dlg.FitYProvider = GetCurrentYRangeGlobal;
 
                 if (dlg.ShowDialog(FindForm()) == DialogResult.OK)
                 {

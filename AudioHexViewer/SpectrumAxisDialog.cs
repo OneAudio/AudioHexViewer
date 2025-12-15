@@ -9,7 +9,21 @@ namespace AudioHexViewer
         public SpectrumAxisDialog()
         {
             InitializeComponent();
+            btnDefault.Click += BtnDefault_Click;
+            btnFitY.Click += BtnFitY_Click;
+
         }
+
+        // Sample rate courant (Hz), fourni par SpectrumControl
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        [Browsable(false)]
+        public double SampleRateHz { get; set; } = 0.0;
+
+        // Callback pour récupérer min/max Y (dBFS) des données courantes (2 voies)
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        [Browsable(false)]
+        public Func<(double yMin, double yMax)>? FitYProvider { get; set; }
+
 
         // Y max (dBFS) – lecture/écriture, non sérialisé par le designer
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -66,5 +80,97 @@ namespace AudioHexViewer
                 numFMax.Value = (decimal)value;
             }
         }
+
+        private void BtnDefault_Click(object? sender, EventArgs e)
+        {
+            // X = 1 Hz .. Fs/2
+            double fs = SampleRateHz;
+            double fMin = 1.0;
+            double fMax = (fs > 0.0) ? (fs / 2.0) : (double)numFMax.Maximum;
+
+            // Clamp aux bornes des NumericUpDown
+            if (fMin < (double)numFMin.Minimum) fMin = (double)numFMin.Minimum;
+            if (fMin > (double)numFMin.Maximum) fMin = (double)numFMin.Maximum;
+
+            if (fMax < (double)numFMax.Minimum) fMax = (double)numFMax.Minimum;
+            if (fMax > (double)numFMax.Maximum) fMax = (double)numFMax.Maximum;
+
+            // Y = 0 .. -200 dBFS
+            double yMax = 0.0;
+            double yMin = -200.0;
+
+            if (yMax < (double)numYMax.Minimum) yMax = (double)numYMax.Minimum;
+            if (yMax > (double)numYMax.Maximum) yMax = (double)numYMax.Maximum;
+
+            if (yMin < (double)numYMin.Minimum) yMin = (double)numYMin.Minimum;
+            if (yMin > (double)numYMin.Maximum) yMin = (double)numYMin.Maximum;
+
+            // Appliquer
+            numFMin.Value = (decimal)fMin;
+            numFMax.Value = (decimal)fMax;
+            numYMax.Value = (decimal)yMax;
+            numYMin.Value = (decimal)yMin;
+        }
+
+        private void BtnFitY_Click(object? sender, EventArgs e)
+        {
+            if (FitYProvider == null)
+            {
+                System.Media.SystemSounds.Beep.Play();
+                return;
+            }
+
+            var (yMinData, yMaxData) = FitYProvider();
+
+            // Si pas de données exploitables
+            if (double.IsNaN(yMinData) || double.IsNaN(yMaxData) ||
+                double.IsInfinity(yMinData) || double.IsInfinity(yMaxData))
+            {
+                System.Media.SystemSounds.Beep.Play();
+                return;
+            }
+
+            // Clamp dans [-200 ; 0]
+            yMaxData = Math.Min(0.0, yMaxData);
+            yMinData = Math.Max(-200.0, yMinData);
+
+            // Arrondi à la dizaine :
+            // max vers le haut, min vers le bas
+            double yMax = Math.Ceiling(yMaxData / 10.0) * 10.0;
+            double yMin = Math.Floor(yMinData / 10.0) * 10.0;
+
+            // Clamp encore
+            yMax = Math.Min(0.0, yMax);
+            yMin = Math.Max(-200.0, yMin);
+
+            // Échelle minimale 20 dB
+            if ((yMax - yMin) < 20.0)
+            {
+                yMin = yMax - 20.0;
+                if (yMin < -200.0)
+                {
+                    yMin = -200.0;
+                    yMax = yMin + 20.0;
+                }
+                if (yMax > 0.0)
+                {
+                    yMax = 0.0;
+                    yMin = yMax - 20.0;
+                    if (yMin < -200.0) yMin = -200.0;
+                }
+            }
+
+            // Clamp aux bornes NumericUpDown
+            if (yMax < (double)numYMax.Minimum) yMax = (double)numYMax.Minimum;
+            if (yMax > (double)numYMax.Maximum) yMax = (double)numYMax.Maximum;
+
+            if (yMin < (double)numYMin.Minimum) yMin = (double)numYMin.Minimum;
+            if (yMin > (double)numYMin.Maximum) yMin = (double)numYMin.Maximum;
+
+            // Appliquer Y uniquement (X inchangé)
+            numYMax.Value = (decimal)yMax;
+            numYMin.Value = (decimal)yMin;
+        }
+
     }
 }

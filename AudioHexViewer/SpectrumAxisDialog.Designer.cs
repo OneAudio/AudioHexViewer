@@ -25,6 +25,8 @@
             numFMax = new NumericUpDown();
             btnOk = new Button();
             btnCancel = new Button();
+            btnDefault = new Button();
+            btnFitY = new Button();
             ((System.ComponentModel.ISupportInitialize)numYMax).BeginInit();
             ((System.ComponentModel.ISupportInitialize)numYMin).BeginInit();
             ((System.ComponentModel.ISupportInitialize)numFMin).BeginInit();
@@ -54,7 +56,7 @@
             lblFMin.AutoSize = true;
             lblFMin.Location = new Point(12, 85);
             lblFMin.Name = "lblFMin";
-            lblFMin.Size = new Size(68, 15);
+            lblFMin.Size = new Size(62, 15);
             lblFMin.TabIndex = 2;
             lblFMin.Text = "F min (Hz)";
             // 
@@ -63,7 +65,7 @@
             lblFMax.AutoSize = true;
             lblFMax.Location = new Point(12, 120);
             lblFMax.Name = "lblFMax";
-            lblFMax.Size = new Size(70, 15);
+            lblFMax.Size = new Size(64, 15);
             lblFMax.TabIndex = 3;
             lblFMax.Text = "F max (Hz)";
             // 
@@ -90,28 +92,25 @@
             // 
             // numFMin
             // 
-            numFMin.DecimalPlaces = 0;
             numFMin.Location = new Point(110, 83);
-            numFMin.Maximum = new decimal(new int[] { 1000000, 0, 0, 0 }); // 1 000 000 Hz
-            numFMin.Value = 0;
+            numFMin.Maximum = new decimal(new int[] { 1000000, 0, 0, 0 });
             numFMin.Name = "numFMin";
             numFMin.Size = new Size(90, 23);
             numFMin.TabIndex = 6;
             // 
             // numFMax
             // 
-            numFMax.DecimalPlaces = 0;
             numFMax.Location = new Point(110, 118);
             numFMax.Maximum = new decimal(new int[] { 1000000, 0, 0, 0 });
             numFMax.Name = "numFMax";
             numFMax.Size = new Size(90, 23);
             numFMax.TabIndex = 7;
-            numFMax.Value   = 20000;   // par ex. 20 kHz au départ
+            numFMax.Value = new decimal(new int[] { 20000, 0, 0, 0 });
             // 
             // btnOk
             // 
             btnOk.DialogResult = DialogResult.OK;
-            btnOk.Location = new Point(125, 165);
+            btnOk.Location = new Point(125, 196);
             btnOk.Name = "btnOk";
             btnOk.Size = new Size(75, 23);
             btnOk.TabIndex = 8;
@@ -121,12 +120,30 @@
             // btnCancel
             // 
             btnCancel.DialogResult = DialogResult.Cancel;
-            btnCancel.Location = new Point(12, 165);
+            btnCancel.Location = new Point(12, 196);
             btnCancel.Name = "btnCancel";
             btnCancel.Size = new Size(75, 23);
             btnCancel.TabIndex = 9;
             btnCancel.Text = "Cancel";
             btnCancel.UseVisualStyleBackColor = true;
+            // 
+            // btnDefault
+            // 
+            btnDefault.Location = new Point(125, 157);
+            btnDefault.Name = "btnDefault";
+            btnDefault.Size = new Size(75, 23);
+            btnDefault.TabIndex = 8;
+            btnDefault.Text = "Default";
+            btnDefault.UseVisualStyleBackColor = true;
+            // 
+            // btnFitY
+            // 
+            btnFitY.Location = new Point(12, 157);
+            btnFitY.Name = "btnFitY";
+            btnFitY.Size = new Size(75, 23);
+            btnFitY.TabIndex = 9;
+            btnFitY.Text = "Fit Y";
+            btnFitY.UseVisualStyleBackColor = true;
             // 
             // SpectrumAxisDialog
             // 
@@ -134,7 +151,9 @@
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             CancelButton = btnCancel;
-            ClientSize = new Size(220, 200);
+            ClientSize = new Size(220, 231);
+            Controls.Add(btnFitY);
+            Controls.Add(btnDefault);
             Controls.Add(btnCancel);
             Controls.Add(btnOk);
             Controls.Add(numFMax);
@@ -171,5 +190,8 @@
         private System.Windows.Forms.NumericUpDown numFMax;
         private System.Windows.Forms.Button btnOk;
         private System.Windows.Forms.Button btnCancel;
+        private System.Windows.Forms.Button btnDefault;
+        private System.Windows.Forms.Button btnFitY;
+
     }
 }
