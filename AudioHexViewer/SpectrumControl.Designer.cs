@@ -18,6 +18,8 @@
             panelTop = new Panel();
             lblAvgProgress = new Label();
             chkRemoveDC = new CheckBox();
+            chkPeakHold = new CheckBox();
+            btnResetPeakHold = new Button();
             btnResetAvg = new Button();
             lblWindow = new Label();
             comboWindow = new ComboBox();
@@ -57,6 +59,8 @@
             // 
             panelTop.Controls.Add(lblAvgProgress);
             panelTop.Controls.Add(chkRemoveDC);
+            panelTop.Controls.Add(chkPeakHold);
+            panelTop.Controls.Add(btnResetPeakHold);
             panelTop.Controls.Add(btnResetAvg);
             panelTop.Controls.Add(lblWindow);
             panelTop.Controls.Add(comboWindow);
@@ -79,7 +83,7 @@
             lblAvgProgress.AutoSize = true;
             lblAvgProgress.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
             lblAvgProgress.ForeColor = SystemColors.HotTrack;
-            lblAvgProgress.Location = new Point(604, 7);
+            lblAvgProgress.Location = new Point(636, 7);
             lblAvgProgress.Name = "lblAvgProgress";
             lblAvgProgress.Size = new Size(51, 21);
             lblAvgProgress.TabIndex = 14;
@@ -95,13 +99,34 @@
             chkRemoveDC.Text = "remove DC";
             chkRemoveDC.UseVisualStyleBackColor = true;
             // 
+            // chkPeakHold
+            // 
+            chkPeakHold.AutoSize = true;
+            chkPeakHold.Location = new Point(460, 36);
+            chkPeakHold.Name = "chkPeakHold";
+            chkPeakHold.Size = new Size(77, 19);
+            chkPeakHold.TabIndex = 17;
+            chkPeakHold.Text = "PeakHold";
+            chkPeakHold.UseVisualStyleBackColor = true;
+            // 
+            // btnResetPeakHold
+            // 
+            btnResetPeakHold.Location = new Point(556, 31);
+            btnResetPeakHold.Name = "btnResetPeakHold";
+            btnResetPeakHold.Size = new Size(74, 23);
+            btnResetPeakHold.TabIndex = 18;
+            btnResetPeakHold.TabStop = false;
+            btnResetPeakHold.Text = "Clear Hold";
+            btnResetPeakHold.UseVisualStyleBackColor = true;
+            btnResetPeakHold.Click += btnResetPeakHold_Click;
+            // 
             // btnResetAvg
             // 
             btnResetAvg.Location = new Point(556, 7);
             btnResetAvg.Name = "btnResetAvg";
-            btnResetAvg.Size = new Size(42, 23);
+            btnResetAvg.Size = new Size(74, 23);
             btnResetAvg.TabIndex = 12;
-            btnResetAvg.Text = "RAZ";
+            btnResetAvg.Text = "Clear AVG";
             btnResetAvg.UseVisualStyleBackColor = true;
             btnResetAvg.Click += btnResetAvg_Click;
             // 
@@ -374,5 +399,7 @@
         private Label lblAvgProgress;
         private CheckBox chkCursorR;
         private CheckBox chkCursorL;
+        private CheckBox chkPeakHold;
+        private Button btnResetPeakHold;
     }
 }

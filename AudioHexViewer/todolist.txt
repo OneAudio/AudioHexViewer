@@ -9,7 +9,6 @@ le problème de décalage temporel trés important.
 (Besoin d'ajouter une combobox pour la selection du SR).
 
 1a- A ajouter dans l'onglet FFT des nouvelles mesures:
-    - Ajout fonction peak-hold + raz
     - Ajout des mesures suivantes :
             -- THD (-dB)
             -- THD+N
@@ -25,10 +24,6 @@ le problème de décalage temporel trés important.
 
 2 - La fft en mode log affiche des divisons non entières parfois.
 Obliger l'affichage a des valeurs arrondies.                   
-
-3 - Dans la boite de dialogue de réglage des axes de la FFT, ajouter :
-        --> Un bouton default (0 -200 dBFS, 0 Fs/2)
-        --> Un bouton  "Fit Y data"
 
 4 - Faire le point sur tout les paramêtres qui doivent être sauvegardés.
 (renommer "save histogram settings" par "Save settings")

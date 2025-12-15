@@ -6,6 +6,8 @@ using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
 using MathNet.Numerics;
 using MathNet.Numerics.IntegralTransforms;
+using ChartSeries = System.Windows.Forms.DataVisualization.Charting.Series;
+
 
 namespace AudioHexViewer
 {
@@ -71,6 +73,10 @@ namespace AudioHexViewer
         private double[]? freqAxis;
 
         private bool isLive = false;
+
+        // Peak-hold (en dBFS) : max par bin depuis le dernier reset
+        private double[]? peakHoldLeftDb;
+        private double[]? peakHoldRightDb;
 
         // Axes personnalisés (null = auto)
         private double? customYMin = null;
@@ -441,6 +447,19 @@ namespace AudioHexViewer
                 };
             }
 
+            // Peak-hold
+            if (chkPeakHold != null)
+            {
+                chkPeakHold.Checked = false;
+                chkPeakHold.CheckedChanged += (s, e) =>
+                {
+                    // Quand on active : repartir de zéro pour que le peak-hold soit cohérent
+                    if (chkPeakHold.Checked)
+                        ResetPeakHoldState();
+
+                    UpdateSpectrumChartAndStats();
+                };
+            }
 
             // Channel (affichage)
             comboChannel.Items.Clear();
@@ -970,7 +989,56 @@ namespace AudioHexViewer
 
             UpdateAvgProgressUi(0, avgTargetCount);
         }
+        //
+        // ---------------- PEAK HOLD ----------------
 
+        private void ResetPeakHoldState()
+        {
+            peakHoldLeftDb = null;
+            peakHoldRightDb = null;
+        }
+
+        private void btnResetPeakHold_Click(object? sender, EventArgs e)
+        {
+            ResetPeakHoldState();
+            UpdateSpectrumChartAndStats();
+        }
+
+        private void UpdatePeakHoldFromCurrentSpectrum()
+        {
+            // Peak-hold actif uniquement si la checkbox est cochée
+            if (chkPeakHold == null || !chkPeakHold.Checked)
+                return;
+
+            if (currentLeftSpectrum == null)
+                return;
+
+            int bins = currentLeftSpectrum.Length;
+
+            // (Re)alloc si N change
+            if (peakHoldLeftDb == null || peakHoldLeftDb.Length != bins)
+                peakHoldLeftDb = Enumerable.Repeat(-200.0, bins).ToArray();
+
+            for (int i = 0; i < bins; i++)
+            {
+                double v = currentLeftSpectrum[i];
+                if (v > peakHoldLeftDb[i]) peakHoldLeftDb[i] = v;
+            }
+
+            if (currentRightSpectrum != null)
+            {
+                int n = currentRightSpectrum.Length;
+
+                if (peakHoldRightDb == null || peakHoldRightDb.Length != n)
+                    peakHoldRightDb = Enumerable.Repeat(-200.0, n).ToArray();
+
+                for (int i = 0; i < n; i++)
+                {
+                    double v = currentRightSpectrum[i];
+                    if (v > peakHoldRightDb[i]) peakHoldRightDb[i] = v;
+                }
+            }
+        }
 
         //
         private void AcquireOnce()
@@ -1056,6 +1124,9 @@ namespace AudioHexViewer
 
             // 7) Moyennage
             ApplyAveraging(specL, specR);
+
+            // Peak-hold (sur la courbe déjà calculée et moyennée)
+            UpdatePeakHoldFromCurrentSpectrum();
 
             // 8) Axe fréquence
             RebuildFreqAxis(N);
@@ -1482,6 +1553,7 @@ namespace AudioHexViewer
             string mode = comboChannel.SelectedItem as string ?? "L+R";
             bool showLeft = (mode == "Left" || mode == "L+R");
             bool showRight = (currentRightSpectrum != null) && (mode == "Right" || mode == "L+R");
+            bool peakHoldOn = (chkPeakHold != null && chkPeakHold.Checked);
 
             // Courbe gauche
             if (showLeft)
@@ -1495,6 +1567,24 @@ namespace AudioHexViewer
                     seriesL.Points.AddXY(freqAxis[i], currentLeftSpectrum[i]);
 
                 chartSpectrum.Series.Add(seriesL);
+
+                // Peak-hold gauche (pointillés)
+                if (peakHoldOn && peakHoldLeftDb != null)
+                {
+                    var seriesLph = new ChartSeries("LeftPeakHold");
+                    seriesLph.ChartType = SeriesChartType.FastLine;
+                    seriesLph.ChartArea = "SpectrumArea";
+                    seriesLph.Color = Color.DodgerBlue;
+                    seriesLph.BorderDashStyle = ChartDashStyle.Dash;
+                    seriesLph.BorderWidth = 1;
+
+                    for (int i = startIndex; i < freqAxis.Length && i < peakHoldLeftDb.Length; i++)
+                        seriesLph.Points.AddXY(freqAxis[i], peakHoldLeftDb[i]);
+
+                    chartSpectrum.Series.Add(seriesLph);
+                }
+
+
             }
 
             // Courbe droite
@@ -1509,8 +1599,25 @@ namespace AudioHexViewer
                     seriesR.Points.AddXY(freqAxis[i], currentRightSpectrum[i]);
 
                 chartSpectrum.Series.Add(seriesR);
-            }
 
+                // Peak-hold droite (pointillés)
+                if (peakHoldOn && peakHoldRightDb != null)
+                {
+                    var seriesRph = new ChartSeries("RightPeakHold");
+                    seriesRph.ChartType = SeriesChartType.FastLine;
+                    seriesRph.ChartArea = "SpectrumArea";
+                    seriesRph.Color = Color.OrangeRed;
+                    seriesRph.BorderDashStyle = ChartDashStyle.Dash;
+                    seriesRph.BorderWidth = 1;
+
+                    for (int i = startIndex; i < freqAxis.Length && i < peakHoldRightDb.Length; i++)
+                        seriesRph.Points.AddXY(freqAxis[i], peakHoldRightDb[i]);
+
+                    chartSpectrum.Series.Add(seriesRph);
+                }
+            }
+            //
+            //
             // --- Stats temporelles : LEFT ---
             // Peak = sur brut (avec DC) ; RMS = sans DC (AC) => on retire la moyenne pour le calcul RMS uniquement
             if (timeL != null && timeL.Length > 0)
