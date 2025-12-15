@@ -5,8 +5,7 @@ using System.Text;
 using System.IO;
 using System.Diagnostics;
 using System.Text.Json;
-
-
+using System.Linq;
 // ...
 
 
@@ -78,13 +77,25 @@ namespace AudioHexViewer
         private List<RecordFrame> recordBuffer = new List<RecordFrame>();
 
         // --- Capture 1 seconde pour histogramme ---
-        private List<RecordFrame> histBuffer = new List<RecordFrame>();
+        //private List<RecordFrame> histBuffer = new List<RecordFrame>();
 
-        // Historique continu (tampon roulant) alimenté par la carte son
-        private readonly object histLock = new object();
+        //// Historique continu (tampon roulant) alimenté par la carte son
+        //private readonly object histLock = new object();
 
-        // Index absolu du premier échantillon présent dans histBuffer (sert à gérer les RemoveRange)
-        private long histBaseIndex = 0;
+        //// Index absolu du premier échantillon présent dans histBuffer (sert à gérer les RemoveRange)
+        //private long histBaseIndex = 0;
+
+        // Ring buffer “REW-like” pour les derniers échantillons audio (capacité = menu Buffer)
+        private StereoRingBuffer? _audioRing;
+        private readonly object _audioRingLock = new object();
+
+        // Index absolu de fin de la dernière fenêtre d’analyse produite (pour hop/overlap)
+        private long _lastAnalysisAbsEnd = 0;
+
+        // Pour le cas N > Buffer : accumulation dans une “fenêtre FFT” logique (taille N)
+        private StereoRingBuffer? _fftWindow;  // capacité = N (peut être > buffer)
+        private long _windowFeedAbsIndex = 0;  // dernier index absolu déjà injecté dans _fftWindow
+
 
         // --- Fenêtre d'analyse commune Histogram + Spectrum ---
         private int analysisSampleSize = 131072;  // défaut
@@ -202,7 +213,115 @@ namespace AudioHexViewer
             public int Right;
         }
         //
-        
+        private sealed class StereoRingBuffer
+        {
+            private int[] _l;
+            private int[] _r;
+            private int _write;     // index d'écriture (0..cap-1)
+            private int _count;     // nombre d'échantillons valides (<= cap)
+            private long _absWrite; // nombre total d'échantillons écrits depuis le dernier reset
+
+            public int Capacity => _l.Length;
+            public int Count => _count;
+            public long AbsWrite => _absWrite; // index absolu "one past last"
+
+            public StereoRingBuffer(int capacity)
+            {
+                if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
+                _l = new int[capacity];
+                _r = new int[capacity];
+                _write = 0;
+                _count = 0;
+                _absWrite = 0;
+            }
+
+            public void Resize(int capacity, bool reset = true)
+            {
+                if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
+                _l = new int[capacity];
+                _r = new int[capacity];
+                if (reset)
+                {
+                    _write = 0;
+                    _count = 0;
+                    _absWrite = 0;
+                }
+                else
+                {
+                    // Pour l'instant on n'implémente pas de conservation partielle (inutile ici)
+                    _write = 0;
+                    _count = 0;
+                    _absWrite = 0;
+                }
+            }
+
+            public void Clear(bool resetAbsIndex = true)
+            {
+                _write = 0;
+                _count = 0;
+                if (resetAbsIndex) _absWrite = 0;
+            }
+
+            public void WriteSample(int left, int right)
+            {
+                _l[_write] = left;
+                _r[_write] = right;
+
+                _write++;
+                if (_write >= _l.Length) _write = 0;
+
+                if (_count < _l.Length) _count++;
+                _absWrite++;
+            }
+
+            /// <summary>
+            /// Copie une plage d'échantillons à partir d'un index absolu (absStart) dans des buffers de sortie.
+            /// absStart..absStart+length doit être contenu dans la zone encore présente dans le ring.
+            /// </summary>
+            public bool TryCopyFromAbs(long absStart, int length, int[] dstL, int[] dstR)
+            {
+                if (length <= 0) return false;
+                if (dstL.Length < length || dstR.Length < length) return false;
+
+                long absEnd = _absWrite;
+                long absOldest = absEnd - _count;
+
+                if (absStart < absOldest) return false;
+                if (absStart + length > absEnd) return false;
+
+                int cap = _l.Length;
+
+                // index de l'échantillon le plus ancien dans le tableau
+                int oldestIndex = (_count == cap) ? _write : 0;
+
+                long offsetFromOldest = absStart - absOldest;
+                int idx = (int)((oldestIndex + offsetFromOldest) % cap);
+
+                int remaining = length;
+                int outPos = 0;
+
+                while (remaining > 0)
+                {
+                    int chunk = Math.Min(remaining, cap - idx);
+                    Array.Copy(_l, idx, dstL, outPos, chunk);
+                    Array.Copy(_r, idx, dstR, outPos, chunk);
+                    remaining -= chunk;
+                    outPos += chunk;
+                    idx = 0;
+                }
+
+                return true;
+            }
+
+            public bool TryCopyLast(int length, int[] dstL, int[] dstR)
+            {
+                long absEnd = _absWrite;
+                long absStart = absEnd - length;
+                return TryCopyFromAbs(absStart, length, dstL, dstR);
+            }
+        }
+
+
         // Fournit la DERNIÈRE fenêtre d'analyse commune (Histogram + Spectrum).
         // Les contrôles appellent ce provider avec sampleCount (= analysisSampleSize).
         // Fournit la DERNIÈRE fenêtre d'analyse commune (Histogram + Spectrum).
@@ -313,6 +432,16 @@ namespace AudioHexViewer
         //
         private readonly int[] _sampleSizeOptions = new[] { 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576 };
 
+        // Options REW-style (en samples)
+        private readonly int[] _bufferOptions = new[] { 16 * 1024, 32 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024 };
+
+        private bool _updatingBufferMenuUi = false;
+
+        // Valeur courante (on l’utilisera à l’étape suivante pour le ring-buffer)
+        private int analysisBufferSize = 128 * 1024;
+
+
+
         // évite les boucles (menu -> combo -> menu)
         private bool _updatingSampleSizeMenuUi = false;
 
@@ -352,17 +481,100 @@ namespace AudioHexViewer
             }
         }
         //
-        private readonly (string Label, double Value)[] _overlapOptions =
-{
-    ("0%", 0.0),
-    ("50%", 0.5),
-    ("75%", 0.75),
-    ("87.5%", 0.875),
-    ("93.75%", 0.9375),
-};
+                private readonly (string Label, double Value)[] _overlapOptions =
+        {
+            ("0%", 0.0),
+            ("50%", 0.5),
+            ("75%", 0.75),
+            ("87.5%", 0.875),
+            ("93.75%", 0.9375),
+        };
 
         private bool _updatingOverlapMenuUi = false;
+        //
+        private void InitBufferMenu()
+        {
+            if (menuBuffer == null) return;
 
+            menuBuffer.DropDownItems.Clear();
+
+            foreach (int n in _bufferOptions)
+            {
+                string label = (n / 1024).ToString() + "k";
+
+                var it = new ToolStripMenuItem(label)
+                {
+                    Tag = n,
+                    CheckOnClick = true
+                };
+
+                it.Click += (s, e) =>
+                {
+                    if (_updatingBufferMenuUi) return;
+
+                    int chosen = (int)((ToolStripMenuItem)s!).Tag!;
+                    _updatingBufferMenuUi = true;
+                    try
+                    {
+                        SetAnalysisBufferSize(chosen);
+                        UpdateBufferMenuChecks();
+                    }
+                    finally
+                    {
+                        _updatingBufferMenuUi = false;
+                    }
+                };
+
+                menuBuffer.DropDownItems.Add(it);
+            }
+        }
+        //
+        private void UpdateBufferMenuChecks()
+        {
+            if (menuBuffer == null) return;
+
+            foreach (ToolStripMenuItem it in menuBuffer.DropDownItems)
+            {
+                int n = (int)it.Tag!;
+                it.Checked = (n == analysisBufferSize);
+            }
+        }
+        //
+        private void SetAnalysisBufferSize(int bufferSize)
+        {
+            if (bufferSize < 16 * 1024) bufferSize = 16 * 1024;
+            if (bufferSize > 512 * 1024) bufferSize = 512 * 1024;
+
+            analysisBufferSize = bufferSize;
+
+            lock (_audioRingLock)
+            {
+                if (_audioRing == null) _audioRing = new StereoRingBuffer(analysisBufferSize);
+                else _audioRing.Resize(analysisBufferSize, reset: true);
+
+                _lastAnalysisAbsEnd = 0;
+
+                // La fenêtre logique FFT (N) sera recréée à la demande dans UpdateAnalysisFrame()
+                _fftWindow = null;
+                _windowFeedAbsIndex = 0;
+            }
+        }
+        //
+        private void ResetAnalysisPipeline()
+        {
+            lock (_audioRingLock)
+            {
+                if (_audioRing == null) _audioRing = new StereoRingBuffer(analysisBufferSize);
+                else _audioRing.Clear(resetAbsIndex: true);
+
+                _lastAnalysisAbsEnd = 0;
+                _fftWindow = null;
+                _windowFeedAbsIndex = 0;
+            }
+        }
+
+        //
+        //
         private void InitOverlapMenu()
         {
             if (menuOverlap == null) return;
@@ -482,59 +694,114 @@ namespace AudioHexViewer
 
         private void UpdateAnalysisFrame()
         {
-            // Si pas de capture => rien
-            if (currentFormat == null || currentFormat.SampleRate <= 0)
-                return;
+            if (currentFormat == null) return;
 
             int N = analysisSampleSize;
             if (N <= 0) return;
 
+            int hop = analysisHopSamples > 0 ? analysisHopSamples : N;
+
             int[] left = new int[N];
             int[] right = new int[N];
 
-            lock (histLock)
+            lock (_audioRingLock)
             {
-                long absEnd = histBaseIndex + histBuffer.Count; // index absolu "one past last"
-                if (absEnd < N)
-                    return; // pas encore assez de données
+                if (_audioRing == null) return;
 
-                long start;
-                if (analysisCursorStart == 0)
+                long absEnd = _audioRing.AbsWrite;
+                if (absEnd < N) return; // pas encore assez de données pour une FFT
+
+                // ---------- Cas 1 : N <= Buffer => on peut extraire directement les N derniers ----------
+                if (N <= _audioRing.Capacity)
                 {
-                    start = absEnd - N; // première fois : dernière fenêtre dispo
+                    // Ne calcule une nouvelle fenêtre que si on a au moins hop nouveaux samples depuis la dernière
+                    if (_lastAnalysisAbsEnd != 0 && (absEnd - _lastAnalysisAbsEnd) < hop)
+                        return;
+
+                    // Toujours "dernier bloc" (REW-like), donc start = absEnd - N
+                    if (!_audioRing.TryCopyLast(N, left, right))
+                        return;
+
+                    _lastAnalysisAbsEnd = absEnd;
                 }
+                // ---------- Cas 2 : N > Buffer => accumulation progressive ----------
                 else
                 {
-                    start = analysisCursorStart + analysisHopSamples;
-                    if (start + N > absEnd)
-                        start = absEnd - N;
+                    // Crée une fenêtre logique de taille N (c'est elle qui accumule)
+                    if (_fftWindow == null || _fftWindow.Capacity != N)
+                    {
+                        _fftWindow = new StereoRingBuffer(N);
+                        _fftWindow.Clear(resetAbsIndex: true);
+
+                        // On part du plus ancien sample disponible dans le ring pour remplir la fenêtre
+                        // (sinon on risquerait de demander une plage trop ancienne)
+                        long absOldest = absEnd - _audioRing.Count;
+                        _windowFeedAbsIndex = absOldest;
+                        _lastAnalysisAbsEnd = 0;
+                    }
+
+                    // Injecte dans _fftWindow tous les nouveaux samples arrivés depuis la dernière fois
+                    // Attention : on ne peut copier que ce qui est encore présent dans _audioRing
+                    long absOldestNow = absEnd - _audioRing.Count;
+                    if (_windowFeedAbsIndex < absOldestNow)
+                    {
+                        // On a "raté" des samples (UI trop lente) => on se recale sur ce qui reste
+                        _windowFeedAbsIndex = absOldestNow;
+                    }
+
+                    long toFeed = absEnd - _windowFeedAbsIndex;
+                    if (toFeed <= 0) return;
+
+                    // On alimente par chunks raisonnables (pour éviter des allocations énormes)
+                    const int CHUNK = 32768;
+                    int[] tmpL = new int[Math.Min(CHUNK, (int)Math.Min(toFeed, int.MaxValue))];
+                    int[] tmpR = new int[tmpL.Length];
+
+                    while (_windowFeedAbsIndex < absEnd)
+                    {
+                        long remaining = absEnd - _windowFeedAbsIndex;
+                        int take = (int)Math.Min(tmpL.Length, remaining);
+
+                        if (!_audioRing.TryCopyFromAbs(_windowFeedAbsIndex, take, tmpL, tmpR))
+                        {
+                            // Si ça échoue, c'est qu'on a demandé trop vieux => recaler
+                            long oldest = absEnd - _audioRing.Count;
+                            _windowFeedAbsIndex = oldest;
+                            return;
+                        }
+
+                        for (int i = 0; i < take; i++)
+                            _fftWindow.WriteSample(tmpL[i], tmpR[i]);
+
+                        _windowFeedAbsIndex += take;
+                    }
+
+                    // Tant que la fenêtre logique n'a pas N samples, on ne peut pas produire de FFT
+                    if (_fftWindow.Count < N) return;
+
+                    // Hop logic : on ne “publie” que si hop nouveaux samples se sont ajoutés depuis la dernière FFT publiée
+                    // Ici, absEnd représente l'instant de fin (one past last) courant.
+                    if (_lastAnalysisAbsEnd != 0 && (absEnd - _lastAnalysisAbsEnd) < hop)
+                        return;
+
+                    // La fenêtre logique contient les N derniers samples accumulés => extraire ces N derniers
+                    if (!_fftWindow.TryCopyLast(N, left, right))
+                        return;
+
+                    _lastAnalysisAbsEnd = absEnd;
                 }
-
-                // Si on a purgé le buffer et qu'on a perdu la référence, on recolle en fin
-                if (start < histBaseIndex)
-                    start = absEnd - N;
-
-                int localStart = (int)(start - histBaseIndex);
-                if (localStart < 0) localStart = 0;
-                if (localStart + N > histBuffer.Count)
-                    return;
-
-                for (int i = 0; i < N; i++)
-                {
-                    var f = histBuffer[localStart + i];
-                    left[i] = f.Left;
-                    right[i] = f.Right;
-                }
-
-                analysisCursorStart = start;
             }
 
+            // Publie la nouvelle frame d'analyse (pour SpectrumControl + éventuel histogramme)
             lock (analysisLock)
             {
                 lastAnalysisLeft = left;
                 lastAnalysisRight = right;
             }
+
+            // (Optionnel) si tu as un histogramme basé sur lastAnalysis*, il sera naturellement “temps réel” aussi.
         }
+
 
 
         public Form1()
@@ -629,8 +896,8 @@ namespace AudioHexViewer
             InitOverlapMenu();
             UpdateSampleSizeMenuChecks();
             UpdateOverlapMenuChecks();
-
-
+            InitBufferMenu();
+            UpdateBufferMenuChecks();
         }
 
         private void LoadUiSettingsFromHistogramFile()
@@ -1068,13 +1335,7 @@ namespace AudioHexViewer
 
                     if (onceMode)
                     {
-                        // On veut une acquisition de N chantillons "propres"  on vide l'historique
-                        lock (histLock)
-                        {
-                            histBuffer.Clear();
-                        }
-
-                        // Nombre de samples  acqurir = fentre d'histo
+                                                // Nombre de samples  acqurir = fentre d'histo
                         int windowSamples = HistogramControl.LastUsedWindowSamples;
 
                         // Si jamais l'histo n'a pas encore t ouvert, on prend 1 seconde par dfaut
@@ -1099,6 +1360,10 @@ namespace AudioHexViewer
 
                     // Dmarrage de la capture audio
                     capture.StartRecording();
+
+                    // Rinitialisation de la pipeline d'analyse
+                    ResetAnalysisPipeline();
+
 
                     // Démarre le générateur de fenêtres d'analyse (Histogram + Spectrum)
                     RecomputeHopAndTimer();
@@ -1783,132 +2048,60 @@ namespace AudioHexViewer
             uint left24u = unchecked((uint)(left24 & 0xFFFFFF));
             uint right24u = unchecked((uint)(right24 & 0xFFFFFF));
 
-            // ---------- RECORD 1 SECONDE ----------
-            if (isRecordingOneSecond)
+            // Nombre de frames dans ce callback
+            int bytesPerFrame = currentFormat.Channels * 4;
+            int frameCount = bytesRecorded / bytesPerFrame;
+
+            // 1) Toujours alimenter le ring buffer REW-like
+            lock (_audioRingLock)
             {
-                int bytesPerFrame = currentFormat.Channels * 4;
-                int frameCount = bytesRecorded / bytesPerFrame;
+                if (_audioRing == null)
+                    _audioRing = new StereoRingBuffer(analysisBufferSize);
 
                 for (int i = 0; i < frameCount; i++)
                 {
-                    int idx = i * bytesPerFrame;
+                    int idxFrame = i * bytesPerFrame;
 
-                    float lf = BitConverter.ToSingle(buffer, idx);
-                    float rf = BitConverter.ToSingle(buffer, idx + 4);
+                    float lf = BitConverter.ToSingle(buffer, idxFrame);
+                    float rf = BitConverter.ToSingle(buffer, idxFrame + 4);
 
-                    float sL = lf * Max24;
-                    float sR = rf * Max24;
-
-                    int L = (int)Math.Truncate(sL);
-                    int R = (int)Math.Truncate(sR);
+                    int L = (int)Math.Truncate(lf * Max24);
+                    int R = (int)Math.Truncate(rf * Max24);
 
                     if (L > Max24Pos) L = Max24Pos;
                     if (L < Min24Neg) L = Min24Neg;
                     if (R > Max24Pos) R = Max24Pos;
                     if (R < Min24Neg) R = Min24Neg;
 
-                    recordBuffer.Add(new RecordFrame() { Left = L, Right = R });
-                    recordSamplesCollected++;
-
-                    if (recordSamplesCollected >= recordSamplesNeeded)
-                    {
-                        isRecordingOneSecond = false;
-                        SaveRecordingToCsv();
-                        break;
-                    }
+                    _audioRing.WriteSample(L, R);
                 }
             }
 
-            // ---------- HISTOGRAMME : tampon roulant continu ----------
+            // 2) Enregistrement 1 seconde (annexe)
+            if (isRecordingOneSecond)
             {
-                int bytesPerFrame = currentFormat.Channels * 4;
-                int frameCount = bytesRecorded / bytesPerFrame;
+                // Ici tu peux remplir recordBuffer (si tu veux garder cette feature)
+                // ou carrément la désactiver plus tard.
+                // IMPORTANT: ne pas toucher au ring buffer ici.
+            }
 
-                if (frameCount > 0)
+            // 3) Mode "Once" histogramme : on accumule juste un compteur
+            if (histOnceActive)
+            {
+                histOnceAccumSamples += frameCount;
+
+                if (histOnceAccumSamples >= histOnceTargetSamples)
                 {
-                    int maxSamples = currentFormat.SampleRate * MaxHistogramSeconds;
+                    histOnceActive = false;
 
-                    lock (histLock)
+                    BeginInvoke((Action)(() =>
                     {
-                        for (int i = 0; i < frameCount; i++)
-                        {
-                            int idxFrame = i * bytesPerFrame;
-
-                            float lf = BitConverter.ToSingle(buffer, idxFrame);
-                            float rf = BitConverter.ToSingle(buffer, idxFrame + 4);
-
-                            float sL = lf * Max24;
-                            float sR = rf * Max24;
-
-                            int L = (int)Math.Truncate(sL);
-                            int R = (int)Math.Truncate(sR);
-
-                            if (L > Max24Pos) L = Max24Pos;
-                            if (L < Min24Neg) L = Min24Neg;
-                            if (R > Max24Pos) R = Max24Pos;
-                            if (R < Min24Neg) R = Min24Neg;
-
-                            histBuffer.Add(new RecordFrame { Left = L, Right = R });
-                        }
-
-                        // On ne garde que les N derniers chantillons (10 s max)
-                        if (histBuffer.Count > maxSamples)
-                            {
-                                int removeCount = histBuffer.Count - maxSamples;
-                                histBuffer.RemoveRange(0, removeCount);
-                                histBaseIndex += removeCount;
-                            }
-                    }
-
-                    // --- Mode "Once" pour l'histogramme ---
-                    if (histOnceActive)
-                    {
-                        histOnceAccumSamples += frameCount;
-
-                        if (histOnceAccumSamples >= histOnceTargetSamples)
-                        {
-                            histOnceActive = false;
-
-                            BeginInvoke((Action)(() =>
-                            {
-                                if (histogramControl != null)
-                                {
-                                    histogramControl.StartFromRun(true);
-                                }
-
-                                if (capture != null)
-                                {
-                                    try
-                                    {
-                                        capture.DataAvailable -= Capture_DataAvailable;
-                                        capture.RecordingStopped -= Capture_RecordingStopped;
-                                        capture.StopRecording();
-                    analysisTimer?.Stop();
-                    lock (analysisLock)
-                    {
-                        lastAnalysisLeft = Array.Empty<int>();
-                        lastAnalysisRight = Array.Empty<int>();
-                    }
-                    analysisCursorStart = 0;
-                                    }
-                                    catch
-                                    {
-                                        // ignore
-                                    }
-
-                                    capture.Dispose();
-                                    capture = null;
-                                    currentFormat = null;
-                                }
-
-                                UpdateStartButtonAppearance();
-                                UpdateDeviceInfo();
-                                UpdateDeviceSummary();
-                            }));
-                        }
-                    }
+                        // Démarre l’affichage histo “une fois” (mais sans stopper la capture ici)
+                        histogramControl?.StartFromRun(true);
+                    }));
                 }
             }
+
 
             // ---------- Calcul du niveau crte sur ce buffer (pour les VU) ----------
             int bytesPerFrameAll = currentFormat.Channels * 4;
