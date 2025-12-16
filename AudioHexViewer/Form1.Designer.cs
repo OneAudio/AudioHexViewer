@@ -33,24 +33,21 @@ namespace AudioHexViewer
         {
             label5 = new Label();
             menuStrip1 = new MenuStrip();
-            menuData = new ToolStripMenuItem();
-            menuShowAllFormats = new ToolStripMenuItem();
-            menuShowGraphs = new ToolStripMenuItem();
             menuDeviceInfo = new ToolStripMenuItem();
             menuHelp = new ToolStripMenuItem();
             menuAbout = new ToolStripMenuItem();
             menuOpenCal = new ToolStripMenuItem();
             menuOpenRecordsFolder = new ToolStripMenuItem();
+            saveHistogramSettingsToolStripMenuItem = new ToolStripMenuItem();
+            alwaysOnTopToolStripMenuItem = new ToolStripMenuItem();
+            menuData = new ToolStripMenuItem();
+            menuShowAllFormats = new ToolStripMenuItem();
+            menuShowGraphs = new ToolStripMenuItem();
             menuSampleSize = new ToolStripMenuItem();
             menuOverlap = new ToolStripMenuItem();
             menuBuffer = new ToolStripMenuItem();
-            saveHistogramSettingsToolStripMenuItem = new ToolStripMenuItem();
-            alwaysOnTopToolStripMenuItem = new ToolStripMenuItem();
             splitMain = new SplitContainer();
             lblFormatInfo = new Label();
-            tabAnalysis = new TabControl();
-            tabHistogram = new TabPage();
-            tabSpectrum = new TabPage();
             label3 = new Label();
             label7 = new Label();
             label6 = new Label();
@@ -66,10 +63,6 @@ namespace AudioHexViewer
             chkHistoOnce = new CheckBox();
             label4 = new Label();
             comboDisplayMode = new ComboBox();
-            labelSamplesSize = new Label();
-            comboSamplesSize = new ComboBox();
-            labelOverlap = new Label();
-            comboOverlap = new ComboBox();
             label1 = new Label();
             btnStart = new Button();
             rbInput = new RadioButton();
@@ -77,7 +70,10 @@ namespace AudioHexViewer
             comboDevices = new ComboBox();
             btnRecord = new Button();
             btnCalV = new Button();
+            tabAnalysis = new TabControl();
+            tabHistogram = new TabPage();
             panelHistogram = new Panel();
+            tabSpectrum = new TabPage();
             txtLeft = new RichTextBox();
             txtRight = new RichTextBox();
             menuStrip1.SuspendLayout();
@@ -85,6 +81,8 @@ namespace AudioHexViewer
             splitMain.Panel1.SuspendLayout();
             splitMain.Panel2.SuspendLayout();
             splitMain.SuspendLayout();
+            tabAnalysis.SuspendLayout();
+            tabHistogram.SuspendLayout();
             SuspendLayout();
             // 
             // label5
@@ -100,45 +98,16 @@ namespace AudioHexViewer
             // menuStrip1
             // 
             menuStrip1.AutoSize = false;
-            menuStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { menuDeviceInfo, menuHelp, menuData, menuSampleSize, menuOverlap, menuBuffer });
+            menuStrip1.Items.AddRange(new ToolStripItem[] { menuDeviceInfo, menuHelp, menuData, menuSampleSize, menuOverlap, menuBuffer });
             menuStrip1.Location = new Point(0, 0);
             menuStrip1.Name = "menuStrip1";
             menuStrip1.Size = new Size(1138, 25);
             menuStrip1.TabIndex = 0;
             menuStrip1.Text = "menuStrip1";
-            //
-            // Alignement à droite de tous les items
-            menuData.Alignment = ToolStripItemAlignment.Right;
-            menuHelp.Alignment = ToolStripItemAlignment.Right;
-            menuDeviceInfo.Alignment = ToolStripItemAlignment.Right;
-            menuSampleSize.Alignment = ToolStripItemAlignment.Right;
-            menuOverlap.Alignment = ToolStripItemAlignment.Right;
             // 
-            // menuData
-            // 
-            menuData.DropDownItems.AddRange(new ToolStripItem[] { menuShowAllFormats, menuShowGraphs });
-            menuData.Name = "menuData";
-            menuData.Size = new Size(43, 21);
-            menuData.Text = "Data";
-            // 
-            // menuShowAllFormats
-            // 
-            menuShowAllFormats.Name = "menuShowAllFormats";
-            menuShowAllFormats.Size = new Size(188, 22);
-            menuShowAllFormats.Text = "Show all data formats";
-            menuShowAllFormats.Click += menuShowAllFormats_Click;
-            // 
-            // menuShowGraphs
-            //
-            menuShowGraphs.CheckOnClick = true;
-            menuShowGraphs.Checked = true;                        // par défaut : les graphs sont visibles
-            menuShowGraphs.Name = "menuShowGraphs";
-            menuShowGraphs.Size = new Size(180, 22);
-            menuShowGraphs.Text = "Show graphs";
-            menuShowGraphs.Click += menuShowGraphs_Click;
-            //
             // menuDeviceInfo
             // 
+            menuDeviceInfo.Alignment = ToolStripItemAlignment.Right;
             menuDeviceInfo.Name = "menuDeviceInfo";
             menuDeviceInfo.Size = new Size(78, 21);
             menuDeviceInfo.Text = "Device info";
@@ -151,30 +120,7 @@ namespace AudioHexViewer
             menuHelp.Name = "menuHelp";
             menuHelp.Size = new Size(44, 21);
             menuHelp.Text = "Help";
-            //
-            //
             // 
-            // menuSampleSize
-            // 
-            menuSampleSize.Name = "menuSampleSize";
-            menuSampleSize.Size = new Size(85, 21);
-            menuSampleSize.Text = "Sample size";
-
-            // 
-            // menuOverlap
-            // 
-            menuOverlap.Name = "menuOverlap";
-            menuOverlap.Size = new Size(65, 21);
-            menuOverlap.Text = "Overlap";
-            //
-            // 
-            // menuBuffer
-            // 
-            menuBuffer.Alignment = ToolStripItemAlignment.Right;
-            menuBuffer.Name = "menuBuffer";
-            menuBuffer.Size = new Size(60, 21);
-            menuBuffer.Text = "Buffer";
-            //
             // menuAbout
             // 
             menuAbout.Name = "menuAbout";
@@ -211,6 +157,52 @@ namespace AudioHexViewer
             alwaysOnTopToolStripMenuItem.Text = "Always on top";
             alwaysOnTopToolStripMenuItem.Click += alwaysOnTopToolStripMenuItem_Click;
             // 
+            // menuData
+            // 
+            menuData.Alignment = ToolStripItemAlignment.Right;
+            menuData.DropDownItems.AddRange(new ToolStripItem[] { menuShowAllFormats, menuShowGraphs });
+            menuData.Name = "menuData";
+            menuData.Size = new Size(43, 21);
+            menuData.Text = "Data";
+            // 
+            // menuShowAllFormats
+            // 
+            menuShowAllFormats.Name = "menuShowAllFormats";
+            menuShowAllFormats.Size = new Size(188, 22);
+            menuShowAllFormats.Text = "Show all data formats";
+            menuShowAllFormats.Click += menuShowAllFormats_Click;
+            // 
+            // menuShowGraphs
+            // 
+            menuShowGraphs.Checked = true;
+            menuShowGraphs.CheckOnClick = true;
+            menuShowGraphs.CheckState = CheckState.Checked;
+            menuShowGraphs.Name = "menuShowGraphs";
+            menuShowGraphs.Size = new Size(188, 22);
+            menuShowGraphs.Text = "Show graphs";
+            menuShowGraphs.Click += menuShowGraphs_Click;
+            // 
+            // menuSampleSize
+            // 
+            menuSampleSize.Alignment = ToolStripItemAlignment.Right;
+            menuSampleSize.Name = "menuSampleSize";
+            menuSampleSize.Size = new Size(80, 21);
+            menuSampleSize.Text = "Sample size";
+            // 
+            // menuOverlap
+            // 
+            menuOverlap.Alignment = ToolStripItemAlignment.Right;
+            menuOverlap.Name = "menuOverlap";
+            menuOverlap.Size = new Size(60, 21);
+            menuOverlap.Text = "Overlap";
+            // 
+            // menuBuffer
+            // 
+            menuBuffer.Alignment = ToolStripItemAlignment.Right;
+            menuBuffer.Name = "menuBuffer";
+            menuBuffer.Size = new Size(51, 21);
+            menuBuffer.Text = "Buffer";
+            // 
             // splitMain
             // 
             splitMain.Dock = DockStyle.Fill;
@@ -238,10 +230,6 @@ namespace AudioHexViewer
             splitMain.Panel1.Controls.Add(chkHistoOnce);
             splitMain.Panel1.Controls.Add(label4);
             splitMain.Panel1.Controls.Add(comboDisplayMode);
-            splitMain.Panel1.Controls.Add(labelSamplesSize);
-            splitMain.Panel1.Controls.Add(comboSamplesSize);
-            splitMain.Panel1.Controls.Add(labelOverlap);
-            splitMain.Panel1.Controls.Add(comboOverlap);
             splitMain.Panel1.Controls.Add(label1);
             splitMain.Panel1.Controls.Add(btnStart);
             splitMain.Panel1.Controls.Add(rbInput);
@@ -255,7 +243,7 @@ namespace AudioHexViewer
             splitMain.Panel2.Controls.Add(tabAnalysis);
             splitMain.Panel2.Paint += splitContainer1_Panel2_Paint;
             splitMain.Size = new Size(1138, 749);
-            splitMain.SplitterDistance = 160; // Height of top panel (fixed)
+            splitMain.SplitterDistance = 160;
             splitMain.TabIndex = 38;
             // 
             // lblFormatInfo
@@ -428,42 +416,6 @@ namespace AudioHexViewer
             comboDisplayMode.Name = "comboDisplayMode";
             comboDisplayMode.Size = new Size(187, 23);
             comboDisplayMode.TabIndex = 47;
-
-            // labelSamplesSize
-            // 
-            labelSamplesSize.AutoSize = true;
-            labelSamplesSize.Location = new Point(560, 115);
-            labelSamplesSize.Name = "labelSamplesSize";
-            labelSamplesSize.Size = new Size(76, 15);
-            labelSamplesSize.TabIndex = 1000;
-            labelSamplesSize.Text = "Samples size";
-            // 
-            // comboSamplesSize
-            // 
-            comboSamplesSize.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboSamplesSize.FormattingEnabled = true;
-            comboSamplesSize.Location = new Point(560, 131);
-            comboSamplesSize.Name = "comboSamplesSize";
-            comboSamplesSize.Size = new Size(120, 23);
-            comboSamplesSize.TabIndex = 1001;
-            // 
-            // labelOverlap
-            // 
-            labelOverlap.AutoSize = true;
-            labelOverlap.Location = new Point(690, 115);
-            labelOverlap.Name = "labelOverlap";
-            labelOverlap.Size = new Size(50, 15);
-            labelOverlap.TabIndex = 1002;
-            labelOverlap.Text = "Overlap";
-            // 
-            // comboOverlap
-            // 
-            comboOverlap.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboOverlap.FormattingEnabled = true;
-            comboOverlap.Location = new Point(690, 131);
-            comboOverlap.Name = "comboOverlap";
-            comboOverlap.Size = new Size(70, 23);
-            comboOverlap.TabIndex = 1003;
             // 
             // label1
             // 
@@ -546,8 +498,7 @@ namespace AudioHexViewer
             btnCalV.Text = "CAL V";
             btnCalV.UseVisualStyleBackColor = false;
             btnCalV.Click += btnCalV_Click;
-            //
-            //
+            // 
             // tabAnalysis
             // 
             tabAnalysis.Controls.Add(tabHistogram);
@@ -556,31 +507,36 @@ namespace AudioHexViewer
             tabAnalysis.Location = new Point(0, 0);
             tabAnalysis.Name = "tabAnalysis";
             tabAnalysis.SelectedIndex = 0;
-            tabAnalysis.Size = new Size(1138, 545);
+            tabAnalysis.Size = new Size(1138, 585);
             tabAnalysis.TabIndex = 0;
-
+            // 
             // tabHistogram
             // 
+            tabHistogram.Controls.Add(panelHistogram);
+            tabHistogram.Location = new Point(4, 24);
             tabHistogram.Name = "tabHistogram";
+            tabHistogram.Size = new Size(1130, 557);
+            tabHistogram.TabIndex = 0;
             tabHistogram.Text = "Histogram";
             tabHistogram.UseVisualStyleBackColor = true;
-            // On met le panelHistogram *dans* cet onglet
-            tabHistogram.Controls.Add(panelHistogram);
-
-            // tabSpectrum
             // 
-            tabSpectrum.Name = "tabSpectrum";
-            tabSpectrum.Text = "Spectrum";
-            tabSpectrum.UseVisualStyleBackColor = true;
-
             // panelHistogram
             // 
             panelHistogram.BorderStyle = BorderStyle.FixedSingle;
             panelHistogram.Dock = DockStyle.Fill;
             panelHistogram.Location = new Point(0, 0);
             panelHistogram.Name = "panelHistogram";
-            panelHistogram.Size = new Size(1138, 545);
+            panelHistogram.Size = new Size(1130, 557);
             panelHistogram.TabIndex = 0;
+            // 
+            // tabSpectrum
+            // 
+            tabSpectrum.Location = new Point(4, 24);
+            tabSpectrum.Name = "tabSpectrum";
+            tabSpectrum.Size = new Size(1130, 557);
+            tabSpectrum.TabIndex = 1;
+            tabSpectrum.Text = "Spectrum";
+            tabSpectrum.UseVisualStyleBackColor = true;
             // 
             // txtLeft
             // 
@@ -626,6 +582,8 @@ namespace AudioHexViewer
             splitMain.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)splitMain).EndInit();
             splitMain.ResumeLayout(false);
+            tabAnalysis.ResumeLayout(false);
+            tabHistogram.ResumeLayout(false);
             ResumeLayout(false);
             PerformLayout();
         }
@@ -656,10 +614,6 @@ namespace AudioHexViewer
         private CheckBox chkHistoOnce;
         private Label label4;
         private ComboBox comboDisplayMode;
-        private Label labelSamplesSize;
-        private ComboBox comboSamplesSize;
-        private Label labelOverlap;
-        private ComboBox comboOverlap;
         private Label label1;
         private Button btnStart;
         private RadioButton rbInput;

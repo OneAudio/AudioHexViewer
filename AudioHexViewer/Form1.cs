@@ -354,41 +354,6 @@ namespace AudioHexViewer
         }
         private void InitAnalysisUi()
         {
-            // Combo "Samples size" (dans la barre du haut)
-            if (comboSamplesSize != null)
-            {
-                comboSamplesSize.Items.Clear();
-                int[] opts = new[] { 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576 };
-                foreach (int n in opts)
-                    comboSamplesSize.Items.Add(n.ToString("N0"));
-
-                // défaut : 131072
-                int idx = Array.IndexOf(opts, analysisSampleSize);
-                comboSamplesSize.SelectedIndex = idx >= 0 ? idx : 6;
-
-                comboSamplesSize.SelectedIndexChanged += (s, e) =>
-                {
-                    if (comboSamplesSize.SelectedIndex < 0) return;
-                    int nSamples = opts[comboSamplesSize.SelectedIndex];
-                    SetAnalysisSampleSize(nSamples);
-                    UpdateSampleSizeMenuChecks();
-                };
-            }
-            //
-            // Combo "Overlap"
-            if (comboOverlap != null)
-            {
-                comboOverlap.Items.Clear();
-                comboOverlap.Items.AddRange(new object[] { "0%", "50%", "75%", "87.5%", "93.75%" });
-                comboOverlap.SelectedIndex = 0;
-
-                comboOverlap.SelectedIndexChanged += (s, e) =>
-                {
-                    SetAnalysisOverlap(ParseOverlapPercent(comboOverlap.SelectedItem as string));
-                    UpdateOverlapMenuChecks();
-                };
-            }
-
             // Init hop + timer
             RecomputeHopAndTimer();
 
@@ -468,8 +433,7 @@ namespace AudioHexViewer
                     try
                     {
                         SetAnalysisSampleSize(chosen);
-                        UpdateSampleSizeMenuChecks();
-                        SyncPanelSampleSizeCombo(chosen); // si tu gardes comboSamplesSize visible
+                        UpdateSampleSizeMenuChecks();                       
                     }
                     finally
                     {
@@ -599,7 +563,6 @@ namespace AudioHexViewer
                     {
                         SetAnalysisOverlap(chosen);
                         UpdateOverlapMenuChecks();
-                        SyncPanelOverlapCombo(chosen); // si tu gardes comboOverlap visible
                     }
                     finally
                     {
@@ -619,19 +582,6 @@ namespace AudioHexViewer
                 it.Checked = (Math.Abs((double)it.Tag! - analysisOverlap) < 1e-12);
         }
 
-        private void SyncPanelOverlapCombo(double overlap)
-        {
-            if (comboOverlap == null) return;
-
-            // tes items sont "0%", "50%", ... :contentReference[oaicite:9]{index=9}
-            string? label = _overlapOptions.FirstOrDefault(x => Math.Abs(x.Value - overlap) < 1e-12).Label;
-            if (label == null) return;
-
-            int idx = comboOverlap.Items.IndexOf(label);
-            if (idx >= 0 && comboOverlap.SelectedIndex != idx)
-                comboOverlap.SelectedIndex = idx;
-        }
-
         //
         private void UpdateSampleSizeMenuChecks()
         {
@@ -639,17 +589,6 @@ namespace AudioHexViewer
 
             foreach (ToolStripMenuItem it in menuSampleSize.DropDownItems)
                 it.Checked = ((int)it.Tag! == analysisSampleSize);
-        }
-
-        private void SyncPanelSampleSizeCombo(int nSamples)
-        {
-            if (comboSamplesSize == null) return;
-
-            // tes items sont des strings formatées "N0" :contentReference[oaicite:7]{index=7}
-            string target = nSamples.ToString("N0");
-            int idx = comboSamplesSize.Items.IndexOf(target);
-            if (idx >= 0 && comboSamplesSize.SelectedIndex != idx)
-                comboSamplesSize.SelectedIndex = idx;
         }
 
         //
