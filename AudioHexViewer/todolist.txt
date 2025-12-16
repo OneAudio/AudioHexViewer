@@ -5,7 +5,10 @@ Le 15/12/2025
 0a - Refondre la partie acquisition des données pour éviter         --> Fait OK le 15/12/25
 le problème de décalage temporel trés important.
 
-00 - Enlever les réglages en doublon "sample size" et "overlap" !
+00 - Enlever les réglages en doublon "sample size" et "overlap" !   --> Fait OK le 16/12/25
+
+0c- Supprimer les cases "once" devenues inutiles (les  3).
+
 
 0b - Ajout du module qui permet de prendre le contre du SR.
 (Besoin d'ajouter une combobox pour la selection du SR).
@@ -43,3 +46,8 @@ Necessite d'avoir le module et la phase dans le calcul de la FFT.
 Et donc ajouter aussi la possibilité de tracer la phase lorsque
 on utilise le mode L/R
 
+7 - Ajouter la possibilitée d'avoir la FFT en dBV en utilisant les paramètres
+de la calibration.
+
+7a - Faire que les différentes mesures soient en dBV également lorsque on choisi
+l'affichage de la FFT en dBV (Méthode de choix à définir ?)

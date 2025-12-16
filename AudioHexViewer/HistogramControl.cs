@@ -1,5 +1,7 @@
 ﻿using System.Text.Json;
 using System.Windows.Forms.DataVisualization.Charting;
+using System.ComponentModel;
+
 
 namespace AudioHexViewer
 {
@@ -47,9 +49,19 @@ namespace AudioHexViewer
         public static int LastUsedWindowSamples { get; private set; } = 131072; // 2^17
 
         // Infos fournies par Form1 pour être sauvées dans HistogramSettings.json
+        // Infos fournies par Form1 pour être sauvées dans HistogramSettings.json
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public string? DeviceIdForSave { get; set; }
+
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public bool CaptureOutputForSave { get; set; }
+
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public string? MainDataFormatForSave { get; set; }
+
 
 
         private class HistogramSettings

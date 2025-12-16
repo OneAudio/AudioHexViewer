@@ -12,6 +12,19 @@ namespace AudioHexViewer
             // see https://aka.ms/applicationconfiguration.
             ApplicationConfiguration.Initialize();
             Application.Run(new Form1());
+
+            //Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+
+            //Application.ThreadException += (s, e) =>
+            //{
+            //    MessageBox.Show(e.Exception.ToString(), "ThreadException");
+            //};
+
+            //AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            //{
+            //    MessageBox.Show(e.ExceptionObject?.ToString() ?? "Unknown", "UnhandledException");
+            //};
+
         }
     }
 }
