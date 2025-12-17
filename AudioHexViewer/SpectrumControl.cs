@@ -112,14 +112,31 @@ namespace AudioHexViewer
         // tolérance "clic sur curseur" en pixels
         private const int CursorHitTolPx = 10;
 
-        // ----- X axis "REW-like" labels -----
-        private const int XLabelMinSpacingPx = 55;  // <-- change facilement la densité des labels
-        private const double XTickMinHz = 1.0;
-        private const double XTickMaxHz = 2_000_000.0;
-
         private double _cursorFreqL = double.NaN;
         private double _cursorFreqR = double.NaN;
 
+        private static double NiceStep125(double rawStep)
+        {
+            if (rawStep <= 0 || double.IsNaN(rawStep) || double.IsInfinity(rawStep))
+                return 1.0;
+
+            double exp = Math.Floor(Math.Log10(rawStep));
+            double f = rawStep / Math.Pow(10, exp); // 1..10
+
+            double niceF;
+            if (f <= 1.0) niceF = 1.0;
+            else if (f <= 2.0) niceF = 2.0;
+            else if (f <= 5.0) niceF = 5.0;
+            else niceF = 10.0;
+
+            return niceF * Math.Pow(10, exp);
+        }
+
+        private static double AlignToStepCeil(double value, double step)
+        {
+            if (step <= 0) return value;
+            return Math.Ceiling(value / step) * step;
+        }
 
 
         public SpectrumControl()
@@ -135,6 +152,8 @@ namespace AudioHexViewer
 
             // Dessin manuel des sous-divisions log
             chartSpectrum.PostPaint += ChartSpectrum_PostPaint;
+            chartSpectrum.FormatNumber += ChartSpectrum_FormatNumber;
+
 
             InitCursors();
             chartSpectrum.MouseMove += ChartSpectrum_MouseMove;
@@ -213,6 +232,36 @@ namespace AudioHexViewer
             max = Math.Min(0.0, max);
 
             return (min, max);
+        }
+        //
+        private void ChartSpectrum_FormatNumber(object sender, FormatNumberEventArgs e)
+        {
+            // On ne touche qu’aux labels d’axes
+            if (e.ElementType != ChartElementType.AxisLabels)
+                return;
+
+            // Heuristique fiable dans TON graphe :
+            // - Axe Y = valeurs négatives (dBFS)
+            // - Axe X = fréquences >= 0
+            double v = e.Value;
+
+            if (v >= 1000.0)
+            {
+                double k = v / 1000.0;
+
+                // 1k, 2k, 10k, 20k... (et 1.5k si un jour ça arrive)
+                bool isInt = Math.Abs(k - Math.Round(k)) < 1e-9;
+                e.LocalizedValue = isInt ? $"{k:0}k" : $"{k:0.#}k";
+            }
+            else if (v >= 0.0)
+            {
+                e.LocalizedValue = $"{v:0}";
+            }
+            else
+            {
+                // Axe Y (dBFS) : on garde simple
+                e.LocalizedValue = $"{v:0}";
+            }
         }
 
         //
@@ -1426,8 +1475,13 @@ namespace AudioHexViewer
                 }
             }
         }
-
-
+        //
+        private static string FormatHzK(double hz)
+        {
+            if (hz >= 1000.0)
+                return (hz / 1000.0).ToString("0.#") + "k";
+            return hz.ToString("0");
+        }
 
         // Surcharge pratique : réutilise les derniers buffers temps connus
         private void UpdateSpectrumChartAndStats()
@@ -1528,8 +1582,6 @@ namespace AudioHexViewer
                 area.AxisX.IsLogarithmic = true;
                 area.AxisX.LogarithmBase = 10.0;
 
-                ConfigureNiceXAxis(area, useLog, fMin, fMax);
-
                 // Major = décades, Minor désactivée (sous-divisions dessinées à la main)
                 area.AxisX.MajorGrid.Enabled = true;
                 area.AxisX.MajorGrid.LineDashStyle = ChartDashStyle.Solid;
@@ -1541,10 +1593,37 @@ namespace AudioHexViewer
             {
                 area.AxisX.IsLogarithmic = false;
 
-                // Grilles LIN + labels “propres” (entiers) façon REW
-                ConfigureNiceXAxis(area, useLog, fMin, fMax);
-            }
+                double xSpan = fMax - fMin;
 
+                // cible ~8 graduations “lisibles” (ajuste 6..10 selon ton goût)
+                double raw = xSpan / 10.0;
+                double xMajor = NiceStep125(raw);
+
+                // Grille + labels calés sur xMajor
+                area.AxisX.MajorGrid.Enabled = true;
+                area.AxisX.MajorGrid.LineDashStyle = ChartDashStyle.Solid;
+                area.AxisX.MajorGrid.Interval = xMajor;
+
+                area.AxisX.MinorGrid.Enabled = true;
+                area.AxisX.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
+                area.AxisX.MinorGrid.LineColor = Color.LightGray;
+                area.AxisX.MinorGrid.Interval = xMajor / 5.0;
+
+
+                // (optionnel mais utile) : aligner les ticks sur un multiple de xMajor
+                double first = AlignToStepCeil(fMin, xMajor);
+                area.AxisX.Interval = xMajor;
+                area.AxisX.IntervalOffset = first - fMin;
+                area.AxisX.LabelStyle.Interval = xMajor;
+                area.AxisX.LabelStyle.IntervalOffset = first - fMin;
+
+
+
+
+
+                area.AxisX.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
+                area.AxisX.MinorGrid.LineColor = Color.LightGray;
+            }
 
             // --- Ce qu'on affiche en fonction du combo Channel ---
             string mode = comboChannel.SelectedItem as string ?? "L+R";
@@ -1752,7 +1831,7 @@ namespace AudioHexViewer
         }
 
         //
-        private void ChartSpectrum_PostPaint(object? sender, ChartPaintEventArgs e)
+        private void ChartSpectrum_PostPaint(object sender, ChartPaintEventArgs e)
         {
             var area = chartSpectrum.ChartAreas["SpectrumArea"];
             if (e.ChartElement != area)
@@ -1762,454 +1841,39 @@ namespace AudioHexViewer
             if (!useLog)
                 return;
 
-            var ax = area.AxisX;
+            double fMin = area.AxisX.Minimum;
+            double fMax = area.AxisX.Maximum;
 
-            double fMin = ax.Minimum;
-            double fMax = ax.Maximum;
-
-            // Axe log : bornes strictement > 0
+            // Sécurité : en log, on ne dessine rien si bornes invalides
             if (fMin <= 0 || fMax <= fMin)
                 return;
 
-            var g = e.ChartGraphics.Graphics;
-
-            // Rectangle exact du plot (zone de tracé interne), en pixels
-            var ipp = area.InnerPlotPosition; // ElementPosition en %
-            RectangleF plotRect = e.ChartGraphics.GetAbsoluteRectangle(
-                new RectangleF(ipp.X, ipp.Y, ipp.Width, ipp.Height)
-            );
-
-            // 1) Grilles/ticks : on clip STRICT au plot pour ne jamais déborder
-            Region oldClip = g.Clip;
-            g.SetClip(plotRect);
-            try
+            // Lignes mineures log dessinées à la main : 2..9 * 10^n
+            using (Pen minorPen = new Pen(Color.FromArgb(80, Color.Gray), 1f))
             {
-                using (Pen minorGridPen = new Pen(Color.FromArgb(70, Color.Gray), 1f))
-                using (Pen majorGridPen = new Pen(Color.FromArgb(120, Color.Gray), 1f))
-                using (Pen minorTickPen = new Pen(Color.FromArgb(140, Color.Black), 1f))
-                using (Pen majorTickPen = new Pen(Color.FromArgb(180, Color.Black), 1.2f))
+                minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
+
+                double decadeStart = Math.Pow(10, Math.Floor(Math.Log10(fMin)));
+                double decadeEnd = Math.Pow(10, Math.Ceiling(Math.Log10(fMax)));
+
+                for (double d = decadeStart; d <= decadeEnd; d *= 10.0)
                 {
-                    minorGridPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
-
-                    float top = plotRect.Top;
-                    float bottom = plotRect.Bottom;
-
-                    // Longueur des ticks (en pixels)
-                    float majorTickLen = 8f;
-                    float minorTickLen = 5f;
-
-                    int eMin = (int)Math.Floor(Math.Log10(fMin));
-                    int eMax = (int)Math.Ceiling(Math.Log10(fMax));
-
-                    for (int ePow = eMin; ePow <= eMax; ePow++)
+                    for (int k = 2; k <= 9; k++)
                     {
-                        double decade = Math.Pow(10, ePow);
+                        double f = d * k;
+                        if (f < fMin || f > fMax)
+                            continue;
 
-                        // Major : 1×10^n
-                        double fMajor = decade;
-                        if (fMajor >= fMin && fMajor <= fMax)
-                        {
-                            float x = (float)ax.ValueToPixelPosition(fMajor);
-                            if (!float.IsNaN(x) && !float.IsInfinity(x))
-                            {
-                                // grille majeure
-                                g.DrawLine(majorGridPen, x, top, x, bottom);
-                                // tick majeur en bas
-                                g.DrawLine(majorTickPen, x, bottom, x, bottom - majorTickLen);
-                            }
-                        }
+                        float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
+                        float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
+                        float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
 
-                        // Minors : 2..9×10^n
-                        for (int k = 2; k <= 9; k++)
-                        {
-                            double f = k * decade;
-                            if (f < fMin || f > fMax) continue;
-
-                            float x = (float)ax.ValueToPixelPosition(f);
-                            if (float.IsNaN(x) || float.IsInfinity(x)) continue;
-
-                            // grille mineure
-                            g.DrawLine(minorGridPen, x, top, x, bottom);
-                            // tick mineur en bas
-                            g.DrawLine(minorTickPen, x, bottom, x, bottom - minorTickLen);
-                        }
+                        e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, top, xPixel, bottom);
                     }
                 }
             }
-            finally
-            {
-                g.Clip = oldClip;
-            }
-
-            // 2) Labels (décades) : on dessine SOUS le plot, sans clip
-            using (SolidBrush textBrush = new SolidBrush(Color.Black))
-            {
-                Font font = area.AxisX.LabelStyle.Font ?? chartSpectrum.Font;
-                float labelY = plotRect.Bottom + 2f;
-
-                int eMin = (int)Math.Floor(Math.Log10(fMin));
-                int eMax = (int)Math.Ceiling(Math.Log10(fMax));
-
-                for (int ePow = eMin; ePow <= eMax; ePow++)
-                {
-                    double f = Math.Pow(10, ePow);
-                    if (f < fMin || f > fMax) continue;
-
-                    float x = (float)ax.ValueToPixelPosition(f);
-                    if (float.IsNaN(x) || float.IsInfinity(x)) continue;
-
-                    string s = FormatFreqLabel(f);
-                    SizeF sz = g.MeasureString(s, font);
-
-                    // Centré sur x, mais on évite de sortir trop des bords du plot
-                    float xText = x - sz.Width / 2f;
-                    if (xText < plotRect.Left) xText = plotRect.Left;
-                    if (xText + sz.Width > plotRect.Right) xText = plotRect.Right - sz.Width;
-
-                    g.DrawString(s, font, textBrush, xText, labelY);
-                }
-            }
         }
         //
-        private void ConfigureNiceXAxis(ChartArea area, bool useLog, double fMin, double fMax)
-        {
-            var ax = area.AxisX;
-
-            // Toujours éviter les valeurs "énormes" : le Chart stocke plusieurs champs en Decimal.
-            // 0 = auto (sans risque d'overflow Decimal).
-            ax.Interval = 0;
-            ax.LabelStyle.Interval = 0;
-            ax.MajorTickMark.Interval = 0;
-            ax.MinorTickMark.Interval = 0;
-
-            // Bornes : en log, min doit être > 0
-            double minPhys = useLog ? 1.0 : 0.0;
-            double min = Math.Max(fMin, minPhys);
-            double max = Math.Max(min * 1.000001, fMax);
-
-            // Clamp (tes constantes)
-            min = Math.Max(min, useLog ? XTickMinHz : 0.0);
-            max = Math.Min(max, XTickMaxHz);
-            if (max <= min)
-                max = useLog ? min * 10.0 : min + 1.0;
-
-            ax.Minimum = min;
-            ax.Maximum = max;
-
-            if (useLog)
-            {
-                // === MODE LOG : échelle dessinée à la main dans ChartSpectrum_PostPaint ===
-                ax.IsLogarithmic = true;
-                ax.LogarithmBase = 10;
-
-                // On coupe tout l'automatique (labels/ticks/grids) pour éviter les bugs/auto-fit.
-                ax.CustomLabels.Clear();
-                ax.LabelStyle.Enabled = false;
-
-                ax.MajorGrid.Enabled = false;
-                ax.MinorGrid.Enabled = false;
-                ax.MajorTickMark.Enabled = false;
-                ax.MinorTickMark.Enabled = false;
-
-                return;
-            }
-
-            // === MODE LIN : on garde ton système "ticks filtrés + CustomLabels" (il marche bien) ===
-            ax.IsLogarithmic = false;
-
-            ax.LabelStyle.Enabled = true;
-            ax.LabelStyle.IsStaggered = false;
-            ax.LabelStyle.Angle = 0;
-
-            ax.CustomLabels.Clear();
-
-            // Largeur utile approx (stable même au démarrage)
-            double plotWidthPx = Math.Max(100, chartSpectrum.ClientSize.Width - 90);
-
-            // ticks candidats + filtrage anti-chevauchement
-            var ticks = BuildLinearTicks(min, max, plotWidthPx);
-            ticks = FilterTicksByPixelSpacingApprox(ticks, useLog: false, min: min, max: max, plotWidthPx: plotWidthPx, minSpacingPx: XLabelMinSpacingPx);
-
-            //AddCustomLabels(ax, ticks, useLog: false);
-            AddCustomLabels(ax, ticks, useLog, min, max);
-
-        }
-        //
-        //
-        private List<double> FilterTicksByPixelSpacingApprox(
-    List<double> ticks,
-    bool useLog,
-    double min,
-    double max,
-    double plotWidthPx,
-    int minSpacingPx)
-        {
-            if (ticks == null || ticks.Count == 0)
-                return ticks ?? new List<double>();
-
-            // sécurité
-            if (plotWidthPx <= 10) plotWidthPx = 10;
-            if (max <= min) max = min * 10.0;
-
-            double lastPx = double.NegativeInfinity;
-            var kept = new List<double>();
-
-            double MinPos(double f)
-            {
-                if (!useLog)
-                {
-                    double t = (f - min) / (max - min);
-                    return t * plotWidthPx;
-                }
-                else
-                {
-                    // log10 mapping
-                    double lmin = Math.Log10(min);
-                    double lmax = Math.Log10(max);
-                    double lf = Math.Log10(Math.Max(f, 1e-12));
-                    double t = (lf - lmin) / (lmax - lmin);
-                    return t * plotWidthPx;
-                }
-            }
-
-            foreach (var t in ticks)
-            {
-                double px = MinPos(t);
-                if (double.IsNaN(px) || double.IsInfinity(px))
-                    continue;
-
-                if (kept.Count == 0 || Math.Abs(px - lastPx) >= minSpacingPx)
-                {
-                    kept.Add(t);
-                    lastPx = px;
-                }
-            }
-
-            return kept;
-        }
-
-        //
-        //
-        private List<double> BuildLinearTicks(double min, double max, double plotWidthPx)
-        {
-            double span = max - min;
-            double step = ChooseNiceLinearStep(span, plotWidthPx);
-
-            // En LIN tu veux garder 0
-            double start = 0.0;
-            if (min > 0.0)
-                start = Math.Ceiling(min / step) * step;
-
-            var ticks = new List<double>();
-
-            // Force label 0 si visible
-            if (min <= 0.0 && 0.0 <= max)
-                ticks.Add(0.0);
-
-            // Ajout ticks réguliers
-            for (double f = start; f <= max + step * 0.5; f += step)
-            {
-                if (f < min - 1e-9) continue;
-                if (f > max + 1e-9) break;
-
-                // éviter doublon de 0
-                if (Math.Abs(f) < 1e-9) continue;
-                ticks.Add(Math.Round(f));
-            }
-
-            // Clamp ticks aux bornes autorisées
-            ticks = ticks.Where(t => t >= 0.0 && t >= min - 1e-9 && t <= max + 1e-9).ToList();
-
-            // jamais de décimales
-            return ticks.Distinct().OrderBy(x => x).ToList();
-        }
-
-        private double ChooseNiceLinearStep(double span, double plotWidthPx)
-        {
-            // Objectif : ~1 label tous les XLabelMinSpacingPx pixels
-            int targetCount = Math.Max(2, (int)(plotWidthPx / XLabelMinSpacingPx));
-            double raw = span / targetCount;
-            if (raw <= 0) return span;
-
-            // “nice numbers”: 1-2-5 * 10^n
-            double pow10 = Math.Pow(10.0, Math.Floor(Math.Log10(raw)));
-            double mant = raw / pow10;
-
-            double niceMant;
-            if (mant <= 1.0) niceMant = 1.0;
-            else if (mant <= 2.0) niceMant = 2.0;
-            else if (mant <= 5.0) niceMant = 5.0;
-            else niceMant = 10.0;
-
-            double step = niceMant * pow10;
-
-            // clamp plage autorisée
-            step = Math.Max(1.0, step);
-            step = Math.Min(step, XTickMaxHz);
-
-            return step;
-        }
-
-        private (List<double> majors, List<double> minors) BuildLogTicksSplit(double min, double max)
-        {
-            min = Math.Max(min, XTickMinHz);
-            max = Math.Max(max, min * 1.000001);
-
-            var majors = new List<double>();
-            var minors = new List<double>();
-
-            double decadeStart = Math.Pow(10, Math.Floor(Math.Log10(min)));
-            double decadeEnd = Math.Pow(10, Math.Ceiling(Math.Log10(max)));
-
-            for (double d = decadeStart; d <= decadeEnd * 1.0001; d *= 10.0)
-            {
-                double fDec = d;
-                if (fDec >= min && fDec <= max)
-                    majors.Add(fDec);
-
-                for (int k = 2; k <= 9; k++)
-                {
-                    double f = d * k;
-                    if (f >= min && f <= max)
-                        minors.Add(f);
-                }
-            }
-
-            majors = majors.Where(t => t >= 1.0 && t <= XTickMaxHz).Distinct().OrderBy(x => x).ToList();
-            minors = minors.Where(t => t >= 1.0 && t <= XTickMaxHz).Distinct().OrderBy(x => x).ToList();
-
-            return (majors, minors);
-        }
-        //
-        private List<double> BuildLogLabelsAdaptive(double min, double max, double plotWidthPx)
-        {
-            var (majors, minors) = BuildLogTicksSplit(min, max);
-
-            // 1) On garde TOUJOURS les décades (si visibles)
-            var kept = FilterTicksByPixelSpacingApprox(
-                majors, useLog: true, min: min, max: max,
-                plotWidthPx: plotWidthPx, minSpacingPx: XLabelMinSpacingPx);
-
-            // 2) On ajoute des sous-ticks si place (spacing un peu plus petit que les majors)
-            int minorSpacing = Math.Max(20, XLabelMinSpacingPx / 2);
-
-            // On merge intelligemment : on garde les majors déjà retenus, puis on tente d’insérer des minors
-            var all = kept.ToList();
-
-            // Pour tester le spacing par rapport à ceux déjà gardés
-            foreach (var m in minors)
-            {
-                if (WouldOverlapExistingLog(m, all, min, max, plotWidthPx, minorSpacing))
-                    continue;
-
-                all.Add(m);
-            }
-
-            return all.Distinct().OrderBy(x => x).ToList();
-        }
-
-        private bool WouldOverlapExistingLog(double tick, List<double> existing, double min, double max, double plotWidthPx, int minSpacingPx)
-        {
-            double Px(double f)
-            {
-                double lmin = Math.Log10(min);
-                double lmax = Math.Log10(max);
-                double lf = Math.Log10(Math.Max(f, 1e-12));
-                double t = (lf - lmin) / (lmax - lmin);
-                return t * plotWidthPx;
-            }
-
-            double px = Px(tick);
-            foreach (var e in existing)
-            {
-                if (Math.Abs(px - Px(e)) < minSpacingPx)
-                    return true;
-            }
-            return false;
-        }
-
-        //
-        private List<double> FilterTicksByPixelSpacing(Axis ax, List<double> ticks, int minSpacingPx)
-        {
-            var kept = new List<double>();
-            double lastPx = double.NegativeInfinity;
-
-            foreach (var t in ticks)
-            {
-                double px = ax.ValueToPixelPosition(t);
-                if (double.IsNaN(px) || double.IsInfinity(px))
-                    continue;
-
-                if (kept.Count == 0 || Math.Abs(px - lastPx) >= minSpacingPx)
-                {
-                    kept.Add(t);
-                    lastPx = px;
-                }
-            }
-
-            return kept;
-        }
-
-        private void AddCustomLabels(Axis ax, List<double> ticks, bool useLog, double min, double max)
-        {
-            if (ticks == null || ticks.Count == 0)
-                return;
-
-            // Pour définir les zones [From..To] de chaque label :
-            // - LIN : midpoints arithmétiques
-            // - LOG : midpoints géométriques
-            for (int i = 0; i < ticks.Count; i++)
-            {
-                double curr = ticks[i];
-                double prev = (i > 0) ? ticks[i - 1] : double.NaN;
-                double next = (i < ticks.Count - 1) ? ticks[i + 1] : double.NaN;
-
-                double from, to;
-
-                if (!useLog)
-                {
-                    from = double.IsNaN(prev) ? min : (prev + curr) * 0.5;
-                    to = double.IsNaN(next) ? max : (curr + next) * 0.5;
-                    from = Math.Max(from, min);
-                    to = Math.Min(to, max);
-                    if (to <= from) continue;
-
-                }
-                else
-                {
-                    // midpoints géométriques en log
-                    from = double.IsNaN(prev) ? min : Math.Sqrt(prev * curr);
-                    to = double.IsNaN(next) ? max : Math.Sqrt(curr * next);
-                    from = Math.Max(from, min);
-                    to = Math.Min(to, max);
-                    if (to <= from) continue;
-
-                }
-
-                // sécurité
-                if (to <= from) continue;
-
-                string text = FormatFreqLabel(curr);
-
-                // En lin : on garde “0”
-                // En log : pas de 0 (déjà filtré)
-                ax.CustomLabels.Add(new CustomLabel(from, to, text, 0, LabelMarkStyle.None));
-
-
-
-            }
-        }
-
-        private string FormatFreqLabel(double f)
-        {
-            // Strictement entiers (comme tu veux)
-            if (f >= 1_000_000.0)
-                return $"{Math.Round(f / 1_000_000.0):0}M";
-            if (f >= 1_000.0)
-                return $"{Math.Round(f / 1_000.0):0}k";
-            return $"{Math.Round(f):0}";
-        }
-
         //
         private void ClearSpectrum()
         {
@@ -2220,8 +1884,6 @@ namespace AudioHexViewer
 
                 // On repasse en linéaire pour éviter les problèmes
                 area.AxisX.IsLogarithmic = false;
-
-                area.AxisX.CustomLabels.Clear();
 
                 // Bornes "safe" par défaut
                 area.AxisX.Minimum = 0.0;
