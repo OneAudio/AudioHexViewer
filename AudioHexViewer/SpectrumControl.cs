@@ -115,7 +115,7 @@ namespace AudioHexViewer
         // ----- X axis "REW-like" labels -----
         private const int XLabelMinSpacingPx = 55;  // <-- change facilement la densité des labels
         private const double XTickMinHz = 1.0;
-        private const double XTickMaxHz = 1_000_000.0;
+        private const double XTickMaxHz = 2_000_000.0;
 
         private double _cursorFreqL = double.NaN;
         private double _cursorFreqR = double.NaN;
@@ -1762,35 +1762,111 @@ namespace AudioHexViewer
             if (!useLog)
                 return;
 
-            double fMin = area.AxisX.Minimum;
-            double fMax = area.AxisX.Maximum;
+            var ax = area.AxisX;
 
-            // Sécurité : en log, on ne dessine rien si bornes invalides
+            double fMin = ax.Minimum;
+            double fMax = ax.Maximum;
+
+            // Axe log : bornes strictement > 0
             if (fMin <= 0 || fMax <= fMin)
                 return;
 
-            // Lignes mineures log dessinées à la main : 2..9 * 10^n
-            using (Pen minorPen = new Pen(Color.FromArgb(80, Color.Gray), 1f))
+            var g = e.ChartGraphics.Graphics;
+
+            // Rectangle exact du plot (zone de tracé interne), en pixels
+            var ipp = area.InnerPlotPosition; // ElementPosition en %
+            RectangleF plotRect = e.ChartGraphics.GetAbsoluteRectangle(
+                new RectangleF(ipp.X, ipp.Y, ipp.Width, ipp.Height)
+            );
+
+            // 1) Grilles/ticks : on clip STRICT au plot pour ne jamais déborder
+            Region oldClip = g.Clip;
+            g.SetClip(plotRect);
+            try
             {
-                minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
-
-                double decadeStart = Math.Pow(10, Math.Floor(Math.Log10(fMin)));
-                double decadeEnd = Math.Pow(10, Math.Ceiling(Math.Log10(fMax)));
-
-                for (double d = decadeStart; d <= decadeEnd; d *= 10.0)
+                using (Pen minorGridPen = new Pen(Color.FromArgb(70, Color.Gray), 1f))
+                using (Pen majorGridPen = new Pen(Color.FromArgb(120, Color.Gray), 1f))
+                using (Pen minorTickPen = new Pen(Color.FromArgb(140, Color.Black), 1f))
+                using (Pen majorTickPen = new Pen(Color.FromArgb(180, Color.Black), 1.2f))
                 {
-                    for (int k = 2; k <= 9; k++)
+                    minorGridPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
+
+                    float top = plotRect.Top;
+                    float bottom = plotRect.Bottom;
+
+                    // Longueur des ticks (en pixels)
+                    float majorTickLen = 8f;
+                    float minorTickLen = 5f;
+
+                    int eMin = (int)Math.Floor(Math.Log10(fMin));
+                    int eMax = (int)Math.Ceiling(Math.Log10(fMax));
+
+                    for (int ePow = eMin; ePow <= eMax; ePow++)
                     {
-                        double f = d * k;
-                        if (f < fMin || f > fMax)
-                            continue;
+                        double decade = Math.Pow(10, ePow);
 
-                        float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
-                        float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
-                        float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
+                        // Major : 1×10^n
+                        double fMajor = decade;
+                        if (fMajor >= fMin && fMajor <= fMax)
+                        {
+                            float x = (float)ax.ValueToPixelPosition(fMajor);
+                            if (!float.IsNaN(x) && !float.IsInfinity(x))
+                            {
+                                // grille majeure
+                                g.DrawLine(majorGridPen, x, top, x, bottom);
+                                // tick majeur en bas
+                                g.DrawLine(majorTickPen, x, bottom, x, bottom - majorTickLen);
+                            }
+                        }
 
-                        e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, top, xPixel, bottom);
+                        // Minors : 2..9×10^n
+                        for (int k = 2; k <= 9; k++)
+                        {
+                            double f = k * decade;
+                            if (f < fMin || f > fMax) continue;
+
+                            float x = (float)ax.ValueToPixelPosition(f);
+                            if (float.IsNaN(x) || float.IsInfinity(x)) continue;
+
+                            // grille mineure
+                            g.DrawLine(minorGridPen, x, top, x, bottom);
+                            // tick mineur en bas
+                            g.DrawLine(minorTickPen, x, bottom, x, bottom - minorTickLen);
+                        }
                     }
+                }
+            }
+            finally
+            {
+                g.Clip = oldClip;
+            }
+
+            // 2) Labels (décades) : on dessine SOUS le plot, sans clip
+            using (SolidBrush textBrush = new SolidBrush(Color.Black))
+            {
+                Font font = area.AxisX.LabelStyle.Font ?? chartSpectrum.Font;
+                float labelY = plotRect.Bottom + 2f;
+
+                int eMin = (int)Math.Floor(Math.Log10(fMin));
+                int eMax = (int)Math.Ceiling(Math.Log10(fMax));
+
+                for (int ePow = eMin; ePow <= eMax; ePow++)
+                {
+                    double f = Math.Pow(10, ePow);
+                    if (f < fMin || f > fMax) continue;
+
+                    float x = (float)ax.ValueToPixelPosition(f);
+                    if (float.IsNaN(x) || float.IsInfinity(x)) continue;
+
+                    string s = FormatFreqLabel(f);
+                    SizeF sz = g.MeasureString(s, font);
+
+                    // Centré sur x, mais on évite de sortir trop des bords du plot
+                    float xText = x - sz.Width / 2f;
+                    if (xText < plotRect.Left) xText = plotRect.Left;
+                    if (xText + sz.Width > plotRect.Right) xText = plotRect.Right - sz.Width;
+
+                    g.DrawString(s, font, textBrush, xText, labelY);
                 }
             }
         }
@@ -1799,72 +1875,64 @@ namespace AudioHexViewer
         {
             var ax = area.AxisX;
 
-            // On laisse l'axe afficher des labels (sinon CustomLabels invisibles)
-            ax.LabelStyle.Enabled = true;
+            // Toujours éviter les valeurs "énormes" : le Chart stocke plusieurs champs en Decimal.
+            // 0 = auto (sans risque d'overflow Decimal).
+            ax.Interval = 0;
+            ax.LabelStyle.Interval = 0;
+            ax.MajorTickMark.Interval = 0;
+            ax.MinorTickMark.Interval = 0;
 
-            // Et on évite que le Chart rajoute ses labels auto : on met des intervalles énormes
-            ax.Interval = double.MaxValue;
-            ax.LabelStyle.Interval = double.MaxValue;
-            ax.MajorTickMark.Interval = double.MaxValue;
-            ax.MinorTickMark.Interval = double.MaxValue;
-
-
-            ax.LabelStyle.IsStaggered = false;
-            ax.LabelStyle.Angle = 0;
-
-            // 2) Nettoyage
-            ax.CustomLabels.Clear();
-
-            // 3) Bornes physiques
+            // Bornes : en log, min doit être > 0
             double minPhys = useLog ? 1.0 : 0.0;
             double min = Math.Max(fMin, minPhys);
             double max = Math.Max(min * 1.000001, fMax);
 
-            // clamp plage autorisée (tes constantes)
+            // Clamp (tes constantes)
             min = Math.Max(min, useLog ? XTickMinHz : 0.0);
             max = Math.Min(max, XTickMaxHz);
             if (max <= min)
-                max = min * 10.0;
+                max = useLog ? min * 10.0 : min + 1.0;
 
-            // 4) Largeur utile approx (stable même au démarrage)
-            double plotWidthPx = Math.Max(100, chartSpectrum.ClientSize.Width - 90);
+            ax.Minimum = min;
+            ax.Maximum = max;
 
-            // 5) Générer ticks candidats
-            List<double> ticks = useLog
-                ? BuildLogLabelsAdaptive(min, max, plotWidthPx)
-                : BuildLinearTicks(min, max, plotWidthPx);
-
-            // 6) Filtrage anti-chevauchement : UNE seule fois
-            ticks = FilterTicksByPixelSpacingApprox(
-                ticks, useLog, min, max, plotWidthPx, XLabelMinSpacingPx);
-
-            // 7) Construire les CustomLabels
-            AddCustomLabels(ax, ticks, useLog, min, max);
-
-            // 8) Grilles (la partie grid est gérée ailleurs aussi, mais on laisse cohérent ici)
             if (useLog)
             {
-                ax.MajorGrid.Enabled = true;
-                ax.MajorGrid.LineDashStyle = ChartDashStyle.Solid;
-                ax.MajorGrid.Interval = 1.0; // décades en log
+                // === MODE LOG : échelle dessinée à la main dans ChartSpectrum_PostPaint ===
+                ax.IsLogarithmic = true;
+                ax.LogarithmBase = 10;
 
-                // minor grid log : tu la dessines déjà dans PostPaint
+                // On coupe tout l'automatique (labels/ticks/grids) pour éviter les bugs/auto-fit.
+                ax.CustomLabels.Clear();
+                ax.LabelStyle.Enabled = false;
+
+                ax.MajorGrid.Enabled = false;
                 ax.MinorGrid.Enabled = false;
-            }
-            else
-            {
-                double major = ChooseNiceLinearStep(max - min, plotWidthPx);
-                if (major <= 0) major = (max - min);
+                ax.MajorTickMark.Enabled = false;
+                ax.MinorTickMark.Enabled = false;
 
-                ax.MajorGrid.Enabled = true;
-                ax.MajorGrid.LineDashStyle = ChartDashStyle.Solid;
-                ax.MajorGrid.Interval = major;
-
-                ax.MinorGrid.Enabled = true;
-                ax.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
-                ax.MinorGrid.Interval = major / 5.0;
-                ax.MinorGrid.LineColor = Color.LightGray;
+                return;
             }
+
+            // === MODE LIN : on garde ton système "ticks filtrés + CustomLabels" (il marche bien) ===
+            ax.IsLogarithmic = false;
+
+            ax.LabelStyle.Enabled = true;
+            ax.LabelStyle.IsStaggered = false;
+            ax.LabelStyle.Angle = 0;
+
+            ax.CustomLabels.Clear();
+
+            // Largeur utile approx (stable même au démarrage)
+            double plotWidthPx = Math.Max(100, chartSpectrum.ClientSize.Width - 90);
+
+            // ticks candidats + filtrage anti-chevauchement
+            var ticks = BuildLinearTicks(min, max, plotWidthPx);
+            ticks = FilterTicksByPixelSpacingApprox(ticks, useLog: false, min: min, max: max, plotWidthPx: plotWidthPx, minSpacingPx: XLabelMinSpacingPx);
+
+            //AddCustomLabels(ax, ticks, useLog: false);
+            AddCustomLabels(ax, ticks, useLog, min, max);
+
         }
         //
         //
