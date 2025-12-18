@@ -115,6 +115,10 @@ namespace AudioHexViewer
         private double _cursorFreqL = double.NaN;
         private double _cursorFreqR = double.NaN;
 
+        // État axe X logarithmique (pour redessin manuel des sous-divisions)
+        private bool _xAxisIsLog = false;
+
+
         private static double NiceStep125(double rawStep)
         {
             if (rawStep <= 0 || double.IsNaN(rawStep) || double.IsInfinity(rawStep))
@@ -244,6 +248,25 @@ namespace AudioHexViewer
             // - Axe Y = valeurs négatives (dBFS)
             // - Axe X = fréquences >= 0
             double v = e.Value;
+
+            // --- En LOG : ne garder que les décades 1,10,100,1k,10k,100k... ---
+            if (_xAxisIsLog && v > 0.0)
+            {
+                double p = Math.Log10(v);
+                double pr = Math.Round(p);
+
+                // tolérance : accepte uniquement v ~= 10^n
+                double decade = Math.Pow(10.0, pr);
+                if (Math.Abs(v - decade) > decade * 1e-6)
+                {
+                    e.LocalizedValue = ""; // cache les labels intermédiaires (2,3,4,... ou 19.99)
+                    return;
+                }
+
+                // ici c’est une décade => on affiche proprement (1,10,100,1k,...)
+                e.LocalizedValue = FormatHzK(decade);
+                return;
+            }
 
             if (v >= 1000.0)
             {
@@ -1503,6 +1526,8 @@ namespace AudioHexViewer
 
             // --- Axe X lin / log ---
             bool useLog = (chkLogX != null && chkLogX.Checked);
+            // Garder l'info pour les autres fonctions
+            _xAxisIsLog = useLog;
 
             // En log, on évite le bin 0
             int startIndex = useLog ? 1 : 0;
@@ -1578,9 +1603,26 @@ namespace AudioHexViewer
                     area.AxisX.Minimum = 1.0;
                 if (area.AxisX.Maximum <= area.AxisX.Minimum)
                     area.AxisX.Maximum = area.AxisX.Minimum * 10.0;
+                //
+                // --- LOG : forcer des décades propres ---
+                // Snap du MIN sur la décade inférieure (évite les labels du type 19.99, 199.99...)
+                double minDecade = Math.Pow(10.0, Math.Floor(Math.Log10(area.AxisX.Minimum)));
+                area.AxisX.Minimum = Math.Max(1.0, minDecade);
+
+                // Laisse Maximum tel quel (pas besoin de le monter à la décade suivante)
+                // mais assure la sécurité
+                if (area.AxisX.Maximum <= area.AxisX.Minimum)
+                    area.AxisX.Maximum = area.AxisX.Minimum * 10.0;
+                //
 
                 area.AxisX.IsLogarithmic = true;
                 area.AxisX.LogarithmBase = 10.0;
+
+                // 1 unité en log = 1 décade => labels/ticks uniquement sur 10^n
+                area.AxisX.Interval = 1.0;
+                area.AxisX.LabelStyle.Interval = 1.0;
+                area.AxisX.MajorTickMark.Interval = 1.0;
+
 
                 // Major = décades, Minor désactivée (sous-divisions dessinées à la main)
                 area.AxisX.MajorGrid.Enabled = true;
@@ -1596,7 +1638,7 @@ namespace AudioHexViewer
                 double xSpan = fMax - fMin;
 
                 // cible ~8 graduations “lisibles” (ajuste 6..10 selon ton goût)
-                double raw = xSpan / 10.0;
+                double raw = xSpan / 12.0;
                 double xMajor = NiceStep125(raw);
 
                 // Grille + labels calés sur xMajor
@@ -1617,6 +1659,16 @@ namespace AudioHexViewer
                 area.AxisX.LabelStyle.Interval = xMajor;
                 area.AxisX.LabelStyle.IntervalOffset = first - fMin;
 
+                // --- Evite le "barre noire" : ticks mineurs trop denses ---
+                area.AxisX.MinorTickMark.Enabled = false;
+
+                // Et on force les ticks majeurs à suivre exactement xMajor
+                area.AxisX.MajorTickMark.Enabled = true;
+                area.AxisX.MajorTickMark.Interval = xMajor;
+                area.AxisX.MajorTickMark.IntervalOffset = first - fMin;
+
+                // Optionnel: ticks majeurs plus courts (si tu veux)
+                area.AxisX.MajorTickMark.Size = 2f;
 
 
 
@@ -1848,30 +1900,95 @@ namespace AudioHexViewer
             if (fMin <= 0 || fMax <= fMin)
                 return;
 
+            //// Lignes mineures log dessinées à la main : 2..9 * 10^n
+            //using (Pen minorPen = new Pen(Color.FromArgb(80, Color.Gray), 1f))
+            //{
+            //    minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
+
+            //    double decadeStart = Math.Pow(10, Math.Floor(Math.Log10(fMin)));
+            //    double decadeEnd = Math.Pow(10, Math.Ceiling(Math.Log10(fMax)));
+
+            //    for (double d = decadeStart; d <= decadeEnd; d *= 10.0)
+            //    {
+            //        for (int k = 2; k <= 9; k++)
+            //        {
+            //            double f = d * k;
+            //            if (f < fMin || f > fMax)
+            //                continue;
+
+            //            float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
+            //            float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
+            //            float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
+
+            //            e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, top, xPixel, bottom);
+            //            // --- Ajout d'une "marque" (tick) mineure en bas (plus lisible que la grille seule) ---
+            //            const float minorTickLen = 6f; // longueur du petit trait
+            //            e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom - minorTickLen);
+
+
+
+            //        }
+            //    }
+            //}
             // Lignes mineures log dessinées à la main : 2..9 * 10^n
             using (Pen minorPen = new Pen(Color.FromArgb(80, Color.Gray), 1f))
             {
                 minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
 
-                double decadeStart = Math.Pow(10, Math.Floor(Math.Log10(fMin)));
-                double decadeEnd = Math.Pow(10, Math.Ceiling(Math.Log10(fMax)));
+                // On calcule top/bottom une seule fois
+                float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
+                float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
 
-                for (double d = decadeStart; d <= decadeEnd; d *= 10.0)
+                // Police "sous-label" : ~ moitié de la taille des labels d’axe
+                Font baseFont = area.AxisX.LabelStyle.Font ?? chartSpectrum.Font;
+                using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * 1f), baseFont.Style))
+                using (Brush minorBrush = new SolidBrush(Color.FromArgb(160, Color.Black)))
                 {
-                    for (int k = 2; k <= 9; k++)
+                    // Anti-chevauchement : on saute un label si trop proche du précédent
+                    float lastLabelRight = float.NegativeInfinity;
+
+                    double decadeStart = Math.Pow(10, Math.Floor(Math.Log10(fMin)));
+                    double decadeEnd = Math.Pow(10, Math.Ceiling(Math.Log10(fMax)));
+
+                    for (double d = decadeStart; d <= decadeEnd; d *= 10.0)
                     {
-                        double f = d * k;
-                        if (f < fMin || f > fMax)
-                            continue;
+                        for (int k = 2; k <= 9; k++)
+                        {
+                            double f = d * k;
+                            if (f < fMin || f > fMax)
+                                continue;
 
-                        float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
-                        float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
-                        float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
+                            float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
 
-                        e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, top, xPixel, bottom);
+                            // 1) Ligne verticale (ta sous-grille existante)
+                            e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, top, xPixel, bottom);
+
+                            // 2) (optionnel) petite marque de tick en bas (évite l’effet "pas de marque")
+                            const float minorTickLen = 8f;
+                            e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom + minorTickLen);
+
+                            // 3) Label intermédiaire (2..9), police plus petite
+                            //    -> on réutilise ton format Hz/kHz
+                            string txt = FormatHzK(f);   // ex: 2k, 3k, 5k, 20k...
+
+                            // Mesure + centrage
+                            var sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
+                            float xText = xPixel - sz.Width / 2f;
+
+                            // Dessin *dans* la zone de tracé, juste au-dessus de l’axe (évite de chevaucher les labels décades)
+                            float yText = bottom - minorTickLen + 10f;
+
+                            // Anti-chevauchement en pixels (même si fenêtre large, ça évite les cas extrêmes)
+                            if (xText <= lastLabelRight + 4f)
+                                continue;
+
+                            e.ChartGraphics.Graphics.DrawString(txt, minorFont, minorBrush, xText, yText);
+                            lastLabelRight = xText + sz.Width;
+                        }
                     }
                 }
             }
+
         }
         //
         //
@@ -1891,6 +2008,7 @@ namespace AudioHexViewer
 
                 area.AxisX.MajorGrid.Enabled = true;
                 area.AxisX.MinorGrid.Enabled = false;
+
             }
 
             // On vide les séries
