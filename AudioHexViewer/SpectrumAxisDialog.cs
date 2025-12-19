@@ -11,6 +11,7 @@ namespace AudioHexViewer
             InitializeComponent();
             btnDefault.Click += BtnDefault_Click;
             btnFitY.Click += BtnFitY_Click;
+            btnFitX.Click += BtnFitX_Click;
 
         }
 
@@ -18,6 +19,11 @@ namespace AudioHexViewer
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [Browsable(false)]
         public double SampleRateHz { get; set; } = 0.0;
+
+        // Taille FFT N (nb points). Fournie par SpectrumControl.
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        [Browsable(false)]
+        public int FftSizeN { get; set; } = 0;
 
         // Callback pour récupérer min/max Y (dBFS) des données courantes (2 voies)
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -171,6 +177,51 @@ namespace AudioHexViewer
             numYMax.Value = (decimal)yMax;
             numYMin.Value = (decimal)yMin;
         }
+        //
+        //
+        private void BtnFitX_Click(object? sender, EventArgs e)
+        {
+            double fs = SampleRateHz;
+            int n = FftSizeN;
+
+            if (fs <= 0.0 || n <= 0)
+            {
+                System.Media.SystemSounds.Beep.Play();
+                return;
+            }
+
+            // Nyquist
+            double fMax = fs / 2.0;
+
+            // Résolution fréquentielle de la FFT
+            double fMin = fs / n;
+
+            // Sécurité si jamais N trop grand / fs trop petit
+            if (double.IsNaN(fMin) || double.IsInfinity(fMin) || fMin <= 0.0 || fMin >= fMax)
+            {
+                System.Media.SystemSounds.Beep.Play();
+                return;
+            }
+
+            // Clamp aux bornes NumericUpDown
+            if (fMin < (double)numFMin.Minimum) fMin = (double)numFMin.Minimum;
+            if (fMin > (double)numFMin.Maximum) fMin = (double)numFMin.Maximum;
+
+            if (fMax < (double)numFMax.Minimum) fMax = (double)numFMax.Minimum;
+            if (fMax > (double)numFMax.Maximum) fMax = (double)numFMax.Maximum;
+
+            // Garantir fMin < fMax après clamp
+            if (fMin >= fMax)
+            {
+                System.Media.SystemSounds.Beep.Play();
+                return;
+            }
+
+            // Appliquer X uniquement (Y inchangé)
+            numFMin.Value = (decimal)fMin;
+            numFMax.Value = (decimal)fMax;
+        }
+
 
     }
 }

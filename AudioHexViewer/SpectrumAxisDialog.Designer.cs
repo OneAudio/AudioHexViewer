@@ -24,9 +24,9 @@
             numFMin = new NumericUpDown();
             numFMax = new NumericUpDown();
             btnOk = new Button();
-            btnCancel = new Button();
             btnDefault = new Button();
             btnFitY = new Button();
+            btnFitX = new Button();
             ((System.ComponentModel.ISupportInitialize)numYMax).BeginInit();
             ((System.ComponentModel.ISupportInitialize)numYMin).BeginInit();
             ((System.ComponentModel.ISupportInitialize)numFMin).BeginInit();
@@ -117,16 +117,6 @@
             btnOk.Text = "OK";
             btnOk.UseVisualStyleBackColor = true;
             // 
-            // btnCancel
-            // 
-            btnCancel.DialogResult = DialogResult.Cancel;
-            btnCancel.Location = new Point(12, 196);
-            btnCancel.Name = "btnCancel";
-            btnCancel.Size = new Size(75, 23);
-            btnCancel.TabIndex = 9;
-            btnCancel.Text = "Cancel";
-            btnCancel.UseVisualStyleBackColor = true;
-            // 
             // btnDefault
             // 
             btnDefault.Location = new Point(125, 157);
@@ -145,16 +135,24 @@
             btnFitY.Text = "Fit Y";
             btnFitY.UseVisualStyleBackColor = true;
             // 
+            // btnFitX
+            // 
+            btnFitX.Location = new Point(12, 196);
+            btnFitX.Name = "btnFitX";
+            btnFitX.Size = new Size(75, 23);
+            btnFitX.TabIndex = 10;
+            btnFitX.Text = "Fit X";
+            btnFitX.UseVisualStyleBackColor = true;
+            // 
             // SpectrumAxisDialog
             // 
             AcceptButton = btnOk;
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            CancelButton = btnCancel;
             ClientSize = new Size(220, 231);
+            Controls.Add(btnFitX);
             Controls.Add(btnFitY);
             Controls.Add(btnDefault);
-            Controls.Add(btnCancel);
             Controls.Add(btnOk);
             Controls.Add(numFMax);
             Controls.Add(numFMin);
@@ -189,9 +187,9 @@
         private System.Windows.Forms.NumericUpDown numFMin;
         private System.Windows.Forms.NumericUpDown numFMax;
         private System.Windows.Forms.Button btnOk;
-        private System.Windows.Forms.Button btnCancel;
         private System.Windows.Forms.Button btnDefault;
         private System.Windows.Forms.Button btnFitY;
+        private System.Windows.Forms.Button btnFitX;
 
     }
 }

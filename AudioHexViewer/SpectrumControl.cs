@@ -1480,6 +1480,8 @@ namespace AudioHexViewer
 
                 dlg.SampleRateHz = _sampleRate;
                 dlg.FitYProvider = GetCurrentYRangeGlobal;
+                dlg.FftSizeN = lastFftSize;
+
 
                 if (dlg.ShowDialog(FindForm()) == DialogResult.OK)
                 {
