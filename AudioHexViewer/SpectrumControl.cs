@@ -123,7 +123,22 @@ namespace AudioHexViewer
 
 
         // Formatage axe Y (dBFS), divisions secondaires
-        private static string FormatDbMinor(double db) => db.ToString("0");
+        private static string FormatDbMinor(double db, double stepMinor)
+        {
+            // Si les sous-divisions sont >= 1 dB : affichage entier
+            if (!(stepMinor > 0) || stepMinor >= 1.0)
+                return db.ToString("0");
+
+            // Sinon, on ajuste le nombre de décimales pour refléter le pas mineur.
+            // Ex: step=0.5 -> 1 décimale, step=0.2 -> 1, step=0.05 -> 2, etc.
+            int decimals = (int)Math.Ceiling(-Math.Log10(stepMinor));
+            if (decimals < 1) decimals = 1;
+            if (decimals > 3) decimals = 3; // évite les labels illisibles
+
+            string fmt = "0." + new string('0', decimals);
+            return db.ToString(fmt);
+        }
+
 
         // Échelle des labels secondaires X et Y (95% de la taille normale)
         private const float MinorLabelScale = 0.9f;
@@ -1571,22 +1586,69 @@ namespace AudioHexViewer
 
             // ---------------- Grilles & divisions ----------------
 
-            // Axe Y : 5 grandes divisions + 5 sous-divisions
+            // Axe Y : 4 divisions majeures + 5 sous-divisions par majeur
+            // Conditions garanties :
+            //  - span total = 4 * yMajor
+            //  - yMajor = 5 * yMinor
+            // => donc span total = 20 * yMinor
+
+            const int majorDivCount = 4;
+            const int minorPerMajor = 5;
+
             double ySpan = yMax - yMin;
-            double yMajor = ySpan / 5.0;
-            if (yMajor <= 0) yMajor = 10.0;
+            if (ySpan <= 0) ySpan = 1.0;
+
+            // pas mineur visé : span / (4*5) = span / 20
+            double rawMinor = ySpan / (majorDivCount * minorPerMajor);
+
+            // Pas mineur "nice" (1-2-5 * 10^n). Autorise décimales si nécessaire.
+            double yMinor = NiceStep125(rawMinor);
+            if (yMinor <= 0) yMinor = 1.0;
+
+            double yMajor = minorPerMajor * yMinor;
+
+            // Span imposé qui respecte EXACTEMENT les contraintes
+            double ySpanSnap = majorDivCount * yMajor;
+
+            // On centre autour de la plage demandée, puis on snap proprement
+            double yCenter = 0.5 * (yMin + yMax);
+
+            // yMin "snap" sur yMinor (ou yMajor, les 2 marchent car yMajor multiple de yMinor)
+            yMin = yCenter - 0.5 * ySpanSnap;
+            yMin = Math.Floor(yMin / yMinor) * yMinor;
+            yMax = yMin + ySpanSnap;
 
             area.AxisY.Minimum = yMin;
             area.AxisY.Maximum = yMax;
 
+            // IMPORTANT : pas d'offset (sinon désalignement / instabilité)
+            area.AxisY.Interval = yMajor;
+            area.AxisY.IntervalOffset = 0.0;
+
+            area.AxisY.LabelStyle.Interval = yMajor;
+            area.AxisY.LabelStyle.IntervalOffset = 0.0;
+
+            area.AxisY.MajorTickMark.Enabled = true;
+            area.AxisY.MajorTickMark.Interval = yMajor;
+            area.AxisY.MajorTickMark.IntervalOffset = 0.0;
+
+            // Grilles (majeure + mineure)
             area.AxisY.MajorGrid.Enabled = true;
             area.AxisY.MajorGrid.Interval = yMajor;
+            area.AxisY.MajorGrid.IntervalOffset = 0.0;
             area.AxisY.MajorGrid.LineDashStyle = ChartDashStyle.Solid;
 
             area.AxisY.MinorGrid.Enabled = true;
-            area.AxisY.MinorGrid.Interval = yMajor / 5.0;
+            area.AxisY.MinorGrid.Interval = yMinor;
+            area.AxisY.MinorGrid.IntervalOffset = 0.0;
             area.AxisY.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
             area.AxisY.MinorGrid.LineColor = Color.LightGray;
+
+            // (optionnel) éviter les ticks mineurs auto (tu dessines déjà des ticks/labels mineurs)
+            area.AxisY.MinorTickMark.Enabled = false;
+
+
+
 
             // --- Axe X : on fixe d'abord les bornes, puis on active le log si besoin ---
 
@@ -1627,6 +1689,13 @@ namespace AudioHexViewer
                 area.AxisX.MajorGrid.Interval = 1.0;      // 1 unité log = 1 décade
 
                 area.AxisX.MinorGrid.Enabled = false;
+
+                // 🔧 FIX : la grille peut aussi garder un offset depuis le mode LIN.
+                // En LOG, ça peut décaler les décades hors écran => "disparition" des lignes majeures verticales.
+                area.AxisX.MajorGrid.IntervalOffset = 0.0;
+                area.AxisX.MinorGrid.IntervalOffset = 0.0;     // (même si MinorGrid est disabled en LOG)
+                area.AxisX.MinorTickMark.IntervalOffset = 0.0; // par sécurité si jamais tu le réactives plus tard
+
             }
             else
             {
@@ -1917,11 +1986,30 @@ namespace AudioHexViewer
                         // Démarre en haut et descend => l'anti-chevauchement "lastLabelBottom" fonctionne
                         double yStart = Math.Floor(yMax / yMinor) * yMinor;
 
+                        // On ancre le calcul d’index sur le Minimum de l’axe (réduit énormément les erreurs flottantes)
+                        // IMPORTANT : les majeurs sont décalés par IntervalOffset (off)
+                        // donc l’ancrage des majeurs est yMin + IntervalOffset
+                        double y0 = area.AxisY.Minimum;
+
+
+                        int minorPerMajor = (int)Math.Round(yMajor / yMinor);
+                        if (minorPerMajor <= 0) minorPerMajor = 5;
+
                         for (double y = yStart; y >= yMin - 1e-9; y -= yMinor)
                         {
                             // skip majeurs
-                            double r = y / yMajor;
-                            if (Math.Abs(r - Math.Round(r)) < 1e-9) continue;
+                            // Skip si on tombe sur un majeur : on teste l'index (y - y0)/yMinor
+                            int idx = (int)Math.Round((y - y0) / yMinor);
+
+                            // modulo robuste (si idx négatif)
+                            int m = idx % minorPerMajor;
+                            if (m < 0) m += minorPerMajor;
+
+                            // Skip si c'est un majeur
+                            if (m == 0)
+                                continue;
+
+
 
                             float yPix = (float)area.AxisY.ValueToPixelPosition(y);
 
@@ -1929,7 +2017,8 @@ namespace AudioHexViewer
                             e.ChartGraphics.Graphics.DrawLine(p, xLeftPlot - gap, yPix, xLeftPlot - gap - tickLenLeft, yPix);
 
                             // Texte (à gauche de l’axe)
-                            string txt = FormatDbMinor(y);
+                            string txt = FormatDbMinor(y, yMinor);
+
                             SizeF sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
 
                             float xText = xLeftPlot - sz.Width - margin;
