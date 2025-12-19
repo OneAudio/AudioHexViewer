@@ -29,7 +29,6 @@
             comboChannel = new ComboBox();
             lblWindowInfo = new Label();
             btnRun = new Button();
-            chkOnce = new CheckBox();
             chkLogX = new CheckBox();
             splitMain = new SplitContainer();
             chartSpectrum = new System.Windows.Forms.DataVisualization.Charting.Chart();
@@ -70,7 +69,6 @@
             panelTop.Controls.Add(comboChannel);
             panelTop.Controls.Add(lblWindowInfo);
             panelTop.Controls.Add(btnRun);
-            panelTop.Controls.Add(chkOnce);
             panelTop.Controls.Add(chkLogX);
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 0);
@@ -184,7 +182,7 @@
             // lblWindowInfo
             // 
             lblWindowInfo.AutoSize = true;
-            lblWindowInfo.Location = new Point(860, 15);
+            lblWindowInfo.Location = new Point(990, 40);
             lblWindowInfo.Name = "lblWindowInfo";
             lblWindowInfo.Size = new Size(47, 15);
             lblWindowInfo.TabIndex = 8;
@@ -198,15 +196,6 @@
             btnRun.Size = new Size(79, 51);
             btnRun.TabIndex = 9;
             btnRun.Text = "RUN";
-            // 
-            // chkOnce
-            // 
-            chkOnce.AutoSize = true;
-            chkOnce.Location = new Point(860, 35);
-            chkOnce.Name = "chkOnce";
-            chkOnce.Size = new Size(52, 19);
-            chkOnce.TabIndex = 10;
-            chkOnce.Text = "once";
             // 
             // chkLogX
             // 
@@ -377,7 +366,6 @@
         private Label lblWindowInfo;
 
         private Button btnRun;
-        private CheckBox chkOnce;
 
         private SplitContainer splitMain;
         private System.Windows.Forms.DataVisualization.Charting.Chart chartSpectrum;

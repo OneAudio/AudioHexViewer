@@ -60,7 +60,6 @@ namespace AudioHexViewer
             lblLeftMainValue = new Label();
             lblRightMainTitle = new Label();
             lblRightMainValue = new Label();
-            chkHistoOnce = new CheckBox();
             label4 = new Label();
             comboDisplayMode = new ComboBox();
             label1 = new Label();
@@ -227,7 +226,6 @@ namespace AudioHexViewer
             splitMain.Panel1.Controls.Add(lblLeftMainValue);
             splitMain.Panel1.Controls.Add(lblRightMainTitle);
             splitMain.Panel1.Controls.Add(lblRightMainValue);
-            splitMain.Panel1.Controls.Add(chkHistoOnce);
             splitMain.Panel1.Controls.Add(label4);
             splitMain.Panel1.Controls.Add(comboDisplayMode);
             splitMain.Panel1.Controls.Add(label1);
@@ -388,16 +386,6 @@ namespace AudioHexViewer
             lblRightMainValue.TabIndex = 62;
             lblRightMainValue.Text = "0.000000";
             lblRightMainValue.TextAlign = ContentAlignment.MiddleCenter;
-            // 
-            // chkHistoOnce
-            // 
-            chkHistoOnce.AutoSize = true;
-            chkHistoOnce.Location = new Point(897, 108);
-            chkHistoOnce.Name = "chkHistoOnce";
-            chkHistoOnce.Size = new Size(54, 19);
-            chkHistoOnce.TabIndex = 39;
-            chkHistoOnce.Text = "Once";
-            chkHistoOnce.UseVisualStyleBackColor = true;
             // 
             // label4
             // 
@@ -611,7 +599,6 @@ namespace AudioHexViewer
         private Label lblLeftMainValue;
         private Label lblRightMainTitle;
         private Label lblRightMainValue;
-        private CheckBox chkHistoOnce;
         private Label label4;
         private ComboBox comboDisplayMode;
         private Label label1;

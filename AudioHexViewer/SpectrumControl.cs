@@ -571,19 +571,10 @@ namespace AudioHexViewer
             // Bouton RUN
             btnRun.Click += (s, e) =>
             {
-                bool once = chkOnce.Checked;
-
-                if (once)
-                {
-                    StartFromRun(true);
-                }
+                if (isLive)
+                    StopFromRun();
                 else
-                {
-                    if (isLive)
-                        StopFromRun();
-                    else
-                        StartFromRun(false);
-                }
+                    StartFromRun(false);
             };
         }
         //
@@ -2233,6 +2224,37 @@ namespace AudioHexViewer
                     }
                 }
             }
+            // ---------------------------------------------------------
+            // Cadre du plot : toujours visible (y compris à droite)
+            // ---------------------------------------------------------
+            {
+                var g = e.ChartGraphics.Graphics;
+
+                // Coordonnées du rectangle du plot en pixels
+                float xLeft = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Minimum);
+                float xRight = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Maximum);
+
+                float yTop = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
+                float yBottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
+
+                // Sécurité : parfois les axes sont inversés selon config
+                float x0 = Math.Min(xLeft, xRight);
+                float x1 = Math.Max(xLeft, xRight);
+                float y0 = Math.Min(yTop, yBottom);
+                float y1 = Math.Max(yTop, yBottom);
+
+                // On sort du clip pour ne pas perdre le bord
+                var saved = g.Save();
+                g.ResetClip();
+
+                using (var pBorder = new Pen(Color.Black, 1f))
+                {
+                    g.DrawRectangle(pBorder, x0, y0, x1 - x0, y1 - y0);
+                }
+
+                g.Restore(saved);
+            }
+
 
 
         }

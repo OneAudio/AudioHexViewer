@@ -768,9 +768,6 @@ namespace AudioHexViewer
             this.MinimumSize = new Size(_minWidth, _minHeightNoGraphs);
 
 
-            chkHistoOnce.CheckAlign = ContentAlignment.MiddleRight;
-            chkHistoOnce.TextAlign = ContentAlignment.MiddleLeft;
-
             levelFontRegular = new Font("Tahoma", 12F, FontStyle.Regular);
             levelFontBold = new Font("Tahoma", 12F, FontStyle.Bold);
 
@@ -1269,32 +1266,12 @@ namespace AudioHexViewer
                         spectrumControl.UpdateHopSamples(analysisHopSamples);
                     }
 
-                    // --- NOUVEAU : config mode Once / Continu ---
-                    bool onceMode = chkHistoOnce.Checked;
-
-                    if (onceMode)
-                    {
-                                                // Nombre de samples  acqurir = fentre d'histo
-                        int windowSamples = HistogramControl.LastUsedWindowSamples;
-
-                        // Si jamais l'histo n'a pas encore t ouvert, on prend 1 seconde par dfaut
-                        if (windowSamples <= 0 && currentFormat != null)
-                            windowSamples = currentFormat.SampleRate;
-
-                        histOnceTargetSamples = windowSamples;
-                        histOnceAccumSamples = 0;
-                        histOnceActive = true;
-
-                        // En mode Once, on NE dmarre PAS l'histogramme tout de suite :
-                        // on attend que ProcessBuffer ait accumul N chantillons.
-                    }
-                    else
-                    {
-                        // Mode continu : pas de squence Once
-                        histOnceActive = false;
-                        histOnceTargetSamples = 0;
-                        histOnceAccumSamples = 0;
-                    }
+                    
+                    // Mode continu : pas de squence Once
+                    histOnceActive = false;
+                    histOnceTargetSamples = 0;
+                    histOnceAccumSamples = 0;
+                    
                     // -------------------------------------------
 
                     // Dmarrage de la capture audio

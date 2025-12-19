@@ -511,21 +511,10 @@ namespace AudioHexViewer
             // --- Câblage du bouton RUN ---
             btnRun.Click += (s, e) =>
             {
-                bool once = chkOnce.Checked;
-
-                if (once)
-                {
-                    // Mode ONCE : un seul histogramme
-                    StartFromRun(true);
-                }
+                if (isLive)
+                    StopFromRun();
                 else
-                {
-                    // Mode continu : toggle RUN/STOP
-                    if (isLive)
-                        StopFromRun();
-                    else
-                        StartFromRun(false);
-                }
+                    StartFromRun(false);
             };
         }
         //

@@ -53,7 +53,6 @@
             comboBinLsb = new ComboBox();
             comboRangeLsb = new ComboBox();
             btnRun = new Button();
-            chkOnce = new CheckBox();
             grpLeftStats.SuspendLayout();
             grpRightStats.SuspendLayout();
             panelStats.SuspendLayout();
@@ -267,7 +266,6 @@
             panelTop.Controls.Add(comboBinLsb);
             panelTop.Controls.Add(comboRangeLsb);
             panelTop.Controls.Add(btnRun);
-            panelTop.Controls.Add(chkOnce);
             panelTop.Controls.Add(lblBinPow);
             panelTop.Controls.Add(lblRangePow);
             panelTop.Controls.Add(chkAC);
@@ -282,7 +280,7 @@
             // lblWindowInfo
             // 
             lblWindowInfo.AutoSize = true;
-            lblWindowInfo.Location = new Point(860, 15);
+            lblWindowInfo.Location = new Point(990, 40);
             lblWindowInfo.Name = "lblWindowInfo";
             lblWindowInfo.Size = new Size(38, 15);
             lblWindowInfo.TabIndex = 17;
@@ -317,16 +315,6 @@
             btnRun.TabIndex = 18;
             btnRun.Text = "RUN";
             btnRun.UseVisualStyleBackColor = true;
-            // 
-            // chkOnce
-            // 
-            chkOnce.AutoSize = true;
-            chkOnce.Location = new Point(860, 35);
-            chkOnce.Name = "chkOnce";
-            chkOnce.Size = new Size(52, 19);
-            chkOnce.TabIndex = 19;
-            chkOnce.Text = "once";
-            chkOnce.UseVisualStyleBackColor = true;
             // 
             // HistogramControl
             // 
@@ -378,6 +366,5 @@
         private ComboBox comboRangeLsb;
         private Label lblWindowInfo;
         private Button btnRun;
-        private CheckBox chkOnce;
     }
 }
