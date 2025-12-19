@@ -118,6 +118,10 @@ namespace AudioHexViewer
         // État axe X logarithmique (pour redessin manuel des sous-divisions)
         private bool _xAxisIsLog = false;
 
+        // Ligne d'info en bas (stats)
+        private string _bottomInfoLine = "";
+
+
         // Formatage axe Y (dBFS), divisions secondaires
         private static string FormatDbMinor(double db) => db.ToString("0");
 
@@ -440,7 +444,9 @@ namespace AudioHexViewer
 
             if (_sampleRate <= 0 || lastFftSize <= 0)
             {
+                _bottomInfoLine = "";
                 _overlayInfoAnno.Visible = false;
+                chartSpectrum.Invalidate();
                 return;
             }
 
@@ -456,28 +462,12 @@ namespace AudioHexViewer
             double overlapPct = 100.0 * (1.0 - (double)hop / N);
             if (overlapPct < 0) overlapPct = 0;
 
-            _overlayInfoAnno.Text =
-                $"SR: {srText}\n" +
-                $"N = {N:N0}\n" +
-                $"Overlap: {overlapPct:F0}%";
+            _bottomInfoLine = $"SR: {srText}    N={N:N0}    Overlap: {overlapPct:F0}%";
 
-            // ---- Position (en % du chart) ----
-            // On se base sur l'InnerPlotPosition (zone interne du graphe), en coordonnées relatives 0..100.
-            var area = chartSpectrum.ChartAreas["SpectrumArea"];
-            var ip = area.InnerPlotPosition; // ElementPosition
 
-            float margin = 4.0f;    // marge en % (augmente si tu veux plus "à l'intérieur")
-            float width = 250.0f;    // largeur en % (ajuste selon ton texte)
-            float height = 15.0f;   // hauteur en %
+            _overlayInfoAnno.Visible = false;   // on ne l’utilise plus
+            chartSpectrum.Invalidate();         // force un repaint pour voir la ligne mise à jour
 
-            _overlayInfoAnno.Width = width;
-            _overlayInfoAnno.Height = height;
-
-            // Top-right à l'intérieur du plot
-            _overlayInfoAnno.X = ip.X + ip.Width - margin - width;
-            _overlayInfoAnno.Y = ip.Y + margin;
-
-            _overlayInfoAnno.Visible = true;
         }
 
         //
@@ -1625,17 +1615,6 @@ namespace AudioHexViewer
                 area.AxisX.IsLogarithmic = true;
                 area.AxisX.LogarithmBase = 10.0;
 
-                // IMPORTANT : en venant du mode LIN, on a potentiellement des IntervalOffset non nuls.
-                // En LOG ça décale les décades et peut faire "disparaître" la grille/ticks.
-                area.AxisX.IntervalOffset = 0.0;
-                area.AxisX.LabelStyle.IntervalOffset = 0.0;
-                area.AxisX.MajorTickMark.IntervalOffset = 0.0;
-
-                // Par sécurité, remettre un état cohérent des ticks
-                area.AxisX.MajorTickMark.Enabled = true;
-                area.AxisX.MinorTickMark.Enabled = false;
-
-
                 // 1 unité en log = 1 décade => labels/ticks uniquement sur 10^n
                 area.AxisX.Interval = 1.0;
                 area.AxisX.LabelStyle.Interval = 1.0;
@@ -1969,6 +1948,49 @@ namespace AudioHexViewer
 
                     }
                 }
+                // ---------------------------------------------------------
+                // Ligne SR/N/Overlap sous le graphe, ALIGNÉE EN HAUTEUR avec AxisX.Title ("Frequency (Hz)")
+                // ---------------------------------------------------------
+                if (!string.IsNullOrWhiteSpace(_bottomInfoLine))
+                {
+                    var g = e.ChartGraphics.Graphics;
+
+                    // On sort du clip de la zone de tracé, car on dessine dans la marge (zone du titre d’axe)
+                    var savedClip = g.Clip;
+                    g.ResetClip();
+
+                    try
+                    {
+                        // Font : même famille/taille que le titre d’axe X si défini, sinon chart font
+                        Font titleFont = area.AxisX.TitleFont ?? chartSpectrum.Font;
+
+                        // Coordonnées "absolues" (pixels) du bas du ChartArea
+                        // area.Position est en % (0..100) du Chart
+                        var pos = area.Position;
+
+                        // bottom-left du ChartArea en pixels
+                        PointF bl = e.ChartGraphics.GetAbsolutePoint(new PointF(pos.X, pos.Y + pos.Height));
+                        // top-left du ChartArea en pixels (utile pour obtenir x)
+                        PointF tl = e.ChartGraphics.GetAbsolutePoint(new PointF(pos.X, pos.Y));
+
+                        // Y : on se place sur la "ligne" du titre d’axe X :
+                        // approximativement 1 hauteur de font au-dessus du bas du ChartArea.
+                        float y = bl.Y - titleFont.Height - 2f;
+
+                        // X : à gauche, dans la même bande que le titre d’axe
+                        float x = tl.X + 90f;
+
+                        using (Brush b = new SolidBrush(Color.DarkBlue))
+                        {
+                            g.DrawString(_bottomInfoLine, titleFont, b, x, y);
+                        }
+                    }
+                    finally
+                    {
+                        g.Clip = savedClip;
+                    }
+                }
+
             }
 
             bool useLog = chkLogX != null && chkLogX.Checked;
