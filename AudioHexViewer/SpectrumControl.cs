@@ -477,7 +477,35 @@ namespace AudioHexViewer
             double overlapPct = 100.0 * (1.0 - (double)hop / N);
             if (overlapPct < 0) overlapPct = 0;
 
-            _bottomInfoLine = $"SR: {srText}    N={N:N0}    Overlap: {overlapPct:F0}%";
+            // --- FFT Window ---
+            string winText = lastWindow switch
+            {
+                WindowType.Rectangular => "Rect",
+                WindowType.Hann => "Hann",
+                WindowType.Hamming => "Hamming",
+                WindowType.BlackmanHarris => "Blackman-Harris",
+                _ => "?"
+            };
+
+            // --- Averaging ---
+            string avgText = avgTargetCount <= 1
+                ? "Avg: No"
+                : $"Avg:{avgTargetCount}";
+
+            // --- AC / DC ---
+            string acdcText = (chkRemoveDC != null && chkRemoveDC.Checked)
+                ? "AC mode"
+                : "DC mode";
+
+            // --- Ligne finale ---
+            _bottomInfoLine =
+                $"SR:{srText}    "+
+                $"N={N:N0}    "+
+                $"Overlap:{overlapPct:F1}%     "+
+                $"Win:{winText}    "+
+                $"{avgText}    "+
+                $"{acdcText}";
+
 
 
             _overlayInfoAnno.Visible = false;   // on ne l’utilise plus
@@ -2051,13 +2079,17 @@ namespace AudioHexViewer
                         var pos = area.Position;
 
                         // bottom-left du ChartArea en pixels
-                        PointF bl = e.ChartGraphics.GetAbsolutePoint(new PointF(pos.X, pos.Y + pos.Height));
+                        //PointF bl = e.ChartGraphics.GetAbsolutePoint(new PointF(pos.X, pos.Y + pos.Height));
+                        // Y : juste AU-DESSUS de la zone de tracé (plot)
+                        float yPlotTop = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
+                        float y = yPlotTop - titleFont.Height - 2f;
+
                         // top-left du ChartArea en pixels (utile pour obtenir x)
                         PointF tl = e.ChartGraphics.GetAbsolutePoint(new PointF(pos.X, pos.Y));
 
                         // Y : on se place sur la "ligne" du titre d’axe X :
                         // approximativement 1 hauteur de font au-dessus du bas du ChartArea.
-                        float y = bl.Y - titleFont.Height - 2f;
+                        //float y = bl.Y - titleFont.Height - 2f;
 
                         // X : à gauche, dans la même bande que le titre d’axe
                         float x = tl.X + 90f;

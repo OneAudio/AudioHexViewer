@@ -1,14 +1,6 @@
 Chose à faire :
 --------------
-Le 15/12/2025
-
-0a - Refondre la partie acquisition des données pour éviter         --> Fait OK le 15/12/25
-le problème de décalage temporel trés important.
-
-00 - Enlever les réglages en doublon "sample size" et "overlap" !   --> Fait OK le 16/12/25
-
-0c- Supprimer les cases "once" devenues inutiles (les  3).
-
+Le 19/12/2025
 
 0b - Ajout du module qui permet de prendre le contre du SR.
 (Besoin d'ajouter une combobox pour la selection du SR).
@@ -24,17 +16,6 @@ le problème de décalage temporel trés important.
 1b- Ajouter 8 mémoires de courbes (A mettre dans un nouvel onglet)
 Ces courbes doivent être écrites dans un fichier nommé "FFTmemX.dat"
 avec X le numéro de courbe de 0 à 7 (8 courbes).
-
-2 - La fft en mode log affiche des divisons non entières parfois.
-Obliger l'affichage a des valeurs arrondies.                   
-
-2a - Améliorer l'affichage de l'axe fréquenciel pour avoir les même divisons
-qu'avec REW.
-
-2b- Ajouter un bouton "Fit X" qui prend l'échelle Fs/N à Fs/2
-
-2c- Se débrouiller pour que les bords extérieur du graphique soient toujours
-visible (surtout à droite)
 
 4 - Faire le point sur tout les paramêtres qui doivent être sauvegardés.
 (renommer "save histogram settings" par "Save settings")
