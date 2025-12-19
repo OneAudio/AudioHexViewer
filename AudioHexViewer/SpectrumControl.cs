@@ -1625,6 +1625,17 @@ namespace AudioHexViewer
                 area.AxisX.IsLogarithmic = true;
                 area.AxisX.LogarithmBase = 10.0;
 
+                // IMPORTANT : en venant du mode LIN, on a potentiellement des IntervalOffset non nuls.
+                // En LOG ça décale les décades et peut faire "disparaître" la grille/ticks.
+                area.AxisX.IntervalOffset = 0.0;
+                area.AxisX.LabelStyle.IntervalOffset = 0.0;
+                area.AxisX.MajorTickMark.IntervalOffset = 0.0;
+
+                // Par sécurité, remettre un état cohérent des ticks
+                area.AxisX.MajorTickMark.Enabled = true;
+                area.AxisX.MinorTickMark.Enabled = false;
+
+
                 // 1 unité en log = 1 décade => labels/ticks uniquement sur 10^n
                 area.AxisX.Interval = 1.0;
                 area.AxisX.LabelStyle.Interval = 1.0;
@@ -1645,7 +1656,7 @@ namespace AudioHexViewer
                 double xSpan = fMax - fMin;
 
                 // cible ~8 graduations “lisibles” (ajuste 6..10 selon ton goût)
-                double raw = xSpan / 12.0;
+                double raw = xSpan / 6.0;
                 double xMajor = NiceStep125(raw);
 
                 // Grille + labels calés sur xMajor
@@ -2031,6 +2042,87 @@ namespace AudioHexViewer
                 }
                
             }
+            else
+            {
+                // ---------------------------------------------------------
+                // X linéaire : ticks + labels mineurs (même esprit que pour Y)
+                // ---------------------------------------------------------
+                double fMin = area.AxisX.Minimum;
+                double fMax = area.AxisX.Maximum;
+
+                double xMajor = area.AxisX.MajorGrid.Interval;
+                double xMinor = area.AxisX.MinorGrid.Interval;
+
+                // Sécurités : si l'intervalle n'est pas fixé, on ne dessine pas
+                if (xMajor > 0)
+                {
+                    if (xMinor <= 0)
+                        xMinor = xMajor / 5.0; // fallback cohérent avec ton paramétrage linéaire
+
+                    if (xMinor > 0)
+                    {
+                        // Zone verticale (top/bottom) + baseline (bottom)
+                        float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
+                        float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
+
+                        using (Pen minorPen = new Pen(Color.FromArgb(80, Color.Gray), 1f))
+                        {
+                            minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
+
+                            Font baseFont = area.AxisX.LabelStyle.Font ?? chartSpectrum.Font;
+                            using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
+                            using (Brush minorBrush = new SolidBrush(Color.FromArgb(160, Color.Black)))
+                            {
+                                const float minorTickLen = 6f;
+
+                                // Anti-chevauchement horizontal (en pixels)
+                                float lastLabelRight = float.NegativeInfinity;
+
+                                // Aligne le premier tick mineur sur la grille mineure
+                                double firstMinor = AlignToStepCeil(fMin, xMinor);
+
+                                // Petite tolérance pour tester "multiple de majeur"
+                                const double eps = 1e-9;
+
+                                for (double f = firstMinor; f <= fMax + eps; f += xMinor)
+                                {
+                                    if (f < fMin - eps) continue;
+
+                                    // Skip si c'est un majeur (multiple de xMajor)
+                                    double q = f / xMajor;
+                                    if (Math.Abs(q - Math.Round(q)) < 1e-6)
+                                        continue;
+
+                                    float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
+
+                                    // 1) Tick mineur en bas (sans activer MinorTickMark du Chart)
+                                    e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom + minorTickLen);
+
+                                    // 2) Label mineur (même format que le log : Hz / kHz)
+                                    string txt = FormatHzK(f);
+
+                                    var sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
+                                    float xText = xPixel - sz.Width / 2f;
+
+                                    // Position du texte : 
+                                    // Sous l’axe : on descend sous la ligne d'axe + tick
+                                    float yText = bottom + minorTickLen + 2f;
+
+
+                                    // Anti-chevauchement
+                                    if (xText <= lastLabelRight + 4f)
+                                        continue;
+
+                                    // Dessin dans la zone de tracé (pas besoin de ResetClip ici)
+                                    e.ChartGraphics.Graphics.DrawString(txt, minorFont, minorBrush, xText, yText);
+                                    lastLabelRight = xText + sz.Width;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
 
         }
         //
