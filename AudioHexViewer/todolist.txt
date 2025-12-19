@@ -33,6 +33,9 @@ qu'avec REW.
 
 2b- Ajouter un bouton "Fit X" qui prend l'échelle Fs/N à Fs/2
 
+2c- Se débrouiller pour que les bords extérieur du graphique soient toujours
+visible (surtout à droite)
+
 4 - Faire le point sur tout les paramêtres qui doivent être sauvegardés.
 (renommer "save histogram settings" par "Save settings")
 A faire à la fin plutôt.

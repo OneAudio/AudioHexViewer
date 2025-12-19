@@ -118,6 +118,13 @@ namespace AudioHexViewer
         // État axe X logarithmique (pour redessin manuel des sous-divisions)
         private bool _xAxisIsLog = false;
 
+        // Formatage axe Y (dBFS), divisions secondaires
+        private static string FormatDbMinor(double db) => db.ToString("0");
+
+        // Échelle des labels secondaires X et Y (95% de la taille normale)
+        private const float MinorLabelScale = 0.9f;
+        
+
 
         private static double NiceStep125(double rawStep)
         {
@@ -1885,108 +1892,144 @@ namespace AudioHexViewer
         //
         private void ChartSpectrum_PostPaint(object sender, ChartPaintEventArgs e)
         {
-            var area = chartSpectrum.ChartAreas["SpectrumArea"];
-            if (e.ChartElement != area)
+            // IMPORTANT: ne pas comparer les instances (e.ChartElement != area peut être vrai même pour la bonne zone)
+            var area = e.ChartElement as ChartArea;
+            if (area == null || area.Name != "SpectrumArea")
                 return;
+
+            // ----------------------------
+            // Y : ticks + labels mineurs (5 sous-divisions par majeur) - toujours actif
+            // ----------------------------
+            {
+                double yMajor = area.AxisY.MajorGrid.Interval;
+                double yMinor = area.AxisY.MinorGrid.Interval;
+
+                if (yMajor > 0 && yMinor > 0)
+                {
+                    double yMin = area.AxisY.Minimum;
+                    double yMax = area.AxisY.Maximum;
+
+                    float xLeftPlot = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Minimum);
+
+                    // Style (comme sous-labels X): police plus petite + gris
+                    Font baseFont = area.AxisY.LabelStyle.Font ?? chartSpectrum.Font;
+                    using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
+                    using (Brush minorBrush = new SolidBrush(Color.FromArgb(170, Color.Black)))
+                    using (Pen p = new Pen(Color.FromArgb(140, Color.Gray), 1.0f))
+                    {
+                        const float tickLenLeft = 5f;   // longueur vers la gauche (extérieur)
+                        const float gap = 1f;           // petit espace avant l’axe
+                        const float margin = 8f;   // marge texte-axe
+
+                        // Anti-chevauchement vertical simple
+                        float lastLabelBottom = float.NegativeInfinity;
+
+                        // Démarre en haut et descend => l'anti-chevauchement "lastLabelBottom" fonctionne
+                        double yStart = Math.Floor(yMax / yMinor) * yMinor;
+
+                        for (double y = yStart; y >= yMin - 1e-9; y -= yMinor)
+                        {
+                            // skip majeurs
+                            double r = y / yMajor;
+                            if (Math.Abs(r - Math.Round(r)) < 1e-9) continue;
+
+                            float yPix = (float)area.AxisY.ValueToPixelPosition(y);
+
+                            // Tick
+                            e.ChartGraphics.Graphics.DrawLine(p, xLeftPlot - gap, yPix, xLeftPlot - gap - tickLenLeft, yPix);
+
+                            // Texte (à gauche de l’axe)
+                            string txt = FormatDbMinor(y);
+                            SizeF sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
+
+                            float xText = xLeftPlot - sz.Width - margin;
+                            float yText = yPix - sz.Height / 2f;
+
+                            if (yText <= lastLabelBottom + 2f) continue;
+
+                            var g = e.ChartGraphics.Graphics;
+                            var saved = g.Save();
+                            g.ResetClip();
+                            g.DrawString(txt, minorFont, minorBrush, xText, yText);
+                            g.Restore(saved);
+
+                            lastLabelBottom = yText + sz.Height;
+                        }
+
+                    }
+                }
+            }
 
             bool useLog = chkLogX != null && chkLogX.Checked;
-            if (!useLog)
-                return;
 
-            double fMin = area.AxisX.Minimum;
-            double fMax = area.AxisX.Maximum;
-
-            // Sécurité : en log, on ne dessine rien si bornes invalides
-            if (fMin <= 0 || fMax <= fMin)
-                return;
-
-            //// Lignes mineures log dessinées à la main : 2..9 * 10^n
-            //using (Pen minorPen = new Pen(Color.FromArgb(80, Color.Gray), 1f))
-            //{
-            //    minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
-
-            //    double decadeStart = Math.Pow(10, Math.Floor(Math.Log10(fMin)));
-            //    double decadeEnd = Math.Pow(10, Math.Ceiling(Math.Log10(fMax)));
-
-            //    for (double d = decadeStart; d <= decadeEnd; d *= 10.0)
-            //    {
-            //        for (int k = 2; k <= 9; k++)
-            //        {
-            //            double f = d * k;
-            //            if (f < fMin || f > fMax)
-            //                continue;
-
-            //            float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
-            //            float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
-            //            float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
-
-            //            e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, top, xPixel, bottom);
-            //            // --- Ajout d'une "marque" (tick) mineure en bas (plus lisible que la grille seule) ---
-            //            const float minorTickLen = 6f; // longueur du petit trait
-            //            e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom - minorTickLen);
-
-
-
-            //        }
-            //    }
-            //}
-            // Lignes mineures log dessinées à la main : 2..9 * 10^n
-            using (Pen minorPen = new Pen(Color.FromArgb(80, Color.Gray), 1f))
+            if (useLog)
             {
-                minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
+                double fMin = area.AxisX.Minimum;
+                double fMax = area.AxisX.Maximum;
 
-                // On calcule top/bottom une seule fois
-                float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
-                float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
+                // Sécurité : en log, on ne dessine rien si bornes invalides
+                if (fMin <= 0 || fMax <= fMin)
+                    return;
 
-                // Police "sous-label" : ~ moitié de la taille des labels d’axe
-                Font baseFont = area.AxisX.LabelStyle.Font ?? chartSpectrum.Font;
-                using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * 1f), baseFont.Style))
-                using (Brush minorBrush = new SolidBrush(Color.FromArgb(160, Color.Black)))
+                // Lignes mineures log dessinées à la main : 2..9 * 10^n
+                using (Pen minorPen = new Pen(Color.FromArgb(80, Color.Gray), 1f))
                 {
-                    // Anti-chevauchement : on saute un label si trop proche du précédent
-                    float lastLabelRight = float.NegativeInfinity;
+                    minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
 
-                    double decadeStart = Math.Pow(10, Math.Floor(Math.Log10(fMin)));
-                    double decadeEnd = Math.Pow(10, Math.Ceiling(Math.Log10(fMax)));
+                    // On calcule top/bottom une seule fois
+                    float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
+                    float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
 
-                    for (double d = decadeStart; d <= decadeEnd; d *= 10.0)
+                    // Police "sous-label" : ~ moitié de la taille des labels d’axe
+                    Font baseFont = area.AxisX.LabelStyle.Font ?? chartSpectrum.Font;
+                    using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
+                    using (Brush minorBrush = new SolidBrush(Color.FromArgb(160, Color.Black)))
                     {
-                        for (int k = 2; k <= 9; k++)
+                        // Anti-chevauchement : on saute un label si trop proche du précédent
+                        float lastLabelRight = float.NegativeInfinity;
+
+                        double decadeStart = Math.Pow(10, Math.Floor(Math.Log10(fMin)));
+                        double decadeEnd = Math.Pow(10, Math.Ceiling(Math.Log10(fMax)));
+
+                        for (double d = decadeStart; d <= decadeEnd; d *= 10.0)
                         {
-                            double f = d * k;
-                            if (f < fMin || f > fMax)
-                                continue;
+                            for (int k = 2; k <= 9; k++)
+                            {
+                                double f = d * k;
+                                if (f < fMin || f > fMax)
+                                    continue;
 
-                            float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
+                                float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
 
-                            // 1) Ligne verticale (ta sous-grille existante)
-                            e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, top, xPixel, bottom);
+                                // 1) Ligne verticale (ta sous-grille existante)
+                                e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, top, xPixel, bottom);
 
-                            // 2) (optionnel) petite marque de tick en bas (évite l’effet "pas de marque")
-                            const float minorTickLen = 8f;
-                            e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom + minorTickLen);
+                                // 2) (optionnel) petite marque de tick en bas (évite l’effet "pas de marque")
+                                const float minorTickLen = 8f;
+                                e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom + minorTickLen);
 
-                            // 3) Label intermédiaire (2..9), police plus petite
-                            //    -> on réutilise ton format Hz/kHz
-                            string txt = FormatHzK(f);   // ex: 2k, 3k, 5k, 20k...
+                                // 3) Label intermédiaire (2..9), police plus petite
+                                //    -> on réutilise ton format Hz/kHz
+                                string txt = FormatHzK(f);   // ex: 2k, 3k, 5k, 20k...
 
-                            // Mesure + centrage
-                            var sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
-                            float xText = xPixel - sz.Width / 2f;
+                                // Mesure + centrage
+                                var sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
+                                float xText = xPixel - sz.Width / 2f;
 
-                            // Dessin *dans* la zone de tracé, juste au-dessus de l’axe (évite de chevaucher les labels décades)
-                            float yText = bottom - minorTickLen + 10f;
+                                // Dessin *dans* la zone de tracé, juste au-dessus de l’axe (évite de chevaucher les labels décades)
+                                float yText = bottom - minorTickLen + 10f;
 
-                            // Anti-chevauchement en pixels (même si fenêtre large, ça évite les cas extrêmes)
-                            if (xText <= lastLabelRight + 4f)
-                                continue;
+                                // Anti-chevauchement en pixels (même si fenêtre large, ça évite les cas extrêmes)
+                                if (xText <= lastLabelRight + 4f)
+                                    continue;
 
-                            e.ChartGraphics.Graphics.DrawString(txt, minorFont, minorBrush, xText, yText);
-                            lastLabelRight = xText + sz.Width;
+                                e.ChartGraphics.Graphics.DrawString(txt, minorFont, minorBrush, xText, yText);
+                                lastLabelRight = xText + sz.Width;
+                            }
                         }
                     }
                 }
+               
             }
 
         }
