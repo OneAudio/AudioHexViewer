@@ -124,23 +124,25 @@ namespace AudioHexViewer
         // Indicateur de restauration des settings (évite d’écrire dans les settings pendant la restauration)
         private bool _isRestoringSettings = false;
 
+        // Pour le dessin manuel des sous-divisions Y
+        private double _currentYMinor = 1.0;
+        private double _currentYMajor = 5.0;
 
 
         // Formatage axe Y (dBFS), divisions secondaires
         private static string FormatDbMinor(double db, double stepMinor)
         {
-            // Si les sous-divisions sont >= 1 dB : affichage entier
-            if (!(stepMinor > 0) || stepMinor >= 1.0)
+            if (!(stepMinor > 0))
                 return db.ToString("0");
 
-            // Sinon, on ajuste le nombre de décimales pour refléter le pas mineur.
-            // Ex: step=0.5 -> 1 décimale, step=0.2 -> 1, step=0.05 -> 2, etc.
-            int decimals = (int)Math.Ceiling(-Math.Log10(stepMinor));
-            if (decimals < 1) decimals = 1;
-            if (decimals > 3) decimals = 3; // évite les labels illisibles
+            // Si le pas mineur est entier => entier
+            if (Math.Abs(stepMinor - Math.Round(stepMinor)) < 1e-9)
+                return db.ToString("0");
 
-            string fmt = "0." + new string('0', decimals);
-            return db.ToString(fmt);
+            // Sinon => décimales cohérentes avec le pas (max 2)
+            int decimals = GetStepDecimals(stepMinor);
+
+            return db.ToString("F" + decimals);
         }
 
 
@@ -312,9 +314,29 @@ namespace AudioHexViewer
             }
             else
             {
-                // Axe Y (dBFS) : on garde simple
-                e.LocalizedValue = $"{v:0}";
+                // Axe Y (dBFS) : afficher des décimales si le pas (major) n'est pas entier
+                int decimals = GetStepDecimals(_currentYMajor);
+                e.LocalizedValue = v.ToString("F" + decimals);
             }
+
+        }
+        //
+        private static int GetStepDecimals(double step)
+        {
+            if (!(step > 0))
+                return 0;
+
+            // si step est un entier (à epsilon près) -> 0 décimales
+            if (Math.Abs(step - Math.Round(step)) < 1e-9)
+                return 0;
+
+            // sinon on limite à 2 décimales (puisque tu arrondis minor à 2 décimales)
+            // Ex: 12.5 -> 1 décimale, 12.25 -> 2 décimales
+            double s10 = step * 10.0;
+            if (Math.Abs(s10 - Math.Round(s10)) < 1e-9)
+                return 1;
+
+            return 2;
         }
 
         //
@@ -1742,28 +1764,38 @@ namespace AudioHexViewer
             double ySpan = yMax - yMin;
             if (ySpan <= 0) ySpan = 1.0;
 
-            // pas mineur visé : span / (4*5) = span / 20
+            // pas mineur visé : span / 20
             double rawMinor = ySpan / (majorDivCount * minorPerMajor);
+            if (rawMinor <= 0) rawMinor = 1.0;
 
-            // Pas mineur "nice" (1-2-5 * 10^n). Autorise décimales si nécessaire.
-            double yMinor = NiceStep125(rawMinor);
-            if (yMinor <= 0) yMinor = 1.0;
+            // --- Nouveau comportement : respecter la plage utilisateur ---
+            // On garde le pas exact si <= 2 décimales, sinon on arrondit à 2 décimales.
+            double yMinor = rawMinor;
 
+            // test "<= 2 décimales" (tolérance)
+            double scaled = yMinor * 100.0;
+            double scaledRound = Math.Round(scaled);
+            bool hasMoreThan2Decimals = Math.Abs(scaled - scaledRound) > 1e-9;
+
+            if (hasMoreThan2Decimals)
+                yMinor = Math.Round(yMinor, 2, MidpointRounding.AwayFromZero);
+
+            // sécurité si trop petit après arrondi (évite 0)
+            if (yMinor <= 0)
+                yMinor = 0.01;
+
+            // Major = 5 * minor
             double yMajor = minorPerMajor * yMinor;
 
-            // Span imposé qui respecte EXACTEMENT les contraintes
-            double ySpanSnap = majorDivCount * yMajor;
+            // IMPORTANT : on ne modifie plus yMin/yMax.
+            // On conserve exactement la plage saisie par l'utilisateur.
 
-            // On centre autour de la plage demandée, puis on snap proprement
-            double yCenter = 0.5 * (yMin + yMax);
-
-            // yMin "snap" sur yMinor (ou yMajor, les 2 marchent car yMajor multiple de yMinor)
-            yMin = yCenter - 0.5 * ySpanSnap;
-            yMin = Math.Floor(yMin / yMinor) * yMinor;
-            yMax = yMin + ySpanSnap;
 
             area.AxisY.Minimum = yMin;
             area.AxisY.Maximum = yMax;
+
+            _currentYMinor = yMinor;
+            _currentYMajor = yMajor;
 
             // IMPORTANT : pas d'offset (sinon désalignement / instabilité)
             area.AxisY.Interval = yMajor;
@@ -1791,8 +1823,16 @@ namespace AudioHexViewer
             // (optionnel) éviter les ticks mineurs auto (tu dessines déjà des ticks/labels mineurs)
             area.AxisY.MinorTickMark.Enabled = false;
 
+            // Détermination du nombre de décimales à afficher
+            int yDecimals = 0;
+            if (yMinor < 1.0)
+            {
+                yDecimals = (int)Math.Ceiling(-Math.Log10(yMinor));
+                yDecimals = Math.Min(yDecimals, 2); // sécurité
+            }
 
-
+            // Format des labels majeurs
+            area.AxisY.LabelStyle.Format = "F" + yDecimals;
 
             // --- Axe X : on fixe d'abord les bornes, puis on active le log si besoin ---
 
@@ -2127,13 +2167,12 @@ namespace AudioHexViewer
                         // Anti-chevauchement vertical simple
                         float lastLabelBottom = float.NegativeInfinity;
 
-                        // Démarre en haut et descend => l'anti-chevauchement "lastLabelBottom" fonctionne
-                        double yStart = Math.Floor(yMax / yMinor) * yMinor;
+                        // Dernier tick mineur <= yMax, mais ancré sur yMin (et pas sur 0)
+                        double yStart = yMin + Math.Floor((yMax - yMin) / yMinor) * yMinor;
 
-                        // On ancre le calcul d’index sur le Minimum de l’axe (réduit énormément les erreurs flottantes)
-                        // IMPORTANT : les majeurs sont décalés par IntervalOffset (off)
-                        // donc l’ancrage des majeurs est yMin + IntervalOffset
-                        double y0 = area.AxisY.Minimum;
+                        // Ancrage d'index sur yMin (cohérent avec IntervalOffset = yMin)
+                        double y0 = yMin;
+
 
 
                         int minorPerMajor = (int)Math.Round(yMajor / yMinor);

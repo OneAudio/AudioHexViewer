@@ -41,4 +41,4 @@ l'affichage de la FFT en dBV (Méthode de choix à définir ?)
 
 8 - Prévoir un théme d'affichage "Dark" ?
 
-9 - 
+9 - Imprimer en pdf ou image ?
