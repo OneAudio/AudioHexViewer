@@ -153,18 +153,11 @@ namespace AudioHexViewer
         private DateTime lastTextDump = DateTime.MinValue;
         private readonly TimeSpan textDumpInterval = TimeSpan.FromMilliseconds(0); // ~5 fps
 
+        private SessionSettings? _loadedSessionSettings;
 
         private Form? dataFormatsWindow;
 
         private bool histogramVisible = false;
-
-        private class UiHistogramSettings
-        {
-            public string? DeviceId { get; set; }
-            public bool CaptureOutput { get; set; }
-            public string? MainDataFormat { get; set; }
-        }
-
 
         private enum CalStage
         {
@@ -352,6 +345,12 @@ namespace AudioHexViewer
                 return (l, r);
             }
         }
+        //
+        private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
+        {
+            SaveSessionSettingsSilently();
+        }
+        //
         private void InitAnalysisUi()
         {
             // Init hop + timer
@@ -834,12 +833,59 @@ namespace AudioHexViewer
             UpdateOverlapMenuChecks();
             InitBufferMenu();
             UpdateBufferMenuChecks();
+
+            this.FormClosing += Form1_FormClosing;
+        }
+        //
+        private void ApplyAnalysisSettings(SessionSettings s)
+        {
+            if (s == null) return;
+
+            // IMPORTANT: ordre
+            // 1) Sample size (source d'autorité pour FFT + histogram)
+            SetAnalysisSampleSize(s.Analysis.SampleSize);
+
+            // 2) Overlap (dépend du sample size car hop = sample*(1-overlap))
+            SetAnalysisOverlap(s.Analysis.Overlap);
+
+            // 3) Buffer (sans dépendance forte, on le fait après)
+            SetAnalysisBufferSize(s.Analysis.BufferSize);
+
+            // Si tu as des fonctions de refresh du menu, appelle-les ici
+            UpdateSampleSizeMenuChecks();
+            UpdateOverlapMenuChecks();
+            UpdateBufferMenuChecks();
+
+            if (histogramControl != null)
+            {
+                histogramControl.SetGlobalSampleSize(analysisSampleSize);
+                histogramControl.UpdateHopSamples(analysisHopSamples);
+            }
+
+            if (spectrumControl != null)
+            {
+                spectrumControl.SetGlobalSampleSize(analysisSampleSize);
+                spectrumControl.UpdateHopSamples(analysisHopSamples);
+            }
+
         }
 
-        private void LoadUiSettingsFromHistogramFile()
+        //
+        private void LoadUiSettingsFromSettingsFiles()
         {
             try
             {
+                // 1) Essai du nouveau fichier SessionSettings.json
+                var session = SessionSettingsManager.LoadOrNull();
+                if (session != null && session.Ui != null)
+                {
+                    _loadedSessionSettings = session;
+                    ApplyUiSettings(session.Ui);
+                    return;
+                }
+
+
+                // 2) Fallback sur l’ancien fichier HistogramSettings.json (compatibilité)
                 string baseDir = AppDomain.CurrentDomain.BaseDirectory;
                 string path = Path.Combine(baseDir, "HistogramSettings.json");
 
@@ -847,58 +893,117 @@ namespace AudioHexViewer
                     return;
 
                 string json = File.ReadAllText(path);
-                var settings = JsonSerializer.Deserialize<UiHistogramSettings>(json);
 
-                if (settings == null)
-                    return;
+                // On ne veut lire que les champs UI (même si le fichier contient plus)
+                // On utilise JsonDocument pour éviter de dépendre d'un ancien type.
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
 
-                // 1) IN / OUT
-                // On met  jour le bool avant de cocher les boutons
-                captureOutput = settings.CaptureOutput;
+                var ui = new UiSettings();
 
-                if (settings.CaptureOutput)
-                {
-                    rbOutput.Checked = true;   // levent CheckedChanged appellera LoadDevices()
-                }
-                else
-                {
-                    rbInput.Checked = true;
-                }
+                if (root.TryGetProperty("DeviceId", out var pDev) && pDev.ValueKind == JsonValueKind.String)
+                    ui.DeviceId = pDev.GetString();
 
-                //  ce stade, LoadDevices() a recharg comboDevices avec IN ou OUT
+                if (root.TryGetProperty("CaptureOutput", out var pOut) && pOut.ValueKind == JsonValueKind.True || pOut.ValueKind == JsonValueKind.False)
+                    ui.CaptureOutput = pOut.GetBoolean();
 
-                // 2) Slection du device par ID
-                if (!string.IsNullOrEmpty(settings.DeviceId))
-                {
-                    for (int i = 0; i < comboDevices.Items.Count; i++)
-                    {
-                        if (comboDevices.Items[i] is MMDevice dev && dev.ID == settings.DeviceId)
-                        {
-                            comboDevices.SelectedIndex = i;
-                            break;
-                        }
-                    }
-                }
+                if (root.TryGetProperty("MainDataFormat", out var pFmt) && pFmt.ValueKind == JsonValueKind.String)
+                    ui.MainDataFormat = pFmt.GetString();
 
-                // 3) Mode daffichage principal (MainDataFormat)
-                if (!string.IsNullOrEmpty(settings.MainDataFormat))
-                {
-                    int idx = comboDisplayMode.Items.IndexOf(settings.MainDataFormat);
-                    if (idx >= 0)
-                        comboDisplayMode.SelectedIndex = idx;
-                }
+                ApplyUiSettings(ui);
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Erreur lors du chargement des rglages d'interface : " + ex.Message,
-                                "Histogram settings",
+                MessageBox.Show("Erreur lors du chargement des réglages d'interface : " + ex.Message,
+                                "Session settings",
                                 MessageBoxButtons.OK,
                                 MessageBoxIcon.Error);
             }
         }
 
+        private void ApplyUiSettings(UiSettings ui)
+        {
+            // 1) IN / OUT
+            captureOutput = ui.CaptureOutput;
 
+            if (ui.CaptureOutput)
+                rbOutput.Checked = true;   // CheckedChanged appelle LoadDevices()
+            else
+                rbInput.Checked = true;
 
+            // 2) Device ID
+            if (!string.IsNullOrEmpty(ui.DeviceId))
+            {
+                for (int i = 0; i < comboDevices.Items.Count; i++)
+                {
+                    if (comboDevices.Items[i] is MMDevice dev && dev.ID == ui.DeviceId)
+                    {
+                        comboDevices.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+            // 3) Main Data Format
+            if (!string.IsNullOrEmpty(ui.MainDataFormat))
+            {
+                int idx = comboDisplayMode.Items.IndexOf(ui.MainDataFormat);
+                if (idx >= 0)
+                    comboDisplayMode.SelectedIndex = idx;
+            }
+        }
+        //
+        private void ApplyLoadedSessionSettingsToExistingControls()
+        {
+            if (_loadedSessionSettings == null)
+                return;
+
+            if (histogramControl != null)
+                histogramControl.ApplyHistogramSettings(_loadedSessionSettings.Histogram);
+
+            if (spectrumControl != null)
+                spectrumControl.ApplySpectrumSettings(_loadedSessionSettings.Spectrum);
+        }
+
+        //
+        private SessionSettings BuildSessionSettingsSnapshot()
+        {
+            var s = new SessionSettings
+            {
+                Version = 1
+            };
+
+            // UI
+            string? devId = null;
+            if (comboDevices.SelectedItem is MMDevice dev)
+                devId = dev.ID;
+
+            s.Ui.DeviceId = devId;
+            s.Ui.CaptureOutput = captureOutput;
+            s.Ui.MainDataFormat = comboDisplayMode.SelectedItem as string;
+
+            // Analysis (valeurs actuelles, même si on ne les applique pas encore)
+            s.Analysis.BufferSize = analysisBufferSize;
+            s.Analysis.Overlap = analysisOverlap;
+            s.Analysis.SampleSize = analysisSampleSize;
+
+            if (histogramControl != null)
+                s.Histogram = histogramControl.GetHistogramSettingsSnapshot();
+
+            if (spectrumControl != null)
+                s.Spectrum = spectrumControl.GetSpectrumSettingsSnapshot();
+
+            // Histogram / Spectrum : on remplira à l'étape suivante (pour l'instant defaults)
+            return s;
+        }
+
+        private void SaveSessionSettingsSilently()
+        {
+            var snap = BuildSessionSettingsSnapshot();
+            SessionSettingsManager.Save(snap, out _);
+            // volontairement silencieux : pas de MessageBox
+        }
+
+        //
         private string GroupBits(string bits, int groupSize = 4)
         {
             var sb = new StringBuilder(bits.Length + bits.Length / groupSize);
@@ -2254,6 +2359,12 @@ namespace AudioHexViewer
                 histogramControl.SetGlobalSampleSize(analysisSampleSize);
                 histogramControl.UpdateHopSamples(analysisHopSamples);
 
+                if (_loadedSessionSettings != null)
+                {
+                    histogramControl.ApplyHistogramSettings(_loadedSessionSettings.Histogram);
+                }
+
+
                 panelHistogram.Controls.Clear();
                 panelHistogram.Controls.Add(histogramControl);
             }
@@ -2271,6 +2382,11 @@ namespace AudioHexViewer
                 spectrumControl.Dock = DockStyle.Fill;
                 spectrumControl.SetGlobalSampleSize(analysisSampleSize);
                 spectrumControl.UpdateHopSamples(analysisHopSamples);
+
+                if (_loadedSessionSettings != null)
+                {
+                    spectrumControl.ApplySpectrumSettings(_loadedSessionSettings.Spectrum);
+                }
 
                 // tabSpectrum est l'onglet du bas
                 tabSpectrum.Controls.Clear();
@@ -2698,9 +2814,15 @@ namespace AudioHexViewer
 
         private void Form1_Load(object sender, EventArgs e)
         {
-            LoadUiSettingsFromHistogramFile();
+            LoadUiSettingsFromSettingsFiles();
 
+            if (_loadedSessionSettings != null)
+                ApplyAnalysisSettings(_loadedSessionSettings);
+
+            ApplyLoadedSessionSettingsToExistingControls();
         }
+
+
 
         private void splitContainer1_Panel2_Paint(object sender, PaintEventArgs e)
         {

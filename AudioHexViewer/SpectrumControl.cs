@@ -121,6 +121,10 @@ namespace AudioHexViewer
         // Ligne d'info en bas (stats)
         private string _bottomInfoLine = "";
 
+        // Indicateur de restauration des settings (évite d’écrire dans les settings pendant la restauration)
+        private bool _isRestoringSettings = false;
+
+
 
         // Formatage axe Y (dBFS), divisions secondaires
         private static string FormatDbMinor(double db, double stepMinor)
@@ -552,17 +556,12 @@ namespace AudioHexViewer
 
 
             // Sélection AC/DC
-            if (chkRemoveDC != null)
+            chkRemoveDC.CheckedChanged += (s, e) =>
             {
-                chkRemoveDC.Checked = true; // pour garder le comportement actuel
-                chkRemoveDC.CheckedChanged += (s, e) =>
-                {
-                    // Si live => ça sera pris en compte au prochain tick.
-                    // Si pas live => on recalc tout de suite.
-                    if (!isLive)
-                        AcquireOnce();
-                };
-            }
+                if (_isRestoringSettings)
+                    return;
+            };
+
 
             // Peak-hold
             if (chkPeakHold != null)
@@ -584,6 +583,7 @@ namespace AudioHexViewer
             comboChannel.Items.Add("Right");
             comboChannel.Items.Add("L+R");
             comboChannel.SelectedIndex = 2; // Par défaut les 2 voies sont affichées
+
             comboChannel.SelectedIndexChanged += (s, e) =>
             {
                 switch (comboChannel.SelectedIndex)
@@ -592,9 +592,14 @@ namespace AudioHexViewer
                     case 1: lastChannel = ChannelMode.Right; break;
                     case 2: lastChannel = ChannelMode.Both; break;
                 }
+
+                if (_isRestoringSettings)
+                    return;
+
                 // Re-dessine sans recalc FFT
                 UpdateSpectrumChartAndStats();
             };
+
 
             // Bouton RUN
             btnRun.Click += (s, e) =>
@@ -604,6 +609,18 @@ namespace AudioHexViewer
                 else
                     StartFromRun(false);
             };
+            // Log X axis 
+            if (chkLogX != null)
+            {
+                chkLogX.CheckedChanged += (s, e) =>
+                {
+                    if (_isRestoringSettings)
+                        return;
+
+                    UpdateSpectrumChartAndStats();
+                };
+            }
+
         }
         //
         private void UpdateCursorVisibility()
@@ -774,8 +791,114 @@ namespace AudioHexViewer
 
             RefreshCursorsFromCurrentSpectrum();
         }
+        //
+        public AudioHexViewer.SpectrumSettings GetSpectrumSettingsSnapshot()
+        {
+            var s = new AudioHexViewer.SpectrumSettings();
 
+            // Channel
+            if (comboChannel != null && comboChannel.SelectedItem is string ch)
+                s.Channel = ch;
+            else
+                s.Channel = "L+R";
 
+            // DC
+            if (chkRemoveDC != null)
+            {
+                s.RemoveDC = chkRemoveDC.Checked;
+            }
+
+            // Window
+            if (comboWindow != null && comboWindow.SelectedItem is string w)
+                s.Window = w;
+            else
+                s.Window = "Rectangular";
+
+            // Log freq
+            if (chkLogX != null)
+                s.LogFreq = chkLogX.Checked;
+
+            // Averaging
+            // comboAveraging contient "None" puis des nombres en string ("2","4","8"...)
+            if (comboAveraging != null && comboAveraging.SelectedItem is string avgText)
+            {
+                if (string.Equals(avgText, "None", StringComparison.OrdinalIgnoreCase))
+                    s.Averaging = 0;
+                else if (int.TryParse(avgText, out int n))
+                    s.Averaging = n;
+                else
+                    s.Averaging = 0;
+            }
+            else
+            {
+                s.Averaging = 0;
+            }
+
+            return s;
+        }
+
+        public void ApplySpectrumSettings(AudioHexViewer.SpectrumSettings s)
+        {
+            if (s == null)
+                return;
+
+            _isRestoringSettings = true;
+
+            try
+            {
+                // Channel
+                if (comboChannel != null)
+                {
+                    int idx = comboChannel.Items.IndexOf(s.Channel);
+                    if (idx >= 0)
+                        comboChannel.SelectedIndex = idx;
+                }
+
+                // DC
+                if (chkRemoveDC != null)
+                {
+                    chkRemoveDC.Checked = s.RemoveDC;
+                }
+
+                // Window
+                if (comboWindow != null)
+                {
+                    int wIdx = comboWindow.Items.IndexOf(s.Window);
+                    if (wIdx >= 0)
+                        comboWindow.SelectedIndex = wIdx;
+                }
+
+                // Log freq
+                if (chkLogX != null)
+                {
+                    chkLogX.Checked = s.LogFreq;
+                }
+
+                // Averaging
+                if (comboAveraging != null)
+                {
+                    if (s.Averaging <= 0)
+                    {
+                        int noneIdx = comboAveraging.Items.IndexOf("None");
+                        comboAveraging.SelectedIndex = noneIdx >= 0 ? noneIdx : 0;
+                    }
+                    else
+                    {
+                        string target = s.Averaging.ToString();
+                        int aIdx = comboAveraging.Items.IndexOf(target);
+                        if (aIdx >= 0)
+                            comboAveraging.SelectedIndex = aIdx;
+                    }
+                }
+            }
+            finally
+            {
+                _isRestoringSettings = false;
+            }
+
+            // Un seul refresh final (évite 10 redraws)
+            UpdateSpectrumChartAndStats();
+        }
 
         //
         private void ChartSpectrum_MouseDoubleClick(object? sender, MouseEventArgs e)

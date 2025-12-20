@@ -2,6 +2,12 @@ Chose à faire :
 --------------
 Le 19/12/2025
 
+4 - Faire le point sur tout les paramêtres qui doivent être sauvegardés.        --> Fait OK le 20/12/2025
+(renommer "save histogram settings" par "Save settings")
+A faire à la fin plutôt.
+
+1 - Revoir la méthode pour les divisions majeurs/mineurs des axes X et Y linéaire.
+    
 0b - Ajout du module qui permet de prendre le contre du SR.
 (Besoin d'ajouter une combobox pour la selection du SR).
 
@@ -17,10 +23,6 @@ Le 19/12/2025
 Ces courbes doivent être écrites dans un fichier nommé "FFTmemX.dat"
 avec X le numéro de courbe de 0 à 7 (8 courbes).
 
-4 - Faire le point sur tout les paramêtres qui doivent être sauvegardés.
-(renommer "save histogram settings" par "Save settings")
-A faire à la fin plutôt.
-
 5 - Ajouter le nécessaire pour qu'il soit possible de choisir les couleurs
 des différentes courbes : Left , Right, Left-Hold, Right-Hold, Mem 0 à Mem 8
 
@@ -35,3 +37,8 @@ de la calibration.
 
 7a - Faire que les différentes mesures soient en dBV également lorsque on choisi
 l'affichage de la FFT en dBV (Méthode de choix à définir ?)
+
+
+8 - Prévoir un théme d'affichage "Dark" ?
+
+9 - 

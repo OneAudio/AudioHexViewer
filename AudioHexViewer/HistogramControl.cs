@@ -138,6 +138,45 @@ namespace AudioHexViewer
         }
 
         //
+        public AudioHexViewer.HistogramSettings GetHistogramSettingsSnapshot()
+        {
+            return new AudioHexViewer.HistogramSettings
+            {
+                AC = chkAC.Checked,
+                Channel = comboChannel.SelectedItem as string ?? "Both",
+                RangeLsb = GetRangeLsb(),
+                BinLsb = GetBinLsb(),
+                RecordSamples = LastUsedWindowSamples,
+                SplitterDistance = splitContainerMain.SplitterDistance
+            };
+        }
+
+        public void ApplyHistogramSettings(AudioHexViewer.HistogramSettings s)
+        {
+            if (s == null) return;
+
+            chkAC.Checked = s.AC;
+
+            int chIdx = comboChannel.Items.IndexOf(s.Channel);
+            if (chIdx >= 0)
+                comboChannel.SelectedIndex = chIdx;
+
+            int rIdx = comboRangeLsb.Items.IndexOf(s.RangeLsb.ToString());
+            if (rIdx >= 0)
+                comboRangeLsb.SelectedIndex = rIdx;
+
+            int bIdx = comboBinLsb.Items.IndexOf(s.BinLsb.ToString());
+            if (bIdx >= 0)
+                comboBinLsb.SelectedIndex = bIdx;
+
+            if (s.SplitterDistance > 0)
+                splitContainerMain.SplitterDistance = s.SplitterDistance;
+
+            RebuildHistogram();
+        }
+
+
+        //
 
         private void LoadSettingsIfAny()
         {
@@ -560,10 +599,6 @@ namespace AudioHexViewer
 
                 File.WriteAllText(SettingsFilePath, json);
 
-                MessageBox.Show("Histogram settings saved.",
-                    "Histogram",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
