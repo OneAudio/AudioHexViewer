@@ -412,7 +412,7 @@ namespace AudioHexViewer
             btnStart.FlatAppearance.BorderSize = 0;
             btnStart.FlatStyle = FlatStyle.Flat;
             btnStart.ForeColor = Color.White;
-            btnStart.Location = new Point(965, 84);
+            btnStart.Location = new Point(965, 83);
             btnStart.Name = "btnStart";
             btnStart.Size = new Size(161, 70);
             btnStart.TabIndex = 41;

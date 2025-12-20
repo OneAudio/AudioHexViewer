@@ -76,6 +76,8 @@ namespace AudioHexViewer
         private int recordSamplesCollected = 0;
         private List<RecordFrame> recordBuffer = new List<RecordFrame>();
 
+        private readonly object _recordLock = new object();
+
         // --- Capture 1 seconde pour histogramme ---
         //private List<RecordFrame> histBuffer = new List<RecordFrame>();
 
@@ -873,51 +875,14 @@ namespace AudioHexViewer
         //
         private void LoadUiSettingsFromSettingsFiles()
         {
-            try
+      
+            // 1) Essai du nouveau fichier SessionSettings.json
+            var session = SessionSettingsManager.LoadOrNull();
+            if (session != null && session.Ui != null)
             {
-                // 1) Essai du nouveau fichier SessionSettings.json
-                var session = SessionSettingsManager.LoadOrNull();
-                if (session != null && session.Ui != null)
-                {
-                    _loadedSessionSettings = session;
-                    ApplyUiSettings(session.Ui);
-                    return;
-                }
-
-
-                // 2) Fallback sur l’ancien fichier HistogramSettings.json (compatibilité)
-                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                string path = Path.Combine(baseDir, "HistogramSettings.json");
-
-                if (!File.Exists(path))
-                    return;
-
-                string json = File.ReadAllText(path);
-
-                // On ne veut lire que les champs UI (même si le fichier contient plus)
-                // On utilise JsonDocument pour éviter de dépendre d'un ancien type.
-                using var doc = JsonDocument.Parse(json);
-                var root = doc.RootElement;
-
-                var ui = new UiSettings();
-
-                if (root.TryGetProperty("DeviceId", out var pDev) && pDev.ValueKind == JsonValueKind.String)
-                    ui.DeviceId = pDev.GetString();
-
-                if (root.TryGetProperty("CaptureOutput", out var pOut) && pOut.ValueKind == JsonValueKind.True || pOut.ValueKind == JsonValueKind.False)
-                    ui.CaptureOutput = pOut.GetBoolean();
-
-                if (root.TryGetProperty("MainDataFormat", out var pFmt) && pFmt.ValueKind == JsonValueKind.String)
-                    ui.MainDataFormat = pFmt.GetString();
-
-                ApplyUiSettings(ui);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Erreur lors du chargement des réglages d'interface : " + ex.Message,
-                                "Session settings",
-                                MessageBoxButtons.OK,
-                                MessageBoxIcon.Error);
+                _loadedSessionSettings = session;
+                ApplyUiSettings(session.Ui);
+                return;
             }
         }
 
@@ -1328,7 +1293,7 @@ namespace AudioHexViewer
             {
                 if (comboDevices.SelectedItem is not MMDevice dev)
                 {
-                    MessageBox.Show("Slectionne un priphrique audio.");
+                    MessageBox.Show("Selectionne un priphrique audio.");
                     return;
                 }
 
@@ -1405,7 +1370,7 @@ namespace AudioHexViewer
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("Erreur lors du dmarrage de la capture : " + ex.Message);
+                    MessageBox.Show("Erreur lors du demarrage de la capture : " + ex.Message);
                     capture = null;
                     currentFormat = null;
                     UpdateStartButtonAppearance();   // remet en mode READ vert
@@ -1914,31 +1879,34 @@ namespace AudioHexViewer
                 return;
             }
 
-            if (isRecordingOneSecond)
+            lock (_recordLock)
             {
-                MessageBox.Show("Un enregistrement est dj en cours.");
-                return;
+                if (isRecordingOneSecond)
+                {
+                    MessageBox.Show("Un enregistrement est dj en cours.");
+                    return;
+                }
+
+                // Détermine le nombre de samples à enregistrer
+                // => tu veux N = sample size (FFT + histogram) = valeur unique
+                int windowSamples = analysisSampleSize;
+
+                // fallback sécurité si valeur invalide
+                if (windowSamples <= 0 && currentFormat != null)
+                    windowSamples = currentFormat.SampleRate;
+
+                recordSamplesNeeded = windowSamples;
+
+                // Initialise le buffer
+                recordSamplesCollected = 0;
+                recordBuffer.Clear();
+                recordBuffer.Capacity = Math.Max(recordBuffer.Capacity, recordSamplesNeeded);
+
+                isRecordingOneSecond = true;
             }
-
-            // On dmarre l'enregistrement
-            isRecordingOneSecond = true;
-            recordSamplesCollected = 0;
-            recordBuffer.Clear();
-
-            // Nombre d'chantillons correspondant  la fentre Histogram
-            int windowSamples = HistogramControl.LastUsedWindowSamples;
-
-            // Si l'histogramme n'a encore jamais t ouvert, on garde un fallback : 1 seconde
-            if (windowSamples <= 0 && currentFormat != null)
-                windowSamples = currentFormat.SampleRate;
-
-            recordSamplesNeeded = windowSamples;
-
-            //MessageBox.Show($"Enregistrement dmarr : {recordSamplesNeeded} chantillons.");
-
         }
 
-        private void SaveRecordingToCsv()
+        private void SaveRecordingToCsv(IReadOnlyList<RecordFrame> frames)
         {
             try
             {
@@ -1948,15 +1916,13 @@ namespace AudioHexViewer
                 using (var sw = new StreamWriter(file))
                 {
                     sw.WriteLine("Index;Left_decimal;Right_decimal;Left_hex;Right_hex");
-                    int index = 0;
 
-                    foreach (var f in recordBuffer)
+                    for (int i = 0; i < frames.Count; i++)
                     {
+                        var f = frames[i];
                         uint hl = (uint)(f.Left & 0xFFFFFF);
                         uint hr = (uint)(f.Right & 0xFFFFFF);
-
-                        sw.WriteLine($"{index};{f.Left};{f.Right};0x{hl:X6};0x{hr:X6}");
-                        index++;
+                        sw.WriteLine($"{i};{f.Left};{f.Right};0x{hl:X6};0x{hr:X6}");
                     }
                 }
 
@@ -2074,6 +2040,8 @@ namespace AudioHexViewer
             int frameCount = bytesRecorded / bytesPerFrame;
 
             // 1) Toujours alimenter le ring buffer REW-like
+            List<RecordFrame>? recordSnapshotToSave = null;
+
             lock (_audioRingLock)
             {
                 if (_audioRing == null)
@@ -2094,36 +2062,58 @@ namespace AudioHexViewer
                     if (R > Max24Pos) R = Max24Pos;
                     if (R < Min24Neg) R = Min24Neg;
 
+                    // 1) Ring buffer audio (toujours)
                     _audioRing.WriteSample(L, R);
-                }
-            }
 
-            // 2) Enregistrement 1 seconde (annexe)
-            if (isRecordingOneSecond)
-            {
-                // Ici tu peux remplir recordBuffer (si tu veux garder cette feature)
-                // ou carrément la désactiver plus tard.
-                // IMPORTANT: ne pas toucher au ring buffer ici.
-            }
-
-            // 3) Mode "Once" histogramme : on accumule juste un compteur
-            if (histOnceActive)
-            {
-                histOnceAccumSamples += frameCount;
-
-                if (histOnceAccumSamples >= histOnceTargetSamples)
-                {
-                    histOnceActive = false;
-
-                    BeginInvoke((Action)(() =>
+                    // 2) Enregistrement REC (si actif)
+                    if (recordSnapshotToSave == null) // si déjà terminé dans ce callback, on n'ajoute plus
                     {
-                        // Démarre l’affichage histo “une fois” (mais sans stopper la capture ici)
-                        histogramControl?.StartFromRun(true);
-                    }));
+                        bool shouldAdd;
+                        int needed;
+                        lock (_recordLock)
+                        {
+                            shouldAdd = isRecordingOneSecond;
+                            needed = recordSamplesNeeded;
+                        }
+
+                        if (shouldAdd)
+                        {
+                            bool justFinished = false;
+
+                            lock (_recordLock)
+                            {
+                                if (isRecordingOneSecond && recordSamplesCollected < recordSamplesNeeded)
+                                {
+                                    recordBuffer.Add(new RecordFrame { Left = L, Right = R });
+                                    recordSamplesCollected++;
+
+                                    if (recordSamplesCollected >= recordSamplesNeeded)
+                                    {
+                                        // Stop immédiat (plus aucun ajout après)
+                                        isRecordingOneSecond = false;
+                                        justFinished = true;
+
+                                        // Snapshot immuable pour sauvegarde UI
+                                        recordSnapshotToSave = new List<RecordFrame>(recordBuffer);
+                                    }
+                                }
+                            }
+
+                            // (on ne fait rien ici avec justFinished; on déclenchera la sauvegarde après la boucle)
+                        }
+                    }
                 }
             }
 
-
+            // Si l'enregistrement vient de se terminer, on sauvegarde côté UI (pas sur thread audio)
+            if (recordSnapshotToSave != null)
+            {
+                BeginInvoke((Action)(() =>
+                {
+                    SaveRecordingToCsv(recordSnapshotToSave);
+                }));
+            }
+            //
             // ---------- Calcul du niveau crte sur ce buffer (pour les VU) ----------
             int bytesPerFrameAll = currentFormat.Channels * 4;
             int totalFrames = bytesRecorded / bytesPerFrameAll;
