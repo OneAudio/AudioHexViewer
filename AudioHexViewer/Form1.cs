@@ -2768,44 +2768,8 @@ namespace AudioHexViewer
                 }
             }
         }
-
-        private void saveHistogramSettingsToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            if (histogramControl == null)
-            {
-                MessageBox.Show("L'histogramme n'est pas encore initialis.", "Histogram settings",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            try
-            {
-                // 1) Priphrique slectionn
-                string? devId = null;
-                if (comboDevices.SelectedItem is MMDevice dev)
-                    devId = dev.ID;   // Proprit ID de MMDevice (NAudio)
-
-                // 2) Mode IN / OUT (entre / sortie)
-                //    -> captureOutput est ton bool priv : false = entre, true = sortie
-                bool isOutput = captureOutput;
-
-                // 3) Main data format (comboDisplayMode)
-                string? mainFormat = comboDisplayMode.SelectedItem as string;
-
-                // On pousse ces infos vers l'histogramme AVANT la sauvegarde
-                histogramControl.DeviceIdForSave = devId;
-                histogramControl.CaptureOutputForSave = isOutput;
-                histogramControl.MainDataFormatForSave = mainFormat;
-                histogramControl.SaveHistogramSettings();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Erreur lors de la sauvegarde des rglages d'histogramme :\n" + ex.Message,
-                    "Histogram settings",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
+        //
+        //
         private void alwaysOnTopToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // Le ToolStripMenuItem appelle ce handler aprs avoir chang son tat Checked

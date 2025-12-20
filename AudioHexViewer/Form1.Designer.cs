@@ -38,7 +38,6 @@ namespace AudioHexViewer
             menuAbout = new ToolStripMenuItem();
             menuOpenCal = new ToolStripMenuItem();
             menuOpenRecordsFolder = new ToolStripMenuItem();
-            saveHistogramSettingsToolStripMenuItem = new ToolStripMenuItem();
             alwaysOnTopToolStripMenuItem = new ToolStripMenuItem();
             menuData = new ToolStripMenuItem();
             menuShowAllFormats = new ToolStripMenuItem();
@@ -115,7 +114,7 @@ namespace AudioHexViewer
             // menuHelp
             // 
             menuHelp.Alignment = ToolStripItemAlignment.Right;
-            menuHelp.DropDownItems.AddRange(new ToolStripItem[] { menuAbout, menuOpenCal, menuOpenRecordsFolder, saveHistogramSettingsToolStripMenuItem, alwaysOnTopToolStripMenuItem });
+            menuHelp.DropDownItems.AddRange(new ToolStripItem[] { menuAbout, menuOpenCal, menuOpenRecordsFolder, alwaysOnTopToolStripMenuItem });
             menuHelp.Name = "menuHelp";
             menuHelp.Size = new Size(44, 21);
             menuHelp.Text = "Help";
@@ -123,36 +122,29 @@ namespace AudioHexViewer
             // menuAbout
             // 
             menuAbout.Name = "menuAbout";
-            menuAbout.Size = new Size(199, 22);
+            menuAbout.Size = new Size(181, 22);
             menuAbout.Text = "About";
             menuAbout.Click += menuAbout_Click;
             // 
             // menuOpenCal
             // 
             menuOpenCal.Name = "menuOpenCal";
-            menuOpenCal.Size = new Size(199, 22);
+            menuOpenCal.Size = new Size(181, 22);
             menuOpenCal.Text = "Open calibration file";
             menuOpenCal.Click += menuOpenCal_Click;
             // 
             // menuOpenRecordsFolder
             // 
             menuOpenRecordsFolder.Name = "menuOpenRecordsFolder";
-            menuOpenRecordsFolder.Size = new Size(199, 22);
+            menuOpenRecordsFolder.Size = new Size(181, 22);
             menuOpenRecordsFolder.Text = "Open records folder";
             menuOpenRecordsFolder.Click += menuOpenRecordsFolder_Click;
-            // 
-            // saveHistogramSettingsToolStripMenuItem
-            // 
-            saveHistogramSettingsToolStripMenuItem.Name = "saveHistogramSettingsToolStripMenuItem";
-            saveHistogramSettingsToolStripMenuItem.Size = new Size(199, 22);
-            saveHistogramSettingsToolStripMenuItem.Text = "Save histogram settings";
-            saveHistogramSettingsToolStripMenuItem.Click += saveHistogramSettingsToolStripMenuItem_Click;
             // 
             // alwaysOnTopToolStripMenuItem
             // 
             alwaysOnTopToolStripMenuItem.CheckOnClick = true;
             alwaysOnTopToolStripMenuItem.Name = "alwaysOnTopToolStripMenuItem";
-            alwaysOnTopToolStripMenuItem.Size = new Size(199, 22);
+            alwaysOnTopToolStripMenuItem.Size = new Size(181, 22);
             alwaysOnTopToolStripMenuItem.Text = "Always on top";
             alwaysOnTopToolStripMenuItem.Click += alwaysOnTopToolStripMenuItem_Click;
             // 
@@ -584,7 +576,6 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuAbout;
         private ToolStripMenuItem menuOpenCal;
         private ToolStripMenuItem menuOpenRecordsFolder;
-        private ToolStripMenuItem saveHistogramSettingsToolStripMenuItem;
         private ToolStripMenuItem alwaysOnTopToolStripMenuItem;
         private SplitContainer splitMain;
         private Label label3;

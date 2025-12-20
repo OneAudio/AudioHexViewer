@@ -86,9 +86,6 @@ namespace AudioHexViewer
 
         private static HistogramSettings? cachedSettings;
 
-        private static string SettingsFilePath =>
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "HistogramSettings.json");
-
         public delegate (int[] Left, int[] Right) SampleProvider(int sampleCount);
 
         private readonly SampleProvider? _provider;
@@ -174,36 +171,7 @@ namespace AudioHexViewer
 
             RebuildHistogram();
         }
-
-
         //
-
-        private void LoadSettingsIfAny()
-        {
-            if (cachedSettings != null)
-                return;
-
-            try
-            {
-                if (!File.Exists(SettingsFilePath))
-                    return;
-
-                var json = File.ReadAllText(SettingsFilePath);
-                var s = JsonSerializer.Deserialize<HistogramSettings>(json);
-
-                if (s == null || s.RangeLsb <= 0 || s.BinLsb <= 0 || s.RecordSamples <= 0)
-                {
-                    cachedSettings = null;
-                    return;
-                }
-
-                cachedSettings = s;
-            }
-            catch
-            {
-                cachedSettings = null;
-            }
-        }
         //
         public void UpdateSampleRate(int sampleRate)
         {
@@ -301,7 +269,6 @@ namespace AudioHexViewer
 
         private void ApplySettingsOrDefaults()
         {
-            LoadSettingsIfAny();
 
             // Valeurs par défaut
             comboChannel.SelectedItem = "Both";
@@ -557,57 +524,8 @@ namespace AudioHexViewer
             };
         }
         //
-        public void SaveHistogramSettings()
-        {
-            SaveSettingsToFile();
-        }
-
         //
-        private void SaveSettingsToFile()
-        {
-            var rangeLsb = GetRangeLsb();
-            var binLsb = GetBinLsb();
-            var winSamples = GetWindowSamples();
-
-            var s = new HistogramSettings
-            {   
-                AC = chkAC.Checked,
-                Channel = comboChannel.SelectedItem as string ?? "Both",
-                RangeLsb = rangeLsb,
-                BinLsb = binLsb,
-                RecordSamples = winSamples,
-                SplitterDistance = splitContainerMain.SplitterDistance,
-
-                // >>> ajoutés :
-                DeviceId = DeviceIdForSave,
-                CaptureOutput = CaptureOutputForSave,
-                MainDataFormat = MainDataFormatForSave
-            };
-
-            cachedSettings = s;
-
-            try
-            {
-                var dir = Path.GetDirectoryName(SettingsFilePath);
-                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                    Directory.CreateDirectory(dir);
-
-                var json = JsonSerializer.Serialize(s, new JsonSerializerOptions
-                {
-                    WriteIndented = true
-                });
-
-                File.WriteAllText(SettingsFilePath, json);
-
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Error saving settings:\n" + ex.Message,
-                    "Histogram",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-            }
-        }
+        
 
         private void ResetStatsLabels()
         {
@@ -890,12 +808,6 @@ namespace AudioHexViewer
                 lblRightMinMax.Text = "Min/Max: -";
             }
         }
-
-        private void btnSaveSettings_Click(object sender, EventArgs e)
-        {
-            SaveSettingsToFile();
-        }
-
-
+               
     }
 }
