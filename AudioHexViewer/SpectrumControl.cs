@@ -1763,6 +1763,10 @@ namespace AudioHexViewer
                 dlg.FMaxHz = fMaxCurrent;   // *** en Hz ***
 
                 dlg.SampleRateHz = _sampleRate;
+                // 🔧 Ajuster dynamiquement la borne max de Fmax
+                double fmaxCap = SpectrumAxisDialog.GetAllowedFmax(_sampleRate);
+                dlg.SetFmaxMaximum(fmaxCap);
+
                 dlg.FitYProvider = GetCurrentYRangeGlobal;
                 dlg.FftSizeN = lastFftSize;
 
@@ -1847,9 +1851,13 @@ namespace AudioHexViewer
             // Sécurités de base
             double xMinPhys = useLog ? 1.0 : 0.0;
             if (fMin < xMinPhys) fMin = xMinPhys;
-            if (fMax > fMaxAuto) fMax = fMaxAuto;
-            if (fMin >= fMax)
-                fMin = fMax * 0.5;
+            double nyquist = _sampleRate / 2.0;
+
+            // Sécurité fMax
+            double uiMax = SpectrumAxisDialog.GetAllowedFmax(_sampleRate);
+            if (fMax > uiMax)
+                fMax = uiMax;
+
 
             // --- Axe Y (dBFS) avec limites custom éventuelles ---
             double yMinAuto = -200.0;

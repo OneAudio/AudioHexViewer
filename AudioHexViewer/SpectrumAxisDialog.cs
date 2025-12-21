@@ -14,6 +14,15 @@ namespace AudioHexViewer
             btnFitX.Click += BtnFitX_Click;
 
         }
+        //
+        private static readonly double[] AllowedFmaxCaps =
+        {
+            25_000,
+            50_000,
+            100_000,
+            200_000,
+            400_000
+        };
 
         // Sample rate courant (Hz), fourni par SpectrumControl
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -72,7 +81,7 @@ namespace AudioHexViewer
                 numFMin.Value = (decimal)value;
             }
         }
-
+        //
         // F max en Hz
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [Browsable(false)]
@@ -86,7 +95,30 @@ namespace AudioHexViewer
                 numFMax.Value = (decimal)value;
             }
         }
+        //
+        public static double GetAllowedFmax(double sampleRateHz)
+        {
+            double nyquist = sampleRateHz / 2.0;
 
+            foreach (double cap in AllowedFmaxCaps)
+            {
+                if (cap >= nyquist)
+                    return cap;
+            }
+
+            // Sécurité ultime
+            return AllowedFmaxCaps.Last();
+        }
+        //
+        public void SetFmaxMaximum(double maxHz)
+        {
+            numFMax.Maximum = (decimal)maxHz;
+
+            if (numFMax.Value > numFMax.Maximum)
+                numFMax.Value = numFMax.Maximum;
+        }
+
+        //
         private void BtnDefault_Click(object? sender, EventArgs e)
         {
             // X = 1 Hz .. Fs/2
