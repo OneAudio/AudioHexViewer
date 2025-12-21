@@ -21,15 +21,7 @@ namespace AudioHexViewer
         private int _hopSamples = 0;
         private System.Windows.Forms.Timer? liveTimer;
 
-        private const int Max24Pos = 0x7FFFFF; // 24-bit full scale
-
-        public enum WindowType
-        {
-            Rectangular,
-            Hann,
-            Hamming,
-            BlackmanHarris
-        }
+        
 
         public enum ChannelMode
         {
@@ -1434,8 +1426,8 @@ namespace AudioHexViewer
             }
 
             // 4) Construire buffers double pour chaque voie
-            double[]? bufL = leftSamples.Length > 0 ? BuildChannelBuffer(leftSamples, N) : null;
-            double[]? bufR = rightSamples.Length > 0 ? BuildChannelBuffer(rightSamples, N) : null;
+            double[]? bufL = leftSamples.Length > 0 ? SpectrumAnalyzer.BuildChannelBuffer(leftSamples, N) : null;
+            double[]? bufR = rightSamples.Length > 0 ? SpectrumAnalyzer.BuildChannelBuffer(rightSamples, N) : null;
 
             // Copie brute pour les stats (avant remove DC et avant fenêtre)
             double[]? bufLRaw = (bufL != null) ? (double[])bufL.Clone() : null;
@@ -1467,13 +1459,13 @@ namespace AudioHexViewer
 
             if (bufL != null)
             {
-                double sumWinL = ApplyWindowInPlace(bufL);
-                specL = ComputeSpectrumDbFs(bufL, sumWinL);
+                double sumWinL = SpectrumAnalyzer.ApplyWindowInPlace(bufL, lastWindow);
+                specL = SpectrumAnalyzer.ComputeSpectrumDbFs(bufL, sumWinL);
             }
             if (bufR != null)
             {
-                double sumWinR = ApplyWindowInPlace(bufR);
-                specR = ComputeSpectrumDbFs(bufR, sumWinR);
+                double sumWinR = SpectrumAnalyzer.ApplyWindowInPlace(bufR, lastWindow);
+                specR = SpectrumAnalyzer.ComputeSpectrumDbFs(bufR, sumWinR);
             }
 
             // Si une seule voie, on l’utilise au moins comme Left
@@ -1493,7 +1485,7 @@ namespace AudioHexViewer
             UpdatePeakHoldFromCurrentSpectrum();
 
             // 8) Axe fréquence
-            RebuildFreqAxis(N);
+            freqAxis = SpectrumAnalyzer.BuildFreqAxis(_sampleRate, N);
 
             // On garde une copie des derniers buffers temps pour les stats
             lastTimeLeft = bufLRaw;
@@ -1501,102 +1493,7 @@ namespace AudioHexViewer
 
             // 9) Mise à jour graphe + stats temporelles
             UpdateSpectrumChartAndStats(bufLRaw, bufRRaw);
-        }
-
-        private static double[] BuildChannelBuffer(int[] src, int N)
-        {
-            var buffer = new double[N];
-
-            if (src.Length >= N)
-            {
-                int start = src.Length - N;
-                for (int i = 0; i < N; i++)
-                    buffer[i] = src[start + i];
-            }
-            else
-            {
-                int offset = N - src.Length;
-                for (int i = 0; i < offset; i++)
-                    buffer[i] = 0.0;
-
-                for (int i = 0; i < src.Length; i++)
-                    buffer[offset + i] = src[i];
-            }
-
-            return buffer;
-        }
-
-        private double ApplyWindowInPlace(double[] buffer)
-        {
-            int N = buffer.Length;
-            double[] win;
-
-            switch (lastWindow)
-            {
-                case WindowType.Rectangular:
-                    win = Enumerable.Repeat(1.0, N).ToArray();
-                    break;
-                case WindowType.Hann:
-                    win = Window.Hann(N);
-                    break;
-                case WindowType.Hamming:
-                    win = Window.Hamming(N);
-                    break;
-                case WindowType.BlackmanHarris:
-                    win = Window.BlackmanHarris(N);
-                    break;
-                default:
-                    win = Window.Hann(N);
-                    break;
-            }
-
-            double sumWin = 0.0;
-            for (int i = 0; i < N; i++)
-            {
-                buffer[i] *= win[i];
-                sumWin += win[i];
-            }
-
-            return sumWin;
-        }
-
-        private double[] ComputeSpectrumDbFs(double[] timeData, double windowSum)
-        {
-            int N = timeData.Length;
-
-            Complex[] fft = new Complex[N];
-            for (int i = 0; i < N; i++)
-                fft[i] = new Complex(timeData[i], 0.0);
-
-            Fourier.Forward(fft, FourierOptions.Matlab);
-
-            int bins = N / 2 + 1;
-            var spectrum = new double[bins];
-
-            if (windowSum <= 0.0)
-                windowSum = N;
-
-            double scale = 2.0 / windowSum / Max24Pos;
-
-            for (int k = 0; k < bins; k++)
-            {
-                double mag = fft[k].Magnitude;
-                double amp = mag * scale;
-
-                double db;
-                if (amp <= 0.0)
-                    db = -200.0;
-                else
-                    db = 20.0 * Math.Log10(amp);
-
-                if (db < -200.0) db = -200.0;
-                if (db > 0.0) db = 0.0;
-
-                spectrum[k] = db;
-            }
-
-            return spectrum;
-        }
+        }               
 
         private void ApplyAveraging(double[] leftNewDb, double[]? rightNewDb)
         {
@@ -1721,18 +1618,7 @@ namespace AudioHexViewer
 
 
 
-        private void RebuildFreqAxis(int fftSize)
-        {
-            if (_sampleRate <= 0)
-                return;
-
-            int bins = fftSize / 2 + 1;
-            freqAxis = new double[bins];
-            double df = (double)_sampleRate / fftSize;
-
-            for (int k = 0; k < bins; k++)
-                freqAxis[k] = k * df;
-        }
+        
 
         private void ChartSpectrum_MouseUp(object? sender, MouseEventArgs e)
         {
@@ -2128,7 +2014,7 @@ namespace AudioHexViewer
                 double peakL = 0.0;
                 for (int i = 0; i < timeL.Length; i++)
                 {
-                    double x = timeL[i] / (double)Max24Pos;
+                    double x = timeL[i] / (double)SpectrumAnalyzer.Max24Pos;
                     double ax = Math.Abs(x);
                     if (ax > peakL) peakL = ax;
                 }
@@ -2142,7 +2028,7 @@ namespace AudioHexViewer
                 double sumSqL = 0.0;
                 for (int i = 0; i < timeL.Length; i++)
                 {
-                    double x = (timeL[i] - meanL) / (double)Max24Pos;
+                    double x = (timeL[i] - meanL) / (double)SpectrumAnalyzer.Max24Pos;
                     sumSqL += x * x;
                 }
                 double rmsL = Math.Sqrt(sumSqL / timeL.Length);
@@ -2170,7 +2056,7 @@ namespace AudioHexViewer
                 double peakR = 0.0;
                 for (int i = 0; i < timeR.Length; i++)
                 {
-                    double x = timeR[i] / (double)Max24Pos;
+                    double x = timeR[i] / (double)SpectrumAnalyzer.Max24Pos;
                     double ax = Math.Abs(x);
                     if (ax > peakR) peakR = ax;
                 }
@@ -2184,7 +2070,7 @@ namespace AudioHexViewer
                 double sumSqR = 0.0;
                 for (int i = 0; i < timeR.Length; i++)
                 {
-                    double x = (timeR[i] - meanR) / (double)Max24Pos;
+                    double x = (timeR[i] - meanR) / (double)SpectrumAnalyzer.Max24Pos;
                     sumSqR += x * x;
                 }
                 double rmsR = Math.Sqrt(sumSqR / timeR.Length);
