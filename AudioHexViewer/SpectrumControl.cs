@@ -148,7 +148,118 @@ namespace AudioHexViewer
 
         // Échelle des labels secondaires X et Y (95% de la taille normale)
         private const float MinorLabelScale = 0.9f;
-        
+
+        private static int CountTrailingZeros(int value)
+        {
+            if (value == 0) return 9; // cas spécial (ne devrait pas arriver ici)
+            int count = 0;
+            while (value % 10 == 0)
+            {
+                count++;
+                value /= 10;
+            }
+            return count;
+        }
+        //
+        private static bool TryChooseBestExactStep(int spanHz, out int segments, out int stepHz)
+        {
+            int[] candidates = { 3, 4, 5, 6, 7, 8, 9, 10 };
+
+            int bestSeg = -1;
+            int bestStep = -1;
+            int bestZeros = -1;
+
+            foreach (int s in candidates)
+            {
+                if (s <= 0) continue;
+                if (spanHz % s != 0) continue;
+
+                int step = spanHz / s;
+                int zeros = CountTrailingZeros(step);
+
+                // priorité 1 : max trailing zeros
+                // tie-break  : step le plus grand (moins chargé)
+                if (zeros > bestZeros || (zeros == bestZeros && step > bestStep))
+                {
+                    bestZeros = zeros;
+                    bestStep = step;
+                    bestSeg = s;
+                }
+            }
+
+            if (bestSeg > 0)
+            {
+                segments = bestSeg;
+                stepHz = bestStep;
+                return true;
+            }
+
+            segments = 0;
+            stepHz = 0;
+            return false;
+        }
+        //
+        private static (int Segments, int StepHz, int SpanAdjustedHz) ChooseBestStepWithSpanAdjustment(int spanHz)
+        {
+            // 1) Si span exact => on prend direct
+            if (TryChooseBestExactStep(spanHz, out int seg, out int step))
+                return (seg, step, spanHz);
+
+            // 2) Sinon, on ajuste span autour de spanHz (recherche locale)
+            // Recherche dans une fenêtre raisonnable +/- 2000 Hz (modifiable)
+            const int searchRadius = 2000;
+
+            int bestSeg = 0;
+            int bestStep = 0;
+            int bestSpanAdj = spanHz;
+            int bestZeros = -1;
+            int bestDelta = int.MaxValue;
+
+            for (int delta = 1; delta <= searchRadius; delta++)
+            {
+                // On teste spanHz - delta puis spanHz + delta (symétrique)
+                int[] spansToTry = { spanHz - delta, spanHz + delta };
+
+                foreach (int candidateSpan in spansToTry)
+                {
+                    if (candidateSpan <= 0) continue;
+
+                    if (TryChooseBestExactStep(candidateSpan, out int s, out int st))
+                    {
+                        int zeros = CountTrailingZeros(st);
+
+                        // priorité 1 : max trailing zeros
+                        // priorité 2 : delta minimal (span ajusté le plus proche)
+                        // tie-break : step le plus grand
+                        if (zeros > bestZeros ||
+                            (zeros == bestZeros && delta < bestDelta) ||
+                            (zeros == bestZeros && delta == bestDelta && st > bestStep))
+                        {
+                            bestZeros = zeros;
+                            bestDelta = delta;
+                            bestSeg = s;
+                            bestStep = st;
+                            bestSpanAdj = candidateSpan;
+                        }
+                    }
+                }
+
+                // petit early-exit : si on trouve 4 zéros (ex 10000), c'est déjà excellent
+                if (bestZeros >= 4)
+                    break;
+            }
+
+            // fallback absolu (ne devrait pas arriver) : 6 segments
+            if (bestSeg == 0)
+            {
+                bestSeg = 6;
+                bestStep = Math.Max(1, spanHz / bestSeg);
+                bestSpanAdj = bestStep * bestSeg;
+            }
+
+            return (bestSeg, bestStep, bestSpanAdj);
+        }
+
 
 
         private static double NiceStep125(double rawStep)
@@ -1886,36 +1997,41 @@ namespace AudioHexViewer
                 area.AxisX.IsLogarithmic = false;
 
                 double xSpan = fMax - fMin;
+                if (xSpan <= 0) xSpan = 1.0;
 
-                // cible ~8 graduations “lisibles” (ajuste 6..10 selon ton goût)
-                double raw = xSpan / 6.0;
-                double xMajor = NiceStep125(raw);
+                int spanHz = (int)Math.Round(xSpan);
+                if (spanHz < 1) spanHz = 1;
 
-                // Grille + labels calés sur xMajor
-                area.AxisX.MajorGrid.Enabled = true;
-                area.AxisX.MajorGrid.LineDashStyle = ChartDashStyle.Solid;
-                area.AxisX.MajorGrid.Interval = xMajor;
+                var grid = ChooseBestStepWithSpanAdjustment(spanHz);
 
-                area.AxisX.MinorGrid.Enabled = true;
-                area.AxisX.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
-                area.AxisX.MinorGrid.LineColor = Color.LightGray;
-                area.AxisX.MinorGrid.Interval = xMajor / 5.0;
+                // NOTE: labels = grid.Segments + 1
+                double xMajor = grid.StepHz;
 
+                // On conserve Fmin, on ajuste Fmax selon span ajusté
+                double fMaxAdjusted = fMin + grid.SpanAdjustedHz;
 
-                // (optionnel mais utile) : aligner les ticks sur un multiple de xMajor
-                double first = AlignToStepCeil(fMin, xMajor);
+                area.AxisX.Minimum = fMin;
+                area.AxisX.Maximum = fMaxAdjusted;
+
+                // Puis config ticks/grids avec offset 0 (comme on avait établi)
                 area.AxisX.Interval = xMajor;
-                area.AxisX.IntervalOffset = first - fMin;
+                area.AxisX.IntervalOffset = 0.0;
+
                 area.AxisX.LabelStyle.Interval = xMajor;
-                area.AxisX.LabelStyle.IntervalOffset = first - fMin;
+                area.AxisX.LabelStyle.IntervalOffset = 0.0;
 
-                // --- Evite le "barre noire" : ticks mineurs trop denses ---
-                area.AxisX.MinorTickMark.Enabled = false;
-
-                // Et on force les ticks majeurs à suivre exactement xMajor
                 area.AxisX.MajorTickMark.Enabled = true;
                 area.AxisX.MajorTickMark.Interval = xMajor;
-                area.AxisX.MajorTickMark.IntervalOffset = first - fMin;
+                area.AxisX.MajorTickMark.IntervalOffset = 0.0;
+
+                area.AxisX.MajorGrid.Enabled = true;
+                area.AxisX.MajorGrid.Interval = xMajor;
+                area.AxisX.MajorGrid.IntervalOffset = 0.0;
+
+                area.AxisX.MinorGrid.Enabled = true;
+                area.AxisX.MinorGrid.Interval = xMajor / 5.0;
+                area.AxisX.MinorGrid.IntervalOffset = 0.0;
+
 
                 // Optionnel: ticks majeurs plus courts (si tu veux)
                 area.AxisX.MajorTickMark.Size = 2f;
@@ -2377,7 +2493,7 @@ namespace AudioHexViewer
                                 float lastLabelRight = float.NegativeInfinity;
 
                                 // Aligne le premier tick mineur sur la grille mineure
-                                double firstMinor = AlignToStepCeil(fMin, xMinor);
+                                double firstMinor = fMin + xMinor;
 
                                 // Petite tolérance pour tester "multiple de majeur"
                                 const double eps = 1e-9;
@@ -2387,7 +2503,7 @@ namespace AudioHexViewer
                                     if (f < fMin - eps) continue;
 
                                     // Skip si c'est un majeur (multiple de xMajor)
-                                    double q = f / xMajor;
+                                    double q = (f - fMin) / xMajor;
                                     if (Math.Abs(q - Math.Round(q)) < 1e-6)
                                         continue;
 
