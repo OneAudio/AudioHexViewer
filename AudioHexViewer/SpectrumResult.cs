@@ -1,4 +1,6 @@
-﻿namespace AudioHexViewer
+﻿using MathNet.Numerics;
+
+namespace AudioHexViewer
 {
     internal sealed class SpectrumResult
     {
@@ -8,6 +10,8 @@
 
         public double[]? LeftDbFs { get; }
         public double[]? RightDbFs { get; }
+        public Complex32[]? LeftFft { get; }
+        public Complex32[]? RightFft { get; }
 
         // Buffers temporels bruts (avant Remove DC + fenêtre) pour tes stats
         public double[]? LeftTimeRaw { get; }
@@ -20,7 +24,10 @@
             double[]? leftDbFs,
             double[]? rightDbFs,
             double[]? leftTimeRaw,
-            double[]? rightTimeRaw)
+            double[]? rightTimeRaw,
+            Complex32[]? leftFft,
+            Complex32[]? rightFft
+            )
         {
             FftSize = fftSize;
             SampleRate = sampleRate;
@@ -31,6 +38,9 @@
 
             LeftTimeRaw = leftTimeRaw;
             RightTimeRaw = rightTimeRaw;
+
+            LeftFft = leftFft;
+            RightFft = rightFft;
         }
     }
 }

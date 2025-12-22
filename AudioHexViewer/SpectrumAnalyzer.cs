@@ -89,7 +89,35 @@ namespace AudioHexViewer
 
             return spectrum;
         }
+        //
+        public static double[] ComputeSpectrumDbFsFromFft(MathNet.Numerics.Complex32[] fft, double windowSum)
+        {
+            int N = fft.Length;
+            int bins = N / 2 + 1;
+            var spectrum = new double[bins];
 
+            if (windowSum <= 0.0)
+                windowSum = N;
+
+            double scale = 2.0 / windowSum / Max24Pos;
+
+            for (int k = 0; k < bins; k++)
+            {
+                double mag = fft[k].Magnitude;
+                double amp = mag * scale;
+
+                double db = (amp <= 0.0) ? -200.0 : 20.0 * Math.Log10(amp);
+
+                if (db < -200.0) db = -200.0;
+                if (db > 0.0) db = 0.0;
+
+                spectrum[k] = db;
+            }
+
+            return spectrum;
+        }
+
+        //
         public static double[] BuildFreqAxis(int sampleRate, int fftSize)
         {
             if (sampleRate <= 0)
@@ -134,17 +162,39 @@ namespace AudioHexViewer
             double[]? specL = null;
             double[]? specR = null;
 
+            MathNet.Numerics.Complex32[]? fftL = null;
+            MathNet.Numerics.Complex32[]? fftR = null;
+
             if (bufL != null)
             {
                 double sumWin = ApplyWindowInPlace(bufL, options.WindowType);
-                specL = ComputeSpectrumDbFs(bufL, sumWin);
+
+                if (options.NeedComplexFft)
+                {
+                    fftL = ComputeComplexFft(bufL);
+                    specL = ComputeSpectrumDbFsFromFft(fftL, sumWin);
+                }
+                else
+                {
+                    specL = ComputeSpectrumDbFs(bufL, sumWin);
+                }
             }
 
             if (bufR != null)
             {
                 double sumWin = ApplyWindowInPlace(bufR, options.WindowType);
-                specR = ComputeSpectrumDbFs(bufR, sumWin);
+
+                if (options.NeedComplexFft)
+                {
+                    fftR = ComputeComplexFft(bufR);
+                    specR = ComputeSpectrumDbFsFromFft(fftR, sumWin);
+                }
+                else
+                {
+                    specR = ComputeSpectrumDbFs(bufR, sumWin);
+                }
             }
+
 
             // Si une seule voie dispo : on l’utilise au moins comme Left
             if (specL == null && specR != null)
@@ -154,13 +204,26 @@ namespace AudioHexViewer
             double[] freq = BuildFreqAxis(sampleRate, fftSize);
 
             return new SpectrumResult(
-                fftSize,
-                sampleRate,
-                freq,
-                specL,
-                specR,
-                rawL,
-                rawR);
+            fftSize,
+            sampleRate,
+            freq,
+            specL,
+            specR,
+            rawL,
+            rawR,
+            fftL,
+            fftR);
+
+        }
+        public static MathNet.Numerics.Complex32[] ComputeComplexFft(double[] timeData)
+        {
+            int N = timeData.Length;
+            var fft = new MathNet.Numerics.Complex32[N];
+            for (int i = 0; i < N; i++)
+                fft[i] = new MathNet.Numerics.Complex32((float)timeData[i], 0f);
+
+            Fourier.Forward(fft, FourierOptions.Matlab);
+            return fft;
         }
 
 
