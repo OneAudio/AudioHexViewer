@@ -3,12 +3,13 @@ Chose à faire :
 Le 19/12/2025
 
    
-1- Ajouter 8 mémoires de courbes (A mettre dans un nouvel onglet)
+1- Ajouter 8 mémoires de courbes (A mettre dans un nouvel onglet)               --> OK fait le 22/12/2025,
 Ces courbes doivent être écrites dans un fichier nommé "FFTmemX.dat"
 avec X le numéro de courbe de 0 à 7 (8 courbes).
 
 2 - Ajouter le nécessaire pour qu'il soit possible de choisir les couleurs
 des différentes courbes : Left , Right, Left-Hold, Right-Hold, Mem 0 à Mem 8
+
 0b - Ajout du module qui permet de prendre le contre du SR.
 (Besoin d'ajouter une combobox pour la selection du SR).
 

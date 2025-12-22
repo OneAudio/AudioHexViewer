@@ -25,7 +25,14 @@ namespace AudioHexViewer
 
         private readonly OverlayManager _overlays = new OverlayManager();
 
-
+        private readonly SpectrumMetricsOptions _metricsOpt = new SpectrumMetricsOptions
+        {
+            MinFreqHz = 20.0,
+            MaxFreqHz = 0.0,         // 0 => Nyquist
+            ExcludeDc = true,
+            ToneHalfWidthBins = 1,   // ±1 bin
+            MaxHarmonics = 5
+        };
 
         public enum ChannelMode
         {
@@ -1913,6 +1920,50 @@ namespace AudioHexViewer
             {
                 lblRightRms.Text = "";
                 lblRightPeak.Text = "";
+            }
+            // --- Mesures analytiques : LEFT ---
+            if (lblLeftMeas != null && currentLeftSpectrum != null && _sampleRate > 0 && lastFftSize > 0)
+            {
+                var m = SpectrumMetrics.ComputeChannel(currentLeftSpectrum, _sampleRate, lastFftSize, _metricsOpt);
+
+                if (m.Valid)
+                {
+                    lblLeftMeas.Text =
+                        $"F0: {m.FundamentalHz:F1} Hz\n" +
+                        $"THD: {m.ThdDb:F1} dB\n" +
+                        $"THD+N: {m.ThdNDb:F1} dB\n" +
+                        $"SINAD: {m.SinadDb:F1} dB\n" +
+                        $"SNR: {m.SnrDb:F1} dB\n" +
+                        $"SFDR: {m.SfdrDb:F1} dB";
+                }
+                else
+                {
+                    lblLeftMeas.Text = "—";
+                }
+            }
+            // --- Mesures analytiques : RIGHT ---
+            if (lblRightMeas != null && currentRightSpectrum != null && _sampleRate > 0 && lastFftSize > 0)
+            {
+                var m = SpectrumMetrics.ComputeChannel(currentRightSpectrum, _sampleRate, lastFftSize, _metricsOpt);
+
+                if (m.Valid)
+                {
+                    lblRightMeas.Text =
+                        $"F0: {m.FundamentalHz:F1} Hz\n" +
+                        $"THD: {m.ThdDb:F1} dB\n" +
+                        $"THD+N: {m.ThdNDb:F1} dB\n" +
+                        $"SINAD: {m.SinadDb:F1} dB\n" +
+                        $"SNR: {m.SnrDb:F1} dB\n" +
+                        $"SFDR: {m.SfdrDb:F1} dB";
+                }
+                else
+                {
+                    lblRightMeas.Text = "—";
+                }
+            }
+            else if (lblRightMeas != null)
+            {
+                lblRightMeas.Text = "";
             }
 
             RefreshCursorAfterRedraw();
