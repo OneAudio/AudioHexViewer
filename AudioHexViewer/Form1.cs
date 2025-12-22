@@ -887,6 +887,12 @@ namespace AudioHexViewer
 
                 menuOverlay.DropDownItems.Add(slot);
             }
+            menuOverlay.DropDownItems.Add(new ToolStripSeparator());
+
+            var miClearAll = new ToolStripMenuItem("Clear all…");
+            miClearAll.Click += OverlayClearAll_Click;
+            menuOverlay.DropDownItems.Add(miClearAll);
+
 
             // Ajouter au menu principal (top-level)
             menuStrip1.Items.Add(menuOverlay);
@@ -3000,6 +3006,33 @@ namespace AudioHexViewer
                 }
             }
         }
+        //
+        private void OverlayClearAll_Click(object? sender, EventArgs e)
+        {
+            if (spectrumControl == null)
+            {
+                MessageBox.Show(this, "Le panneau Spectrum n'est pas initialisé.", "Overlay");
+                return;
+            }
+
+            var r = MessageBox.Show(
+                this,
+                "Supprimer tous les overlays (slots 1 à 8) ?",
+                "Overlay - Confirmation",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+
+            if (r != DialogResult.Yes)
+                return;
+
+            for (int i = 0; i < OverlayManager.MaxOverlays; i++)
+                spectrumControl.OverlayClear(i);
+
+            UpdateOverlayMenuCaptions();
+            SaveOverlayState();
+        }
+
 
     }
 
