@@ -149,6 +149,8 @@ namespace AudioHexViewer
 
         private HistogramControl? histogramControl;
         private SpectrumControl? spectrumControl;
+        private ToolStripMenuItem? menuOverlay;
+
 
 
         // Limitation de frquence pour la mise  jour des textes (pour viter le scintillement)
@@ -750,6 +752,8 @@ namespace AudioHexViewer
 
             InitAnalysisUi();
 
+            InitOverlayMenu();
+
             //this.WindowState = FormWindowState.Maximized; // Plein cran au dmarrage
             ShowHistogramArea();
             ShowSpectrumArea();
@@ -837,6 +841,102 @@ namespace AudioHexViewer
             UpdateBufferMenuChecks();
 
             this.FormClosing += Form1_FormClosing;
+        }
+        //
+        private void InitOverlayMenu()
+        {
+            menuOverlay = new ToolStripMenuItem("Overlay");
+
+            // 8 slots
+            for (int i = 0; i < OverlayManager.MaxOverlays; i++)
+            {
+                var slot = new ToolStripMenuItem($"Slot {i + 1}");
+                slot.Tag = i;
+
+                var miLoad = new ToolStripMenuItem("Load…");
+                miLoad.Tag = ("load", i);
+                miLoad.Click += OverlayMenu_Click;
+
+                var miSave = new ToolStripMenuItem("Save…");
+                miSave.Tag = ("save", i);
+                miSave.Click += OverlayMenu_Click;
+
+                var miEnabled = new ToolStripMenuItem("Enabled");
+                miEnabled.CheckOnClick = true;
+                miEnabled.Checked = true;
+                miEnabled.Tag = ("enabled", i);
+                miEnabled.CheckedChanged += OverlayMenu_CheckedChanged;
+
+                var miClear = new ToolStripMenuItem("Clear");
+                miClear.Tag = ("clear", i);
+                miClear.Click += OverlayMenu_Click;
+
+                slot.DropDownItems.Add(miLoad);
+                slot.DropDownItems.Add(miSave);
+                slot.DropDownItems.Add(new ToolStripSeparator());
+                slot.DropDownItems.Add(miEnabled);
+                slot.DropDownItems.Add(miClear);
+
+                menuOverlay.DropDownItems.Add(slot);
+            }
+
+            // Ajouter au menu principal (top-level)
+            menuStrip1.Items.Add(menuOverlay);
+        }
+        //
+        private void OverlayMenu_Click(object? sender, EventArgs e)
+        {
+            if (sender is not ToolStripMenuItem mi || mi.Tag is not ValueTuple<string, int> tag)
+                return;
+
+            var (action, idx) = tag;
+
+            if (spectrumControl == null)
+            {
+                MessageBox.Show("Le panneau Spectrum n'est pas initialisé.", "Overlay");
+                return;
+            }
+
+            try
+            {
+                if (action == "load")
+                {
+                    using var ofd = new OpenFileDialog();
+                    ofd.Filter = "Overlay JSON (*.json)|*.json|All files (*.*)|*.*";
+                    if (ofd.ShowDialog(this) == DialogResult.OK)
+                        spectrumControl.OverlayLoad(idx, ofd.FileName);
+                }
+                else if (action == "save")
+                {
+                    using var sfd = new SaveFileDialog();
+                    sfd.Filter = "Overlay JSON (*.json)|*.json|All files (*.*)|*.*";
+                    sfd.FileName = $"overlay_slot{idx + 1}.json";
+                    if (sfd.ShowDialog(this) == DialogResult.OK)
+                        spectrumControl.OverlaySave(idx, sfd.FileName, $"Overlay {idx + 1}");
+                }
+                else if (action == "clear")
+                {
+                    spectrumControl.OverlayClear(idx);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, "Overlay", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void OverlayMenu_CheckedChanged(object? sender, EventArgs e)
+        {
+            if (sender is not ToolStripMenuItem mi || mi.Tag is not ValueTuple<string, int> tag)
+                return;
+
+            var (action, idx) = tag;
+            if (action != "enabled") return;
+
+            if (spectrumControl == null)
+                return;
+
+            spectrumControl.OverlaySetEnabled(idx, mi.Checked);
         }
         //
         private void ApplyAnalysisSettings(SessionSettings s)

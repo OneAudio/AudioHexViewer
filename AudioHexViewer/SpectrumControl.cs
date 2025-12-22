@@ -23,6 +23,10 @@ namespace AudioHexViewer
 
         private readonly SpectrumPostProcessor _post = new SpectrumPostProcessor();
 
+        private readonly OverlayManager _overlays = new OverlayManager();
+
+
+
         public enum ChannelMode
         {
             Left,
@@ -101,7 +105,7 @@ namespace AudioHexViewer
         private double _currentYMinor = 1.0;
         private double _currentYMajor = 5.0;
 
-
+        //
         // Formatage axe Y (dBFS), divisions secondaires
         private static string FormatDbMinor(double db, double stepMinor)
         {
@@ -1716,7 +1720,58 @@ namespace AudioHexViewer
             // >>> MODIF COMMIT 3 : peak-hold vient du post-processor
             double[]? peakL = peakHoldOn ? _post.GetPeakLeft() : null;
             double[]? peakR = peakHoldOn ? _post.GetPeakRight() : null;
+            //
+            // --- Overlays ---
+            foreach (var slot in _overlays.Slots)
+            {
+                if (!slot.Enabled || slot.Data == null)
+                    continue;
 
+                // Compatibilité stricte (simple et sûr pour commencer)
+                if (slot.Data.SampleRate != _sampleRate || slot.Data.FftSize != lastFftSize)
+                    continue;
+
+                // Si le mode affiche Left, on superpose LeftDbFs (sinon fallback RightDbFs)
+                if (showLeft)
+                {
+                    var ov = slot.Data.LeftDbFs ?? slot.Data.RightDbFs;
+                    if (ov != null)
+                    {
+                        var s = new ChartSeries($"OV{slot.Index + 1}_L");
+                        s.ChartType = SeriesChartType.FastLine;
+                        s.ChartArea = "SpectrumArea";
+                        s.Color = Color.Gray;
+                        s.BorderDashStyle = ChartDashStyle.Dot;
+                        s.BorderWidth = 1;
+
+                        for (int i = startIndex; i < freqAxis.Length && i < ov.Length; i++)
+                            s.Points.AddXY(freqAxis[i], ov[i]);
+
+                        chartSpectrum.Series.Add(s);
+                    }
+                }
+
+                // Si le mode affiche Right, on superpose RightDbFs (sinon fallback LeftDbFs)
+                if (showRight)
+                {
+                    var ov = slot.Data.RightDbFs ?? slot.Data.LeftDbFs;
+                    if (ov != null)
+                    {
+                        var s = new ChartSeries($"OV{slot.Index + 1}_R");
+                        s.ChartType = SeriesChartType.FastLine;
+                        s.ChartArea = "SpectrumArea";
+                        s.Color = Color.DarkGray;
+                        s.BorderDashStyle = ChartDashStyle.Dot;
+                        s.BorderWidth = 1;
+
+                        for (int i = startIndex; i < freqAxis.Length && i < ov.Length; i++)
+                            s.Points.AddXY(freqAxis[i], ov[i]);
+
+                        chartSpectrum.Series.Add(s);
+                    }
+                }
+            }
+            //
             // Courbe gauche
             if (showLeft)
             {
@@ -2261,7 +2316,54 @@ namespace AudioHexViewer
                 _overlayInfoAnno.Visible = false;
 
         }
+        //
+        public void OverlayLoad(int slotIndex, string filePath)
+        {
+            _overlays.LoadIntoSlot(slotIndex, filePath);
+            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
+        }
 
+        public void OverlayClear(int slotIndex)
+        {
+            _overlays.ClearSlot(slotIndex);
+            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
+        }
+
+        public void OverlaySetEnabled(int slotIndex, bool enabled)
+        {
+            _overlays.Slots[slotIndex].Enabled = enabled;
+            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
+        }
+
+        public bool OverlayIsLoaded(int slotIndex) => _overlays.Slots[slotIndex].Data != null;
+        public bool OverlayIsEnabled(int slotIndex) => _overlays.Slots[slotIndex].Enabled;
+
+        public void OverlaySave(int slotIndex, string filePath, string name)
+        {
+            if (freqAxis == null || currentLeftSpectrum == null || _sampleRate <= 0 || lastFftSize <= 0)
+                throw new InvalidOperationException("Pas de spectre courant à sauvegarder.");
+
+            // Snapshot = ce qui est affiché (après averaging)
+            var snap = new SpectrumResult(
+                lastFftSize,
+                _sampleRate,
+                freqAxis,
+                currentLeftSpectrum,
+                currentRightSpectrum,
+                lastTimeLeft,
+                lastTimeRight,
+                null,
+                null);
+
+            var options = new SpectrumOptions
+            {
+                WindowType = lastWindow,
+                RemoveDc = (chkRemoveDC != null && chkRemoveDC.Checked),
+                NeedComplexFft = false
+            };
+
+            _overlays.SaveToFile(filePath, snap, name, options);
+        }
 
         private void button1_Click(object sender, EventArgs e)
         {
