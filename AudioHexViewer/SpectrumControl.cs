@@ -1395,7 +1395,6 @@ namespace AudioHexViewer
                 }
             }
         }
-
         //
         private void AcquireOnce()
         {
@@ -1404,16 +1403,17 @@ namespace AudioHexViewer
 
             // 1) Taille FFT
             int N = (_forcedFftSize.HasValue && _forcedFftSize.Value > 0)
-            ? _forcedFftSize.Value
-            : (lastFftSize > 0 ? lastFftSize : 65536);
+                ? _forcedFftSize.Value
+                : (lastFftSize > 0 ? lastFftSize : 65536);
 
-            if (N < 512) N = 512;
+            if (N < 512) N = 512;   
             lastFftSize = N;
 
             UpdateOverlayInfo();
 
             // 2) Durée correspondant à N échantillons
             double msExact = (double)N * 1000.0 / _sampleRate;
+
             // 3) Récupérer L/R
             var (left, right) = _provider(N);
             var leftSamples = left ?? Array.Empty<int>();
@@ -1425,52 +1425,19 @@ namespace AudioHexViewer
                 return;
             }
 
-            // 4) Construire buffers double pour chaque voie
-            double[]? bufL = leftSamples.Length > 0 ? SpectrumAnalyzer.BuildChannelBuffer(leftSamples, N) : null;
-            double[]? bufR = rightSamples.Length > 0 ? SpectrumAnalyzer.BuildChannelBuffer(rightSamples, N) : null;
-
-            // Copie brute pour les stats (avant remove DC et avant fenêtre)
-            double[]? bufLRaw = (bufL != null) ? (double[])bufL.Clone() : null;
-            double[]? bufRRaw = (bufR != null) ? (double[])bufR.Clone() : null;
-
-
-            // 5) Supprimer DC si demandé
+            // 4) Calcul complet d'une "frame" (buffers bruts + remove DC + fenêtre + FFT + axe freq)
             bool removeDc = (chkRemoveDC != null && chkRemoveDC.Checked);
 
-            if (removeDc)
+            var options = new SpectrumOptions
             {
-                if (bufL != null)
-                {
-                    double mean = bufL.Average();
-                    for (int i = 0; i < bufL.Length; i++)
-                        bufL[i] -= mean;
-                }
-                if (bufR != null)
-                {
-                    double mean = bufR.Average();
-                    for (int i = 0; i < bufR.Length; i++)
-                        bufR[i] -= mean;
-                }
-            }
+                WindowType = lastWindow,
+                RemoveDc = removeDc
+            };
 
-            // 6) Fenêtre + FFT par voie
-            double[]? specL = null;
-            double[]? specR = null;
+            SpectrumResult result = SpectrumAnalyzer.ComputeFrame(leftSamples, rightSamples, N, _sampleRate, options);
 
-            if (bufL != null)
-            {
-                double sumWinL = SpectrumAnalyzer.ApplyWindowInPlace(bufL, lastWindow);
-                specL = SpectrumAnalyzer.ComputeSpectrumDbFs(bufL, sumWinL);
-            }
-            if (bufR != null)
-            {
-                double sumWinR = SpectrumAnalyzer.ApplyWindowInPlace(bufR, lastWindow);
-                specR = SpectrumAnalyzer.ComputeSpectrumDbFs(bufR, sumWinR);
-            }
-
-            // Si une seule voie, on l’utilise au moins comme Left
-            if (specL == null && specR != null)
-                specL = (double[])specR.Clone();
+            double[]? specL = result.LeftDbFs;
+            double[]? specR = result.RightDbFs;
 
             if (specL == null)
             {
@@ -1485,16 +1452,17 @@ namespace AudioHexViewer
             UpdatePeakHoldFromCurrentSpectrum();
 
             // 8) Axe fréquence
-            freqAxis = SpectrumAnalyzer.BuildFreqAxis(_sampleRate, N);
+            freqAxis = result.FreqAxisHz;
 
             // On garde une copie des derniers buffers temps pour les stats
-            lastTimeLeft = bufLRaw;
-            lastTimeRight = bufRRaw;
+            lastTimeLeft = result.LeftTimeRaw;
+            lastTimeRight = result.RightTimeRaw;
 
             // 9) Mise à jour graphe + stats temporelles
-            UpdateSpectrumChartAndStats(bufLRaw, bufRRaw);
-        }               
-
+            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
+        }
+        //
+        //
         private void ApplyAveraging(double[] leftNewDb, double[]? rightNewDb)
         {
             // None => pas de moyenne

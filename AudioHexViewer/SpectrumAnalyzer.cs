@@ -104,5 +104,65 @@ namespace AudioHexViewer
 
             return axis;
         }
+        //
+        public static SpectrumResult ComputeFrame( int[] leftSamples, int[] rightSamples, int fftSize, int sampleRate, SpectrumOptions options)
+        {
+            // 1) Construire buffers double (dernier N, zero-pad si besoin)
+            double[]? bufL = (leftSamples != null && leftSamples.Length > 0) ? BuildChannelBuffer(leftSamples, fftSize) : null;
+            double[]? bufR = (rightSamples != null && rightSamples.Length > 0) ? BuildChannelBuffer(rightSamples, fftSize) : null;
+
+            // 2) Copier brut pour les stats (AVANT remove DC + fenêtre)
+            double[]? rawL = (bufL != null) ? (double[])bufL.Clone() : null;
+            double[]? rawR = (bufR != null) ? (double[])bufR.Clone() : null;
+
+            // 3) Remove DC si demandé
+            if (options.RemoveDc)
+            {
+                if (bufL != null)
+                {
+                    double mean = bufL.Average();
+                    for (int i = 0; i < bufL.Length; i++) bufL[i] -= mean;
+                }
+                if (bufR != null)
+                {
+                    double mean = bufR.Average();
+                    for (int i = 0; i < bufR.Length; i++) bufR[i] -= mean;
+                }
+            }
+
+            // 4) Fenêtre + FFT par voie
+            double[]? specL = null;
+            double[]? specR = null;
+
+            if (bufL != null)
+            {
+                double sumWin = ApplyWindowInPlace(bufL, options.WindowType);
+                specL = ComputeSpectrumDbFs(bufL, sumWin);
+            }
+
+            if (bufR != null)
+            {
+                double sumWin = ApplyWindowInPlace(bufR, options.WindowType);
+                specR = ComputeSpectrumDbFs(bufR, sumWin);
+            }
+
+            // Si une seule voie dispo : on l’utilise au moins comme Left
+            if (specL == null && specR != null)
+                specL = (double[])specR.Clone();
+
+            // 5) Axe fréquence
+            double[] freq = BuildFreqAxis(sampleRate, fftSize);
+
+            return new SpectrumResult(
+                fftSize,
+                sampleRate,
+                freq,
+                specL,
+                specR,
+                rawL,
+                rawR);
+        }
+
+
     }
 }
