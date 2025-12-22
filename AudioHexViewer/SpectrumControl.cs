@@ -21,7 +21,7 @@ namespace AudioHexViewer
         private int _hopSamples = 0;
         private System.Windows.Forms.Timer? liveTimer;
 
-        
+        private readonly SpectrumPostProcessor _post = new SpectrumPostProcessor();
 
         public enum ChannelMode
         {
@@ -43,32 +43,13 @@ namespace AudioHexViewer
 
         // Averaging
         private int avgTargetCount = 1;
-        private double[]? avgLeftSpectrum;
-        private double[]? avgRightSpectrum;
-
-        // --- Batch averaging (vraie moyenne sur N frames) ---
-        private int avgFrameCount = 0;          // combien de frames accumulées
-        private double[]? avgSumLeftPower = null;   // somme des puissances (linéaire)
-        private double[]? avgSumRightPower = null;
-
-        // Moving average (glissant sur N frames)
-        private int avgRingPos = 0;        // index courant dans l’anneau
-        private int avgFillCount = 0;      // 0..N (sature à N pour l'affichage)
-
-        private double[][]? avgRingLeftPower = null;   // [N][bins]
-        private double[][]? avgRingRightPower = null;  // [N][bins]
-
-
+        
         // Spectres courants & axe fréquence
         private double[]? currentLeftSpectrum;
         private double[]? currentRightSpectrum;
         private double[]? freqAxis;
 
         private bool isLive = false;
-
-        // Peak-hold (en dBFS) : max par bin depuis le dernier reset
-        private double[]? peakHoldLeftDb;
-        private double[]? peakHoldRightDb;
 
         // Axes personnalisés (null = auto)
         private double? customYMin = null;
@@ -696,7 +677,7 @@ namespace AudioHexViewer
                 {
                     // Quand on active : repartir de zéro pour que le peak-hold soit cohérent
                     if (chkPeakHold.Checked)
-                        ResetPeakHoldState();
+                        _post.ResetPeakHoldState();
 
                     UpdateSpectrumChartAndStats();
                 };
@@ -1333,68 +1314,19 @@ namespace AudioHexViewer
         //
         private void ResetAveragingState()
         {
-            avgFrameCount = 0;       // tu peux le garder, mais il ne servira plus au calcul
-            avgRingPos = 0;
-            avgFillCount = 0;
-
-            avgSumLeftPower = null;
-            avgSumRightPower = null;
-
-            avgRingLeftPower = null;
-            avgRingRightPower = null;
-
+            _post.ResetAveragingState();
             UpdateAvgProgressUi(0, avgTargetCount);
         }
+
         //
         // ---------------- PEAK HOLD ----------------
 
-        private void ResetPeakHoldState()
-        {
-            peakHoldLeftDb = null;
-            peakHoldRightDb = null;
-        }
-
         private void btnResetPeakHold_Click(object? sender, EventArgs e)
         {
-            ResetPeakHoldState();
+            _post.ResetPeakHoldState();
             UpdateSpectrumChartAndStats();
         }
-
-        private void UpdatePeakHoldFromCurrentSpectrum()
-        {
-            // Peak-hold actif uniquement si la checkbox est cochée
-            if (chkPeakHold == null || !chkPeakHold.Checked)
-                return;
-
-            if (currentLeftSpectrum == null)
-                return;
-
-            int bins = currentLeftSpectrum.Length;
-
-            // (Re)alloc si N change
-            if (peakHoldLeftDb == null || peakHoldLeftDb.Length != bins)
-                peakHoldLeftDb = Enumerable.Repeat(-200.0, bins).ToArray();
-
-            for (int i = 0; i < bins; i++)
-            {
-                double v = currentLeftSpectrum[i];
-                if (v > peakHoldLeftDb[i]) peakHoldLeftDb[i] = v;
-            }
-
-            if (currentRightSpectrum != null)
-            {
-                int n = currentRightSpectrum.Length;
-
-                if (peakHoldRightDb == null || peakHoldRightDb.Length != n)
-                    peakHoldRightDb = Enumerable.Repeat(-200.0, n).ToArray();
-
-                for (int i = 0; i < n; i++)
-                {
-                    double v = currentRightSpectrum[i];
-                    if (v > peakHoldRightDb[i]) peakHoldRightDb[i] = v;
-                }
-            }
-        }
+        //        
         //
         private void AcquireOnce()
         {
@@ -1445,11 +1377,22 @@ namespace AudioHexViewer
                 return;
             }
 
-            // 7) Moyennage
-            ApplyAveraging(specL, specR);
+            // Averaging (piloté par comboAveraging -> avgTargetCount)
+            _post.ApplyAveraging(specL, specR, avgTargetCount,
+                out currentLeftSpectrum!,
+                out currentRightSpectrum,
+                out int avgFill);
+
+            if (avgTargetCount <= 1)
+                UpdateAvgProgressUi(0, 0);
+            else
+                UpdateAvgProgressUi(avgFill, avgTargetCount);
 
             // Peak-hold (sur la courbe déjà calculée et moyennée)
-            UpdatePeakHoldFromCurrentSpectrum();
+            bool peakEnabled = (chkPeakHold != null && chkPeakHold.Checked);
+            _post.UpdatePeakHold(currentLeftSpectrum, currentRightSpectrum, peakEnabled);
+
+
 
             // 8) Axe fréquence
             freqAxis = result.FreqAxisHz;
@@ -1463,131 +1406,6 @@ namespace AudioHexViewer
         }
         //
         //
-        private void ApplyAveraging(double[] leftNewDb, double[]? rightNewDb)
-        {
-            // None => pas de moyenne
-            if (avgTargetCount <= 1)
-            {
-                ResetAveragingState();
-                currentLeftSpectrum = leftNewDb;
-                currentRightSpectrum = rightNewDb;
-                UpdateAvgProgressUi(0, 0);
-                return;
-            }
-
-            int bins = leftNewDb.Length;
-
-            // (Re)allocation si taille FFT change ou si N change
-            if (avgSumLeftPower == null || avgSumLeftPower.Length != bins ||
-                avgRingLeftPower == null || avgRingLeftPower.Length != avgTargetCount)
-            {
-                avgSumLeftPower = new double[bins];
-                avgRingLeftPower = new double[avgTargetCount][];
-                for (int i = 0; i < avgTargetCount; i++)
-                    avgRingLeftPower[i] = new double[bins];
-
-                avgRingPos = 0;
-                avgFillCount = 0;
-            }
-
-            bool hasRight = (rightNewDb != null);
-            if (hasRight)
-            {
-                if (avgSumRightPower == null || avgSumRightPower.Length != bins ||
-                    avgRingRightPower == null || avgRingRightPower.Length != avgTargetCount)
-                {
-                    avgSumRightPower = new double[bins];
-                    avgRingRightPower = new double[avgTargetCount][];
-                    for (int i = 0; i < avgTargetCount; i++)
-                        avgRingRightPower[i] = new double[bins];
-                }
-            }
-            else
-            {
-                avgSumRightPower = null;
-                avgRingRightPower = null;
-            }
-
-            // 1) Retirer la frame la plus vieille si la fenêtre est pleine (avgFillCount == N)
-            if (avgFillCount == avgTargetCount)
-            {
-                var oldL = avgRingLeftPower![avgRingPos];
-                for (int i = 0; i < bins; i++)
-                    avgSumLeftPower![i] -= oldL[i];
-
-                if (hasRight && avgRingRightPower != null && avgSumRightPower != null)
-                {
-                    var oldR = avgRingRightPower[avgRingPos];
-                    for (int i = 0; i < bins; i++)
-                        avgSumRightPower[i] -= oldR[i];
-                }
-            }
-
-            // 2) Convert dB(amplitude) -> puissance linéaire (power = 10^(dB/10)) et stocker dans l’anneau
-            var slotL = avgRingLeftPower![avgRingPos];
-            for (int i = 0; i < bins; i++)
-            {
-                double db = leftNewDb[i];
-                double p = (db <= -200.0) ? 0.0 : Math.Pow(10.0, db / 10.0);
-                slotL[i] = p;
-                avgSumLeftPower![i] += p;
-            }
-
-            if (hasRight && rightNewDb != null && avgRingRightPower != null && avgSumRightPower != null)
-            {
-                var slotR = avgRingRightPower[avgRingPos];
-                for (int i = 0; i < bins; i++)
-                {
-                    double db = rightNewDb[i];
-                    double p = (db <= -200.0) ? 0.0 : Math.Pow(10.0, db / 10.0);
-                    slotR[i] = p;
-                    avgSumRightPower[i] += p;
-                }
-            }
-
-            // 3) Avancer dans l’anneau
-            avgRingPos++;
-            if (avgRingPos >= avgTargetCount) avgRingPos = 0;
-
-            // 4) Compteur “warm-up” : 0..N puis saturé à N (affichage seulement)
-            if (avgFillCount < avgTargetCount) avgFillCount++;
-            UpdateAvgProgressUi(avgFillCount, avgTargetCount);
-
-            // 5) Construire le spectre moyen (division par avgFillCount pendant warm-up, puis N)
-            double inv = 1.0 / avgFillCount;
-
-            var avgLeftDb = new double[bins];
-            for (int i = 0; i < bins; i++)
-            {
-                double pAvg = avgSumLeftPower![i] * inv;
-                double db = (pAvg <= 0.0) ? -200.0 : 10.0 * Math.Log10(pAvg);
-                if (db < -200.0) db = -200.0;
-                if (db > 0.0) db = 0.0;
-                avgLeftDb[i] = db;
-            }
-
-            double[]? avgRightDb = null;
-            if (hasRight && avgSumRightPower != null)
-            {
-                avgRightDb = new double[bins];
-                for (int i = 0; i < bins; i++)
-                {
-                    double pAvg = avgSumRightPower[i] * inv;
-                    double db = (pAvg <= 0.0) ? -200.0 : 10.0 * Math.Log10(pAvg);
-                    if (db < -200.0) db = -200.0;
-                    if (db > 0.0) db = 0.0;
-                    avgRightDb[i] = db;
-                }
-            }
-
-            currentLeftSpectrum = avgLeftDb;
-            currentRightSpectrum = avgRightDb;
-        }
-
-
-
-        
-
         private void ChartSpectrum_MouseUp(object? sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Right)
@@ -1659,7 +1477,7 @@ namespace AudioHexViewer
             UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
 
         }
-
+        //
         private void UpdateSpectrumChartAndStats(double[]? timeL, double[]? timeR)
         {
             if (chartSpectrum.ClientSize.Width <= 0 || chartSpectrum.ClientSize.Height <= 0)
@@ -1819,17 +1637,13 @@ namespace AudioHexViewer
                     area.AxisX.Minimum = 1.0;
                 if (area.AxisX.Maximum <= area.AxisX.Minimum)
                     area.AxisX.Maximum = area.AxisX.Minimum * 10.0;
-                //
+
                 // --- LOG : forcer des décades propres ---
-                // Snap du MIN sur la décade inférieure (évite les labels du type 19.99, 199.99...)
                 double minDecade = Math.Pow(10.0, Math.Floor(Math.Log10(area.AxisX.Minimum)));
                 area.AxisX.Minimum = Math.Max(1.0, minDecade);
 
-                // Laisse Maximum tel quel (pas besoin de le monter à la décade suivante)
-                // mais assure la sécurité
                 if (area.AxisX.Maximum <= area.AxisX.Minimum)
                     area.AxisX.Maximum = area.AxisX.Minimum * 10.0;
-                //
 
                 area.AxisX.IsLogarithmic = true;
                 area.AxisX.LogarithmBase = 10.0;
@@ -1839,7 +1653,6 @@ namespace AudioHexViewer
                 area.AxisX.LabelStyle.Interval = 1.0;
                 area.AxisX.MajorTickMark.Interval = 1.0;
 
-
                 // Major = décades, Minor désactivée (sous-divisions dessinées à la main)
                 area.AxisX.MajorGrid.Enabled = true;
                 area.AxisX.MajorGrid.LineDashStyle = ChartDashStyle.Solid;
@@ -1847,12 +1660,10 @@ namespace AudioHexViewer
 
                 area.AxisX.MinorGrid.Enabled = false;
 
-                // 🔧 FIX : la grille peut aussi garder un offset depuis le mode LIN.
-                // En LOG, ça peut décaler les décades hors écran => "disparition" des lignes majeures verticales.
+                // FIX offsets
                 area.AxisX.MajorGrid.IntervalOffset = 0.0;
-                area.AxisX.MinorGrid.IntervalOffset = 0.0;     // (même si MinorGrid est disabled en LOG)
-                area.AxisX.MinorTickMark.IntervalOffset = 0.0; // par sécurité si jamais tu le réactives plus tard
-
+                area.AxisX.MinorGrid.IntervalOffset = 0.0;
+                area.AxisX.MinorTickMark.IntervalOffset = 0.0;
             }
             else
             {
@@ -1865,17 +1676,13 @@ namespace AudioHexViewer
                 if (spanHz < 1) spanHz = 1;
 
                 var grid = ChooseBestStepWithSpanAdjustment(spanHz);
-
-                // NOTE: labels = grid.Segments + 1
                 double xMajor = grid.StepHz;
 
-                // On conserve Fmin, on ajuste Fmax selon span ajusté
                 double fMaxAdjusted = fMin + grid.SpanAdjustedHz;
 
                 area.AxisX.Minimum = fMin;
                 area.AxisX.Maximum = fMaxAdjusted;
 
-                // Puis config ticks/grids avec offset 0 (comme on avait établi)
                 area.AxisX.Interval = xMajor;
                 area.AxisX.IntervalOffset = 0.0;
 
@@ -1894,12 +1701,7 @@ namespace AudioHexViewer
                 area.AxisX.MinorGrid.Interval = xMajor / 5.0;
                 area.AxisX.MinorGrid.IntervalOffset = 0.0;
 
-
-                // Optionnel: ticks majeurs plus courts (si tu veux)
                 area.AxisX.MajorTickMark.Size = 2f;
-
-
-
 
                 area.AxisX.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
                 area.AxisX.MinorGrid.LineColor = Color.LightGray;
@@ -1910,6 +1712,10 @@ namespace AudioHexViewer
             bool showLeft = (mode == "Left" || mode == "L+R");
             bool showRight = (currentRightSpectrum != null) && (mode == "Right" || mode == "L+R");
             bool peakHoldOn = (chkPeakHold != null && chkPeakHold.Checked);
+
+            // >>> MODIF COMMIT 3 : peak-hold vient du post-processor
+            double[]? peakL = peakHoldOn ? _post.GetPeakLeft() : null;
+            double[]? peakR = peakHoldOn ? _post.GetPeakRight() : null;
 
             // Courbe gauche
             if (showLeft)
@@ -1925,7 +1731,7 @@ namespace AudioHexViewer
                 chartSpectrum.Series.Add(seriesL);
 
                 // Peak-hold gauche (pointillés)
-                if (peakHoldOn && peakHoldLeftDb != null)
+                if (peakHoldOn && peakL != null)
                 {
                     var seriesLph = new ChartSeries("LeftPeakHold");
                     seriesLph.ChartType = SeriesChartType.FastLine;
@@ -1934,13 +1740,11 @@ namespace AudioHexViewer
                     seriesLph.BorderDashStyle = ChartDashStyle.Dash;
                     seriesLph.BorderWidth = 1;
 
-                    for (int i = startIndex; i < freqAxis.Length && i < peakHoldLeftDb.Length; i++)
-                        seriesLph.Points.AddXY(freqAxis[i], peakHoldLeftDb[i]);
+                    for (int i = startIndex; i < freqAxis.Length && i < peakL.Length; i++)
+                        seriesLph.Points.AddXY(freqAxis[i], peakL[i]);
 
                     chartSpectrum.Series.Add(seriesLph);
                 }
-
-
             }
 
             // Courbe droite
@@ -1957,7 +1761,7 @@ namespace AudioHexViewer
                 chartSpectrum.Series.Add(seriesR);
 
                 // Peak-hold droite (pointillés)
-                if (peakHoldOn && peakHoldRightDb != null)
+                if (peakHoldOn && peakR != null)
                 {
                     var seriesRph = new ChartSeries("RightPeakHold");
                     seriesRph.ChartType = SeriesChartType.FastLine;
@@ -1966,28 +1770,24 @@ namespace AudioHexViewer
                     seriesRph.BorderDashStyle = ChartDashStyle.Dash;
                     seriesRph.BorderWidth = 1;
 
-                    for (int i = startIndex; i < freqAxis.Length && i < peakHoldRightDb.Length; i++)
-                        seriesRph.Points.AddXY(freqAxis[i], peakHoldRightDb[i]);
+                    for (int i = startIndex; i < freqAxis.Length && i < peakR.Length; i++)
+                        seriesRph.Points.AddXY(freqAxis[i], peakR[i]);
 
                     chartSpectrum.Series.Add(seriesRph);
                 }
             }
-            //
-            //
+
             // --- Stats temporelles : LEFT ---
-            // Peak = sur brut (avec DC) ; RMS = sans DC (AC) => on retire la moyenne pour le calcul RMS uniquement
             if (timeL != null && timeL.Length > 0)
             {
-                // 1) Peak sur brut
-                double peakL = 0.0;
+                double peakLfs = 0.0;
                 for (int i = 0; i < timeL.Length; i++)
                 {
                     double x = timeL[i] / (double)SpectrumAnalyzer.Max24Pos;
                     double ax = Math.Abs(x);
-                    if (ax > peakL) peakL = ax;
+                    if (ax > peakLfs) peakLfs = ax;
                 }
 
-                // 2) RMS AC : retirer la moyenne (DC) uniquement pour le calcul RMS
                 double meanL = 0.0;
                 for (int i = 0; i < timeL.Length; i++)
                     meanL += timeL[i];
@@ -2001,10 +1801,8 @@ namespace AudioHexViewer
                 }
                 double rmsL = Math.Sqrt(sumSqL / timeL.Length);
 
-                // RMS référencé "full-scale sine"
                 double rmsLDb = rmsL > 0 ? 20.0 * Math.Log10(rmsL * Math.Sqrt(2.0)) : -200.0;
-                // Peak référencé "full-scale"
-                double peakLDb = peakL > 0 ? 20.0 * Math.Log10(peakL) : -200.0;
+                double peakLDb = peakLfs > 0 ? 20.0 * Math.Log10(peakLfs) : -200.0;
 
                 if (rmsLDb < -200.0) rmsLDb = -200.0;
                 if (peakLDb < -200.0) peakLDb = -200.0;
@@ -2017,19 +1815,18 @@ namespace AudioHexViewer
                 lblLeftRms.Text = "RMS:";
                 lblLeftPeak.Text = "Peak:";
             }
+
             // --- Stats temporelles : RIGHT ---
             if (timeR != null && timeR.Length > 0)
             {
-                // Peak sur brut
-                double peakR = 0.0;
+                double peakRfs = 0.0;
                 for (int i = 0; i < timeR.Length; i++)
                 {
                     double x = timeR[i] / (double)SpectrumAnalyzer.Max24Pos;
                     double ax = Math.Abs(x);
-                    if (ax > peakR) peakR = ax;
+                    if (ax > peakRfs) peakRfs = ax;
                 }
 
-                // RMS AC (sans DC)
                 double meanR = 0.0;
                 for (int i = 0; i < timeR.Length; i++)
                     meanR += timeR[i];
@@ -2043,10 +1840,8 @@ namespace AudioHexViewer
                 }
                 double rmsR = Math.Sqrt(sumSqR / timeR.Length);
 
-                // RMS référencé "full-scale sine"
                 double rmsRDb = rmsR > 0 ? 20.0 * Math.Log10(rmsR * Math.Sqrt(2.0)) : -200.0;
-                // Peak référencé "full-scale"
-                double peakRDb = peakR > 0 ? 20.0 * Math.Log10(peakR) : -200.0;
+                double peakRDb = peakRfs > 0 ? 20.0 * Math.Log10(peakRfs) : -200.0;
 
                 if (rmsRDb < -200.0) rmsRDb = -200.0;
                 if (peakRDb < -200.0) peakRDb = -200.0;
@@ -2061,8 +1856,8 @@ namespace AudioHexViewer
             }
 
             RefreshCursorAfterRedraw();
-
         }
+
         //
         private double GetFrequencyFromMouseX(int mouseX)
         {
