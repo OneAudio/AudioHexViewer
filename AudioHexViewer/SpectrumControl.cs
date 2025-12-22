@@ -1728,8 +1728,9 @@ namespace AudioHexViewer
                     continue;
 
                 // Compatibilité du sample rate.
-                if (slot.Data.SampleRate != _sampleRate)
-                    continue; // SR différent => on n’affiche pas
+                if (_sampleRate > 0 && slot.Data.SampleRate != _sampleRate)
+                    continue; // on bloque seulement quand SR connu
+                              // SR différent => on n’affiche pas
 
                 // Si le mode affiche Left, on superpose LeftDbFs (sinon fallback RightDbFs)
                 if (showLeft)
@@ -2382,11 +2383,60 @@ namespace AudioHexViewer
 
             bool compatible = true;
             if (loaded && s.Data != null)
-                compatible = (s.Data.SampleRate == _sampleRate);
+                if (_sampleRate <= 0)
+                    compatible = true;          // SR inconnu => ne pas marquer incompatible
+                else
+                    compatible = (s.Data.SampleRate == _sampleRate);
+
 
 
             return (loaded, enabled, name, filePath, compatible);
         }
+
+        public (string? filePath, bool enabled)[] OverlayExportState()
+        {
+            var state = new (string? filePath, bool enabled)[OverlayManager.MaxOverlays];
+            for (int i = 0; i < OverlayManager.MaxOverlays; i++)
+            {
+                var s = _overlays.Slots[i];
+                state[i] = (s.FilePath, s.Enabled);
+            }
+            return state;
+        }
+
+        public void OverlayImportState((string? filePath, bool enabled)[] state)
+        {
+            if (state == null) return;
+
+            int n = Math.Min(state.Length, OverlayManager.MaxOverlays);
+            for (int i = 0; i < n; i++)
+            {
+                var (path, enabled) = state[i];
+
+                _overlays.ClearSlot(i);
+
+                if (!string.IsNullOrWhiteSpace(path) && System.IO.File.Exists(path))
+                {
+                    try
+                    {
+                        _overlays.LoadIntoSlot(i, path);
+                        _overlays.Slots[i].Enabled = enabled;
+                    }
+                    catch
+                    {
+                        // ignore: fichier invalide ou lecture impossible
+                        _overlays.ClearSlot(i);
+                    }
+                }
+                else
+                {
+                    _overlays.Slots[i].Enabled = enabled;
+                }
+            }
+
+            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
+        }
+
 
     }
 }

@@ -353,6 +353,7 @@ namespace AudioHexViewer
         private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
         {
             SaveSessionSettingsSilently();
+            SaveOverlayState();
         }
         //
         private void InitAnalysisUi()
@@ -856,10 +857,12 @@ namespace AudioHexViewer
                 var miLoad = new ToolStripMenuItem("Load…");
                 miLoad.Tag = ("load", i);
                 miLoad.Click += OverlayMenu_Click;
+                SaveOverlayState();
 
                 var miSave = new ToolStripMenuItem("Save…");
                 miSave.Tag = ("save", i);
                 miSave.Click += OverlayMenu_Click;
+                SaveOverlayState();
 
                 var miEnabled = new ToolStripMenuItem("Enabled");
                 miEnabled.CheckOnClick = true;
@@ -870,6 +873,7 @@ namespace AudioHexViewer
                 var miClear = new ToolStripMenuItem("Clear");
                 miClear.Tag = ("clear", i);
                 miClear.Click += OverlayMenu_Click;
+                SaveOverlayState();
 
                 miEnabled.Name = $"ov_enabled_{i}";
                 slot.Name = $"ov_slot_{i}";
@@ -889,6 +893,27 @@ namespace AudioHexViewer
             UpdateOverlayMenuCaptions();
 
         }
+        //
+        private void SaveOverlayState()
+        {
+            if (spectrumControl == null) return;
+
+            var st = spectrumControl.OverlayExportState();
+
+            var paths = new string[OverlayManager.MaxOverlays];
+            var ens = new string[OverlayManager.MaxOverlays];
+
+            for (int i = 0; i < OverlayManager.MaxOverlays; i++)
+            {
+                paths[i] = st[i].filePath ?? "";
+                ens[i] = st[i].enabled ? "1" : "0";
+            }
+
+            Properties.Settings.Default.OverlayPaths = string.Join("|", paths);
+            Properties.Settings.Default.OverlayEnabled = string.Join("|", ens);
+            Properties.Settings.Default.Save();
+        }
+
         //
         private void OverlayMenu_Click(object? sender, EventArgs e)
         {
@@ -1474,6 +1499,8 @@ namespace AudioHexViewer
                     UpdateStartButtonAppearance();
                     UpdateDeviceInfo();
                     UpdateDeviceSummary();
+                    UpdateOverlayMenuCaptions();
+
 
                     // Si l'histogramme existe dj et qu'on est en mode continu,
                     // on le dmarre tout de suite en "live"
@@ -1535,6 +1562,8 @@ namespace AudioHexViewer
                 UpdateStartButtonAppearance();       // remet READ vert
                 UpdateDeviceInfo();
                 UpdateDeviceSummary();
+                UpdateOverlayMenuCaptions();
+
             }
         }
 
@@ -2483,6 +2512,7 @@ namespace AudioHexViewer
                 int sampleRate = currentFormat?.SampleRate ?? 48000;
 
                 spectrumControl = new SpectrumControl(GetAnalysisFrame, sampleRate);
+                RestoreOverlayState();
                 spectrumControl.Dock = DockStyle.Fill;
                 spectrumControl.SetGlobalSampleSize(analysisSampleSize);
                 spectrumControl.UpdateHopSamples(analysisHopSamples);
@@ -2500,9 +2530,33 @@ namespace AudioHexViewer
             // Optionnel : slectionner longlet Spectrum quand on louvre
             tabAnalysis.SelectedTab = tabSpectrum;
         }
+        //
+        private void RestoreOverlayState()
+        {
+            if (spectrumControl == null) return;
 
+            string paths = Properties.Settings.Default.OverlayPaths ?? "";
+            string en = Properties.Settings.Default.OverlayEnabled ?? "";
 
+            var pathParts = paths.Split('|');
+            var enParts = en.Split('|');
 
+            var state = new (string? filePath, bool enabled)[OverlayManager.MaxOverlays];
+
+            for (int i = 0; i < OverlayManager.MaxOverlays; i++)
+            {
+                string? p = (i < pathParts.Length && !string.IsNullOrWhiteSpace(pathParts[i])) ? pathParts[i] : null;
+
+                bool enabled = true;
+                if (i < enParts.Length)
+                    enabled = (enParts[i] == "1" || enParts[i].Equals("true", StringComparison.OrdinalIgnoreCase));
+
+                state[i] = (p, enabled);
+            }
+
+            spectrumControl.OverlayImportState(state);
+            UpdateOverlayMenuCaptions();
+        }
 
         //
         private void Capture_RecordingStopped(object? sender, StoppedEventArgs e)
@@ -2899,6 +2953,8 @@ namespace AudioHexViewer
         //
         private void UpdateOverlayMenuCaptions()
         {
+            bool srKnown = (currentFormat != null && capture != null && capture.CaptureState == CaptureState.Capturing);
+
             if (menuOverlay == null)
                 return;
 
@@ -2920,9 +2976,18 @@ namespace AudioHexViewer
                 if (!st.loaded)
                     slotItem.Text = $"Slot {i + 1}";
                 else
-                    slotItem.Text = st.compatible
-                        ? $"Slot {i + 1}: {st.name}"
-                        : $"Slot {i + 1}: {st.name} (incompatible)";
+                    if (!srKnown)
+                    {
+                        // SR pas encore connu => on n’affiche pas "incompatible"
+                        slotItem.Text = $"Slot {i + 1}: {st.name}";
+                    }
+                    else
+                    {
+                        slotItem.Text = st.compatible
+                            ? $"Slot {i + 1}: {st.name}"
+                            : $"Slot {i + 1}: {st.name} (incompatible)";
+                    }
+
 
                 // checkbox Enabled reflète l’état réel
                 foreach (ToolStripItem child in slotItem.DropDownItems)
