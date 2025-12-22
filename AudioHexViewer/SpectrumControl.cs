@@ -1727,9 +1727,9 @@ namespace AudioHexViewer
                 if (!slot.Enabled || slot.Data == null)
                     continue;
 
-                // Compatibilité stricte (simple et sûr pour commencer)
-                if (slot.Data.SampleRate != _sampleRate || slot.Data.FftSize != lastFftSize)
-                    continue;
+                // Compatibilité du sample rate.
+                if (slot.Data.SampleRate != _sampleRate)
+                    continue; // SR différent => on n’affiche pas
 
                 // Si le mode affiche Left, on superpose LeftDbFs (sinon fallback RightDbFs)
                 if (showLeft)
@@ -1744,9 +1744,11 @@ namespace AudioHexViewer
                         s.BorderDashStyle = ChartDashStyle.Dot;
                         s.BorderWidth = 1;
 
-                        for (int i = startIndex; i < freqAxis.Length && i < ov.Length; i++)
-                            s.Points.AddXY(freqAxis[i], ov[i]);
-
+                        for (int i = startIndex; i < ov.Length; i++)
+                        {
+                            double f = (double)i * _sampleRate / slot.Data.FftSize;
+                            s.Points.AddXY(f, ov[i]);
+                        }
                         chartSpectrum.Series.Add(s);
                     }
                 }
@@ -1764,9 +1766,11 @@ namespace AudioHexViewer
                         s.BorderDashStyle = ChartDashStyle.Dot;
                         s.BorderWidth = 1;
 
-                        for (int i = startIndex; i < freqAxis.Length && i < ov.Length; i++)
-                            s.Points.AddXY(freqAxis[i], ov[i]);
-
+                        for (int i = startIndex; i < ov.Length; i++)
+                        {
+                            double f = (double)i * _sampleRate / slot.Data.FftSize;
+                            s.Points.AddXY(f, ov[i]);
+                        }
                         chartSpectrum.Series.Add(s);
                     }
                 }
@@ -2363,11 +2367,26 @@ namespace AudioHexViewer
             };
 
             _overlays.SaveToFile(filePath, snap, name, options);
+            _overlays.LoadIntoSlot(slotIndex, filePath);   // <-- charge dans le slot
+            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight); // <-- redraw immédiat
         }
-
-        private void button1_Click(object sender, EventArgs e)
+        //
+        public (bool loaded, bool enabled, string name, string? filePath, bool compatible) OverlayGetStatus(int slotIndex)
         {
+            var s = _overlays.Slots[slotIndex];
+            bool loaded = (s.Data != null);
+            bool enabled = s.Enabled;
 
+            string name = loaded ? s.Name : $"Overlay {slotIndex + 1}";
+            string? filePath = s.FilePath;
+
+            bool compatible = true;
+            if (loaded && s.Data != null)
+                compatible = (s.Data.SampleRate == _sampleRate);
+
+
+            return (loaded, enabled, name, filePath, compatible);
         }
+
     }
 }

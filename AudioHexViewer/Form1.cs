@@ -871,6 +871,10 @@ namespace AudioHexViewer
                 miClear.Tag = ("clear", i);
                 miClear.Click += OverlayMenu_Click;
 
+                miEnabled.Name = $"ov_enabled_{i}";
+                slot.Name = $"ov_slot_{i}";
+                slot.Text = $"Slot {i + 1}";
+
                 slot.DropDownItems.Add(miLoad);
                 slot.DropDownItems.Add(miSave);
                 slot.DropDownItems.Add(new ToolStripSeparator());
@@ -882,6 +886,8 @@ namespace AudioHexViewer
 
             // Ajouter au menu principal (top-level)
             menuStrip1.Items.Add(menuOverlay);
+            UpdateOverlayMenuCaptions();
+
         }
         //
         private void OverlayMenu_Click(object? sender, EventArgs e)
@@ -905,6 +911,10 @@ namespace AudioHexViewer
                     ofd.Filter = "Overlay JSON (*.json)|*.json|All files (*.*)|*.*";
                     if (ofd.ShowDialog(this) == DialogResult.OK)
                         spectrumControl.OverlayLoad(idx, ofd.FileName);
+                    var st = spectrumControl.OverlayGetStatus(idx);
+                    if (st.loaded && !st.compatible)
+                        MessageBox.Show("Overlay chargé mais incompatible avec la FFT courante (SampleRate ou N différent). Il ne sera pas affiché.", "Overlay");
+                    UpdateOverlayMenuCaptions();
                 }
                 else if (action == "save")
                 {
@@ -913,10 +923,12 @@ namespace AudioHexViewer
                     sfd.FileName = $"overlay_slot{idx + 1}.json";
                     if (sfd.ShowDialog(this) == DialogResult.OK)
                         spectrumControl.OverlaySave(idx, sfd.FileName, $"Overlay {idx + 1}");
+                    UpdateOverlayMenuCaptions();
                 }
                 else if (action == "clear")
                 {
                     spectrumControl.OverlayClear(idx);
+                    UpdateOverlayMenuCaptions();
                 }
             }
             catch (Exception ex)
@@ -937,6 +949,8 @@ namespace AudioHexViewer
                 return;
 
             spectrumControl.OverlaySetEnabled(idx, mi.Checked);
+            UpdateOverlayMenuCaptions();
+
         }
         //
         private void ApplyAnalysisSettings(SessionSettings s)
@@ -2876,17 +2890,52 @@ namespace AudioHexViewer
             ApplyLoadedSessionSettingsToExistingControls();
         }
 
-
-
-        private void splitContainer1_Panel2_Paint(object sender, PaintEventArgs e)
+         private void splitContainer1_Panel2_Paint(object sender, PaintEventArgs e)
         {
-
         }
-
         private void lblFormatInfo_Click(object sender, EventArgs e)
         {
-
         }
+        //
+        private void UpdateOverlayMenuCaptions()
+        {
+            if (menuOverlay == null)
+                return;
+
+            for (int i = 0; i < OverlayManager.MaxOverlays; i++)
+            {
+                var slotItem = menuOverlay.DropDownItems[i] as ToolStripMenuItem;
+                if (slotItem == null)
+                    continue;
+
+                if (spectrumControl == null)
+                {
+                    slotItem.Text = $"Slot {i + 1}";
+                    continue;
+                }
+
+                var st = spectrumControl.OverlayGetStatus(i);
+
+                // Texte slot
+                if (!st.loaded)
+                    slotItem.Text = $"Slot {i + 1}";
+                else
+                    slotItem.Text = st.compatible
+                        ? $"Slot {i + 1}: {st.name}"
+                        : $"Slot {i + 1}: {st.name} (incompatible)";
+
+                // checkbox Enabled reflète l’état réel
+                foreach (ToolStripItem child in slotItem.DropDownItems)
+                {
+                    if (child is ToolStripMenuItem mi && mi.Tag is ValueTuple<string, int> tag && tag.Item1 == "enabled")
+                    {
+                        mi.Checked = st.enabled;
+                        break;
+                    }
+                }
+            }
+        }
+
     }
 
 }
