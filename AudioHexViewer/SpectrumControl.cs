@@ -25,14 +25,7 @@ namespace AudioHexViewer
 
         private readonly OverlayManager _overlays = new OverlayManager();
 
-        private readonly SpectrumMetricsOptions _metricsOpt = new SpectrumMetricsOptions
-        {
-            MinFreqHz = 20.0,
-            MaxFreqHz = 0.0,         // 0 => Nyquist
-            ExcludeDc = true,
-            ToneHalfWidthBins = 1,   // ±1 bin
-            MaxHarmonics = 5
-        };
+        private readonly SpectrumMetricsOptions _metricsOpt = new SpectrumMetricsOptions();
 
         public enum ChannelMode
         {
@@ -604,7 +597,8 @@ namespace AudioHexViewer
                 WindowType.Rectangular => "Rect",
                 WindowType.Hann => "Hann",
                 WindowType.Hamming => "Hamming",
-                WindowType.BlackmanHarris => "Blackman-Harris",
+                WindowType.BlackmanHarris4 => "Blackman-Harris4",
+                WindowType.BlackmanHarris7 => "Blackman-Harris7",
                 _ => "?"
             };
 
@@ -646,7 +640,8 @@ namespace AudioHexViewer
             comboWindow.Items.Add("Rectangular");
             comboWindow.Items.Add("Hann");
             comboWindow.Items.Add("Hamming");
-            comboWindow.Items.Add("Blackman-Harris");
+            comboWindow.Items.Add("Blackman-Harris 4");
+            comboWindow.Items.Add("Blackman-Harris  7");
             comboWindow.SelectedIndex = 0; // Fênêtre par défaut : 0= Rectangulaire
             comboWindow.SelectedIndexChanged += (s, e) =>
             {

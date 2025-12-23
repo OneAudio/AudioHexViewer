@@ -13,13 +13,21 @@ des différentes courbes : Left , Right, Left-Hold, Right-Hold, Mem 0 à Mem 8
 0b - Ajout du module qui permet de prendre le contre du SR.
 (Besoin d'ajouter une combobox pour la selection du SR).
 
-3- A ajouter dans l'onglet FFT des nouvelles mesures:
+3- A ajouter dans l'onglet FFT des nouvelles mesures:                           --> OK fait le 22/12/2025,
     - Ajout des mesures suivantes :
             -- THD (-dB)
             -- THD+N
             -- SNR
             -- SINAD
             -- SFDR
+    NOTE :
+    Pour améliorer les mesures , il faudra sans doute adapter la valeur
+    "ToneHalfWidthBins" selon si on mesure l'énergie du fondamentale (THD)
+    ou l'énergie totale (bruit) ?
+    A voir et vérifier en détail en comparant avec REW et Arta.
+
+
+
 
 4- Ajout d'une fonction L/R (ratio)
 (dans boite FFT "Channel")

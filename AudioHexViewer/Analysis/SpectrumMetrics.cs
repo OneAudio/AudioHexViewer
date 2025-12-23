@@ -7,12 +7,12 @@ namespace AudioHexViewer
     {
         // Bande d'analyse globale
         public double MinFreqHz { get; set; } = 20.0;
-        public double MaxFreqHz { get; set; } = 0.0; // 0 => Nyquist
+        public double MaxFreqHz { get; set; } = 24000.0; // 0 => Nyquist
 
         // Détection / intégration
         public bool ExcludeDc { get; set; } = true;
-        public int ToneHalfWidthBins { get; set; } = 1; // intégration ±W bins autour d'un pic
-        public int MaxHarmonics { get; set; } = 5;      // 2..N
+        public int ToneHalfWidthBins { get; set; } = 12; // intégration ±W bins autour d'un pic
+        public int MaxHarmonics { get; set; } = 7;      // 2..N
 
         // Optionnel: ignorer les harmoniques sous une fréquence minimale
         public double MinHarmonicFreqHz { get; set; } = 20.0;

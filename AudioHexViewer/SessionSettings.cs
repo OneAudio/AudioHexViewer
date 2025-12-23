@@ -43,7 +43,7 @@ namespace AudioHexViewer
     {
         public string Channel { get; set; } = "L+R";     // Left/Right/L+R
         public bool RemoveDC { get; set; } = true;       // DC checkbox
-        public string Window { get; set; } = "Rectangular"; // Rectangular/Hann/Hamming/Blackman-Harris
+        public string Window { get; set; } = "Rectangular"; // Rectangular/Hann/Hamming/Blackman-Harris-4/Blackman-Harris-7
         public bool LogFreq { get; set; } = false;       // log freq
         public int Averaging { get; set; } = 0;          // 0 = None, sinon 2/4/8/...
     }

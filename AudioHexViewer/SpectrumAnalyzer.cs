@@ -41,7 +41,8 @@ namespace AudioHexViewer
                 WindowType.Rectangular => Enumerable.Repeat(1.0, N).ToArray(),
                 WindowType.Hann => Window.Hann(N),
                 WindowType.Hamming => Window.Hamming(N),
-                WindowType.BlackmanHarris => Window.BlackmanHarris(N),
+                WindowType.BlackmanHarris4 => Window.BlackmanHarris(N),
+                WindowType.BlackmanHarris7 => BlackmanHarris7(N),
                 _ => Window.Hann(N),
             };
 
@@ -54,7 +55,42 @@ namespace AudioHexViewer
 
             return sumWin;
         }
+        //
+        private static double[] BlackmanHarris7(int N)
+        {
+            var win = new double[N];
+            if (N <= 1)
+            {
+                if (N == 1) win[0] = 1.0;
+                return win;
+            }
 
+            // 7-term Blackman-Harris (BH7) coefficients
+            // Source: NI / Wolfram (7-term Blackman-Harris)
+            const double a0 = 0.27105140069342;
+            const double a1 = 0.43329793923448;
+            const double a2 = 0.21812299954311;
+            const double a3 = 0.06592544638803;
+            const double a4 = 0.01081174209837;
+            const double a5 = 0.00077658482522;
+            const double a6 = 0.00001388721735;
+
+            double denom = N - 1; // cohérent avec fenêtres "symétriques" usuelles
+            for (int n = 0; n < N; n++)
+            {
+                double w = 2.0 * Math.PI * n / denom;
+                win[n] = a0
+                       - a1 * Math.Cos(w)
+                       + a2 * Math.Cos(2.0 * w)
+                       - a3 * Math.Cos(3.0 * w)
+                       + a4 * Math.Cos(4.0 * w)
+                       - a5 * Math.Cos(5.0 * w)
+                       + a6 * Math.Cos(6.0 * w);
+            }
+
+            return win;
+        }
+        //
         public static double[] ComputeSpectrumDbFs(double[] timeData, double windowSum)
         {
             int N = timeData.Length;

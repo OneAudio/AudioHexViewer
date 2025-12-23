@@ -9,6 +9,7 @@ namespace AudioHexViewer
         Rectangular,
         Hann,
         Hamming,
-        BlackmanHarris
+        BlackmanHarris4,
+        BlackmanHarris7
     }
 }

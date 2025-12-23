@@ -302,7 +302,7 @@
             comboRangeLsb.FormattingEnabled = true;
             comboRangeLsb.Location = new Point(260, 7);
             comboRangeLsb.Name = "comboRangeLsb";
-            comboRangeLsb.Size = new Size(120, 23);
+            comboRangeLsb.Size = new Size(130, 23);
             comboRangeLsb.TabIndex = 13;
             comboRangeLsb.SelectedIndexChanged += comboRangeLsb_SelectedIndexChanged;
             // 
