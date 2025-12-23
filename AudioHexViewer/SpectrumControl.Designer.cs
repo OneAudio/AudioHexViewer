@@ -31,6 +31,7 @@
             btnRun = new Button();
             chkLogX = new CheckBox();
             splitMain = new SplitContainer();
+            lblRightMeas = new Label();
             chartSpectrum = new System.Windows.Forms.DataVisualization.Charting.Chart();
             panelStats = new Panel();
             chkCursorR = new CheckBox();
@@ -41,7 +42,6 @@
             lblLeftRms = new Label();
             lblLeftPeak = new Label();
             grpRightStats = new GroupBox();
-            lblRightMeas = new Label();
             lblRightHeader = new Label();
             lblRightRms = new Label();
             lblRightPeak = new Label();
@@ -225,6 +225,16 @@
             splitMain.SplitterDistance = 917;
             splitMain.TabIndex = 0;
             // 
+            // lblRightMeas
+            // 
+            lblRightMeas.Font = new Font("Segoe UI", 8.25F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblRightMeas.Location = new Point(12, 85);
+            lblRightMeas.Name = "lblRightMeas";
+            lblRightMeas.Size = new Size(128, 92);
+            lblRightMeas.TabIndex = 18;
+            lblRightMeas.Text = "---";
+            lblRightMeas.Click += lblRightMeas_Click;
+            // 
             // chartSpectrum
             // 
             chartSpectrum.Dock = DockStyle.Fill;
@@ -279,11 +289,12 @@
             // lblLeftMeas
             // 
             lblLeftMeas.Font = new Font("Segoe UI", 8.25F, FontStyle.Regular, GraphicsUnit.Point, 0);
-            lblLeftMeas.Location = new Point(6, 97);
+            lblLeftMeas.Location = new Point(12, 88);
             lblLeftMeas.Name = "lblLeftMeas";
-            lblLeftMeas.Size = new Size(128, 80);
+            lblLeftMeas.Size = new Size(128, 92);
             lblLeftMeas.TabIndex = 17;
             lblLeftMeas.Text = "---";
+            lblLeftMeas.Click += lblLeftMeas_Click;
             // 
             // lblLeftHeader
             // 
@@ -320,15 +331,6 @@
             grpRightStats.Size = new Size(140, 180);
             grpRightStats.TabIndex = 1;
             grpRightStats.TabStop = false;
-            // 
-            // lblRightMeas
-            // 
-            lblRightMeas.Font = new Font("Segoe UI", 8.25F, FontStyle.Regular, GraphicsUnit.Point, 0);
-            lblRightMeas.Location = new Point(6, 97);
-            lblRightMeas.Name = "lblRightMeas";
-            lblRightMeas.Size = new Size(128, 80);
-            lblRightMeas.TabIndex = 18;
-            lblRightMeas.Text = "---";
             // 
             // lblRightHeader
             // 

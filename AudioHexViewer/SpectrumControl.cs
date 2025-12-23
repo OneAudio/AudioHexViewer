@@ -47,7 +47,7 @@ namespace AudioHexViewer
 
         // Averaging
         private int avgTargetCount = 1;
-        
+
         // Spectres courants & axe fréquence
         private double[]? currentLeftSpectrum;
         private double[]? currentRightSpectrum;
@@ -104,6 +104,11 @@ namespace AudioHexViewer
         // Pour le dessin manuel des sous-divisions Y
         private double _currentYMinor = 1.0;
         private double _currentYMajor = 5.0;
+
+        // Événement Run demandé (par le bouton Run)
+        public event Action<bool>? RunStateChanged; // true=RUN, false=STOP
+        public event Action? RunRequested;
+
 
         //
         // Formatage axe Y (dBFS), divisions secondaires
@@ -614,11 +619,11 @@ namespace AudioHexViewer
 
             // --- Ligne finale ---
             _bottomInfoLine =
-                $"SR:{srText}    "+
-                $"N={N:N0}    "+
-                $"Overlap:{overlapPct:F1}%     "+
-                $"Win:{winText}    "+
-                $"{avgText}    "+
+                $"SR:{srText}    " +
+                $"N={N:N0}    " +
+                $"Overlap:{overlapPct:F1}%     " +
+                $"Win:{winText}    " +
+                $"{avgText}    " +
                 $"{acdcText}";
 
 
@@ -716,11 +721,19 @@ namespace AudioHexViewer
             // Bouton RUN
             btnRun.Click += (s, e) =>
             {
-                if (isLive)
-                    StopFromRun();
-                else
+                if (!isLive)
+                {
+                    RunRequested?.Invoke();   // demande à Form1 de lancer READ si besoin
                     StartFromRun(false);
+                    RunStateChanged?.Invoke(true);
+                }
+                else
+                {
+                    StopFromRun();
+                    RunStateChanged?.Invoke(false);
+                }
             };
+
             // Log X axis 
             if (chkLogX != null)
             {
@@ -1344,7 +1357,7 @@ namespace AudioHexViewer
                 ? _forcedFftSize.Value
                 : (lastFftSize > 0 ? lastFftSize : 65536);
 
-            if (N < 512) N = 512;   
+            if (N < 512) N = 512;
             lastFftSize = N;
 
             UpdateOverlayInfo();
@@ -2217,7 +2230,7 @@ namespace AudioHexViewer
                         }
                     }
                 }
-               
+
             }
             else
             {
@@ -2483,6 +2496,14 @@ namespace AudioHexViewer
             UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
         }
 
+        private void lblLeftMeas_Click(object sender, EventArgs e)
+        {
 
+        }
+
+        private void lblRightMeas_Click(object sender, EventArgs e)
+        {
+
+        }
     }
 }

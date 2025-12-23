@@ -48,20 +48,9 @@ namespace AudioHexViewer
         // Valeur de fenêtre la plus récente (samples), accessible depuis Form1 pour le REC
         public static int LastUsedWindowSamples { get; private set; } = 131072; // 2^17
 
-        // Infos fournies par Form1 pour être sauvées dans HistogramSettings.json
-        // Infos fournies par Form1 pour être sauvées dans HistogramSettings.json
-        [Browsable(false)]
-        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public string? DeviceIdForSave { get; set; }
-
-        [Browsable(false)]
-        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public bool CaptureOutputForSave { get; set; }
-
-        [Browsable(false)]
-        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public string? MainDataFormatForSave { get; set; }
-
+        // Événements pour Form1
+        public event Action<bool>? RunStateChanged; // true=RUN, false=STOP
+        public event Action? RunRequested;
 
 
         private class HistogramSettings
@@ -517,15 +506,22 @@ namespace AudioHexViewer
             // --- Câblage du bouton RUN ---
             btnRun.Click += (s, e) =>
             {
-                if (isLive)
-                    StopFromRun();
-                else
+                if (!isLive)
+                {
+                    RunRequested?.Invoke();   // demande à Form1 de lancer READ si besoin
                     StartFromRun(false);
+                    RunStateChanged?.Invoke(true);
+                }
+                else
+                {
+                    StopFromRun();
+                    RunStateChanged?.Invoke(false);
+                }
             };
         }
         //
         //
-        
+
 
         private void ResetStatsLabels()
         {

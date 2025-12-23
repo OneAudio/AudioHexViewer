@@ -151,7 +151,8 @@ namespace AudioHexViewer
         private SpectrumControl? spectrumControl;
         private ToolStripMenuItem? menuOverlay;
 
-
+        private bool _spectrumRunning;
+        private bool _histogramRunning;
 
         // Limitation de frquence pour la mise  jour des textes (pour viter le scintillement)
         private DateTime lastTextDump = DateTime.MinValue;
@@ -369,19 +370,7 @@ namespace AudioHexViewer
             spectrumControl?.UpdateHopSamples(analysisHopSamples);
          }
         //
-        //
-        private static double ParseOverlapPercent(string? s)
-        {
-            if (string.IsNullOrWhiteSpace(s)) return 0.0;
-            s = s.Trim().Replace("%", "");
-            if (double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v))
-                return v / 100.0;
-            // cas fr (virgule)
-            if (double.TryParse(s, out v))
-                return v / 100.0;
-            return 0.0;
-        }
-
+        
         private void SetAnalysisSampleSize(int nSamples)
         {
             if (nSamples < 2048) nSamples = 2048;
@@ -2494,6 +2483,14 @@ namespace AudioHexViewer
                 int sampleRate = currentFormat?.SampleRate ?? 48000;
 
                 histogramControl = new HistogramControl(GetAnalysisFrame, sampleRate);
+                histogramControl.RunRequested += EnsureReadRunning;
+                histogramControl.RunStateChanged += running =>
+                {
+                    _histogramRunning = running;
+                    if (running) EnsureReadRunning();
+                    else EnsureReadStoppedIfNoTabRunning();
+                };
+
                 histogramControl.Dock = DockStyle.Fill;
                 histogramControl.SetGlobalSampleSize(analysisSampleSize);
                 histogramControl.UpdateHopSamples(analysisHopSamples);
@@ -2518,6 +2515,14 @@ namespace AudioHexViewer
                 int sampleRate = currentFormat?.SampleRate ?? 48000;
 
                 spectrumControl = new SpectrumControl(GetAnalysisFrame, sampleRate);
+                spectrumControl.RunRequested += EnsureReadRunning;
+                spectrumControl.RunStateChanged += running =>
+                {
+                    _spectrumRunning = running;
+                    if (running) EnsureReadRunning();
+                    else EnsureReadStoppedIfNoTabRunning();
+                };
+
                 RestoreOverlayState();
                 spectrumControl.Dock = DockStyle.Fill;
                 spectrumControl.SetGlobalSampleSize(analysisSampleSize);
@@ -3032,6 +3037,22 @@ namespace AudioHexViewer
             UpdateOverlayMenuCaptions();
             SaveOverlayState();
         }
+        //
+        //
+        private void EnsureReadRunning()
+        {
+            if (capture != null) return;      // déjà démarré
+            btnStart.PerformClick();          // démarre READ (ta logique existante)
+        }
+
+        private void EnsureReadStoppedIfNoTabRunning()
+        {
+            if (capture == null) return;      // déjà arrêté
+            if (_spectrumRunning || _histogramRunning) return;
+
+            btnStart.PerformClick();          // stop READ (ta logique existante)
+        }
+
 
 
     }
