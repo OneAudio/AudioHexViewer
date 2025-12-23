@@ -46,7 +46,36 @@ namespace AudioHexViewer
         public string Window { get; set; } = "Rectangular"; // Rectangular/Hann/Hamming/Blackman-Harris-4/Blackman-Harris-7
         public bool LogFreq { get; set; } = false;       // log freq
         public int Averaging { get; set; } = 0;          // 0 = None, sinon 2/4/8/...
+
+        // --- Commit 11 : THD settings ---
+        public ThdSettings Thd { get; set; } = new ThdSettings();
+
+        public sealed class ThdSettings
+        {
+            // Bande de mesure
+            public bool UseHPF { get; set; } = true;          // Flow
+            public double FlowHz { get; set; } = 20.0;
+
+            public bool UseLPF { get; set; } = true;          // Fhigh
+            public double FhighHz { get; set; } = 20000.0;    // clamp à Fs/2 à l’application
+
+            // Harmoniques
+            public int HarmonicsNumber { get; set; } = 5;     // 2..20
+
+            // UI
+            public bool ShowHarmonicsValues { get; set; } = false;
+
+            // THD en dB ou %
+            public ThdUnit Unit { get; set; } = ThdUnit.Db;
+
+            public enum ThdUnit
+            {
+                Db = 0,
+                Percent = 1
+            }
+        }
     }
+
 
     public static class SessionSettingsManager
     {

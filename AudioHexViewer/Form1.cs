@@ -69,6 +69,7 @@ namespace AudioHexViewer
         private FormBorderStyle _borderStyleWithGraphs;
         private bool _borderStyleSaved;
 
+        private SessionSettings _session = SessionSettingsManager.LoadOrNull() ?? new SessionSettings();
 
         // --- Enregistrement 1 seconde ---
         private bool isRecordingOneSecond = false;
@@ -832,6 +833,28 @@ namespace AudioHexViewer
 
             this.FormClosing += Form1_FormClosing;
         }
+        //
+        private void menuThdSettings_Click(object sender, EventArgs e)
+        {
+            // Récupérer le sample rate si connu
+            // Remplace "currentFormat" par ta variable réelle si elle a un autre nom.
+            int sr = currentFormat != null ? currentFormat.SampleRate : 0;
+
+            using (var dlg = new ThdSettingsDialog(_session.Spectrum.Thd, sr))
+            {
+                if (dlg.ShowDialog(this) != DialogResult.OK)
+                    return;
+
+                 _session.Spectrum.Thd = dlg.Result;
+
+                if (spectrumControl != null)
+                    spectrumControl.ApplyThdSettings(_session.Spectrum.Thd);
+
+                if (!SessionSettingsManager.Save(_session, out string? err) && !string.IsNullOrWhiteSpace(err))
+                    MessageBox.Show(this, err, "Save settings failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+        //
         //
         private void InitOverlayMenu()
         {
