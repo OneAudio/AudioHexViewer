@@ -63,7 +63,7 @@ namespace AudioHexViewer
             public int HarmonicsNumber { get; set; } = 5;     // 2..20
 
             // UI
-            public bool ShowHarmonicsValues { get; set; } = false;
+            public bool ShowHarmonicsValues { get; set; } = true;
 
             // THD en dB ou %
             public ThdUnit Unit { get; set; } = ThdUnit.Db;
