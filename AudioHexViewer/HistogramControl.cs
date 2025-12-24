@@ -602,24 +602,6 @@ namespace AudioHexViewer
             int offsetL = ac ? dcOffsetL : 0;
             int offsetR = ac ? dcOffsetR : 0;
 
-            //if (lsbRange > 1024)
-            //{
-            //    while (true)
-            //    {
-            //        int binCountTest = (int)Math.Ceiling(range / (double)binWidth);
-            //        if (binCountTest <= MaxBins) break;
-
-            //        binWidth <<= 1;
-
-            //        if (binWidth >= BinLsbOptions[BinLsbOptions.Length - 1])
-            //            break;
-            //    }
-
-            //    int newIndex = FindClosestIndex(BinLsbOptions, binWidth);
-            //    binWidth = BinLsbOptions[newIndex];
-            //    comboBinLsb.SelectedIndex = newIndex;
-            //    lastBinLsb = binWidth;
-            //}
 
             if (lsbRange > 1024)
             {

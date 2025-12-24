@@ -74,6 +74,8 @@ namespace AudioHexViewer
             tabSpectrum = new TabPage();
             txtLeft = new RichTextBox();
             txtRight = new RichTextBox();
+            menuMeasures = new ToolStripMenuItem();
+            menuThdSettings = new ToolStripMenuItem();
             menuStrip1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)splitMain).BeginInit();
             splitMain.Panel1.SuspendLayout();
@@ -96,7 +98,7 @@ namespace AudioHexViewer
             // menuStrip1
             // 
             menuStrip1.AutoSize = false;
-            menuStrip1.Items.AddRange(new ToolStripItem[] { menuDeviceInfo, menuHelp, menuData, menuSampleSize, menuOverlap, menuBuffer });
+            menuStrip1.Items.AddRange(new ToolStripItem[] { menuDeviceInfo, menuHelp, menuMeasures, menuData, menuSampleSize, menuOverlap, menuBuffer });
             menuStrip1.Location = new Point(0, 0);
             menuStrip1.Name = "menuStrip1";
             menuStrip1.Size = new Size(1138, 25);
@@ -156,6 +158,24 @@ namespace AudioHexViewer
             menuData.Size = new Size(43, 21);
             menuData.Text = "Data";
             // 
+            //
+            // 
+            // menuMeasures
+            // 
+            menuMeasures.Alignment = ToolStripItemAlignment.Right;
+            menuMeasures.DropDownItems.AddRange(new ToolStripItem[] { menuThdSettings });
+            menuMeasures.Name = "menuMeasures";
+            menuMeasures.Size = new Size(73, 21);
+            menuMeasures.Text = "Measures";
+            // 
+            // menuThdSettings
+            // 
+            menuThdSettings.Name = "menuThdSettings";
+            menuThdSettings.Size = new Size(180, 22);
+            menuThdSettings.Text = "THD Settings...";
+            menuThdSettings.Click += menuThdSettings_Click;
+
+            //
             // menuShowAllFormats
             // 
             menuShowAllFormats.Name = "menuShowAllFormats";
@@ -614,5 +634,8 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuSampleSize;
         private ToolStripMenuItem menuOverlap;
         private ToolStripMenuItem menuBuffer;
+        private ToolStripMenuItem menuMeasures;
+        private ToolStripMenuItem menuThdSettings;
+
     }
 }
