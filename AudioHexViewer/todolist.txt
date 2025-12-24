@@ -6,25 +6,9 @@ Le 19/12/2025
 0 - Ajouter la possibilitée d'avoir la FFT en dBV en utilisant les paramètres
 de la calibration.
 
-0 bis- Améliorer l'affichage des curseurs. Le texte est masqué si le curseur est proche             --> OK fait le 23/12/2025
-du bord de droite.
-
-
 > Ajouter la possibilité pour chaque curseur de choisir la voie sur laquelle la mesure est  faite,
 et aussi de saisir la fréquence à laquelle le curseur doit être placé.
 Les curseurs placé sur des voie inactive sont éteint.
-
-
-0 ter - Dans la fene^tre des pramètres graphique de la  FFT,
-ajouter la possibilitée de saisin F center , Span à la place de Fmin Fmax.
-Conditions :
-1)  Fs/2 > Fcenter >  Fs/N , défaut Fs/4
-2)  Fs/4 > Span > 2* (Fs/N), défaut Fs/2
-Fcenter est toujours prioritaire sur le Span
-Si la valeur de Span n'est pas possible (ne respecte pas la condition (2))
-alors on borne aà la valeur la plus proche possible.
-Les champs Fmin / Fmax doivent être mis à jours en conséquence.
-(Pareil dans l'autre sens).
 
 
 1 - Ajouter le nécessaire pour qu'il soit possible de choisir les couleurs
