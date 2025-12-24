@@ -2,41 +2,47 @@ Chose à faire :
 --------------
 Le 19/12/2025
 
-   
-1- Ajouter 8 mémoires de courbes (A mettre dans un nouvel onglet)               --> OK fait le 22/12/2025,
-Ces courbes doivent être écrites dans un fichier nommé "FFTmemX.dat"
-avec X le numéro de courbe de 0 à 7 (8 courbes).
 
-2 - Ajouter le nécessaire pour qu'il soit possible de choisir les couleurs
+0 - Ajouter la possibilitée d'avoir la FFT en dBV en utilisant les paramètres
+de la calibration.
+
+0 bis- Améliorer l'affichage des curseurs. Le texte est masqué si le curseur est proche             --> OK fait le 23/12/2025
+du bord de droite.
+
+
+> Ajouter la possibilité pour chaque curseur de choisir la voie sur laquelle la mesure est  faite,
+et aussi de saisir la fréquence à laquelle le curseur doit être placé.
+Les curseurs placé sur des voie inactive sont éteint.
+
+
+0 ter - Dans la fene^tre des pramètres graphique de la  FFT,
+ajouter la possibilitée de saisin F center , Span à la place de Fmin Fmax.
+Conditions :
+1)  Fs/2 > Fcenter >  Fs/N , défaut Fs/4
+2)  Fs/4 > Span > 2* (Fs/N), défaut Fs/2
+Fcenter est toujours prioritaire sur le Span
+Si la valeur de Span n'est pas possible (ne respecte pas la condition (2))
+alors on borne aà la valeur la plus proche possible.
+Les champs Fmin / Fmax doivent être mis à jours en conséquence.
+(Pareil dans l'autre sens).
+
+
+1 - Ajouter le nécessaire pour qu'il soit possible de choisir les couleurs
 des différentes courbes : Left , Right, Left-Hold, Right-Hold, Mem 0 à Mem 8
 
-0b - Ajout du module qui permet de prendre le contre du SR.
+2a - Retraivailler l'affichages des mesures.
+
+2b - Améliorer les mesures de THD, TD+N, etc et les comparer avec
+le résultat de REW et Arta.
+
+3 - Ajout du module qui permet de prendre le contre du SR.
 (Besoin d'ajouter une combobox pour la selection du SR).
-
-3- A ajouter dans l'onglet FFT des nouvelles mesures:                           --> OK fait le 22/12/2025,
-    - Ajout des mesures suivantes :
-            -- THD (-dB)
-            -- THD+N
-            -- SNR
-            -- SINAD
-            -- SFDR
-    NOTE :
-    Pour améliorer les mesures , il faudra sans doute adapter la valeur
-    "ToneHalfWidthBins" selon si on mesure l'énergie du fondamentale (THD)
-    ou l'énergie totale (bruit) ?
-    A voir et vérifier en détail en comparant avec REW et Arta.
-
-
-
 
 4- Ajout d'une fonction L/R (ratio)
 (dans boite FFT "Channel")
 Necessite d'avoir le module et la phase dans le calcul de la FFT.
 Et donc ajouter aussi la possibilité de tracer la phase lorsque
 on utilise le mode L/R
-
-5- Ajouter la possibilitée d'avoir la FFT en dBV en utilisant les paramètres
-de la calibration.
 
 6 - Faire que les différentes mesures soient en dBV également lorsque on choisi
 l'affichage de la FFT en dBV (Méthode de choix à définir ?)
@@ -45,8 +51,9 @@ l'affichage de la FFT en dBV (Méthode de choix à définir ?)
 
 8 - Imprimer en pdf ou image ?
 
-9- Améliorer l'affichage des curseurs. Le texte est masqué si le curseur est proche
-du bord de droite.
-
 10 - Revoir le calcul de la moyenne, il semble y avoir un problème 
 (visible surtout lorsque elle est faible 2...4)
+
+11 - Vérifier si le calcul de FFT est effecté si la voie n'est pas activé ?
+
+13 - Déactiver les mesures des voies inactives. (ressources CPU inutile)

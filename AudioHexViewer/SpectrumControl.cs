@@ -76,6 +76,11 @@ namespace AudioHexViewer
         private VerticalLineAnnotation? _cursorLineR;
         private TextAnnotation? _cursorTextR;
 
+        // Labels (texte curseur) affichés en bas du chart
+        private Label? _lblCursorLInfo;
+        private Label? _lblCursorRInfo;
+    
+
         // --- Etat curseurs (indépendants) ---
         private bool _cursorLockedL = false;
         private bool _cursorLockedR = false;
@@ -93,6 +98,13 @@ namespace AudioHexViewer
 
         private double _cursorFreqL = double.NaN;
         private double _cursorFreqR = double.NaN;
+
+        // marques curseur visibles
+        private bool _cursorMarkLVisible;
+        private bool _cursorMarkRVisible;
+        private double _cursorMarkLFreq, _cursorMarkLDb;
+        private double _cursorMarkRFreq, _cursorMarkRDb;
+
 
         // État axe X logarithmique (pour redessin manuel des sous-divisions)
         private bool _xAxisIsLog = false;
@@ -257,8 +269,10 @@ namespace AudioHexViewer
             chartSpectrum.MouseUp += ChartSpectrum_MouseUp;
 
             // Dessin manuel des sous-divisions log
-            chartSpectrum.PostPaint += ChartSpectrum_PostPaint;
             chartSpectrum.FormatNumber += ChartSpectrum_FormatNumber;
+
+            chartSpectrum.PostPaint -= ChartSpectrum_PostPaint;
+            chartSpectrum.PostPaint += ChartSpectrum_PostPaint;
 
 
             InitCursors();
@@ -759,23 +773,84 @@ namespace AudioHexViewer
             bool onR = chkCursorR != null && chkCursorR.Checked;
 
             if (_cursorLineL != null) _cursorLineL.Visible = onL;
-            if (_cursorTextL != null) _cursorTextL.Visible = onL;
 
             if (_cursorLineR != null) _cursorLineR.Visible = onR;
-            if (_cursorTextR != null) _cursorTextR.Visible = onR;
+
+            if (_lblCursorLInfo != null) _lblCursorLInfo.Visible = onL;
+            if (_lblCursorRInfo != null) _lblCursorRInfo.Visible = onR;
+
+            if (!onL) _cursorMarkLVisible = false;
+            if (!onR) _cursorMarkRVisible = false;
+
+            chartSpectrum.Invalidate();
+
 
             chartSpectrum.Invalidate();
         }
-        // ---------------- CURSORS ----------------
 
+        //
+        private void InitCursorInfoLabels()
+        {
+            if (_lblCursorLInfo != null || _lblCursorRInfo != null)
+                return;
+
+            // On les place directement SUR le control Chart (plus simple, pas de Designer)
+            _lblCursorLInfo = new Label
+            {
+                AutoSize = true,
+                Text = "",
+                BackColor = Color.Transparent,          // plus de fond gris
+                ForeColor = Color.DodgerBlue,           // couleur courbe L
+                Font = new Font("Segoe UI", 8.5f),
+                Visible = false
+            };
+
+            _lblCursorRInfo = new Label
+            {
+                AutoSize = true,
+                Text = "",
+                BackColor = Color.Transparent,          // plus de fond gris
+                ForeColor = Color.OrangeRed,            // couleur courbe R
+                Font = new Font("Segoe UI", 8.5f),
+                Visible = false
+            };
+
+
+            chartSpectrum.Controls.Add(_lblCursorLInfo);
+            chartSpectrum.Controls.Add(_lblCursorRInfo);
+            _lblCursorLInfo.BringToFront();
+            _lblCursorRInfo.BringToFront();
+
+            chartSpectrum.Resize += (_, __) => PositionCursorInfoLabels();
+        }
+
+        private void PositionCursorInfoLabels()
+        {
+            if (_lblCursorLInfo == null || _lblCursorRInfo == null)
+                return;
+
+            const int yOffsetFromBottom = 38; // ↑ augmente pour monter (ex: 30..60)
+            const int xOffsetFromRight = 260; // → diminue pour aller plus à droite
+
+            int y = Math.Max(0, chartSpectrum.ClientSize.Height - yOffsetFromBottom);
+
+            // Place le bloc près de la droite (au lieu du centre)
+            int xStart = Math.Max(6, chartSpectrum.ClientSize.Width - xOffsetFromRight);
+
+            _lblCursorLInfo.Location = new Point(xStart, y);
+            _lblCursorRInfo.Location = new Point(xStart, y + 16); // seconde ligne juste dessous
+        }
+
+
+        //
+        // ---------------- CURSORS ----------------
         private void InitCursors()
         {
-            // Si pas encore de ChartArea, on ne fait rien
             if (chartSpectrum.ChartAreas.Count == 0)
                 return;
 
             // Eviter double init
-            if (_cursorLineL != null || _cursorLineR != null || _cursorTextL != null || _cursorTextR != null)
+            if (_cursorLineL != null || _cursorLineR != null )
                 return;
 
             var area = chartSpectrum.ChartAreas["SpectrumArea"];
@@ -793,19 +868,6 @@ namespace AudioHexViewer
                 Visible = false
             };
 
-            _cursorTextL = new TextAnnotation
-            {
-                ClipToChartArea = "SpectrumArea",
-                AxisX = area.AxisX,
-                AxisY = area.AxisY,
-                IsSizeAlwaysRelative = false,
-                BackColor = Color.FromArgb(160, 230, 230, 230),
-                ForeColor = Color.FromArgb(230, 30, 30, 30),
-                Font = new Font("Segoe UI", 8.5f),
-                Alignment = ContentAlignment.TopLeft,
-                Visible = false
-            };
-
             // --- Ligne curseur R ---
             _cursorLineR = new VerticalLineAnnotation
             {
@@ -819,28 +881,21 @@ namespace AudioHexViewer
                 Visible = false
             };
 
-            _cursorTextR = new TextAnnotation
-            {
-                ClipToChartArea = "SpectrumArea",
-                AxisX = area.AxisX,
-                AxisY = area.AxisY,
-                IsSizeAlwaysRelative = false,
-                BackColor = Color.FromArgb(160, 230, 230, 230),
-                ForeColor = Color.FromArgb(230, 30, 30, 30),
-                Font = new Font("Segoe UI", 8.5f),
-                Alignment = ContentAlignment.TopLeft,
-                Visible = false
-            };
+            // --- Triangle curseur L ---
+            // --- Triangle curseur L ---
+
+
 
             chartSpectrum.Annotations.Add(_cursorLineL);
-            chartSpectrum.Annotations.Add(_cursorTextL);
             chartSpectrum.Annotations.Add(_cursorLineR);
-            chartSpectrum.Annotations.Add(_cursorTextR);
 
-            // Appliquer l'état des checkbox au démarrage
+            // Labels en bas
+            InitCursorInfoLabels();
+
             UpdateCursorVisibility();
         }
-
+        //
+        //
         private void ChartSpectrum_MouseMove(object? sender, MouseEventArgs e)
         {
             if (freqAxis == null || freqAxis.Length == 0)
@@ -1193,86 +1248,123 @@ namespace AudioHexViewer
             bool useLog = (chkLogX != null && chkLogX.Checked);
             int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
 
-            // ----- Re-snap par fréquence (important quand N change) -----
+            // resnap indices par fréquence
             if (!double.IsNaN(_cursorFreqL))
                 _cursorIdxL = FindNearestFreqIndex(freqAxis, _cursorFreqL, minIdx);
-
             if (!double.IsNaN(_cursorFreqR))
                 _cursorIdxR = FindNearestFreqIndex(freqAxis, _cursorFreqR, minIdx);
 
-            // clamp log
             if (_cursorIdxL >= 0 && _cursorIdxL < minIdx) _cursorIdxL = minIdx;
             if (_cursorIdxR >= 0 && _cursorIdxR < minIdx) _cursorIdxR = minIdx;
 
-            // --- L ---
-            if (onL && _cursorLineL != null && _cursorTextL != null &&
-                _cursorIdxL >= minIdx && _cursorIdxL < freqAxis.Length)
+            // Y du triangle : un poil sous le max pour éviter clipping
+            double yTop = area.AxisY.Maximum - (area.AxisY.Maximum - area.AxisY.Minimum) * 0.01;
+
+            // ----- LEFT -----
+            if (onL && _cursorLineL != null && _cursorIdxL >= minIdx && _cursorIdxL < freqAxis.Length)
             {
                 double f = freqAxis[_cursorIdxL];
-
-                // garder fréquence exacte affichée et mémorisée
                 _cursorFreqL = f;
 
                 _cursorLineL.X = f;
                 _cursorLineL.Visible = true;
 
-                string text;
+
+
+                // texte bas
+                string txtL;
                 if (currentLeftSpectrum != null && _cursorIdxL < currentLeftSpectrum.Length)
                 {
                     double db = currentLeftSpectrum[_cursorIdxL];
-                    text = $"{f:0.##} Hz\nL: {db:0.##} dBFS" + (_cursorLockedL ? "\n(LOCK)" : "");
+                    txtL = $"L: {f:0.##} Hz  {db:0.##} dBFS" + (_cursorLockedL ? "  (LOCK)" : "");
+
+                    // position en % (0..100) => parfaitement aligné avec la ligne
+                    double xRel = area.AxisX.ValueToPosition(f);
+                    double yRel = area.AxisY.ValueToPosition(db);
+
+                    _cursorMarkLVisible = true;
+                    _cursorMarkLFreq = f;
+                    _cursorMarkLDb = db;
+
+                    // Option: ajuste la “pointe” si tu veux qu’elle touche pile la courbe
+                    const double TRI_Y_OFFSET = 0.0; // essaye 0.6 ou 1.0 si besoin
+                    yRel -= TRI_Y_OFFSET;
+
                 }
                 else
                 {
-                    text = $"{f:0.##} Hz\nL: --" + (_cursorLockedL ? "\n(LOCK)" : "");
+                    txtL = $"L: {f:0.##} Hz  --" + (_cursorLockedL ? "  (LOCK)" : "");
+
                 }
 
-                _cursorTextL.Text = text;
-                _cursorTextL.X = f;
-                _cursorTextL.Y = area.AxisY.Maximum;
-                _cursorTextL.Visible = true;
+                if (_lblCursorLInfo != null)
+                {
+                    _lblCursorLInfo.Text = txtL;
+                    _lblCursorLInfo.Visible = true;
+
+                }
             }
             else
             {
                 if (_cursorLineL != null) _cursorLineL.Visible = false;
-                if (_cursorTextL != null) _cursorTextL.Visible = false;
+                if (_lblCursorLInfo != null) { _lblCursorLInfo.Text = ""; _lblCursorLInfo.Visible = false; }
+                _cursorMarkLVisible = false;
             }
 
-            // --- R ---
-            if (onR && _cursorLineR != null && _cursorTextR != null &&
-                _cursorIdxR >= minIdx && _cursorIdxR < freqAxis.Length)
+            // ----- RIGHT -----
+            if (onR && _cursorLineR != null && _cursorIdxR >= minIdx && _cursorIdxR < freqAxis.Length)
             {
                 double f = freqAxis[_cursorIdxR];
-
                 _cursorFreqR = f;
 
                 _cursorLineR.X = f;
                 _cursorLineR.Visible = true;
 
-                string text;
+
+                // texte bas
+                string txtR;
                 if (currentRightSpectrum != null && _cursorIdxR < currentRightSpectrum.Length)
                 {
                     double db = currentRightSpectrum[_cursorIdxR];
-                    text = $"{f:0.##} Hz\nR: {db:0.##} dBFS" + (_cursorLockedR ? "\n(LOCK)" : "");
+                    txtR = $"R: {f:0.##} Hz  {db:0.##} dBFS" + (_cursorLockedR ? "  (LOCK)" : "");
+
+                    double xRel = area.AxisX.ValueToPosition(f);
+                    double yRel = area.AxisY.ValueToPosition(db);
+
+                    _cursorMarkRVisible = true;
+                    _cursorMarkRFreq = f;
+                    _cursorMarkRDb = db;
+
+
+                    const double TRI_Y_OFFSET = 0.0;
+                    yRel -= TRI_Y_OFFSET;
+
+
                 }
                 else
                 {
-                    text = $"{f:0.##} Hz\nR: --" + (_cursorLockedR ? "\n(LOCK)" : "");
+                    txtR = $"R: {f:0.##} Hz  --" + (_cursorLockedR ? "  (LOCK)" : "");
                 }
 
-                _cursorTextR.Text = text;
-                _cursorTextR.X = f;
-                _cursorTextR.Y = area.AxisY.Maximum;
-                _cursorTextR.Visible = true;
+                if (_lblCursorRInfo != null)
+                {
+                    _lblCursorRInfo.Text = txtR;
+                    _lblCursorRInfo.Visible = true;
+                }
             }
             else
             {
                 if (_cursorLineR != null) _cursorLineR.Visible = false;
-                if (_cursorTextR != null) _cursorTextR.Visible = false;
+                if (_lblCursorRInfo != null) { _lblCursorRInfo.Text = ""; _lblCursorRInfo.Visible = false; }
+                _cursorMarkRVisible = false;
             }
+
+            // repositionne les labels (width change avec le texte)
+            PositionCursorInfoLabels();
 
             chartSpectrum.Invalidate();
         }
+
 
 
 
@@ -1801,7 +1893,12 @@ namespace AudioHexViewer
             if (showLeft)
             {
                 var seriesL = new System.Windows.Forms.DataVisualization.Charting.Series("Left");
-                seriesL.ChartType = SeriesChartType.FastLine;
+
+                // Changement pour avoir courbe à épaisseur variable, coté Left
+                //seriesL.ChartType = SeriesChartType.FastLine;
+                seriesL.ChartType = SeriesChartType.Line;
+                seriesL.BorderWidth = 2;
+                
                 seriesL.ChartArea = "SpectrumArea";
                 seriesL.Color = Color.DodgerBlue;
 
@@ -1831,7 +1928,12 @@ namespace AudioHexViewer
             if (showRight && currentRightSpectrum != null)
             {
                 var seriesR = new System.Windows.Forms.DataVisualization.Charting.Series("Right");
-                seriesR.ChartType = SeriesChartType.FastLine;
+
+                // Changement pour avoir courbe à épaisseur variable, coté Right
+                //seriesR.ChartType = SeriesChartType.FastLine;
+                seriesR.ChartType = SeriesChartType.Line;
+                seriesR.BorderWidth = 2;
+
                 seriesR.ChartArea = "SpectrumArea";
                 seriesR.Color = Color.OrangeRed;
 
@@ -2075,329 +2177,6 @@ namespace AudioHexViewer
 
             return min * Math.Pow(max / min, t);
         }
-
-        //
-        private void ChartSpectrum_PostPaint(object sender, ChartPaintEventArgs e)
-        {
-            // IMPORTANT: ne pas comparer les instances (e.ChartElement != area peut être vrai même pour la bonne zone)
-            var area = e.ChartElement as ChartArea;
-            if (area == null || area.Name != "SpectrumArea")
-                return;
-
-            // ----------------------------
-            // Y : ticks + labels mineurs (5 sous-divisions par majeur) - toujours actif
-            // ----------------------------
-            {
-                double yMajor = area.AxisY.MajorGrid.Interval;
-                double yMinor = area.AxisY.MinorGrid.Interval;
-
-                if (yMajor > 0 && yMinor > 0)
-                {
-                    double yMin = area.AxisY.Minimum;
-                    double yMax = area.AxisY.Maximum;
-
-                    float xLeftPlot = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Minimum);
-
-                    // Style (comme sous-labels X): police plus petite + gris
-                    Font baseFont = area.AxisY.LabelStyle.Font ?? chartSpectrum.Font;
-                    using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
-                    using (Brush minorBrush = new SolidBrush(Color.FromArgb(170, Color.Black)))
-                    using (Pen p = new Pen(Color.FromArgb(140, Color.Gray), 1.0f))
-                    {
-                        const float tickLenLeft = 5f;   // longueur vers la gauche (extérieur)
-                        const float gap = 1f;           // petit espace avant l’axe
-                        const float margin = 8f;   // marge texte-axe
-
-                        // Anti-chevauchement vertical simple
-                        float lastLabelBottom = float.NegativeInfinity;
-
-                        // Dernier tick mineur <= yMax, mais ancré sur yMin (et pas sur 0)
-                        double yStart = yMin + Math.Floor((yMax - yMin) / yMinor) * yMinor;
-
-                        // Ancrage d'index sur yMin (cohérent avec IntervalOffset = yMin)
-                        double y0 = yMin;
-
-
-
-                        int minorPerMajor = (int)Math.Round(yMajor / yMinor);
-                        if (minorPerMajor <= 0) minorPerMajor = 5;
-
-                        for (double y = yStart; y >= yMin - 1e-9; y -= yMinor)
-                        {
-                            // skip majeurs
-                            // Skip si on tombe sur un majeur : on teste l'index (y - y0)/yMinor
-                            int idx = (int)Math.Round((y - y0) / yMinor);
-
-                            // modulo robuste (si idx négatif)
-                            int m = idx % minorPerMajor;
-                            if (m < 0) m += minorPerMajor;
-
-                            // Skip si c'est un majeur
-                            if (m == 0)
-                                continue;
-
-
-
-                            float yPix = (float)area.AxisY.ValueToPixelPosition(y);
-
-                            // Tick
-                            e.ChartGraphics.Graphics.DrawLine(p, xLeftPlot - gap, yPix, xLeftPlot - gap - tickLenLeft, yPix);
-
-                            // Texte (à gauche de l’axe)
-                            string txt = FormatDbMinor(y, yMinor);
-
-                            SizeF sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
-
-                            float xText = xLeftPlot - sz.Width - margin;
-                            float yText = yPix - sz.Height / 2f;
-
-                            if (yText <= lastLabelBottom + 2f) continue;
-
-                            var g = e.ChartGraphics.Graphics;
-                            var saved = g.Save();
-                            g.ResetClip();
-                            g.DrawString(txt, minorFont, minorBrush, xText, yText);
-                            g.Restore(saved);
-
-                            lastLabelBottom = yText + sz.Height;
-                        }
-
-                    }
-                }
-                // ---------------------------------------------------------
-                // Ligne SR/N/Overlap sous le graphe, ALIGNÉE EN HAUTEUR avec AxisX.Title ("Frequency (Hz)")
-                // ---------------------------------------------------------
-                if (!string.IsNullOrWhiteSpace(_bottomInfoLine))
-                {
-                    var g = e.ChartGraphics.Graphics;
-
-                    // On sort du clip de la zone de tracé, car on dessine dans la marge (zone du titre d’axe)
-                    var savedClip = g.Clip;
-                    g.ResetClip();
-
-                    try
-                    {
-                        // Font : même famille/taille que le titre d’axe X si défini, sinon chart font
-                        Font titleFont = area.AxisX.TitleFont ?? chartSpectrum.Font;
-
-                        // Coordonnées "absolues" (pixels) du bas du ChartArea
-                        // area.Position est en % (0..100) du Chart
-                        var pos = area.Position;
-
-                        // bottom-left du ChartArea en pixels
-                        //PointF bl = e.ChartGraphics.GetAbsolutePoint(new PointF(pos.X, pos.Y + pos.Height));
-                        // Y : juste AU-DESSUS de la zone de tracé (plot)
-                        float yPlotTop = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
-                        float y = yPlotTop - titleFont.Height - 2f;
-
-                        // top-left du ChartArea en pixels (utile pour obtenir x)
-                        PointF tl = e.ChartGraphics.GetAbsolutePoint(new PointF(pos.X, pos.Y));
-
-                        // Y : on se place sur la "ligne" du titre d’axe X :
-                        // approximativement 1 hauteur de font au-dessus du bas du ChartArea.
-                        //float y = bl.Y - titleFont.Height - 2f;
-
-                        // X : à gauche, dans la même bande que le titre d’axe
-                        float x = tl.X + 90f;
-
-                        using (Brush b = new SolidBrush(Color.DarkBlue))
-                        {
-                            g.DrawString(_bottomInfoLine, titleFont, b, x, y);
-                        }
-                    }
-                    finally
-                    {
-                        g.Clip = savedClip;
-                    }
-                }
-
-            }
-
-            bool useLog = chkLogX != null && chkLogX.Checked;
-
-            if (useLog)
-            {
-                double fMin = area.AxisX.Minimum;
-                double fMax = area.AxisX.Maximum;
-
-                // Sécurité : en log, on ne dessine rien si bornes invalides
-                if (fMin <= 0 || fMax <= fMin)
-                    return;
-
-                // Lignes mineures log dessinées à la main : 2..9 * 10^n
-                using (Pen minorPen = new Pen(Color.FromArgb(80, Color.Gray), 1f))
-                {
-                    minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
-
-                    // On calcule top/bottom une seule fois
-                    float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
-                    float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
-
-                    // Police "sous-label" : ~ moitié de la taille des labels d’axe
-                    Font baseFont = area.AxisX.LabelStyle.Font ?? chartSpectrum.Font;
-                    using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
-                    using (Brush minorBrush = new SolidBrush(Color.FromArgb(160, Color.Black)))
-                    {
-                        // Anti-chevauchement : on saute un label si trop proche du précédent
-                        float lastLabelRight = float.NegativeInfinity;
-
-                        double decadeStart = Math.Pow(10, Math.Floor(Math.Log10(fMin)));
-                        double decadeEnd = Math.Pow(10, Math.Ceiling(Math.Log10(fMax)));
-
-                        for (double d = decadeStart; d <= decadeEnd; d *= 10.0)
-                        {
-                            for (int k = 2; k <= 9; k++)
-                            {
-                                double f = d * k;
-                                if (f < fMin || f > fMax)
-                                    continue;
-
-                                float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
-
-                                // 1) Ligne verticale (ta sous-grille existante)
-                                e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, top, xPixel, bottom);
-
-                                // 2) (optionnel) petite marque de tick en bas (évite l’effet "pas de marque")
-                                const float minorTickLen = 8f;
-                                e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom + minorTickLen);
-
-                                // 3) Label intermédiaire (2..9), police plus petite
-                                //    -> on réutilise ton format Hz/kHz
-                                string txt = FormatHzK(f);   // ex: 2k, 3k, 5k, 20k...
-
-                                // Mesure + centrage
-                                var sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
-                                float xText = xPixel - sz.Width / 2f;
-
-                                // Dessin *dans* la zone de tracé, juste au-dessus de l’axe (évite de chevaucher les labels décades)
-                                float yText = bottom - minorTickLen + 10f;
-
-                                // Anti-chevauchement en pixels (même si fenêtre large, ça évite les cas extrêmes)
-                                if (xText <= lastLabelRight + 4f)
-                                    continue;
-
-                                e.ChartGraphics.Graphics.DrawString(txt, minorFont, minorBrush, xText, yText);
-                                lastLabelRight = xText + sz.Width;
-                            }
-                        }
-                    }
-                }
-
-            }
-            else
-            {
-                // ---------------------------------------------------------
-                // X linéaire : ticks + labels mineurs (même esprit que pour Y)
-                // ---------------------------------------------------------
-                double fMin = area.AxisX.Minimum;
-                double fMax = area.AxisX.Maximum;
-
-                double xMajor = area.AxisX.MajorGrid.Interval;
-                double xMinor = area.AxisX.MinorGrid.Interval;
-
-                // Sécurités : si l'intervalle n'est pas fixé, on ne dessine pas
-                if (xMajor > 0)
-                {
-                    if (xMinor <= 0)
-                        xMinor = xMajor / 5.0; // fallback cohérent avec ton paramétrage linéaire
-
-                    if (xMinor > 0)
-                    {
-                        // Zone verticale (top/bottom) + baseline (bottom)
-                        float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
-                        float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
-
-                        using (Pen minorPen = new Pen(Color.FromArgb(80, Color.Gray), 1f))
-                        {
-                            minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
-
-                            Font baseFont = area.AxisX.LabelStyle.Font ?? chartSpectrum.Font;
-                            using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
-                            using (Brush minorBrush = new SolidBrush(Color.FromArgb(160, Color.Black)))
-                            {
-                                const float minorTickLen = 6f;
-
-                                // Anti-chevauchement horizontal (en pixels)
-                                float lastLabelRight = float.NegativeInfinity;
-
-                                // Aligne le premier tick mineur sur la grille mineure
-                                double firstMinor = fMin + xMinor;
-
-                                // Petite tolérance pour tester "multiple de majeur"
-                                const double eps = 1e-9;
-
-                                for (double f = firstMinor; f <= fMax + eps; f += xMinor)
-                                {
-                                    if (f < fMin - eps) continue;
-
-                                    // Skip si c'est un majeur (multiple de xMajor)
-                                    double q = (f - fMin) / xMajor;
-                                    if (Math.Abs(q - Math.Round(q)) < 1e-6)
-                                        continue;
-
-                                    float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
-
-                                    // 1) Tick mineur en bas (sans activer MinorTickMark du Chart)
-                                    e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom + minorTickLen);
-
-                                    // 2) Label mineur (même format que le log : Hz / kHz)
-                                    string txt = FormatHzK(f);
-
-                                    var sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
-                                    float xText = xPixel - sz.Width / 2f;
-
-                                    // Position du texte : 
-                                    // Sous l’axe : on descend sous la ligne d'axe + tick
-                                    float yText = bottom + minorTickLen + 2f;
-
-
-                                    // Anti-chevauchement
-                                    if (xText <= lastLabelRight + 4f)
-                                        continue;
-
-                                    // Dessin dans la zone de tracé (pas besoin de ResetClip ici)
-                                    e.ChartGraphics.Graphics.DrawString(txt, minorFont, minorBrush, xText, yText);
-                                    lastLabelRight = xText + sz.Width;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            // ---------------------------------------------------------
-            // Cadre du plot : toujours visible (y compris à droite)
-            // ---------------------------------------------------------
-            {
-                var g = e.ChartGraphics.Graphics;
-
-                // Coordonnées du rectangle du plot en pixels
-                float xLeft = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Minimum);
-                float xRight = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Maximum);
-
-                float yTop = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
-                float yBottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
-
-                // Sécurité : parfois les axes sont inversés selon config
-                float x0 = Math.Min(xLeft, xRight);
-                float x1 = Math.Max(xLeft, xRight);
-                float y0 = Math.Min(yTop, yBottom);
-                float y1 = Math.Max(yTop, yBottom);
-
-                // On sort du clip pour ne pas perdre le bord
-                var saved = g.Save();
-                g.ResetClip();
-
-                using (var pBorder = new Pen(Color.Black, 1f))
-                {
-                    g.DrawRectangle(pBorder, x0, y0, x1 - x0, y1 - y0);
-                }
-
-                g.Restore(saved);
-            }
-
-
-
-        }
         //
         //
         private void ClearSpectrum()
@@ -2547,6 +2326,40 @@ namespace AudioHexViewer
 
             UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
         }
+        //
+        private void ChartSpectrum_PostPaint(object? sender, ChartPaintEventArgs e)
+        {
+            if (e.ChartElement is not ChartArea area) return;
+            if (area.Name != "SpectrumArea") return;
+
+            void DrawDownTriangle(double f, double db, Color color)
+            {
+                // Position exacte en pixels
+                float x = (float)area.AxisX.ValueToPixelPosition(f);
+                float y = (float)area.AxisY.ValueToPixelPosition(db);
+
+                // Triangle inversé : pointe basse sur la courbe
+                const float h = 10f;  // hauteur triangle (px)
+                const float w = 12f;  // largeur triangle (px)
+
+                var pts = new[]
+                {
+                new PointF(x, y),              // pointe basse (sur la courbe)
+                new PointF(x - w/2f, y - h),    // haut gauche
+                new PointF(x + w/2f, y - h)     // haut droit
+        };
+
+                using var brush = new SolidBrush(Color.FromArgb(220, color));
+                e.ChartGraphics.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                e.ChartGraphics.Graphics.FillPolygon(brush, pts);
+            }
+
+            if (_cursorMarkLVisible)
+                DrawDownTriangle(_cursorMarkLFreq, _cursorMarkLDb, Color.DodgerBlue);
+
+            if (_cursorMarkRVisible)
+                DrawDownTriangle(_cursorMarkRFreq, _cursorMarkRDb, Color.OrangeRed);
+        }
 
         private void lblLeftMeas_Click(object sender, EventArgs e)
         {
@@ -2557,5 +2370,6 @@ namespace AudioHexViewer
         {
 
         }
+        //
     }
 }
