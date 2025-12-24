@@ -27,8 +27,6 @@ namespace AudioHexViewer
 
         private readonly SpectrumMetricsOptions _metricsOpt = new SpectrumMetricsOptions();
 
-        private SpectrumSettings.ThdSettings _thdUi = new SpectrumSettings.ThdSettings  ();
-
         public enum ChannelMode
         {
             Left,
@@ -256,12 +254,37 @@ namespace AudioHexViewer
             return (bestSeg, bestStep, bestSpanAdj);
         }
 
+
+
+        private static double NiceStep125(double rawStep)
+        {
+            if (rawStep <= 0 || double.IsNaN(rawStep) || double.IsInfinity(rawStep))
+                return 1.0;
+
+            double exp = Math.Floor(Math.Log10(rawStep));
+            double f = rawStep / Math.Pow(10, exp); // 1..10
+
+            double niceF;
+            if (f <= 1.0) niceF = 1.0;
+            else if (f <= 2.0) niceF = 2.0;
+            else if (f <= 5.0) niceF = 5.0;
+            else niceF = 10.0;
+
+            return niceF * Math.Pow(10, exp);
+        }
+
+        private static double AlignToStepCeil(double value, double step)
+        {
+            if (step <= 0) return value;
+            return Math.Ceiling(value / step) * step;
+        }
+
+
         public SpectrumControl()
         {
             InitializeComponent();
             InitChartAppearance();
             InitializeUiOptions();
-            //InitHarmonicsLabel();
             UpdateRunButtonAppearance();
             InitOverlayAnnotation();
 
@@ -281,34 +304,6 @@ namespace AudioHexViewer
             chartSpectrum.MouseLeave += (s, e) => { /* optionnel : cacher texte */ };
 
         }
-        //
-        public void ApplyThdSettings(SpectrumSettings.ThdSettings s)
-        {
-            _thdUi = s ?? new SpectrumSettings.ThdSettings();
-
-            // Bande
-            _metricsOpt.MinFreqHz = _thdUi.UseHPF ? Math.Max(0.0, _thdUi.FlowHz) : 0.0;
-
-            if (_thdUi.UseLPF)
-            {
-                double nyq = (_sampleRate > 0) ? (_sampleRate / 2.0) : 384000.0; // fallback
-                _metricsOpt.MaxFreqHz = Math.Min(Math.Max(0.0, _thdUi.FhighHz), nyq);
-            }
-            else
-            {
-                _metricsOpt.MaxFreqHz = 0.0; // 0 => Nyquist
-            }
-
-            // Harmoniques (clamp)
-            int n = _thdUi.HarmonicsNumber;
-            if (n < 2) n = 2;
-            if (n > 20) n = 20;
-            _metricsOpt.MaxHarmonics = n;
-
-            // (optionnel) Recalcul immédiat si acquisition active
-            AcquireOnce();
-        }
-
         //
         private (double yMin, double yMax) GetCurrentYRangeGlobal()
         {
@@ -2037,52 +2032,39 @@ namespace AudioHexViewer
                 lblRightPeak.Text = "";
             }
             // --- Mesures analytiques : LEFT ---
-            ChannelMetrics? mL = null;
-            ChannelMetrics? mR = null;
-
-            // --- Mesures analytiques : LEFT ---
             if (lblLeftMeas != null && currentLeftSpectrum != null && _sampleRate > 0 && lastFftSize > 0)
             {
-                mL = SpectrumMetrics.ComputeChannel(currentLeftSpectrum, _sampleRate, lastFftSize, _metricsOpt);
+                var m = SpectrumMetrics.ComputeChannel(currentLeftSpectrum, _sampleRate, lastFftSize, _metricsOpt);
 
-                if (mL.Valid)
+                if (m.Valid)
                 {
-                    string thdText = (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
-                        ? $"THD: {mL.Thd * 100.0:F3} %"
-                        : $"THD: {mL.ThdDb:F1} dB";
-
                     lblLeftMeas.Text =
-                        $"F0: {mL.FundamentalHz:F1} Hz\n" +
-                        thdText + "\n" +
-                        $"THD+N: {mL.ThdNDb:F1} dB\n" +
-                        $"SINAD: {mL.SinadDb:F1} dB\n" +
-                        $"SNR: {mL.SnrDb:F1} dB\n" +
-                        $"SFDR: {mL.SfdrDb:F1} dB";
+                        $"F0: {m.FundamentalHz:F1} Hz\n" +
+                        $"THD: {m.ThdDb:F1} dB\n" +
+                        $"THD+N: {m.ThdNDb:F1} dB\n" +
+                        $"SINAD: {m.SinadDb:F1} dB\n" +
+                        $"SNR: {m.SnrDb:F1} dB\n" +
+                        $"SFDR: {m.SfdrDb:F1} dB";
                 }
                 else
                 {
                     lblLeftMeas.Text = "—";
                 }
             }
-
             // --- Mesures analytiques : RIGHT ---
             if (lblRightMeas != null && currentRightSpectrum != null && _sampleRate > 0 && lastFftSize > 0)
             {
-                mR = SpectrumMetrics.ComputeChannel(currentRightSpectrum, _sampleRate, lastFftSize, _metricsOpt);
+                var m = SpectrumMetrics.ComputeChannel(currentRightSpectrum, _sampleRate, lastFftSize, _metricsOpt);
 
-                if (mR.Valid)
+                if (m.Valid)
                 {
-                    string thdText = (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
-                        ? $"THD: {mR.Thd * 100.0:F3} %"
-                        : $"THD: {mR.ThdDb:F1} dB";
-
                     lblRightMeas.Text =
-                        $"F0: {mR.FundamentalHz:F1} Hz\n" +
-                        thdText + "\n" +
-                        $"THD+N: {mR.ThdNDb:F1} dB\n" +
-                        $"SINAD: {mR.SinadDb:F1} dB\n" +
-                        $"SNR: {mR.SnrDb:F1} dB\n" +
-                        $"SFDR: {mR.SfdrDb:F1} dB";
+                        $"F0: {m.FundamentalHz:F1} Hz\n" +
+                        $"THD: {m.ThdDb:F1} dB\n" +
+                        $"THD+N: {m.ThdNDb:F1} dB\n" +
+                        $"SINAD: {m.SinadDb:F1} dB\n" +
+                        $"SNR: {m.SnrDb:F1} dB\n" +
+                        $"SFDR: {m.SfdrDb:F1} dB";
                 }
                 else
                 {
@@ -2093,40 +2075,6 @@ namespace AudioHexViewer
             {
                 lblRightMeas.Text = "";
             }
-
-            // --- Affichage des harmoniques (label à droite de Clear AVG) ---
-            if (lblHarmonics != null)
-            {
-                if (!_thdUi.ShowHarmonicsValues)
-                {
-                    lblHarmonics.Text = "";
-                }
-                else
-                {
-                    string FormatHarms(string prefix, ChannelMetrics? mm)
-                    {
-                        if (mm == null || !mm.Valid) return $"{prefix}: —";
-                        var list = mm.Harmonics;
-                        if (list == null || list.Count == 0) return $"{prefix}: (no harms)";
-
-                        var parts = new List<string>(list.Count);
-                        foreach (var h in list)
-                        {
-                            if (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
-                                parts.Add($"H{h.Order}:{h.RatioPercent:F3}%");
-                            else
-                                parts.Add($"H{h.Order}:{h.LevelDbc:F1}dB");
-                        }
-                        return $"{prefix}: " + string.Join(" ", parts);
-                    }
-
-                    // 2 lignes : L / R
-                    lblHarmonics.Text =
-                        FormatHarms("L", mL) + "\n" +
-                        FormatHarms("R", mR);
-                }
-            }
-
 
             RefreshCursorAfterRedraw();
         }

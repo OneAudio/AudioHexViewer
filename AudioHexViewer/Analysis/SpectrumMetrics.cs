@@ -11,19 +11,11 @@ namespace AudioHexViewer
 
         // Détection / intégration
         public bool ExcludeDc { get; set; } = true;
-        public int ToneHalfWidthBins { get; set; } = 1; // intégration ±W bins autour d'un pic - THD BIN WIDTH FOR CALC
+        public int ToneHalfWidthBins { get; set; } = 12; // intégration ±W bins autour d'un pic
         public int MaxHarmonics { get; set; } = 7;      // 2..N
 
         // Optionnel: ignorer les harmoniques sous une fréquence minimale
         public double MinHarmonicFreqHz { get; set; } = 20.0;
-    }
-
-    internal readonly struct HarmonicInfo
-    {
-        public int Order { get; init; }           // 2..N
-        public double FrequencyHz { get; init; }  // Hz
-        public double LevelDbc { get; init; }     // dBc (relatif à la fondamentale)
-        public double RatioPercent { get; init; } // % (relatif à la fondamentale)
     }
 
     internal sealed class ChannelMetrics
@@ -55,10 +47,6 @@ namespace AudioHexViewer
 
         // Debug
         public int FundamentalBin { get; init; }
-
-        // Harmoniques détaillées (optionnel)
-        public IReadOnlyList<HarmonicInfo> Harmonics { get; init; } = Array.Empty<HarmonicInfo>();
-
     }
 
     internal static class SpectrumMetrics
@@ -127,8 +115,6 @@ namespace AudioHexViewer
             double pFund = IntegrateTonePowerAndMark(excluded, p, kFund, opt.ToneHalfWidthBins, kMin, kMax);
 
             // 4) Harmoniques
-            var harmonics = new List<HarmonicInfo>();
-
             double pHarm = 0.0;
             int maxH = Math.Max(0, opt.MaxHarmonics);
 
@@ -141,33 +127,8 @@ namespace AudioHexViewer
                 int kH = (int)Math.Round(fh * fftSize / (double)sampleRate);
                 if (kH < kMin || kH > kMax) continue;
 
-                double pThis = IntegrateTonePowerAndMark(excluded, p, kH, opt.ToneHalfWidthBins, kMin, kMax);
-                pHarm += pThis;
-
-                if (pFund > 0.0 && pThis > 0.0)
-                {
-                    double ratioAmp = Math.Sqrt(pThis / pFund);            // amplitude ratio
-                    double levelDbc = 20.0 * SafeLog10(ratioAmp);          // dBc (négatif)
-                    harmonics.Add(new HarmonicInfo
-                    {
-                        Order = h,
-                        FrequencyHz = fh,
-                        LevelDbc = ClampDb(levelDbc),
-                        RatioPercent = ratioAmp * 100.0
-                    });
-                }
-                else
-                {
-                    harmonics.Add(new HarmonicInfo
-                    {
-                        Order = h,
-                        FrequencyHz = fh,
-                        LevelDbc = -200.0,
-                        RatioPercent = 0.0
-                    });
-                }
+                pHarm += IntegrateTonePowerAndMark(excluded, p, kH, opt.ToneHalfWidthBins, kMin, kMax);
             }
-
 
             // 5) Puissance totale dans bande (pour THD+N / SINAD)
             double pTotal = 0.0;
@@ -249,9 +210,7 @@ namespace AudioHexViewer
                 SfdrDb = sfdrDb,
 
                 LargestSpurHz = spurHz,
-                LargestSpurDbFs = spurDb,
-                Harmonics = harmonics
-
+                LargestSpurDbFs = spurDb
             };
         }
 
