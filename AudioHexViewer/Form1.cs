@@ -906,8 +906,18 @@ namespace AudioHexViewer
                 MessageBox.Show(this, ex.ToString(), "Crash in THD setting", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-
         //
+        private void menuEnableThd_CheckedChanged(object sender, EventArgs e)
+        {
+            bool enabled = menuEnableThd.Checked;
+
+            _session.Spectrum.EnableThdMeasures = enabled;
+            SessionSettingsManager.Save(_session, out _);
+
+            if (spectrumControl != null)
+                spectrumControl.SetThdMeasuresEnabled(enabled);
+        }
+
         //
         private void InitOverlayMenu()
         {
@@ -984,7 +994,7 @@ namespace AudioHexViewer
             Properties.Settings.Default.OverlayEnabled = string.Join("|", ens);
             Properties.Settings.Default.Save();
         }
-
+        //
         //
         private void OverlayMenu_Click(object? sender, EventArgs e)
         {
@@ -2599,6 +2609,8 @@ namespace AudioHexViewer
                 int sampleRate = currentFormat?.SampleRate ?? 48000;
 
                 spectrumControl = new SpectrumControl(GetAnalysisFrame, sampleRate);
+                menuEnableThd.Checked = _session.Spectrum.EnableThdMeasures; // état au démarrage
+                spectrumControl.SetThdMeasuresEnabled(menuEnableThd.Checked);
                 if (menuCursorL != null) spectrumControl.CursorLeftEnabled = menuCursorL.Checked;
                 if (menuCursorR != null) spectrumControl.CursorRightEnabled = menuCursorR.Checked;
                 spectrumControl.RunRequested += EnsureReadRunning;

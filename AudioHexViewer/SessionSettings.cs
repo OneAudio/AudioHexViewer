@@ -46,9 +46,11 @@ namespace AudioHexViewer
         public string Window { get; set; } = "Rectangular"; // Rectangular/Hann/Hamming/Blackman-Harris-4/Blackman-Harris-7
         public bool LogFreq { get; set; } = false;       // log freq
         public int Averaging { get; set; } = 0;          // 0 = None, sinon 2/4/8/...
+        public bool EnableThdMeasures { get; set; } = false;
 
         // --- Commit 11 : THD settings ---
         public ThdSettings Thd { get; set; } = new ThdSettings();
+
 
         public sealed class ThdSettings
         {

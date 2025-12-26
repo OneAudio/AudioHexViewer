@@ -135,9 +135,13 @@ namespace AudioHexViewer
             set => chkCursorR.Checked = value;
         }
 
+        private bool _statsShowLeft = true;
+        private bool _statsShowRight = true;
+
+        private bool _thdMeasuresEnabled = false;
 
         // --- Étape 2 : panneau stats dans le chart (zone dédiée à droite) ---
-        private const int ChartStatsWidthPx = 230;      // largeur du panneau stats
+        private const int ChartStatsWidthPx = 170;      // largeur du panneau stats
         private const int ChartStatsMinPlotWidthPx = 420; // largeur mini du graphe (évite d’écraser le plot)
 
         //
@@ -332,6 +336,7 @@ namespace AudioHexViewer
 
         }
         //
+        //
         public void ApplyThdSettings(SpectrumSettings.ThdSettings s)
         {
             _thdUi = s ?? new SpectrumSettings.ThdSettings();
@@ -357,6 +362,15 @@ namespace AudioHexViewer
 
             // (optionnel) Recalcul immédiat si acquisition active
             AcquireOnce();
+        }
+        //
+        public void SetThdMeasuresEnabled(bool enabled)
+        {
+            _thdMeasuresEnabled = enabled;
+
+            // Force un rafraîchissement affichage (sans recalcul lourd immédiat)
+            RebuildStatsRowsFromLabels();
+            chartSpectrum.Invalidate();
         }
 
         //
@@ -879,8 +893,8 @@ namespace AudioHexViewer
             if (_lblCursorLInfo == null || _lblCursorRInfo == null)
                 return;
 
-            const int yOffsetFromBottom = 38; // ↑ augmente pour monter (ex: 30..60)
-            const int xOffsetFromRight = 260; // → diminue pour aller plus à droite
+            const int yOffsetFromBottom = 40; // ↑ augmente pour monter (ex: 30..60)
+            const int xOffsetFromRight = 450; // → diminue pour aller plus à droite
 
             int y = Math.Max(0, chartSpectrum.ClientSize.Height - yOffsetFromBottom);
 
@@ -1356,20 +1370,32 @@ namespace AudioHexViewer
             using var fontHeader = new Font(fontBase, FontStyle.Bold);
             using var fontBold = new Font(fontBase, FontStyle.Bold);
             using var fontStrong = new Font(fontBase.FontFamily, fontBase.SizeInPoints + 1.5f, FontStyle.Bold);
+            using var brushStrong = new SolidBrush(Color.DimGray); // très léger "fond"
 
-            using var brushText = new SolidBrush(Color.Black);
+            using var brushText = new SolidBrush(Color.DimGray);
             using var brushLabel = new SolidBrush(Color.DimGray);
-
-            using var fmtRight = new StringFormat { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Near };
 
             float y = rect.Y + pad;
 
+            using var penSep = new Pen(Color.Gainsboro, 1f);
+            using var fmtCenter = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
+            using var fmtRight = new StringFormat { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Near };
+            using var fmtRightMeas = (StringFormat)fmtRight.Clone();
+            fmtRightMeas.FormatFlags |= StringFormatFlags.MeasureTrailingSpaces;
+
+
             float DrawSection(string title, Color titleColor, List<StatRow> rows)
             {
+                // Titre centré
+                var headerRect = new RectangleF(rect.X + pad, y, rect.Width - 2 * pad, fontHeader.GetHeight(g));
                 using (var bTitle = new SolidBrush(titleColor))
-                    g.DrawString(title, fontHeader, bTitle, xL, y);
+                    g.DrawString(title, fontHeader, bTitle, headerRect, fmtCenter);
 
-                y += fontHeader.GetHeight(g) + 6f;
+                y += headerRect.Height + 4f;
+
+                // Trait sous le titre (largeur table)
+                g.DrawLine(penSep, rect.X + pad, y, rect.Right - pad, y);
+                y += 8f;
 
                 if (rows.Count == 0)
                 {
@@ -1378,31 +1404,78 @@ namespace AudioHexViewer
                     return y;
                 }
 
-                foreach (var r in rows)
+                float maxLabelW = 0f;
+                foreach (var rr in rows)
                 {
+                    Font fLabel = rr.Emphasis == StatEmphasis.Strong ? fontBold : fontBase;
+                    var sz = g.MeasureString(rr.Label, fLabel);
+                    if (sz.Width > maxLabelW) maxLabelW = sz.Width;
+                }
+                float valueLeft = xL + maxLabelW + 12f; // séparation label -> valeur
+
+
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    var r = rows[i];
                     Font fLabel = r.Emphasis == StatEmphasis.Strong ? fontBold : fontBase;
                     Font fVal =
                         r.Emphasis == StatEmphasis.Strong ? fontStrong :
                         r.Emphasis == StatEmphasis.Medium ? fontBold :
                         fontBase;
 
-                    // Label (gauche)
+                    // Label
                     g.DrawString(r.Label, fLabel, brushLabel, xL, y);
 
-                    // Valeur (droite alignée)
-                    g.DrawString(r.Value, fVal, brushText, xR, y, fmtRight);
+                    // Hauteur de ligne maîtrisée
+                    float rowHeight = Math.Max(fLabel.GetHeight(g), fVal.GetHeight(g));
+                    var valueRect = new RectangleF(valueLeft, y, (rect.Right - pad) - valueLeft, rowHeight);
 
-                    float h = Math.Max(fLabel.GetHeight(g), fVal.GetHeight(g));
-                    y += h + 2f;
+                    // Highlight EXACT (sans empiéter verticalement)
+                    if (r.Emphasis == StatEmphasis.Strong)
+                    {
+                        using var fmtRange = (StringFormat)fmtRightMeas.Clone();
+                        fmtRange.SetMeasurableCharacterRanges(new[] { new CharacterRange(0, r.Value.Length) });
+
+                        var regions = g.MeasureCharacterRanges(r.Value, fVal, valueRect, fmtRange);
+                        var bounds = regions[0].GetBounds(g);
+
+                        // Inflation surtout horizontale, verticale minimale
+                        bounds.Inflate(4f, 0.5f);
+
+                        using var fill = new SolidBrush(Color.FromArgb(18, 30, 144, 255));
+                        g.FillRectangle(fill, bounds);
+                    }
+
+                    // Valeur (alignée à droite dans valueRect)
+                    g.DrawString(r.Value, fVal, brushText, valueRect, fmtRight);
+
+                    // Avance avec un peu plus d'espace => pas de chevauchement
+                    y += rowHeight + 4f;
+
+
+                    // Séparateur après F0 (ou après les 3 premières lignes si F0 n'existe pas)
+                    bool isAfterF0 = r.Label.Equals("F0", StringComparison.OrdinalIgnoreCase);
+                    bool isAfterThird = (i == 2);
+
+                    if (isAfterF0 || isAfterThird)
+                    {
+                        y += 3f;
+                        g.DrawLine(penSep, rect.X + pad, y, rect.Right - pad, y);
+                        y += 8f;
+                    }
                 }
 
                 y += 10f;
                 return y;
             }
 
-            // Deux sections empilées
-            y = DrawSection("LEFT", Color.RoyalBlue, _rowsLeft);
-            y = DrawSection("RIGHT", Color.OrangeRed, _rowsRight);
+            // Affichage sections LEFT / RIGHT si activées
+            if (_statsShowLeft)
+                y = DrawSection("LEFT", Color.RoyalBlue, _rowsLeft);
+
+            if (_statsShowRight)
+                y = DrawSection("RIGHT", Color.OrangeRed, _rowsRight);
+
 
             g.Restore(saved);
         }
@@ -1778,6 +1851,31 @@ namespace AudioHexViewer
             if (freqAxis == null || currentLeftSpectrum == null)
                 return;
 
+            // Helper local : estimation rapide de F0 (pas de THD => pas de ComputeChannel)
+            static double? EstimateFundamentalHz(double[] spectrum, int sampleRate, int fftSize)
+            {
+                if (spectrum == null || spectrum.Length < 3 || sampleRate <= 0 || fftSize <= 0)
+                    return null;
+
+                int startBin = 1; // ignore DC
+                int endBin = spectrum.Length - 1;
+
+                int maxIdx = startBin;
+                double maxVal = spectrum[startBin];
+
+                for (int i = startBin + 1; i <= endBin; i++)
+                {
+                    double v = spectrum[i];
+                    if (v > maxVal)
+                    {
+                        maxVal = v;
+                        maxIdx = i;
+                    }
+                }
+
+                return maxIdx * (double)sampleRate / fftSize;
+            }
+
             chartSpectrum.Series.Clear();
 
             var area = chartSpectrum.ChartAreas["SpectrumArea"];
@@ -1823,7 +1921,6 @@ namespace AudioHexViewer
             if (fMax > uiMax)
                 fMax = uiMax;
 
-
             // --- Axe Y (dBFS) avec limites custom éventuelles ---
             double yMinAuto = -200.0;
             double yMaxAuto = 0.0;
@@ -1835,28 +1932,17 @@ namespace AudioHexViewer
                 yMin = yMax - 10.0; // au moins 10 dB de span
 
             // ---------------- Grilles & divisions ----------------
-
-            // Axe Y : 4 divisions majeures + 5 sous-divisions par majeur
-            // Conditions garanties :
-            //  - span total = 4 * yMajor
-            //  - yMajor = 5 * yMinor
-            // => donc span total = 20 * yMinor
-
             const int majorDivCount = 4;
             const int minorPerMajor = 5;
 
             double ySpan = yMax - yMin;
             if (ySpan <= 0) ySpan = 1.0;
 
-            // pas mineur visé : span / 20
             double rawMinor = ySpan / (majorDivCount * minorPerMajor);
             if (rawMinor <= 0) rawMinor = 1.0;
 
-            // --- Nouveau comportement : respecter la plage utilisateur ---
-            // On garde le pas exact si <= 2 décimales, sinon on arrondit à 2 décimales.
             double yMinor = rawMinor;
 
-            // test "<= 2 décimales" (tolérance)
             double scaled = yMinor * 100.0;
             double scaledRound = Math.Round(scaled);
             bool hasMoreThan2Decimals = Math.Abs(scaled - scaledRound) > 1e-9;
@@ -1864,16 +1950,10 @@ namespace AudioHexViewer
             if (hasMoreThan2Decimals)
                 yMinor = Math.Round(yMinor, 2, MidpointRounding.AwayFromZero);
 
-            // sécurité si trop petit après arrondi (évite 0)
             if (yMinor <= 0)
                 yMinor = 0.01;
 
-            // Major = 5 * minor
             double yMajor = minorPerMajor * yMinor;
-
-            // IMPORTANT : on ne modifie plus yMin/yMax.
-            // On conserve exactement la plage saisie par l'utilisateur.
-
 
             area.AxisY.Minimum = yMin;
             area.AxisY.Maximum = yMax;
@@ -1881,7 +1961,6 @@ namespace AudioHexViewer
             _currentYMinor = yMinor;
             _currentYMajor = yMajor;
 
-            // IMPORTANT : pas d'offset (sinon désalignement / instabilité)
             area.AxisY.Interval = yMajor;
             area.AxisY.IntervalOffset = 0.0;
 
@@ -1892,7 +1971,6 @@ namespace AudioHexViewer
             area.AxisY.MajorTickMark.Interval = yMajor;
             area.AxisY.MajorTickMark.IntervalOffset = 0.0;
 
-            // Grilles (majeure + mineure)
             area.AxisY.MajorGrid.Enabled = true;
             area.AxisY.MajorGrid.Interval = yMajor;
             area.AxisY.MajorGrid.IntervalOffset = 0.0;
@@ -1904,34 +1982,27 @@ namespace AudioHexViewer
             area.AxisY.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
             area.AxisY.MinorGrid.LineColor = Color.LightGray;
 
-            // (optionnel) éviter les ticks mineurs auto (tu dessines déjà des ticks/labels mineurs)
             area.AxisY.MinorTickMark.Enabled = false;
 
-            // Détermination du nombre de décimales à afficher
             int yDecimals = 0;
             if (yMinor < 1.0)
             {
                 yDecimals = (int)Math.Ceiling(-Math.Log10(yMinor));
-                yDecimals = Math.Min(yDecimals, 2); // sécurité
+                yDecimals = Math.Min(yDecimals, 2);
             }
-
-            // Format des labels majeurs
             area.AxisY.LabelStyle.Format = "F" + yDecimals;
 
             // --- Axe X : on fixe d'abord les bornes, puis on active le log si besoin ---
-
             area.AxisX.Minimum = fMin;
             area.AxisX.Maximum = fMax;
 
             if (useLog)
             {
-                // en log, il FAUT des bornes > 0, sinon exception
                 if (area.AxisX.Minimum <= 0)
                     area.AxisX.Minimum = 1.0;
                 if (area.AxisX.Maximum <= area.AxisX.Minimum)
                     area.AxisX.Maximum = area.AxisX.Minimum * 10.0;
 
-                // --- LOG : forcer des décades propres ---
                 double minDecade = Math.Pow(10.0, Math.Floor(Math.Log10(area.AxisX.Minimum)));
                 area.AxisX.Minimum = Math.Max(1.0, minDecade);
 
@@ -1941,19 +2012,16 @@ namespace AudioHexViewer
                 area.AxisX.IsLogarithmic = true;
                 area.AxisX.LogarithmBase = 10.0;
 
-                // 1 unité en log = 1 décade => labels/ticks uniquement sur 10^n
                 area.AxisX.Interval = 1.0;
                 area.AxisX.LabelStyle.Interval = 1.0;
                 area.AxisX.MajorTickMark.Interval = 1.0;
 
-                // Major = décades, Minor désactivée (sous-divisions dessinées à la main)
                 area.AxisX.MajorGrid.Enabled = true;
                 area.AxisX.MajorGrid.LineDashStyle = ChartDashStyle.Solid;
-                area.AxisX.MajorGrid.Interval = 1.0;      // 1 unité log = 1 décade
+                area.AxisX.MajorGrid.Interval = 1.0;
 
                 area.AxisX.MinorGrid.Enabled = false;
 
-                // FIX offsets
                 area.AxisX.MajorGrid.IntervalOffset = 0.0;
                 area.AxisX.MinorGrid.IntervalOffset = 0.0;
                 area.AxisX.MinorTickMark.IntervalOffset = 0.0;
@@ -2006,22 +2074,22 @@ namespace AudioHexViewer
             bool showRight = (currentRightSpectrum != null) && (mode == "Right" || mode == "L+R");
             bool peakHoldOn = (chkPeakHold != null && chkPeakHold.Checked);
 
+            _statsShowLeft = showLeft;
+            _statsShowRight = showRight;
+
             // >>> MODIF COMMIT 3 : peak-hold vient du post-processor
             double[]? peakL = peakHoldOn ? _post.GetPeakLeft() : null;
             double[]? peakR = peakHoldOn ? _post.GetPeakRight() : null;
-            //
+
             // --- Overlays ---
             foreach (var slot in _overlays.Slots)
             {
                 if (!slot.Enabled || slot.Data == null)
                     continue;
 
-                // Compatibilité du sample rate.
                 if (_sampleRate > 0 && slot.Data.SampleRate != _sampleRate)
-                    continue; // on bloque seulement quand SR connu
-                              // SR différent => on n’affiche pas
+                    continue;
 
-                // Si le mode affiche Left, on superpose LeftDbFs (sinon fallback RightDbFs)
                 if (showLeft)
                 {
                     var ov = slot.Data.LeftDbFs ?? slot.Data.RightDbFs;
@@ -2043,7 +2111,6 @@ namespace AudioHexViewer
                     }
                 }
 
-                // Si le mode affiche Right, on superpose RightDbFs (sinon fallback LeftDbFs)
                 if (showRight)
                 {
                     var ov = slot.Data.RightDbFs ?? slot.Data.LeftDbFs;
@@ -2065,17 +2132,13 @@ namespace AudioHexViewer
                     }
                 }
             }
-            //
+
             // Courbe gauche
             if (showLeft)
             {
                 var seriesL = new System.Windows.Forms.DataVisualization.Charting.Series("Left");
-
-                // Changement pour avoir courbe à épaisseur variable, coté Left
-                //seriesL.ChartType = SeriesChartType.FastLine;
                 seriesL.ChartType = SeriesChartType.Line;
                 seriesL.BorderWidth = 2;
-                
                 seriesL.ChartArea = "SpectrumArea";
                 seriesL.Color = Color.DodgerBlue;
 
@@ -2084,7 +2147,6 @@ namespace AudioHexViewer
 
                 chartSpectrum.Series.Add(seriesL);
 
-                // Peak-hold gauche (pointillés)
                 if (peakHoldOn && peakL != null)
                 {
                     var seriesLph = new ChartSeries("LeftPeakHold");
@@ -2105,12 +2167,8 @@ namespace AudioHexViewer
             if (showRight && currentRightSpectrum != null)
             {
                 var seriesR = new System.Windows.Forms.DataVisualization.Charting.Series("Right");
-
-                // Changement pour avoir courbe à épaisseur variable, coté Right
-                //seriesR.ChartType = SeriesChartType.FastLine;
                 seriesR.ChartType = SeriesChartType.Line;
                 seriesR.BorderWidth = 2;
-
                 seriesR.ChartArea = "SpectrumArea";
                 seriesR.Color = Color.OrangeRed;
 
@@ -2119,7 +2177,6 @@ namespace AudioHexViewer
 
                 chartSpectrum.Series.Add(seriesR);
 
-                // Peak-hold droite (pointillés)
                 if (peakHoldOn && peakR != null)
                 {
                     var seriesRph = new ChartSeries("RightPeakHold");
@@ -2213,57 +2270,83 @@ namespace AudioHexViewer
                 lblRightRms.Text = "";
                 lblRightPeak.Text = "";
             }
-            // --- Mesures analytiques : LEFT ---
+
+            // =========================
+            //   MESURES ANALYTIQUES
+            // =========================
+            bool doThd = _thdMeasuresEnabled;
             ChannelMetrics? mL = null;
             ChannelMetrics? mR = null;
 
-            // --- Mesures analytiques : LEFT ---
+            // LEFT
             if (lblLeftMeas != null && currentLeftSpectrum != null && _sampleRate > 0 && lastFftSize > 0)
             {
-                mL = SpectrumMetrics.ComputeChannel(currentLeftSpectrum, _sampleRate, lastFftSize, _metricsOpt);
-
-                if (mL.Valid)
+                if (doThd)
                 {
-                    string thdText = (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
-                        ? $"THD: {mL.Thd * 100.0:F3} %"
-                        : $"THD: {mL.ThdDb:F1} dB";
+                    mL = SpectrumMetrics.ComputeChannel(currentLeftSpectrum, _sampleRate, lastFftSize, _metricsOpt);
 
-                    lblLeftMeas.Text =
-                        $"F0: {mL.FundamentalHz:F1} Hz\n" +
-                        thdText + "\n" +
-                        $"THD+N: {mL.ThdNDb:F1} dB\n" +
-                        $"SINAD: {mL.SinadDb:F1} dB\n" +
-                        $"SNR: {mL.SnrDb:F1} dB\n" +
-                        $"SFDR: {mL.SfdrDb:F1} dB";
+                    if (mL.Valid)
+                    {
+                        string thdText = (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
+                            ? $"THD: {mL.Thd * 100.0:F3} %"
+                            : $"THD: {mL.ThdDb:F1} dB";
+
+                        lblLeftMeas.Text =
+                            $"F0: {mL.FundamentalHz:F1} Hz\n" +
+                            thdText + "\n" +
+                            $"THD+N: {mL.ThdNDb:F1} dB\n" +
+                            $"SINAD: {mL.SinadDb:F1} dB\n" +
+                            $"SNR: {mL.SnrDb:F1} dB\n" +
+                            $"SFDR: {mL.SfdrDb:F1} dB";
+                    }
+                    else
+                    {
+                        lblLeftMeas.Text = "—";
+                    }
                 }
                 else
                 {
-                    lblLeftMeas.Text = "—";
+                    // THD OFF => F0 uniquement (rapide)
+                    var f0 = EstimateFundamentalHz(currentLeftSpectrum, _sampleRate, lastFftSize);
+                    lblLeftMeas.Text = f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "—";
                 }
             }
+            else if (lblLeftMeas != null)
+            {
+                lblLeftMeas.Text = "";
+            }
 
-            // --- Mesures analytiques : RIGHT ---
+            // RIGHT
             if (lblRightMeas != null && currentRightSpectrum != null && _sampleRate > 0 && lastFftSize > 0)
             {
-                mR = SpectrumMetrics.ComputeChannel(currentRightSpectrum, _sampleRate, lastFftSize, _metricsOpt);
-
-                if (mR.Valid)
+                if (doThd)
                 {
-                    string thdText = (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
-                        ? $"THD: {mR.Thd * 100.0:F3} %"
-                        : $"THD: {mR.ThdDb:F1} dB";
+                    mR = SpectrumMetrics.ComputeChannel(currentRightSpectrum, _sampleRate, lastFftSize, _metricsOpt);
 
-                    lblRightMeas.Text =
-                        $"F0: {mR.FundamentalHz:F1} Hz\n" +
-                        thdText + "\n" +
-                        $"THD+N: {mR.ThdNDb:F1} dB\n" +
-                        $"SINAD: {mR.SinadDb:F1} dB\n" +
-                        $"SNR: {mR.SnrDb:F1} dB\n" +
-                        $"SFDR: {mR.SfdrDb:F1} dB";
+                    if (mR.Valid)
+                    {
+                        string thdText = (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
+                            ? $"THD: {mR.Thd * 100.0:F3} %"
+                            : $"THD: {mR.ThdDb:F1} dB";
+
+                        lblRightMeas.Text =
+                            $"F0: {mR.FundamentalHz:F1} Hz\n" +
+                            thdText + "\n" +
+                            $"THD+N: {mR.ThdNDb:F1} dB\n" +
+                            $"SINAD: {mR.SinadDb:F1} dB\n" +
+                            $"SNR: {mR.SnrDb:F1} dB\n" +
+                            $"SFDR: {mR.SfdrDb:F1} dB";
+                    }
+                    else
+                    {
+                        lblRightMeas.Text = "—";
+                    }
                 }
                 else
                 {
-                    lblRightMeas.Text = "—";
+                    // THD OFF => F0 uniquement (rapide)
+                    var f0 = EstimateFundamentalHz(currentRightSpectrum, _sampleRate, lastFftSize);
+                    lblRightMeas.Text = f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "—";
                 }
             }
             else if (lblRightMeas != null)
@@ -2272,9 +2355,10 @@ namespace AudioHexViewer
             }
 
             // --- Affichage des harmoniques (label à droite de Clear AVG) ---
+            // THD OFF => on coupe l'affichage (et surtout on évite tout accès à mL/mR non calculés)
             if (lblHarmonics != null)
             {
-                if (!_thdUi.ShowHarmonicsValues)
+                if (!doThd || !_thdUi.ShowHarmonicsValues)
                 {
                     lblHarmonics.Text = "";
                 }
@@ -2297,7 +2381,6 @@ namespace AudioHexViewer
                         return $"{prefix}: " + string.Join(" ", parts);
                     }
 
-                    // 2 lignes : L / R
                     lblHarmonics.Text =
                         FormatHarms("L", mL) + "\n" +
                         FormatHarms("R", mR);
@@ -2306,6 +2389,31 @@ namespace AudioHexViewer
 
             RebuildStatsRowsFromLabels();
             RefreshCursorAfterRedraw();
+        }
+
+        //
+        private static double? EstimateFundamentalHz(double[] spectrum, int sampleRate, int fftSize)
+        {
+            if (spectrum == null || spectrum.Length < 3 || sampleRate <= 0 || fftSize <= 0)
+                return null;
+
+            int startBin = 1; // ignore DC
+            int endBin = spectrum.Length - 1;
+
+            int maxIdx = startBin;
+            double maxVal = spectrum[startBin];
+
+            for (int i = startBin + 1; i <= endBin; i++)
+            {
+                double v = spectrum[i];
+                if (v > maxVal)
+                {
+                    maxVal = v;
+                    maxIdx = i;
+                }
+            }
+
+            return maxIdx * (double)sampleRate / fftSize;
         }
 
         //

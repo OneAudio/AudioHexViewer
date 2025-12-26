@@ -6,6 +6,10 @@ Le 19/12/2025
 0 - Ajouter la possibilitée d'avoir la FFT en dBV en utilisant les paramètres
 de la calibration.
 
+13 - Déactiver les mesures des voies inactives. (ressources CPU inutile)
+
+11 - Vérifier si le calcul de FFT est effecté si la voie n'est pas activé ?
+
 > Ajouter la possibilité pour chaque curseur de choisir la voie sur laquelle la mesure est  faite,
 et aussi de saisir la fréquence à laquelle le curseur doit être placé.
 Les curseurs placé sur des voie inactive sont éteint.
@@ -38,6 +42,5 @@ l'affichage de la FFT en dBV (Méthode de choix à définir ?)
 10 - Revoir le calcul de la moyenne, il semble y avoir un problème 
 (visible surtout lorsque elle est faible 2...4)
 
-11 - Vérifier si le calcul de FFT est effecté si la voie n'est pas activé ?
 
-13 - Déactiver les mesures des voies inactives. (ressources CPU inutile)
+

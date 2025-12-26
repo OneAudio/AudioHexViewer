@@ -75,6 +75,7 @@ namespace AudioHexViewer
             txtLeft = new RichTextBox();
             txtRight = new RichTextBox();
             menuMeasures = new ToolStripMenuItem();
+            menuEnableThd = new ToolStripMenuItem();
             menuThdSettings = new ToolStripMenuItem();
             menuStrip1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)splitMain).BeginInit();
@@ -163,7 +164,7 @@ namespace AudioHexViewer
             // menuMeasures
             // 
             menuMeasures.Alignment = ToolStripItemAlignment.Right;
-            menuMeasures.DropDownItems.AddRange(new ToolStripItem[] { menuThdSettings });
+            menuMeasures.DropDownItems.AddRange(new ToolStripItem[] { menuEnableThd, menuThdSettings });
             menuMeasures.Name = "menuMeasures";
             menuMeasures.Size = new Size(73, 21);
             menuMeasures.Text = "Measures";
@@ -174,7 +175,15 @@ namespace AudioHexViewer
             menuThdSettings.Size = new Size(180, 22);
             menuThdSettings.Text = "THD Settings...";
             menuThdSettings.Click += menuThdSettings_Click;
-
+            // 
+            // menuEnableThd
+            // 
+            menuEnableThd.Name = "menuEnableThd";
+            menuEnableThd.Size = new Size(180, 22);
+            menuEnableThd.Text = "Enable THD";
+            menuEnableThd.CheckOnClick = true;
+            menuEnableThd.Checked = false;
+            menuEnableThd.CheckedChanged += menuEnableThd_CheckedChanged;
             //
             // menuShowAllFormats
             // 
@@ -636,6 +645,8 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuBuffer;
         private ToolStripMenuItem menuMeasures;
         private ToolStripMenuItem menuThdSettings;
+        private ToolStripMenuItem menuEnableThd;
+
 
     }
 }
