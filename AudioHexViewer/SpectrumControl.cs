@@ -123,6 +123,22 @@ namespace AudioHexViewer
         public event Action<bool>? RunStateChanged; // true=RUN, false=STOP
         public event Action? RunRequested;
 
+        // --- Options curseurs ---
+        public bool CursorLeftEnabled
+        {
+            get => chkCursorL.Checked;
+            set => chkCursorL.Checked = value;
+        }
+        public bool CursorRightEnabled
+        {
+            get => chkCursorR.Checked;
+            set => chkCursorR.Checked = value;
+        }
+
+
+        // --- Étape 2 : panneau stats dans le chart (zone dédiée à droite) ---
+        private const int ChartStatsWidthPx = 230;      // largeur du panneau stats
+        private const int ChartStatsMinPlotWidthPx = 420; // largeur mini du graphe (évite d’écraser le plot)
 
         //
         // Formatage axe Y (dBFS), divisions secondaires
@@ -140,8 +156,38 @@ namespace AudioHexViewer
 
             return db.ToString("F" + decimals);
         }
+        //
+        private RectangleF GetPlotRectPixels(ChartArea area)
+        {
+            var cr = chartSpectrum.ClientRectangle;
+            if (cr.Width <= 0 || cr.Height <= 0) return RectangleF.Empty;
 
+            // Rectangle externe de la ChartArea (en pixels)
+            var pos = area.Position;
+            RectangleF outer = new RectangleF(
+                cr.Width * pos.X / 100f,
+                cr.Height * pos.Y / 100f,
+                cr.Width * pos.Width / 100f,
+                cr.Height * pos.Height / 100f
+            );
 
+            // Rectangle interne (plot) de la ChartArea (en pixels)
+            var ip = area.InnerPlotPosition;
+
+            // Si Auto/valeurs non initialisées, fallback sur outer
+            if (ip.Width <= 0f || ip.Height <= 0f)
+                return outer;
+
+            RectangleF inner = new RectangleF(
+                outer.X + outer.Width * ip.X / 100f,
+                outer.Y + outer.Height * ip.Y / 100f,
+                outer.Width * ip.Width / 100f,
+                outer.Height * ip.Height / 100f
+            );
+
+            return inner;
+        }
+        //
         // Échelle des labels secondaires X et Y (95% de la taille normale)
         private const float MinorLabelScale = 0.9f;
 
@@ -259,9 +305,13 @@ namespace AudioHexViewer
         public SpectrumControl()
         {
             InitializeComponent();
+            // Étape 1 : on garde le SplitContainer mais on masque la zone Stats (Panel2)
+            panelStats.Visible = false; // panel stats n'est plus utilisé visuellement
             InitChartAppearance();
+            this.Load += (_, __) => ApplyChartStatsMargin();
+            chartSpectrum.Resize += (_, __) => ApplyChartStatsMargin();
             InitializeUiOptions();
-            //InitHarmonicsLabel();
+            //InitHarmonicsLabel(); 
             UpdateRunButtonAppearance();
             InitOverlayAnnotation();
 
@@ -1229,8 +1279,135 @@ namespace AudioHexViewer
             // IMPORTANT : rafraîchit les valeurs au bin fixé (LOCK) même si la souris ne bouge pas
             RefreshCursorsFromCurrentSpectrum();
         }
+        //
+        //
+        private void ApplyChartStatsMargin()
+        {
+            var area = chartSpectrum.ChartAreas.FirstOrDefault(a => a.Name == "SpectrumArea");
+            if (area == null) return;
 
+            int w = chartSpectrum.ClientSize.Width;
+            if (w <= 0) return;
 
+            int reserved = ChartStatsWidthPx;
+
+            // Si la fenêtre devient petite : on réduit la marge stats pour garder un plot utilisable
+            int maxReserved = Math.Max(120, w - ChartStatsMinPlotWidthPx);
+            reserved = Math.Min(reserved, maxReserved);
+
+            float reservedPct = 100f * reserved / w;
+            reservedPct = Math.Max(0f, Math.Min(45f, reservedPct)); // sécurité
+
+            // On force une position manuelle pour libérer une zone vide à droite du chartArea
+            area.Position.Auto = false;
+
+            // Marges "safe" (en %) pour éviter de rogner titres/axes
+            const float left = 3f;
+            const float top = 3f;
+            const float height = 94f;
+
+            float width = 97f - reservedPct; // 97% - marge stats
+            if (width < 10f) width = 10f;
+
+            area.Position = new ElementPosition(left, top, width, height);
+
+            chartSpectrum.Invalidate();
+        }
+
+        private string BuildChartStatsText(bool left)
+        {
+            string rms = left ? (lblLeftRms?.Text ?? "RMS:") : (lblRightRms?.Text ?? "RMS:");
+            string peak = left ? (lblLeftPeak?.Text ?? "Peak:") : (lblRightPeak?.Text ?? "Peak:");
+            string meas = left ? (lblLeftMeas?.Text ?? "—") : (lblRightMeas?.Text ?? "—");
+
+            meas = meas.Replace("\r\n", "\n").Trim();
+
+            return $"{rms}\n{peak}\n{meas}";
+        }
+
+        private void DrawChartStatsPanel(Graphics g, ChartArea area)
+        {
+            var plot = GetPlotRectPixels(area);
+            if (plot.IsEmpty) return;
+
+            var cr = chartSpectrum.ClientRectangle;
+
+            float panelLeft = plot.Right + 8f;
+            float panelRight = cr.Right - 6f;
+            if (panelRight - panelLeft < 120f) return;
+
+            var rect = RectangleF.FromLTRB(panelLeft, plot.Top, panelRight, plot.Bottom);
+
+            var saved = g.Save();
+            g.ResetClip();
+
+            // Fond blanc + bordure
+            using (var bg = new SolidBrush(Color.White))
+                g.FillRectangle(bg, rect);
+            using (var pen = new Pen(Color.LightGray, 1f))
+                g.DrawRectangle(pen, rect.X, rect.Y, rect.Width, rect.Height);
+
+            float pad = 8f;
+            float xL = rect.X + pad;
+            float xR = rect.Right - pad;
+
+            // Polices (NE PAS disposer chartSpectrum.Font)
+            var fontBase = chartSpectrum.Font;
+            using var fontHeader = new Font(fontBase, FontStyle.Bold);
+            using var fontBold = new Font(fontBase, FontStyle.Bold);
+            using var fontStrong = new Font(fontBase.FontFamily, fontBase.SizeInPoints + 1.5f, FontStyle.Bold);
+
+            using var brushText = new SolidBrush(Color.Black);
+            using var brushLabel = new SolidBrush(Color.DimGray);
+
+            using var fmtRight = new StringFormat { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Near };
+
+            float y = rect.Y + pad;
+
+            float DrawSection(string title, Color titleColor, List<StatRow> rows)
+            {
+                using (var bTitle = new SolidBrush(titleColor))
+                    g.DrawString(title, fontHeader, bTitle, xL, y);
+
+                y += fontHeader.GetHeight(g) + 6f;
+
+                if (rows.Count == 0)
+                {
+                    g.DrawString("—", fontBase, brushLabel, xL, y);
+                    y += fontBase.GetHeight(g) + 10f;
+                    return y;
+                }
+
+                foreach (var r in rows)
+                {
+                    Font fLabel = r.Emphasis == StatEmphasis.Strong ? fontBold : fontBase;
+                    Font fVal =
+                        r.Emphasis == StatEmphasis.Strong ? fontStrong :
+                        r.Emphasis == StatEmphasis.Medium ? fontBold :
+                        fontBase;
+
+                    // Label (gauche)
+                    g.DrawString(r.Label, fLabel, brushLabel, xL, y);
+
+                    // Valeur (droite alignée)
+                    g.DrawString(r.Value, fVal, brushText, xR, y, fmtRight);
+
+                    float h = Math.Max(fLabel.GetHeight(g), fVal.GetHeight(g));
+                    y += h + 2f;
+                }
+
+                y += 10f;
+                return y;
+            }
+
+            // Deux sections empilées
+            y = DrawSection("LEFT", Color.RoyalBlue, _rowsLeft);
+            y = DrawSection("RIGHT", Color.OrangeRed, _rowsRight);
+
+            g.Restore(saved);
+        }
+
+        //
         //
         private void RefreshCursorsFromCurrentSpectrum()
         {
@@ -2127,7 +2304,7 @@ namespace AudioHexViewer
                 }
             }
 
-
+            RebuildStatsRowsFromLabels();
             RefreshCursorAfterRedraw();
         }
 
@@ -2681,16 +2858,87 @@ namespace AudioHexViewer
 
                 g.Restore(saved);
             }
-
-
+            try
+            {
+                DrawChartStatsPanel(e.ChartGraphics.Graphics, area);
+            }
+            catch
+            {
+                // sécurité : ne jamais laisser un crash UI tuer l'application
+            }
 
         }
-
-
         private void lblRightMeas_Click(object sender, EventArgs e)
         {
 
         }
+        //
+        // ===== Stats panel (table) =====
+        private enum StatEmphasis { Normal, Medium, Strong }
+
+        private sealed class StatRow
+        {
+            public string Label { get; init; } = "";
+            public string Value { get; init; } = "";
+            public StatEmphasis Emphasis { get; init; } = StatEmphasis.Normal;
+        }
+
+        private readonly List<StatRow> _rowsLeft = new();
+        private readonly List<StatRow> _rowsRight = new();
+
+        private void RebuildStatsRowsFromLabels()
+        {
+            _rowsLeft.Clear();
+            _rowsRight.Clear();
+
+            BuildRowsForChannel(_rowsLeft,
+                lblLeftRms?.Text,
+                lblLeftPeak?.Text,
+                lblLeftMeas?.Text);
+
+            BuildRowsForChannel(_rowsRight,
+                lblRightRms?.Text,
+                lblRightPeak?.Text,
+                lblRightMeas?.Text);
+        }
+
+        private static void BuildRowsForChannel(List<StatRow> dst, string? rms, string? peak, string? meas)
+        {
+            void AddLine(string? line)
+            {
+                if (string.IsNullOrWhiteSpace(line)) return;
+                line = line.Trim();
+                if (line == "—") return;
+
+                int idx = line.IndexOf(':');
+                if (idx <= 0 || idx >= line.Length - 1) return;
+
+                string label = line[..idx].Trim();
+                string value = line[(idx + 1)..].Trim();
+
+                if (string.IsNullOrWhiteSpace(label) || string.IsNullOrWhiteSpace(value))
+                    return;
+
+                var emph = StatEmphasis.Normal;
+                if (label.Equals("RMS", StringComparison.OrdinalIgnoreCase) ||
+                    label.Equals("F0", StringComparison.OrdinalIgnoreCase))
+                    emph = StatEmphasis.Strong;
+                else if (label.Equals("Peak", StringComparison.OrdinalIgnoreCase))
+                    emph = StatEmphasis.Medium;
+
+                dst.Add(new StatRow { Label = label, Value = value, Emphasis = emph });
+            }
+
+            AddLine(rms);
+            AddLine(peak);
+
+            if (!string.IsNullOrWhiteSpace(meas) && meas.Trim() != "—")
+            {
+                foreach (var ln in meas.Replace("\r\n", "\n").Split('\n'))
+                    AddLine(ln);
+            }
+        }
+
         //
     }
 }

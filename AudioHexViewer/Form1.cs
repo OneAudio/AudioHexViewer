@@ -165,6 +165,12 @@ namespace AudioHexViewer
 
         private bool histogramVisible = false;
 
+        // Cursors menu
+        private ToolStripMenuItem? menuCursors;
+        private ToolStripMenuItem? menuCursorL;
+        private ToolStripMenuItem? menuCursorR;
+
+
         private enum CalStage
         {
             None,
@@ -741,6 +747,8 @@ namespace AudioHexViewer
         {
             InitializeComponent();
 
+            InitCursorsMenu();
+
             InitAnalysisUi();
 
             InitOverlayMenu();
@@ -834,26 +842,71 @@ namespace AudioHexViewer
             this.FormClosing += Form1_FormClosing;
         }
         //
+        private void InitCursorsMenu()
+        {
+            menuCursors = new ToolStripMenuItem("Cursors")
+            {
+                Alignment = ToolStripItemAlignment.Right
+            };
+
+            menuCursorL = new ToolStripMenuItem("Cursor L")
+            {
+                CheckOnClick = true
+            };
+            menuCursorR = new ToolStripMenuItem("Cursor R")
+            {
+                CheckOnClick = true
+            };
+
+            menuCursorL.CheckedChanged += (_, __) =>
+            {
+                if (spectrumControl != null)
+                    spectrumControl.CursorLeftEnabled = menuCursorL.Checked;
+            };
+
+            menuCursorR.CheckedChanged += (_, __) =>
+            {
+                if (spectrumControl != null)
+                    spectrumControl.CursorRightEnabled = menuCursorR.Checked;
+            };
+
+            menuCursors.DropDownItems.Add(menuCursorL);
+            menuCursors.DropDownItems.Add(menuCursorR);
+
+            // Insérer à côté de "Measures"
+            int idxMeasures = menuStrip1.Items.IndexOf(menuMeasures);
+            if (idxMeasures >= 0)
+                menuStrip1.Items.Insert(idxMeasures + 1, menuCursors);
+            else
+                menuStrip1.Items.Add(menuCursors);
+        }
+        //
         private void menuThdSettings_Click(object sender, EventArgs e)
         {
-            // Récupérer le sample rate si connu
-            // Remplace "currentFormat" par ta variable réelle si elle a un autre nom.
-            int sr = currentFormat != null ? currentFormat.SampleRate : 0;
-
-            using (var dlg = new ThdSettingsDialog(_session.Spectrum.Thd, sr))
+            try
             {
-                if (dlg.ShowDialog(this) != DialogResult.OK)
-                    return;
+                int sr = currentFormat != null ? currentFormat.SampleRate : 0;
 
-                 _session.Spectrum.Thd = dlg.Result;
+                using (var dlg = new ThdSettingsDialog(_session.Spectrum.Thd, sr))
+                {
+                    if (dlg.ShowDialog(this) != DialogResult.OK)
+                        return;
 
-                if (spectrumControl != null)
-                    spectrumControl.ApplyThdSettings(_session.Spectrum.Thd);
+                    _session.Spectrum.Thd = dlg.Result;
 
-                if (!SessionSettingsManager.Save(_session, out string? err) && !string.IsNullOrWhiteSpace(err))
-                    MessageBox.Show(this, err, "Save settings failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    if (spectrumControl != null)
+                        spectrumControl.ApplyThdSettings(_session.Spectrum.Thd);
+
+                    if (!SessionSettingsManager.Save(_session, out string? err) && !string.IsNullOrWhiteSpace(err))
+                        MessageBox.Show(this, err, "Save settings failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.ToString(), "Crash in THD setting", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
         //
         //
         private void InitOverlayMenu()
@@ -1222,30 +1275,38 @@ namespace AudioHexViewer
         //
         private void menuDeviceInfo_Click(object? sender, EventArgs e)
         {
-            string text = BuildDeviceInfoText();
-
-            using (var dlg = new Form())
+            try
             {
-                dlg.Text = "Audio device info";
-                dlg.StartPosition = FormStartPosition.CenterParent;
-                dlg.Size = new Size(500, 350);
-                dlg.MinimizeBox = false;
-                dlg.MaximizeBox = false;
-                dlg.ShowIcon = false;
+                string text = BuildDeviceInfoText();
 
-                var box = new RichTextBox();
-                box.Dock = DockStyle.Fill;
-                box.ReadOnly = true;
-                box.BorderStyle = BorderStyle.None;
-                box.Font = new Font(FontFamily.GenericMonospace, 9f);
-                box.Text = text;
-                box.BackColor = SystemColors.Window;
+                using (var dlg = new Form())
+                {
+                    dlg.Text = "Audio device info";
+                    dlg.StartPosition = FormStartPosition.CenterParent;
+                    dlg.Size = new Size(500, 350);
+                    dlg.MinimizeBox = false;
+                    dlg.MaximizeBox = false;
+                    dlg.ShowIcon = false;
 
-                dlg.Controls.Add(box);
+                    var box = new RichTextBox();
+                    box.Dock = DockStyle.Fill;
+                    box.ReadOnly = true;
+                    box.BorderStyle = BorderStyle.None;
+                    box.Font = new Font(FontFamily.GenericMonospace, 9f);
+                    box.Text = text;
+                    box.BackColor = SystemColors.Window;
 
-                dlg.ShowDialog(this);
+                    dlg.Controls.Add(box);
+
+                    dlg.ShowDialog(this);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.ToString(), "Crash in DeviceInfos", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
         //
         //
         private void menuShowAllFormats_Click(object? sender, EventArgs e)
@@ -2538,6 +2599,8 @@ namespace AudioHexViewer
                 int sampleRate = currentFormat?.SampleRate ?? 48000;
 
                 spectrumControl = new SpectrumControl(GetAnalysisFrame, sampleRate);
+                if (menuCursorL != null) spectrumControl.CursorLeftEnabled = menuCursorL.Checked;
+                if (menuCursorR != null) spectrumControl.CursorRightEnabled = menuCursorR.Checked;
                 spectrumControl.RunRequested += EnsureReadRunning;
                 spectrumControl.RunStateChanged += running =>
                 {
