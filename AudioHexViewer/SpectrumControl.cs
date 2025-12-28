@@ -2287,17 +2287,32 @@ namespace AudioHexViewer
 
                     if (mL.Valid)
                     {
-                        string thdText = (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
-                            ? $"THD: {mL.Thd * 100.0:F3} %"
-                            : $"THD: {mL.ThdDb:F1} dB";
+                        string thdText;
+                        string thdnText;
+
+                        if (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
+                        {
+                            // THD ratio -> %
+                            thdText = $"THD: {mL.Thd * 100.0:F5} %";
+
+                            // THD+N : on convertit depuis le dB (ratio = 10^(dB/20))
+                            double thdnPct = Math.Pow(10.0, mL.ThdNDb / 20.0) * 100.0;
+                            thdnText = $"THD+N: {thdnPct:F5} %";
+                        }
+                        else
+                        {
+                            thdText = $"THD: {mL.ThdDb:F1} dB";
+                            thdnText = $"THD+N: {mL.ThdNDb:F1} dB";
+                        }
 
                         lblLeftMeas.Text =
                             $"F0: {mL.FundamentalHz:F1} Hz\n" +
                             thdText + "\n" +
-                            $"THD+N: {mL.ThdNDb:F1} dB\n" +
+                            thdnText + "\n" +
                             $"SINAD: {mL.SinadDb:F1} dB\n" +
                             $"SNR: {mL.SnrDb:F1} dB\n" +
                             $"SFDR: {mL.SfdrDb:F1} dB";
+
                     }
                     else
                     {
@@ -2325,14 +2340,26 @@ namespace AudioHexViewer
 
                     if (mR.Valid)
                     {
-                        string thdText = (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
-                            ? $"THD: {mR.Thd * 100.0:F3} %"
-                            : $"THD: {mR.ThdDb:F1} dB";
+                        string thdText;
+                        string thdnText;
+
+                        if (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
+                        {
+                            thdText = $"THD: {mR.Thd * 100.0:F5} %";
+
+                            double thdnPct = Math.Pow(10.0, mR.ThdNDb / 20.0) * 100.0;
+                            thdnText = $"THD+N: {thdnPct:F5} %";
+                        }
+                        else
+                        {
+                            thdText = $"THD: {mR.ThdDb:F1} dB";
+                            thdnText = $"THD+N: {mR.ThdNDb:F1} dB";
+                        }
 
                         lblRightMeas.Text =
                             $"F0: {mR.FundamentalHz:F1} Hz\n" +
                             thdText + "\n" +
-                            $"THD+N: {mR.ThdNDb:F1} dB\n" +
+                            thdnText + "\n" +
                             $"SINAD: {mR.SinadDb:F1} dB\n" +
                             $"SNR: {mR.SnrDb:F1} dB\n" +
                             $"SFDR: {mR.SfdrDb:F1} dB";
@@ -2737,7 +2764,7 @@ namespace AudioHexViewer
                     }
                 }
                 // ---------------------------------------------------------
-                // Ligne SR/N/Overlap sous le graphe, ALIGNÉE EN HAUTEUR avec AxisX.Title ("Frequency (Hz)")
+                // Ligne SR/N/Overlap au dessus du graphe, ALIGNÉE EN HAUTEUR avec AxisX.Title ("Frequency (Hz)")
                 // ---------------------------------------------------------
                 if (!string.IsNullOrWhiteSpace(_bottomInfoLine))
                 {
@@ -2775,6 +2802,33 @@ namespace AudioHexViewer
                         using (Brush b = new SolidBrush(Color.DarkBlue))
                         {
                             g.DrawString(_bottomInfoLine, titleFont, b, x, y);
+
+                            // ---- Coin droit : infos filtres THD (si THD active) ----
+                            if (_thdMeasuresEnabled)
+                            {
+                                string FormatHz(double hz)
+                                {
+                                    if (hz >= 1000.0) return $"{hz / 1000.0:F0} kHz";
+                                    return $"{hz:F0} Hz";
+                                }
+
+                                string hpf = _thdUi.UseHPF ? FormatHz(_thdUi.FlowHz) : "OFF";
+                                string lpf = _thdUi.UseLPF ? FormatHz(_thdUi.FhighHz) : "OFF";
+
+                                string thdLine = $"THD filter - HPF: {hpf}, LPF: {lpf}";
+
+                                // top-right du ChartArea (pixels)
+                                PointF tr = e.ChartGraphics.GetAbsolutePoint(new PointF(pos.X + pos.Width, pos.Y));
+
+                                SizeF sz = g.MeasureString(thdLine, titleFont);
+                                float xR = tr.X - sz.Width - 10f; // marge droite
+                                float yR = y;                     // même hauteur que la ligne gauche
+
+                                using (Brush b2 = new SolidBrush(Color.DarkBlue))
+                                {
+                                    g.DrawString(thdLine, titleFont, b2, xR, yR);
+                                }
+                            }
                         }
                     }
                     finally
