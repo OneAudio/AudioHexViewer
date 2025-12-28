@@ -16,7 +16,6 @@
         private void InitializeComponent()
         {
             panelTop = new Panel();
-            lblHarmonics = new Label();
             lblAvgProgress = new Label();
             chkRemoveDC = new CheckBox();
             chkPeakHold = new CheckBox();
@@ -33,15 +32,15 @@
             chkLogX = new CheckBox();
             chartSpectrum = new System.Windows.Forms.DataVisualization.Charting.Chart();
             grpRightStats = new GroupBox();
-            lblRightPeak = new Label();
-            lblRightRms = new Label();
-            lblRightHeader = new Label();
             lblRightMeas = new Label();
+            lblRightHeader = new Label();
+            lblRightRms = new Label();
+            lblRightPeak = new Label();
             grpLeftStats = new GroupBox();
-            lblLeftPeak = new Label();
-            lblLeftRms = new Label();
-            lblLeftHeader = new Label();
             lblLeftMeas = new Label();
+            lblLeftHeader = new Label();
+            lblLeftRms = new Label();
+            lblLeftPeak = new Label();
             chkCursorL = new CheckBox();
             chkCursorR = new CheckBox();
             panelStats = new Panel();
@@ -54,7 +53,6 @@
             // 
             // panelTop
             // 
-            panelTop.Controls.Add(lblHarmonics);
             panelTop.Controls.Add(lblAvgProgress);
             panelTop.Controls.Add(chkRemoveDC);
             panelTop.Controls.Add(chkPeakHold);
@@ -74,14 +72,6 @@
             panelTop.Name = "panelTop";
             panelTop.Size = new Size(1138, 60);
             panelTop.TabIndex = 1;
-            // 
-            // lblHarmonics
-            // 
-            lblHarmonics.Location = new Point(693, 7);
-            lblHarmonics.Name = "lblHarmonics";
-            lblHarmonics.Size = new Size(291, 47);
-            lblHarmonics.TabIndex = 19;
-            lblHarmonics.Text = "\"\"";
             // 
             // lblAvgProgress
             // 
@@ -213,11 +203,12 @@
             chkLogX.TabIndex = 11;
             chkLogX.Text = "log freq";
             // 
+            // chartSpectrum
             // 
             chartSpectrum.Dock = DockStyle.Fill;
-            chartSpectrum.Location = new Point(0, 0);
+            chartSpectrum.Location = new Point(0, 60);
             chartSpectrum.Name = "chartSpectrum";
-            chartSpectrum.Size = new Size(917, 440);
+            chartSpectrum.Size = new Size(1138, 440);
             chartSpectrum.TabIndex = 0;
             // 
             // grpRightStats
@@ -232,19 +223,15 @@
             grpRightStats.TabIndex = 1;
             grpRightStats.TabStop = false;
             // 
-            // lblRightPeak
+            // lblRightMeas
             // 
-            lblRightPeak.Location = new Point(10, 65);
-            lblRightPeak.Name = "lblRightPeak";
-            lblRightPeak.Size = new Size(100, 23);
-            lblRightPeak.TabIndex = 2;
-            // 
-            // lblRightRms
-            // 
-            lblRightRms.Location = new Point(10, 40);
-            lblRightRms.Name = "lblRightRms";
-            lblRightRms.Size = new Size(100, 23);
-            lblRightRms.TabIndex = 1;
+            lblRightMeas.Font = new Font("Segoe UI", 8.25F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblRightMeas.Location = new Point(12, 85);
+            lblRightMeas.Name = "lblRightMeas";
+            lblRightMeas.Size = new Size(128, 92);
+            lblRightMeas.TabIndex = 18;
+            lblRightMeas.Text = "---";
+            lblRightMeas.Click += lblRightMeas_Click;
             // 
             // lblRightHeader
             // 
@@ -256,15 +243,19 @@
             lblRightHeader.TabIndex = 0;
             lblRightHeader.Text = "RIGHT";
             // 
-            // lblRightMeas
+            // lblRightRms
             // 
-            lblRightMeas.Font = new Font("Segoe UI", 8.25F, FontStyle.Regular, GraphicsUnit.Point, 0);
-            lblRightMeas.Location = new Point(12, 85);
-            lblRightMeas.Name = "lblRightMeas";
-            lblRightMeas.Size = new Size(128, 92);
-            lblRightMeas.TabIndex = 18;
-            lblRightMeas.Text = "---";
-            lblRightMeas.Click += lblRightMeas_Click;
+            lblRightRms.Location = new Point(10, 40);
+            lblRightRms.Name = "lblRightRms";
+            lblRightRms.Size = new Size(100, 23);
+            lblRightRms.TabIndex = 1;
+            // 
+            // lblRightPeak
+            // 
+            lblRightPeak.Location = new Point(10, 65);
+            lblRightPeak.Name = "lblRightPeak";
+            lblRightPeak.Size = new Size(100, 23);
+            lblRightPeak.TabIndex = 2;
             // 
             // grpLeftStats
             // 
@@ -278,19 +269,15 @@
             grpLeftStats.TabIndex = 0;
             grpLeftStats.TabStop = false;
             // 
-            // lblLeftPeak
+            // lblLeftMeas
             // 
-            lblLeftPeak.Location = new Point(10, 65);
-            lblLeftPeak.Name = "lblLeftPeak";
-            lblLeftPeak.Size = new Size(100, 23);
-            lblLeftPeak.TabIndex = 2;
-            // 
-            // lblLeftRms
-            // 
-            lblLeftRms.Location = new Point(10, 40);
-            lblLeftRms.Name = "lblLeftRms";
-            lblLeftRms.Size = new Size(100, 23);
-            lblLeftRms.TabIndex = 1;
+            lblLeftMeas.Font = new Font("Segoe UI", 8.25F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblLeftMeas.Location = new Point(12, 88);
+            lblLeftMeas.Name = "lblLeftMeas";
+            lblLeftMeas.Size = new Size(128, 92);
+            lblLeftMeas.TabIndex = 17;
+            lblLeftMeas.Text = "---";
+            lblLeftMeas.Click += lblLeftMeas_Click;
             // 
             // lblLeftHeader
             // 
@@ -302,15 +289,19 @@
             lblLeftHeader.TabIndex = 0;
             lblLeftHeader.Text = "LEFT";
             // 
-            // lblLeftMeas
+            // lblLeftRms
             // 
-            lblLeftMeas.Font = new Font("Segoe UI", 8.25F, FontStyle.Regular, GraphicsUnit.Point, 0);
-            lblLeftMeas.Location = new Point(12, 88);
-            lblLeftMeas.Name = "lblLeftMeas";
-            lblLeftMeas.Size = new Size(128, 92);
-            lblLeftMeas.TabIndex = 17;
-            lblLeftMeas.Text = "---";
-            lblLeftMeas.Click += lblLeftMeas_Click;
+            lblLeftRms.Location = new Point(10, 40);
+            lblLeftRms.Name = "lblLeftRms";
+            lblLeftRms.Size = new Size(100, 23);
+            lblLeftRms.TabIndex = 1;
+            // 
+            // lblLeftPeak
+            // 
+            lblLeftPeak.Location = new Point(10, 65);
+            lblLeftPeak.Name = "lblLeftPeak";
+            lblLeftPeak.Size = new Size(100, 23);
+            lblLeftPeak.TabIndex = 2;
             // 
             // chkCursorL
             // 
@@ -337,17 +328,17 @@
             panelStats.Controls.Add(grpLeftStats);
             panelStats.Controls.Add(grpRightStats);
             panelStats.Dock = DockStyle.Fill;
-            panelStats.Location = new Point(0, 0);
+            panelStats.Location = new Point(0, 60);
             panelStats.Name = "panelStats";
             panelStats.Padding = new Padding(8);
-            panelStats.Size = new Size(217, 440);
+            panelStats.Size = new Size(1138, 440);
             panelStats.TabIndex = 0;
             // 
             // SpectrumControl
             // 
             BorderStyle = BorderStyle.FixedSingle;
             Controls.Add(chartSpectrum);
-            Controls.Add(panelStats);   // on le garde invisible (dispose propre)
+            Controls.Add(panelStats);
             Controls.Add(panelTop);
             Name = "SpectrumControl";
             Size = new Size(1138, 500);
@@ -382,7 +373,6 @@
         private Label lblAvgProgress;
         private CheckBox chkPeakHold;
         private Button btnResetPeakHold;
-        private Label lblHarmonics;
         public Panel panelStats;
         private CheckBox chkCursorR;
         private CheckBox chkCursorL;

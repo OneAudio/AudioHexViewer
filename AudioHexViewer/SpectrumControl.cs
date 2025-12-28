@@ -315,7 +315,7 @@ namespace AudioHexViewer
             this.Load += (_, __) => ApplyChartStatsMargin();
             chartSpectrum.Resize += (_, __) => ApplyChartStatsMargin();
             InitializeUiOptions();
-            //InitHarmonicsLabel(); 
+            ApplyThdSettings(_thdUi);
             UpdateRunButtonAppearance();
             InitOverlayAnnotation();
 
@@ -354,15 +354,22 @@ namespace AudioHexViewer
                 _metricsOpt.MaxFreqHz = 0.0; // 0 => Nyquist
             }
 
-            // Harmoniques (clamp)
-            int n = _thdUi.HarmonicsNumber;
-            if (n < 2) n = 2;
-            if (n > 20) n = 20;
-            _metricsOpt.MaxHarmonics = n;
+            // Harmoniques (voir fix B : exclure le fondamental)
+            int countExclFund = _thdUi.HarmonicsNumber;
+            if (countExclFund < 1) countExclFund = 1;
+            if (countExclFund > 19) countExclFund = 19;     // car on va ajouter +1 (fondamental) => max 20
+            _metricsOpt.MaxHarmonics = countExclFund + 1;
 
-            // (optionnel) Recalcul immédiat si acquisition active
-            AcquireOnce();
+            // Rafraîchir selon contexte (pas de recalcul violent si pas prêt)
+            if (_provider != null && isLive)
+                AcquireOnce();
+            else
+            {
+                RebuildStatsRowsFromLabels();
+                chartSpectrum.Invalidate();
+            }
         }
+
         //
         public void SetThdMeasuresEnabled(bool enabled)
         {
@@ -1347,7 +1354,7 @@ namespace AudioHexViewer
             return $"{rms}\n{peak}\n{meas}";
         }
 
-        private void DrawChartStatsPanel(Graphics g, ChartArea area)
+        void DrawChartStatsPanel(Graphics g, ChartArea area)
         {
             var plot = GetPlotRectPixels(area);
             if (plot.IsEmpty) return;
@@ -1379,6 +1386,7 @@ namespace AudioHexViewer
             using var fontBold = new Font(fontBase, FontStyle.Bold);
             using var fontStrong = new Font(fontBase.FontFamily, fontBase.SizeInPoints + 1.5f, FontStyle.Bold);
             using var brushStrong = new SolidBrush(Color.DimGray); // très léger "fond"
+            using var fontHarm = new Font(fontBase.FontFamily, Math.Max(6f, fontBase.SizeInPoints - 1.0f), FontStyle.Regular);
 
             using var brushText = new SolidBrush(Color.DimGray);
             using var brushLabel = new SolidBrush(Color.DimGray);
@@ -1390,7 +1398,6 @@ namespace AudioHexViewer
             using var fmtRight = new StringFormat { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Near };
             using var fmtRightMeas = (StringFormat)fmtRight.Clone();
             fmtRightMeas.FormatFlags |= StringFormatFlags.MeasureTrailingSpaces;
-
 
             float DrawSection(string title, Color titleColor, List<StatRow> rows)
             {
@@ -1404,6 +1411,15 @@ namespace AudioHexViewer
                 // Trait sous le titre (largeur table)
                 g.DrawLine(penSep, rect.X + pad, y, rect.Right - pad, y);
                 y += 8f;
+
+                static bool IsHarmonicLabel(string label)
+                {
+                    if (string.IsNullOrWhiteSpace(label)) return false;
+                    label = label.Trim();
+                    if (label.Length < 2) return false;
+                    if (label[0] != 'H' && label[0] != 'h') return false;
+                    return int.TryParse(label[1..], out _);
+                }
 
                 if (rows.Count == 0)
                 {
@@ -1421,10 +1437,17 @@ namespace AudioHexViewer
                 }
                 float valueLeft = xL + maxLabelW + 12f; // séparation label -> valeur
 
-
                 for (int i = 0; i < rows.Count; i++)
                 {
                     var r = rows[i];
+
+                    if (r.IsSeparator)
+                    {
+                        g.DrawLine(penSep, rect.X + pad, y + 4f, rect.Right - pad, y + 4f);
+                        y += 12f;
+                        continue;
+                    }
+
                     Font fLabel = r.Emphasis == StatEmphasis.Strong ? fontBold : fontBase;
                     Font fVal =
                         r.Emphasis == StatEmphasis.Strong ? fontStrong :
@@ -1447,30 +1470,16 @@ namespace AudioHexViewer
                         var regions = g.MeasureCharacterRanges(r.Value, fVal, valueRect, fmtRange);
                         var bounds = regions[0].GetBounds(g);
 
-                        // Inflation surtout horizontale, verticale minimale
                         bounds.Inflate(4f, 0.5f);
 
                         using var fill = new SolidBrush(Color.FromArgb(18, 30, 144, 255));
                         g.FillRectangle(fill, bounds);
                     }
 
-                    // Valeur (alignée à droite dans valueRect)
+                    // Valeur (alignée à droite)
                     g.DrawString(r.Value, fVal, brushText, valueRect, fmtRight);
 
-                    // Avance avec un peu plus d'espace => pas de chevauchement
                     y += rowHeight + 4f;
-
-
-                    // Séparateur après F0 (ou après les 3 premières lignes si F0 n'existe pas)
-                    bool isAfterF0 = r.Label.Equals("F0", StringComparison.OrdinalIgnoreCase);
-                    bool isAfterThird = (i == 2);
-
-                    if (isAfterF0 || isAfterThird)
-                    {
-                        y += 3f;
-                        g.DrawLine(penSep, rect.X + pad, y, rect.Right - pad, y);
-                        y += 8f;
-                    }
                 }
 
                 y += 10f;
@@ -1484,9 +1493,9 @@ namespace AudioHexViewer
             if (_statsShowRight)
                 y = DrawSection("RIGHT", Color.OrangeRed, _rowsRight);
 
-
             g.Restore(saved);
         }
+
 
         //
         //
@@ -2297,6 +2306,9 @@ namespace AudioHexViewer
             ChannelMetrics? mL = null;
             ChannelMetrics? mR = null;
 
+            bool singleChannel = (showLeft && !showRight) || (showRight && !showLeft);
+            bool showHarmsInPanel = doThd && _thdUi.ShowHarmonicsValues && singleChannel;
+
             // LEFT
             if (lblLeftMeas != null && currentLeftSpectrum != null && _sampleRate > 0 && lastFftSize > 0)
             {
@@ -2331,6 +2343,23 @@ namespace AudioHexViewer
                             $"SINAD: {mL.SinadDb:F1} dB\n" +
                             $"SNR: {mL.SnrDb:F1} dB\n" +
                             $"SFDR: {mL.SfdrDb:F1} dB";
+
+                        if (showHarmsInPanel && showLeft)
+                        {
+                            var list = mL.Harmonics;
+                            if (list != null && list.Count > 0)
+                            {
+                                lblLeftMeas.Text += "\n----";
+                                foreach (var h in list)
+                                {
+                                    if (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
+                                        lblLeftMeas.Text += $"\nH{h.Order}: {h.RatioPercent:F5} %";
+                                    else
+                                        lblLeftMeas.Text += $"\nH{h.Order}: {h.LevelDbc:F1} dB";
+                                }
+                            }
+                        }
+
 
                     }
                     else
@@ -2382,6 +2411,23 @@ namespace AudioHexViewer
                             $"SINAD: {mR.SinadDb:F1} dB\n" +
                             $"SNR: {mR.SnrDb:F1} dB\n" +
                             $"SFDR: {mR.SfdrDb:F1} dB";
+
+                        if (showHarmsInPanel && showRight)
+                        {
+                            var list = mR.Harmonics;
+                            if (list != null && list.Count > 0)
+                            {
+                                lblRightMeas.Text += "\n----";
+                                foreach (var h in list)
+                                {
+                                    if (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
+                                        lblRightMeas.Text += $"\nH{h.Order}: {h.RatioPercent:F5} %";
+                                    else
+                                        lblRightMeas.Text += $"\nH{h.Order}: {h.LevelDbc:F1} dB";
+                                }
+                            }
+                        }
+
                     }
                     else
                     {
@@ -2398,39 +2444,6 @@ namespace AudioHexViewer
             else if (lblRightMeas != null)
             {
                 lblRightMeas.Text = "";
-            }
-
-            // --- Affichage des harmoniques (label à droite de Clear AVG) ---
-            // THD OFF => on coupe l'affichage (et surtout on évite tout accès à mL/mR non calculés)
-            if (lblHarmonics != null)
-            {
-                if (!doThd || !_thdUi.ShowHarmonicsValues)
-                {
-                    lblHarmonics.Text = "";
-                }
-                else
-                {
-                    string FormatHarms(string prefix, ChannelMetrics? mm)
-                    {
-                        if (mm == null || !mm.Valid) return $"{prefix}: —";
-                        var list = mm.Harmonics;
-                        if (list == null || list.Count == 0) return $"{prefix}: (no harms)";
-
-                        var parts = new List<string>(list.Count);
-                        foreach (var h in list)
-                        {
-                            if (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
-                                parts.Add($"H{h.Order}:{h.RatioPercent:F3}%");
-                            else
-                                parts.Add($"H{h.Order}:{h.LevelDbc:F1}dB");
-                        }
-                        return $"{prefix}: " + string.Join(" ", parts);
-                    }
-
-                    lblHarmonics.Text =
-                        FormatHarms("L", mL) + "\n" +
-                        FormatHarms("R", mR);
-                }
             }
 
             RebuildStatsRowsFromLabels();
@@ -3067,7 +3080,11 @@ namespace AudioHexViewer
             public string Label { get; init; } = "";
             public string Value { get; init; } = "";
             public StatEmphasis Emphasis { get; init; } = StatEmphasis.Normal;
+
+            // Nouveau : ligne de séparation visuelle
+            public bool IsSeparator { get; init; } = false;
         }
+
 
         private readonly List<StatRow> _rowsLeft = new();
         private readonly List<StatRow> _rowsRight = new();
@@ -3095,6 +3112,13 @@ namespace AudioHexViewer
                 if (string.IsNullOrWhiteSpace(line)) return;
                 line = line.Trim();
                 if (line == "—") return;
+
+                // Marqueur de séparation (inséré par UpdateSpectrumChartAndStats)
+                if (line == "----")
+                {
+                    dst.Add(new StatRow { IsSeparator = true });
+                    return;
+                }
 
                 int idx = line.IndexOf(':');
                 if (idx <= 0 || idx >= line.Length - 1) return;
@@ -3124,6 +3148,7 @@ namespace AudioHexViewer
                     AddLine(ln);
             }
         }
+
 
         //
     }
