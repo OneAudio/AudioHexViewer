@@ -585,19 +585,24 @@ namespace AudioHexViewer
             int dcOffsetL = 0;
             int dcOffsetR = 0;
 
-            if (leftSamples.Length > 0)
+            bool wantLeft = (mode == "Left" || mode == "Both");
+            bool wantRight = (mode == "Right" || mode == "Both");
+
+            // Calcul DC uniquement si la voie est demandée (et si AC activé, sinon inutile)
+            if (ac && wantLeft && leftSamples.Length > 0)
             {
                 long sumLraw = 0;
                 foreach (int v in leftSamples) sumLraw += v;
                 dcOffsetL = (int)Math.Round(sumLraw / (double)leftSamples.Length);
             }
 
-            if (rightSamples.Length > 0)
+            if (ac && wantRight && rightSamples.Length > 0)
             {
                 long sumRraw = 0;
                 foreach (int v in rightSamples) sumRraw += v;
                 dcOffsetR = (int)Math.Round(sumRraw / (double)rightSamples.Length);
             }
+
 
             int offsetL = ac ? dcOffsetL : 0;
             int offsetR = ac ? dcOffsetR : 0;

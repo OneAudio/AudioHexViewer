@@ -796,11 +796,19 @@ namespace AudioHexViewer
                 if (_isRestoringSettings)
                     return;
 
-                // Re-dessine sans recalc FFT
+                // IMPORTANT :
+                // En mode LIVE on ne force PAS un redraw immédiat, car la voie nouvellement choisie
+                // n'a pas encore son spectre calculé (il arrive au prochain AcquireOnce()).
+                // Forcer un redraw met le Chart en état transitoire (séries vides + log) => exception.
+                if (isLive)
+                    return;
+
+                // Hors live (pause), on peut redessiner ce qu'on a en mémoire
                 UpdateSpectrumChartAndStats();
             };
 
 
+            
             // Bouton RUN
             btnRun.Click += (s, e) =>
             {
@@ -1717,6 +1725,15 @@ namespace AudioHexViewer
             var leftSamples = left ?? Array.Empty<int>();
             var rightSamples = right ?? Array.Empty<int>();
 
+            string mode = comboChannel.SelectedItem as string ?? "L+R";
+            bool wantLeft = (mode == "Left" || mode == "L+R");
+            bool wantRight = (mode == "Right" || mode == "L+R");
+
+            // On ne calcule que ce qui est affiché
+            var leftForFft = wantLeft ? leftSamples : Array.Empty<int>();
+            var rightForFft = wantRight ? rightSamples : Array.Empty<int>();
+
+
             if (leftSamples.Length == 0 && rightSamples.Length == 0)
             {
                 ClearSpectrum();
@@ -1732,22 +1749,24 @@ namespace AudioHexViewer
                 RemoveDc = removeDc
             };
 
-            SpectrumResult result = SpectrumAnalyzer.ComputeFrame(leftSamples, rightSamples, N, _sampleRate, options);
+            SpectrumResult result = SpectrumAnalyzer.ComputeFrame(leftForFft, rightForFft, N, _sampleRate, options);
 
             double[]? specL = result.LeftDbFs;
             double[]? specR = result.RightDbFs;
 
-            if (specL == null)
+            if (specL == null && specR == null)
             {
                 ClearSpectrum();
                 return;
             }
 
+
             // Averaging (piloté par comboAveraging -> avgTargetCount)
             _post.ApplyAveraging(specL, specR, avgTargetCount,
-                out currentLeftSpectrum!,
+                out currentLeftSpectrum,
                 out currentRightSpectrum,
                 out int avgFill);
+
 
             if (avgTargetCount <= 1)
                 UpdateAvgProgressUi(0, 0);
@@ -1848,7 +1867,7 @@ namespace AudioHexViewer
         {
             if (chartSpectrum.ClientSize.Width <= 0 || chartSpectrum.ClientSize.Height <= 0)
                 return;
-            if (freqAxis == null || currentLeftSpectrum == null)
+            if (freqAxis == null || (currentLeftSpectrum == null && currentRightSpectrum == null))
                 return;
 
             // Helper local : estimation rapide de F0 (pas de THD => pas de ComputeChannel)
@@ -2070,8 +2089,8 @@ namespace AudioHexViewer
 
             // --- Ce qu'on affiche en fonction du combo Channel ---
             string mode = comboChannel.SelectedItem as string ?? "L+R";
-            bool showLeft = (mode == "Left" || mode == "L+R");
-            bool showRight = (currentRightSpectrum != null) && (mode == "Right" || mode == "L+R");
+            bool showLeft = (mode == "Left" || mode == "L+R") && (currentLeftSpectrum != null);
+            bool showRight = (mode == "Right" || mode == "L+R") && (currentRightSpectrum != null);
             bool peakHoldOn = (chkPeakHold != null && chkPeakHold.Checked);
 
             _statsShowLeft = showLeft;
@@ -2522,6 +2541,11 @@ namespace AudioHexViewer
             if (_overlayInfoAnno != null)
                 _overlayInfoAnno.Visible = false;
 
+            currentLeftSpectrum = null;
+            currentRightSpectrum = null;
+            freqAxis = null;
+            lastTimeLeft = null;
+            lastTimeRight = null;
         }
         //
         public void OverlayLoad(int slotIndex, string filePath)

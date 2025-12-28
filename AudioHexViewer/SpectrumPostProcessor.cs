@@ -6,14 +6,17 @@ namespace AudioHexViewer
     internal sealed class SpectrumPostProcessor
     {
         // --- Moving average (glissant sur N frames) en puissance ---
-        private int _avgRingPos = 0;        // index courant dans l’anneau
-        private int _avgFillCount = 0;      // 0..N (sature à N pour l'affichage)
+        private int _avgRingPos = 0;
+        private int _avgFillCount = 0;
 
-        private double[]? _avgSumLeftPower = null;    // somme des puissances (linéaire)
+        private bool _avgHasLeft = false;
+        private bool _avgHasRight = false;
+
+        private double[]? _avgSumLeftPower = null;
         private double[]? _avgSumRightPower = null;
 
-        private double[][]? _avgRingLeftPower = null;   // [N][bins]
-        private double[][]? _avgRingRightPower = null;  // [N][bins]
+        private double[][]? _avgRingLeftPower = null;
+        private double[][]? _avgRingRightPower = null;
 
         // --- Peak-hold (en dBFS) ---
         private double[]? _peakHoldLeftDb;
@@ -23,6 +26,9 @@ namespace AudioHexViewer
         {
             _avgRingPos = 0;
             _avgFillCount = 0;
+
+            _avgHasLeft = false;
+            _avgHasRight = false;
 
             _avgSumLeftPower = null;
             _avgSumRightPower = null;
@@ -41,17 +47,29 @@ namespace AudioHexViewer
         public double[]? GetPeakRight() => _peakHoldRightDb;
 
         /// <summary>
-        /// Applique le même averaging que ton ApplyAveraging actuel.
-        /// Sorties : currentLeft/currentRight + fillCount (pour afficher k/N).
+        /// Averaging supportant Left-only / Right-only / Both.
+        /// Entrées nullable. Sorties nullable.
         /// </summary>
         public void ApplyAveraging(
-            double[] leftNewDb,
+            double[]? leftNewDb,
             double[]? rightNewDb,
             int avgTargetCount,
-            out double[] currentLeftDb,
+            out double[]? currentLeftDb,
             out double[]? currentRightDb,
             out int fillCountForUi)
         {
+            bool hasLeft = (leftNewDb != null);
+            bool hasRight = (rightNewDb != null);
+
+            if (!hasLeft && !hasRight)
+            {
+                ResetAveragingState();
+                currentLeftDb = null;
+                currentRightDb = null;
+                fillCountForUi = 0;
+                return;
+            }
+
             // None => pas de moyenne
             if (avgTargetCount <= 1)
             {
@@ -62,11 +80,29 @@ namespace AudioHexViewer
                 return;
             }
 
-            int bins = leftNewDb.Length;
+            // bins = longueur du 1er canal dispo
+            int bins = hasLeft ? leftNewDb!.Length : rightNewDb!.Length;
 
-            // (Re)allocation si FFT bins change ou si N(avg) change
-            if (_avgSumLeftPower == null || _avgSumLeftPower.Length != bins ||
-                _avgRingLeftPower == null || _avgRingLeftPower.Length != avgTargetCount)
+            // Si le set de canaux change, ou bins change, ou N(avg) change => reset (sinon incohérences)
+            bool needReset =
+                (_avgRingLeftPower == null && hasLeft) ||
+                (_avgRingRightPower == null && hasRight) ||
+                (_avgHasLeft != hasLeft) ||
+                (_avgHasRight != hasRight) ||
+                (hasLeft && (_avgSumLeftPower == null || _avgSumLeftPower.Length != bins)) ||
+                (hasRight && (_avgSumRightPower == null || _avgSumRightPower.Length != bins)) ||
+                (hasLeft && (_avgRingLeftPower != null && _avgRingLeftPower.Length != avgTargetCount)) ||
+                (hasRight && (_avgRingRightPower != null && _avgRingRightPower.Length != avgTargetCount));
+
+            if (needReset)
+            {
+                ResetAveragingState();
+                _avgHasLeft = hasLeft;
+                _avgHasRight = hasRight;
+            }
+
+            // Allocate si besoin
+            if (hasLeft && (_avgSumLeftPower == null || _avgRingLeftPower == null))
             {
                 _avgSumLeftPower = new double[bins];
                 _avgRingLeftPower = new double[avgTargetCount][];
@@ -77,30 +113,26 @@ namespace AudioHexViewer
                 _avgFillCount = 0;
             }
 
-            bool hasRight = (rightNewDb != null);
-            if (hasRight)
+            if (hasRight && (_avgSumRightPower == null || _avgRingRightPower == null))
             {
-                if (_avgSumRightPower == null || _avgSumRightPower.Length != bins ||
-                    _avgRingRightPower == null || _avgRingRightPower.Length != avgTargetCount)
-                {
-                    _avgSumRightPower = new double[bins];
-                    _avgRingRightPower = new double[avgTargetCount][];
-                    for (int i = 0; i < avgTargetCount; i++)
-                        _avgRingRightPower[i] = new double[bins];
-                }
-            }
-            else
-            {
-                _avgSumRightPower = null;
-                _avgRingRightPower = null;
+                _avgSumRightPower = new double[bins];
+                _avgRingRightPower = new double[avgTargetCount][];
+                for (int i = 0; i < avgTargetCount; i++)
+                    _avgRingRightPower[i] = new double[bins];
+
+                _avgRingPos = 0;
+                _avgFillCount = 0;
             }
 
             // 1) Retirer la frame la plus vieille si la fenêtre est pleine
             if (_avgFillCount == avgTargetCount)
             {
-                var oldL = _avgRingLeftPower![_avgRingPos];
-                for (int i = 0; i < bins; i++)
-                    _avgSumLeftPower![i] -= oldL[i];
+                if (hasLeft && _avgRingLeftPower != null && _avgSumLeftPower != null)
+                {
+                    var oldL = _avgRingLeftPower[_avgRingPos];
+                    for (int i = 0; i < bins; i++)
+                        _avgSumLeftPower[i] -= oldL[i];
+                }
 
                 if (hasRight && _avgRingRightPower != null && _avgSumRightPower != null)
                 {
@@ -110,14 +142,17 @@ namespace AudioHexViewer
                 }
             }
 
-            // 2) Convert dB(amplitude) -> puissance linéaire (power = 10^(dB/10)) et stocker dans l’anneau
-            var slotL = _avgRingLeftPower![_avgRingPos];
-            for (int i = 0; i < bins; i++)
+            // 2) Convert dB(amplitude) -> puissance linéaire (power = 10^(dB/10)), stocker dans l’anneau
+            if (hasLeft && leftNewDb != null && _avgRingLeftPower != null && _avgSumLeftPower != null)
             {
-                double db = leftNewDb[i];
-                double p = (db <= -200.0) ? 0.0 : Math.Pow(10.0, db / 10.0);
-                slotL[i] = p;
-                _avgSumLeftPower![i] += p;
+                var slotL = _avgRingLeftPower[_avgRingPos];
+                for (int i = 0; i < bins; i++)
+                {
+                    double db = leftNewDb[i];
+                    double p = (db <= -200.0) ? 0.0 : Math.Pow(10.0, db / 10.0);
+                    slotL[i] = p;
+                    _avgSumLeftPower[i] += p;
+                }
             }
 
             if (hasRight && rightNewDb != null && _avgRingRightPower != null && _avgSumRightPower != null)
@@ -142,14 +177,18 @@ namespace AudioHexViewer
             // 5) Construire le spectre moyen
             double inv = 1.0 / _avgFillCount;
 
-            var avgLeftDb = new double[bins];
-            for (int i = 0; i < bins; i++)
+            double[]? avgLeftDb = null;
+            if (hasLeft && _avgSumLeftPower != null)
             {
-                double pAvg = _avgSumLeftPower![i] * inv;
-                double db = (pAvg <= 0.0) ? -200.0 : 10.0 * Math.Log10(pAvg);
-                if (db < -200.0) db = -200.0;
-                if (db > 0.0) db = 0.0;
-                avgLeftDb[i] = db;
+                avgLeftDb = new double[bins];
+                for (int i = 0; i < bins; i++)
+                {
+                    double pAvg = _avgSumLeftPower[i] * inv;
+                    double db = (pAvg <= 0.0) ? -200.0 : 10.0 * Math.Log10(pAvg);
+                    if (db < -200.0) db = -200.0;
+                    if (db > 0.0) db = 0.0;
+                    avgLeftDb[i] = db;
+                }
             }
 
             double[]? avgRightDb = null;
@@ -176,28 +215,26 @@ namespace AudioHexViewer
             if (!enabled)
                 return;
 
-            if (currentLeftDb == null)
-                return;
-
-            int bins = currentLeftDb.Length;
-
-            if (_peakHoldLeftDb == null || _peakHoldLeftDb.Length != bins)
-                _peakHoldLeftDb = Enumerable.Repeat(-200.0, bins).ToArray();
-
-            for (int i = 0; i < bins; i++)
+            if (currentLeftDb != null)
             {
-                double v = currentLeftDb[i];
-                if (v > _peakHoldLeftDb[i]) _peakHoldLeftDb[i] = v;
+                int bins = currentLeftDb.Length;
+                if (_peakHoldLeftDb == null || _peakHoldLeftDb.Length != bins)
+                    _peakHoldLeftDb = Enumerable.Repeat(-200.0, bins).ToArray();
+
+                for (int i = 0; i < bins; i++)
+                {
+                    double v = currentLeftDb[i];
+                    if (v > _peakHoldLeftDb[i]) _peakHoldLeftDb[i] = v;
+                }
             }
 
             if (currentRightDb != null)
             {
-                int n = currentRightDb.Length;
+                int bins = currentRightDb.Length;
+                if (_peakHoldRightDb == null || _peakHoldRightDb.Length != bins)
+                    _peakHoldRightDb = Enumerable.Repeat(-200.0, bins).ToArray();
 
-                if (_peakHoldRightDb == null || _peakHoldRightDb.Length != n)
-                    _peakHoldRightDb = Enumerable.Repeat(-200.0, n).ToArray();
-
-                for (int i = 0; i < n; i++)
+                for (int i = 0; i < bins; i++)
                 {
                     double v = currentRightDb[i];
                     if (v > _peakHoldRightDb[i]) _peakHoldRightDb[i] = v;

@@ -232,10 +232,6 @@ namespace AudioHexViewer
             }
 
 
-            // Si une seule voie dispo : on l’utilise au moins comme Left
-            if (specL == null && specR != null)
-                specL = (double[])specR.Clone();
-
             // 5) Axe fréquence
             double[] freq = BuildFreqAxis(sampleRate, fftSize);
 
