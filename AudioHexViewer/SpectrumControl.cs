@@ -708,13 +708,23 @@ namespace AudioHexViewer
                 : "DC mode";
 
             // --- Ligne finale ---
+            // --- Résolution FFT : ΔF = SR / N ---
+            double df = (double)_sampleRate / N;
+
+            // Format lisible
+            string dfText = (df >= 1000.0)
+                ? $"{df / 1000.0:F2} kHz"
+                : (df >= 10.0 ? $"{df:F1} Hz" : $"{df:F2} Hz");
+
             _bottomInfoLine =
                 $"SR:{srText}    " +
                 $"N={N:N0}    " +
+                $"ΔF={dfText}    " +
                 $"Overlap:{overlapPct:F1}%     " +
                 $"Win:{winText}    " +
                 $"{avgText}    " +
                 $"{acdcText}";
+
 
 
 
