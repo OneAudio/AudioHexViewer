@@ -1,19 +1,14 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Text;
 using System.Windows.Forms;
 
 namespace AudioHexViewer
 {
     public partial class CursorSetValueDialog : Form
     {
-        private readonly NumericUpDown nudC1;
-        private readonly NumericUpDown nudC2;
-        private readonly Button btnPeakC1;
-        private readonly Button btnPeakC2;
+        private readonly Func<double?> _getPeakC1Hz;
+        private readonly Func<double?> _getPeakC2Hz;
+        private readonly bool _c1Enabled;
+        private readonly bool _c2Enabled;
 
         public double? C1Hz { get; private set; }
         public double? C2Hz { get; private set; }
@@ -24,112 +19,60 @@ namespace AudioHexViewer
             Func<double?> getPeakC1Hz,
             Func<double?> getPeakC2Hz)
         {
-            Text = "Set Cursor Frequency";
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            StartPosition = FormStartPosition.CenterParent;
-            MinimizeBox = false;
-            MaximizeBox = false;
-            ShowInTaskbar = false;
+            InitializeComponent();
 
-            var table = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 3,
-                RowCount = 3,
-                Padding = new Padding(10),
-                AutoSize = true
-            };
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+            _c1Enabled = c1Enabled;
+            _c2Enabled = c2Enabled;
+            _getPeakC1Hz = getPeakC1Hz ?? (() => null);
+            _getPeakC2Hz = getPeakC2Hz ?? (() => null);
 
-            // Row C1
-            table.Controls.Add(new Label { Text = "C1 f (Hz)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
-
-            nudC1 = new NumericUpDown
-            {
-                DecimalPlaces = 2,
-                Minimum = 0,
-                Maximum = 10_000_000,
-                Increment = 1,
-                Anchor = AnchorStyles.Left | AnchorStyles.Right,
-                Width = 200
-            };
+            // init valeurs
             if (c1CurrentHz.HasValue)
-                nudC1.Value = (decimal)Math.Max(0, Math.Min(10_000_000, c1CurrentHz.Value));
-            table.Controls.Add(nudC1, 1, 0);
+                nudC1.Value = ClampToNud(nudC1, c1CurrentHz.Value);
 
-            btnPeakC1 = new Button { Text = "Set to Peak", Anchor = AnchorStyles.Right, Width = 100 };
-            btnPeakC1.Click += (_, __) =>
-            {
-                var p = getPeakC1Hz();
-                if (p.HasValue)
-                    nudC1.Value = (decimal)Math.Max(0, Math.Min(10_000_000, p.Value));
-                else
-                    MessageBox.Show(this, "Peak not available for C1 (channel not available or no data).", "Peak",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
-            };
-            table.Controls.Add(btnPeakC1, 2, 0);
-
-            // Row C2
-            table.Controls.Add(new Label { Text = "C2 f (Hz)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
-
-            nudC2 = new NumericUpDown
-            {
-                DecimalPlaces = 2,
-                Minimum = 0,
-                Maximum = 10_000_000,
-                Increment = 1,
-                Anchor = AnchorStyles.Left | AnchorStyles.Right,
-                Width = 200
-            };
             if (c2CurrentHz.HasValue)
-                nudC2.Value = (decimal)Math.Max(0, Math.Min(10_000_000, c2CurrentHz.Value));
-            table.Controls.Add(nudC2, 1, 1);
+                nudC2.Value = ClampToNud(nudC2, c2CurrentHz.Value);
 
-            btnPeakC2 = new Button { Text = "Set to Peak", Anchor = AnchorStyles.Right, Width = 100 };
-            btnPeakC2.Click += (_, __) =>
-            {
-                var p = getPeakC2Hz();
-                if (p.HasValue)
-                    nudC2.Value = (decimal)Math.Max(0, Math.Min(10_000_000, p.Value));
-                else
-                    MessageBox.Show(this, "Peak not available for C2 (channel not available or no data).", "Peak",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
-            };
-            table.Controls.Add(btnPeakC2, 2, 1);
+            // enable/disable selon curseurs actifs
+            nudC1.Enabled = btnPeakC1.Enabled = _c1Enabled;
+            nudC2.Enabled = btnPeakC2.Enabled = _c2Enabled;
 
-            // Buttons OK/Cancel
-            var panelButtons = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                FlowDirection = FlowDirection.RightToLeft,
-                AutoSize = true
-            };
+            // events
+            btnPeakC1.Click += (_, __) => SetPeakInto(nudC1, _getPeakC1Hz, "C1");
+            btnPeakC2.Click += (_, __) => SetPeakInto(nudC2, _getPeakC2Hz, "C2");
 
-            var btnOk = new Button { Text = "OK", DialogResult = DialogResult.OK, Width = 90 };
-            var btnCancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Width = 90 };
-            panelButtons.Controls.Add(btnOk);
-            panelButtons.Controls.Add(btnCancel);
-            table.Controls.Add(panelButtons, 0, 2);
-            table.SetColumnSpan(panelButtons, 3);
-
-            AcceptButton = btnOk;
-            CancelButton = btnCancel;
-
-            // Disable rows if cursor not enabled
-            nudC1.Enabled = btnPeakC1.Enabled = c1Enabled;
-            nudC2.Enabled = btnPeakC2.Enabled = c2Enabled;
-
-            Controls.Add(table);
-
-            // Capture results
             btnOk.Click += (_, __) =>
             {
-                C1Hz = c1Enabled ? (double)nudC1.Value : null;
-                C2Hz = c2Enabled ? (double)nudC2.Value : null;
+                C1Hz = _c1Enabled ? (double)nudC1.Value : null;
+                C2Hz = _c2Enabled ? (double)nudC2.Value : null;
             };
+        }
+
+        private static decimal ClampToNud(NumericUpDown nud, double v)
+        {
+            double min = (double)nud.Minimum;
+            double max = (double)nud.Maximum;
+            if (v < min) v = min;
+            if (v > max) v = max;
+            return (decimal)v;
+        }
+
+        private void SetPeakInto(NumericUpDown nud, Func<double?> getPeak, string who)
+        {
+            var p = getPeak();
+            if (p.HasValue)
+            {
+                nud.Value = ClampToNud(nud, p.Value);
+            }
+            else
+            {
+                MessageBox.Show(
+                    this,
+                    $"Peak not available for {who} (channel not available or no data).",
+                    "Peak",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
         }
     }
 }
-
