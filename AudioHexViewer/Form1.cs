@@ -936,9 +936,37 @@ namespace AudioHexViewer
             menuCursorsSetValue = new ToolStripMenuItem("Set Value...");
             menuCursorsSetValue.Click += (_, __) =>
             {
-                MessageBox.Show(this, "Set Value... (implémenté à l'étape 4)", "Cursors",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                if (spectrumControl == null) return;
+
+                // valeurs actuelles
+                double? c1 = spectrumControl.TryGetCursor1FrequencyHz(out var f1) ? f1 : (double?)null;
+                double? c2 = spectrumControl.TryGetCursor2FrequencyHz(out var f2) ? f2 : (double?)null;
+
+                using var dlg = new CursorSetValueDialog(
+                    c1Enabled: spectrumControl.CursorLeftEnabled,
+                    c2Enabled: spectrumControl.CursorRightEnabled,
+                    c1CurrentHz: c1,
+                    c2CurrentHz: c2,
+                    getPeakC1Hz: () =>
+                    {
+                        return spectrumControl.TryFindPeakFrequencyForCursor1(out var p) ? p : (double?)null;
+                    },
+                    getPeakC2Hz: () =>
+                    {
+                        return spectrumControl.TryFindPeakFrequencyForCursor2(out var p) ? p : (double?)null;
+                    }
+                );
+
+                if (dlg.ShowDialog(this) == DialogResult.OK)
+                {
+                    if (dlg.C1Hz.HasValue)
+                        spectrumControl.SetCursor1FrequencyHz(dlg.C1Hz.Value);
+
+                    if (dlg.C2Hz.HasValue)
+                        spectrumControl.SetCursor2FrequencyHz(dlg.C2Hz.Value);
+                }
             };
+
 
             // Assemblage menu
             menuCursors.DropDownItems.Add(menuC1Cursor);

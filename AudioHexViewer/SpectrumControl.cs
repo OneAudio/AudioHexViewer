@@ -108,6 +108,10 @@ namespace AudioHexViewer
         private double _cursorMarkLFreq, _cursorMarkLDb;
         private double _cursorMarkRFreq, _cursorMarkRDb;
 
+        private double _cursorTargetHzL = 1000.0; // valeur init au choix
+        private double _cursorTargetHzR = 1000.0;
+
+
 
         // État axe X logarithmique (pour redessin manuel des sous-divisions)
         private bool _xAxisIsLog = false;
@@ -951,7 +955,7 @@ namespace AudioHexViewer
             if (_lblCursorLInfo == null || _lblCursorRInfo == null || _lblCursorDeltaInfo == null)
                 return;
 
-            const int yOffsetFromBottom = 56; // (avant 40) -> pour caser 3 lignes
+            const int yOffsetFromBottom = 40;   // on revient à 2 lignes
             const int xOffsetFromRight = 450;
 
             int y = Math.Max(0, chartSpectrum.ClientSize.Height - yOffsetFromBottom);
@@ -959,10 +963,18 @@ namespace AudioHexViewer
 
             _lblCursorLInfo.Location = new Point(xStart, y);
             _lblCursorRInfo.Location = new Point(xStart, y + 16);
-            _lblCursorDeltaInfo.Location = new Point(xStart, y + 32);
+
+            // Delta à droite des 2 lignes
+            int w1 = _lblCursorLInfo.PreferredWidth;
+            int w2 = _lblCursorRInfo.PreferredWidth;
+            int xDelta = xStart + Math.Max(w1, w2) + 14;
+
+            // clamp pour ne pas sortir de la zone chart
+            int maxX = Math.Max(6, chartSpectrum.ClientSize.Width - _lblCursorDeltaInfo.PreferredWidth - 6);
+            if (xDelta > maxX) xDelta = maxX;
+
+            _lblCursorDeltaInfo.Location = new Point(xDelta, y + 8); // centré verticalement
         }
-
-
 
         //
         // ---------------- CURSORS ----------------
@@ -1057,12 +1069,16 @@ namespace AudioHexViewer
                 _activeCursor = ActiveCursor.Left;
                 _cursorIdxL = idx;
                 _cursorFreqL = freqAxis[idx];
+                _cursorTargetHzL = _cursorFreqL;
+
             }
             else if (!canMoveL && canMoveR)
             {
                 _activeCursor = ActiveCursor.Right;
                 _cursorIdxR = idx;
                 _cursorFreqR = freqAxis[idx];
+                _cursorTargetHzR = _cursorFreqR;
+
             }
             else
             {
@@ -1210,81 +1226,50 @@ namespace AudioHexViewer
         //
         private void ChartSpectrum_MouseDoubleClick(object? sender, MouseEventArgs e)
         {
-            if (e.Button != MouseButtons.Left)
-                return;
-
-            if (freqAxis == null || freqAxis.Length == 0)
-                return;
+            if (freqAxis == null || freqAxis.Length == 0) return;
 
             var area = chartSpectrum.ChartAreas["SpectrumArea"];
 
-            bool onL = (chkCursorL != null && chkCursorL.Checked);
-            bool onR = (chkCursorR != null && chkCursorR.Checked);
+            bool c1Enabled = (chkCursorL != null && chkCursorL.Checked);
+            bool c2Enabled = (chkCursorR != null && chkCursorR.Checked);
 
-            if (!onL && !onR)
-                return;
+            // rien à faire si aucun curseur
+            if (!c1Enabled && !c2Enabled) return;
 
-            // distance en px entre clic et curseur
-            double DistPxToCursor(int idxCursor)
+            // distances en pixels
+            double d1 = double.PositiveInfinity;
+            double d2 = double.PositiveInfinity;
+
+            if (c1Enabled && _cursorIdxL >= 0 && _cursorIdxL < freqAxis.Length)
             {
-                if (idxCursor < 0 || idxCursor >= freqAxis.Length) return double.PositiveInfinity;
-                double fC = freqAxis[idxCursor];
-                double xC = area.AxisX.ValueToPixelPosition(fC);
-                return Math.Abs(e.X - xC);
+                double x1 = area.AxisX.ValueToPixelPosition(freqAxis[_cursorIdxL]);
+                d1 = Math.Abs(e.X - x1);
             }
 
-            bool toggleLeft = false;
-            bool toggleRight = false;
+            if (c2Enabled && _cursorIdxR >= 0 && _cursorIdxR < freqAxis.Length)
+            {
+                double x2 = area.AxisX.ValueToPixelPosition(freqAxis[_cursorIdxR]);
+                d2 = Math.Abs(e.X - x2);
+            }
 
-            double dL = onL ? DistPxToCursor(_cursorIdxL) : double.PositiveInfinity;
-            double dR = onR ? DistPxToCursor(_cursorIdxR) : double.PositiveInfinity;
+            // choisir le plus proche si dans la tolérance
+            bool hitC1 = d1 <= CursorHitTolPx;
+            bool hitC2 = d2 <= CursorHitTolPx;
 
-            if (dL <= CursorHitTolPx && dL <= dR) toggleLeft = true;
-            else if (dR <= CursorHitTolPx && dR < dL) toggleRight = true;
+            if (!hitC1 && !hitC2)
+                return; // <-- IMPORTANT : plus de toggle "loin"
+
+            bool toggleC1 = hitC1 && (!hitC2 || d1 <= d2);
+
+            if (toggleC1)
+            {
+                _cursorLockedL = !_cursorLockedL;
+                _cursorTargetHzL = _cursorFreqL; // sync intention
+            }
             else
             {
-                if (_activeCursor == ActiveCursor.Left && onL) toggleLeft = true;
-                else if (_activeCursor == ActiveCursor.Right && onR) toggleRight = true;
-                else if (onL) toggleLeft = true;
-                else if (onR) toggleRight = true;
-            }
-
-            // Lorsqu'on toggle, si l'index n'est pas initialisé, on le fixe depuis la position souris
-            bool useLog = (chkLogX != null && chkLogX.Checked);
-            int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
-
-            if (toggleLeft)
-            {
-                if (_cursorIdxL < minIdx)
-                {
-                    double f = GetFrequencyFromMouseX(e.X);
-                    if (useLog && f < 1.0) f = 1.0;
-                    if (!useLog && f < 0.0) f = 0.0;
-                    _cursorIdxL = FindNearestFreqIndex(freqAxis, f, minIdx);
-                }
-
-                if (_cursorIdxL >= 0 && _cursorIdxL < freqAxis.Length)
-                    _cursorFreqL = freqAxis[_cursorIdxL];
-
-                _cursorLockedL = !_cursorLockedL;
-                _activeCursor = ActiveCursor.Left;
-            }
-
-            if (toggleRight)
-            {
-                if (_cursorIdxR < minIdx)
-                {
-                    double f = GetFrequencyFromMouseX(e.X);
-                    if (useLog && f < 1.0) f = 1.0;
-                    if (!useLog && f < 0.0) f = 0.0;
-                    _cursorIdxR = FindNearestFreqIndex(freqAxis, f, minIdx);
-                }
-
-                if (_cursorIdxR >= 0 && _cursorIdxR < freqAxis.Length)
-                    _cursorFreqR = freqAxis[_cursorIdxR];
-
                 _cursorLockedR = !_cursorLockedR;
-                _activeCursor = ActiveCursor.Right;
+                _cursorTargetHzR = _cursorFreqR; // sync intention
             }
 
             RefreshCursorsFromCurrentSpectrum();
@@ -1595,8 +1580,140 @@ namespace AudioHexViewer
                 _ => "—"
             };
         }
-
         //
+        public bool TryGetCursor1FrequencyHz(out double hz)
+        {
+            hz = 0;
+            if (freqAxis == null || freqAxis.Length == 0) return false;
+            int idx = Math.Max(0, Math.Min(_cursorIdxL, freqAxis.Length - 1));
+            hz = freqAxis[idx];
+            return true;
+        }
+
+        public bool TryGetCursor2FrequencyHz(out double hz)
+        {
+            hz = 0;
+            if (freqAxis == null || freqAxis.Length == 0) return false;
+            int idx = Math.Max(0, Math.Min(_cursorIdxR, freqAxis.Length - 1));
+            hz = freqAxis[idx];
+            return true;
+        }
+
+        public void SetCursor1FrequencyHz(double targetHz)
+        {
+            if (freqAxis == null || freqAxis.Length == 0) return;
+
+            bool useLog = (chkLogX != null && chkLogX.Checked);
+            int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
+
+            _cursorTargetHzL = targetHz; // <-- intention
+
+            int idx = FindNearestFreqIndex(freqAxis, targetHz, minIdx);
+            _cursorIdxL = idx;
+            _cursorFreqL = freqAxis[idx];
+
+            // lock auto si placé par dialogue
+            _cursorLockedL = true;
+
+            RefreshCursorsFromCurrentSpectrum();
+        }
+
+        public void SetCursor2FrequencyHz(double targetHz)
+        {
+            if (freqAxis == null || freqAxis.Length == 0) return;
+
+            bool useLog = (chkLogX != null && chkLogX.Checked);
+            int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
+
+            _cursorTargetHzR = targetHz; // <-- intention
+
+            int idx = FindNearestFreqIndex(freqAxis, targetHz, minIdx);
+            _cursorIdxR = idx;
+            _cursorFreqR = freqAxis[idx];
+
+            // lock auto si placé par dialogue
+            _cursorLockedR = true;
+
+            RefreshCursorsFromCurrentSpectrum();
+        }
+
+
+        public bool TryFindPeakFrequencyForCursor1(out double peakHz)
+            => TryFindPeakFrequencyForCursor(isCursor1: true, out peakHz);
+
+        public bool TryFindPeakFrequencyForCursor2(out double peakHz)
+            => TryFindPeakFrequencyForCursor(isCursor1: false, out peakHz);
+
+        private bool TryFindPeakFrequencyForCursor(bool isCursor1, out double peakHz)
+        {
+            peakHz = 0;
+
+            if (freqAxis == null || freqAxis.Length == 0) return false;
+
+            // voie réellement trackée
+            var curve = ResolveCurveForCursor(isCursor1);
+            if (curve == ResolvedCurve.None) return false;
+
+            double[]? spec = (curve == ResolvedCurve.Left) ? currentLeftSpectrum : currentRightSpectrum;
+            if (spec == null || spec.Length == 0) return false;
+
+            var area = chartSpectrum.ChartAreas["SpectrumArea"];
+
+            // plage visible du graphe (spec demandé)
+            double fMin = area.AxisX.Minimum;
+            double fMax = area.AxisX.Maximum;
+            if (fMax <= fMin) return false;
+
+            bool useLog = (chkLogX != null && chkLogX.Checked);
+            int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
+
+            int i0 = LowerBound(freqAxis, fMin);
+            int i1 = UpperBound(freqAxis, fMax) - 1;
+
+            i0 = Math.Max(i0, minIdx);
+            i1 = Math.Min(i1, Math.Min(freqAxis.Length - 1, spec.Length - 1));
+            if (i1 <= i0) return false;
+
+            int best = i0;
+            double bestDb = spec[i0];
+            for (int i = i0 + 1; i <= i1; i++)
+            {
+                double db = spec[i];
+                if (db > bestDb)
+                {
+                    bestDb = db;
+                    best = i;
+                }
+            }
+
+            peakHz = freqAxis[best];
+            return true;
+        }
+
+        private static int LowerBound(double[] a, double x)
+        {
+            int lo = 0, hi = a.Length;
+            while (lo < hi)
+            {
+                int mid = (lo + hi) >> 1;
+                if (a[mid] < x) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo;
+        }
+
+        private static int UpperBound(double[] a, double x)
+        {
+            int lo = 0, hi = a.Length;
+            while (lo < hi)
+            {
+                int mid = (lo + hi) >> 1;
+                if (a[mid] <= x) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo;
+        }
+
         //
         private void RefreshCursorsFromCurrentSpectrum()
         {
@@ -1610,6 +1727,24 @@ namespace AudioHexViewer
 
             bool useLog = (chkLogX != null && chkLogX.Checked);
             int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
+
+            // --- Garder la fréquence des curseurs constante même si N change ---
+            // (recalcule l'index à partir de la fréquence mémorisée)
+            if (useLog)
+            {
+                if (_cursorFreqL < 1.0) _cursorFreqL = 1.0;
+                if (_cursorFreqR < 1.0) _cursorFreqR = 1.0;
+                if (_cursorTargetHzL < 1.0) _cursorTargetHzL = 1.0;
+                if (_cursorTargetHzR < 1.0) _cursorTargetHzR = 1.0;
+
+            }
+
+            if (onC1 && _cursorTargetHzL > 0)
+                _cursorIdxL = FindNearestFreqIndex(freqAxis, _cursorTargetHzL, minIdx);
+
+            if (onC2 && _cursorTargetHzR > 0)
+                _cursorIdxR = FindNearestFreqIndex(freqAxis, _cursorTargetHzR, minIdx);
+
 
             // Sécurise les index (si pas init / hors plage)
             if (_cursorIdxL < minIdx) _cursorIdxL = minIdx;

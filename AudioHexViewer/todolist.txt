@@ -4,10 +4,6 @@ Le 29/12/2025
 
 
 
-Ajouter la possibilité pour chaque curseur de choisir la voie sur laquelle la mesure est  faite,
-et aussi de saisir la fréquence à laquelle le curseur doit être placé.
-Les curseurs placé sur des voie inactive sont éteint.
-
 0 - Ajouter la possibilitée d'avoir la FFT en dBV en utilisant les paramètres
 de la calibration.
 
