@@ -3,14 +3,13 @@ Chose à faire :
 Le 29/12/2025
 
 
-0 - Ajouter la possibilitée d'avoir la FFT en dBV en utilisant les paramètres
-de la calibration.
 
-11 - Vérifier si le calcul de FFT est effecté si la voie n'est pas activé ?
-
-> Ajouter la possibilité pour chaque curseur de choisir la voie sur laquelle la mesure est  faite,
+Ajouter la possibilité pour chaque curseur de choisir la voie sur laquelle la mesure est  faite,
 et aussi de saisir la fréquence à laquelle le curseur doit être placé.
 Les curseurs placé sur des voie inactive sont éteint.
+
+0 - Ajouter la possibilitée d'avoir la FFT en dBV en utilisant les paramètres
+de la calibration.
 
 1 - Ajouter le nécessaire pour qu'il soit possible de choisir les couleurs
 des différentes courbes : Left , Right, Left-Hold, Right-Hold, Mem 0 à Mem 8

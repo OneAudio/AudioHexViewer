@@ -1,11 +1,12 @@
-﻿using System;
+﻿using MathNet.Numerics;
+using MathNet.Numerics.IntegralTransforms;
+using System;
 using System.Drawing;
 using System.Linq;
 using System.Numerics;
 using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
-using MathNet.Numerics;
-using MathNet.Numerics.IntegralTransforms;
+using static AudioHexViewer.SpectrumControl;
 using ChartSeries = System.Windows.Forms.DataVisualization.Charting.Series;
 
 
@@ -79,7 +80,9 @@ namespace AudioHexViewer
         // Labels (texte curseur) affichés en bas du chart
         private Label? _lblCursorLInfo;
         private Label? _lblCursorRInfo;
-    
+        private Label? _lblCursorDeltaInfo; // NEW
+
+
 
         // --- Etat curseurs (indépendants) ---
         private bool _cursorLockedL = false;
@@ -110,7 +113,7 @@ namespace AudioHexViewer
         private bool _xAxisIsLog = false;
 
         // Ligne d'info en bas (stats)
-        private string _bottomInfoLine = "";
+        private string _TopInfoLine = "";
 
         // Indicateur de restauration des settings (évite d’écrire dans les settings pendant la restauration)
         private bool _isRestoringSettings = false;
@@ -134,6 +137,24 @@ namespace AudioHexViewer
             get => chkCursorR.Checked;
             set => chkCursorR.Checked = value;
         }
+
+        public enum CursorTrackMode { Auto, Left, Right }
+
+        private CursorTrackMode _c1TrackMode = CursorTrackMode.Auto;
+        private CursorTrackMode _c2TrackMode = CursorTrackMode.Auto;
+
+        public CursorTrackMode C1TrackMode
+        {
+            get => _c1TrackMode;
+            set { _c1TrackMode = value; chartSpectrum?.Invalidate(); }
+        }
+
+        public CursorTrackMode C2TrackMode
+        {
+            get => _c2TrackMode;
+            set { _c2TrackMode = value; chartSpectrum?.Invalidate(); }
+        }
+
 
         private bool _statsShowLeft = true;
         private bool _statsShowRight = true;
@@ -668,7 +689,7 @@ namespace AudioHexViewer
 
             if (_sampleRate <= 0 || lastFftSize <= 0)
             {
-                _bottomInfoLine = "";
+                _TopInfoLine = "";
                 _overlayInfoAnno.Visible = false;
                 chartSpectrum.Invalidate();
                 return;
@@ -716,7 +737,7 @@ namespace AudioHexViewer
                 ? $"{df / 1000.0:F2} kHz"
                 : (df >= 10.0 ? $"{df:F1} Hz" : $"{df:F2} Hz");
 
-            _bottomInfoLine =
+            _TopInfoLine =
                 $"SR:{srText}    " +
                 $"N={N:N0}    " +
                 $"ΔF={dfText}    " +
@@ -904,31 +925,43 @@ namespace AudioHexViewer
                 Visible = false
             };
 
+            _lblCursorDeltaInfo = new Label
+            {
+                AutoSize = true,
+                Text = "",
+                BackColor = Color.Transparent,
+                ForeColor = Color.Gray,
+                Font = new Font("Segoe UI", 8.5f),
+                Visible = false
+            };
+
 
             chartSpectrum.Controls.Add(_lblCursorLInfo);
             chartSpectrum.Controls.Add(_lblCursorRInfo);
+            chartSpectrum.Controls.Add(_lblCursorDeltaInfo);
             _lblCursorLInfo.BringToFront();
             _lblCursorRInfo.BringToFront();
+            _lblCursorDeltaInfo.BringToFront();
 
             chartSpectrum.Resize += (_, __) => PositionCursorInfoLabels();
         }
 
         private void PositionCursorInfoLabels()
         {
-            if (_lblCursorLInfo == null || _lblCursorRInfo == null)
+            if (_lblCursorLInfo == null || _lblCursorRInfo == null || _lblCursorDeltaInfo == null)
                 return;
 
-            const int yOffsetFromBottom = 40; // ↑ augmente pour monter (ex: 30..60)
-            const int xOffsetFromRight = 450; // → diminue pour aller plus à droite
+            const int yOffsetFromBottom = 56; // (avant 40) -> pour caser 3 lignes
+            const int xOffsetFromRight = 450;
 
             int y = Math.Max(0, chartSpectrum.ClientSize.Height - yOffsetFromBottom);
-
-            // Place le bloc près de la droite (au lieu du centre)
             int xStart = Math.Max(6, chartSpectrum.ClientSize.Width - xOffsetFromRight);
 
             _lblCursorLInfo.Location = new Point(xStart, y);
-            _lblCursorRInfo.Location = new Point(xStart, y + 16); // seconde ligne juste dessous
+            _lblCursorRInfo.Location = new Point(xStart, y + 16);
+            _lblCursorDeltaInfo.Location = new Point(xStart, y + 32);
         }
+
 
 
         //
@@ -1505,7 +1538,63 @@ namespace AudioHexViewer
 
             g.Restore(saved);
         }
+        //
+        // Couleurs dynamiques des marqueurs (triangle) selon la voie réellement trackée
+        private Color _cursorMarkLColor = Color.DodgerBlue; // C1
+        private Color _cursorMarkRColor = Color.OrangeRed;  // C2
 
+        private enum ResolvedCurve
+        {
+            None,
+            Left,
+            Right
+        }
+
+        private ResolvedCurve ResolveCurveForCursor(bool isCursor1)
+        {
+            // "Voie dispo" = affichée ET spectre présent (important depuis l'optim voies actives)
+            bool leftAvail = _statsShowLeft && currentLeftSpectrum != null;
+            bool rightAvail = _statsShowRight && currentRightSpectrum != null;
+
+            // Remplace ces noms par ceux que tu as créés à l'étape 1 si besoin
+            CursorTrackMode mode = isCursor1 ? _c1TrackMode : _c2TrackMode;
+
+            switch (mode)
+            {
+                case CursorTrackMode.Left:
+                    return leftAvail ? ResolvedCurve.Left : ResolvedCurve.None;
+
+                case CursorTrackMode.Right:
+                    return rightAvail ? ResolvedCurve.Right : ResolvedCurve.None;
+
+                default: // Auto
+                    if (leftAvail && rightAvail)
+                        return isCursor1 ? ResolvedCurve.Left : ResolvedCurve.Right;
+                    if (leftAvail) return ResolvedCurve.Left;
+                    if (rightAvail) return ResolvedCurve.Right;
+                    return ResolvedCurve.None;
+            }
+        }
+
+        private static Color CurveColor(ResolvedCurve c)
+        {
+            return c switch
+            {
+                ResolvedCurve.Left => Color.DodgerBlue,
+                ResolvedCurve.Right => Color.OrangeRed,
+                _ => Color.Gray
+            };
+        }
+
+        private static string CurveLetter(ResolvedCurve c)
+        {
+            return c switch
+            {
+                ResolvedCurve.Left => "L",
+                ResolvedCurve.Right => "R",
+                _ => "—"
+            };
+        }
 
         //
         //
@@ -1514,72 +1603,108 @@ namespace AudioHexViewer
             if (freqAxis == null || freqAxis.Length == 0)
                 return;
 
-            if (chartSpectrum.ChartAreas.Count == 0)
-                return;
-
             var area = chartSpectrum.ChartAreas["SpectrumArea"];
 
-            bool onL = (chkCursorL != null && chkCursorL.Checked);
-            bool onR = (chkCursorR != null && chkCursorR.Checked);
+            bool onC1 = chkCursorL != null && chkCursorL.Checked; // C1
+            bool onC2 = chkCursorR != null && chkCursorR.Checked; // C2
 
             bool useLog = (chkLogX != null && chkLogX.Checked);
             int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
 
-            // resnap indices par fréquence
-            if (!double.IsNaN(_cursorFreqL))
-                _cursorIdxL = FindNearestFreqIndex(freqAxis, _cursorFreqL, minIdx);
-            if (!double.IsNaN(_cursorFreqR))
-                _cursorIdxR = FindNearestFreqIndex(freqAxis, _cursorFreqR, minIdx);
+            // Sécurise les index (si pas init / hors plage)
+            if (_cursorIdxL < minIdx) _cursorIdxL = minIdx;
+            if (_cursorIdxR < minIdx) _cursorIdxR = minIdx;
+            if (_cursorIdxL >= freqAxis.Length) _cursorIdxL = freqAxis.Length - 1;
+            if (_cursorIdxR >= freqAxis.Length) _cursorIdxR = freqAxis.Length - 1;
 
-            if (_cursorIdxL >= 0 && _cursorIdxL < minIdx) _cursorIdxL = minIdx;
-            if (_cursorIdxR >= 0 && _cursorIdxR < minIdx) _cursorIdxR = minIdx;
+            // Résolution voie pour chaque curseur
+            var c1Curve = ResolveCurveForCursor(isCursor1: true);
+            var c2Curve = ResolveCurveForCursor(isCursor1: false);
 
-            // Y du triangle : un poil sous le max pour éviter clipping
-            double yTop = area.AxisY.Maximum - (area.AxisY.Maximum - area.AxisY.Minimum) * 0.01;
-
-            // ----- LEFT -----
-            if (onL && _cursorLineL != null && _cursorIdxL >= minIdx && _cursorIdxL < freqAxis.Length)
+            void UpdateOne(
+                bool enabled,
+                bool isCursor1,
+                int idx,
+                VerticalLineAnnotation? line,
+                Label? lbl,
+                bool locked,
+                ResolvedCurve curve,
+                ref bool markVisible,
+                ref double markFreq,
+                ref double markDb,
+                ref Color markColor)
             {
-                double f = freqAxis[_cursorIdxL];
-                _cursorFreqL = f;
-
-                _cursorLineL.X = f;
-                _cursorLineL.Visible = true;
-
-
-
-                // texte bas
-                string txtL;
-                if (currentLeftSpectrum != null && _cursorIdxL < currentLeftSpectrum.Length)
+                if (!enabled || line == null || idx < minIdx || idx >= freqAxis.Length)
                 {
-                    double db = currentLeftSpectrum[_cursorIdxL];
-                    txtL = $"L: {f:0.##} Hz  {db:0.##} dBFS" + (_cursorLockedL ? "  (LOCK)" : "");
-
-                    // position en % (0..100) => parfaitement aligné avec la ligne
-                    double xRel = area.AxisX.ValueToPosition(f);
-                    double yRel = area.AxisY.ValueToPosition(db);
-
-                    _cursorMarkLVisible = true;
-                    _cursorMarkLFreq = f;
-                    _cursorMarkLDb = db;
-
-                    // Option: ajuste la “pointe” si tu veux qu’elle touche pile la courbe
-                    const double TRI_Y_OFFSET = 0.0; // essaye 0.6 ou 1.0 si besoin
-                    yRel -= TRI_Y_OFFSET;
-
-                }
-                else
-                {
-                    txtL = $"L: {f:0.##} Hz  --" + (_cursorLockedL ? "  (LOCK)" : "");
-
+                    if (line != null) line.Visible = false;
+                    if (lbl != null) { lbl.Text = ""; lbl.Visible = false; }
+                    markVisible = false;
+                    return;
                 }
 
-                if (_lblCursorLInfo != null)
-                {
-                    _lblCursorLInfo.Text = txtL;
-                    _lblCursorLInfo.Visible = true;
+                double f = freqAxis[idx];
 
+                // Ligne verticale : toujours à la bonne fréquence
+                line.X = f;
+                line.Visible = true;
+
+                // Si la voie demandée n'existe pas -> grisé, pas de triangle
+                if (curve == ResolvedCurve.None)
+                {
+                    line.LineColor = Color.FromArgb(180, Color.Gray);
+                    markVisible = false;
+                    markColor = Color.Gray;
+
+                    if (lbl != null)
+                    {
+                        lbl.ForeColor = Color.Gray;
+                        lbl.Text = $"{(isCursor1 ? "C1" : "C2")}({CurveLetter(curve)}): {f:0.##} Hz  --" + (locked ? "  (LOCK)" : "");
+                        lbl.Visible = true;
+                    }
+                    return;
                 }
+
+                double[]? spec = (curve == ResolvedCurve.Left) ? currentLeftSpectrum : currentRightSpectrum;
+                if (spec == null || idx >= spec.Length)
+                {
+                    line.LineColor = Color.FromArgb(180, Color.Gray);
+                    markVisible = false;
+                    markColor = Color.Gray;
+
+                    if (lbl != null)
+                    {
+                        lbl.ForeColor = Color.Gray;
+                        lbl.Text = $"{(isCursor1 ? "C1" : "C2")}({CurveLetter(curve)}): {f:0.##} Hz  --" + (locked ? "  (LOCK)" : "");
+                        lbl.Visible = true;
+                    }
+                    return;
+                }
+
+                double db = spec[idx];
+
+                // Couleur selon la VOIE réellement trackée
+                var col = CurveColor(curve);
+                line.LineColor = Color.FromArgb(180, col);
+
+                markVisible = true;
+                markFreq = f;
+                markDb = db;
+                markColor = col;
+
+                if (lbl != null)
+                {
+                    lbl.ForeColor = col;
+                    lbl.Text = $"{(isCursor1 ? "C1" : "C2")}({CurveLetter(curve)}): {f:0.##} Hz  {db:0.##} dBFS" + (locked ? "  (LOCK)" : "");
+                    lbl.Visible = true;
+                }
+            }
+
+            // C1
+            if (onC1 && _cursorLineL != null)
+            {
+                _cursorFreqL = freqAxis[_cursorIdxL];
+                UpdateOne(onC1, true, _cursorIdxL, _cursorLineL, _lblCursorLInfo, _cursorLockedL, c1Curve,
+                    ref _cursorMarkLVisible, ref _cursorMarkLFreq, ref _cursorMarkLDb, ref _cursorMarkLColor);
             }
             else
             {
@@ -1588,46 +1713,12 @@ namespace AudioHexViewer
                 _cursorMarkLVisible = false;
             }
 
-            // ----- RIGHT -----
-            if (onR && _cursorLineR != null && _cursorIdxR >= minIdx && _cursorIdxR < freqAxis.Length)
+            // C2
+            if (onC2 && _cursorLineR != null)
             {
-                double f = freqAxis[_cursorIdxR];
-                _cursorFreqR = f;
-
-                _cursorLineR.X = f;
-                _cursorLineR.Visible = true;
-
-
-                // texte bas
-                string txtR;
-                if (currentRightSpectrum != null && _cursorIdxR < currentRightSpectrum.Length)
-                {
-                    double db = currentRightSpectrum[_cursorIdxR];
-                    txtR = $"R: {f:0.##} Hz  {db:0.##} dBFS" + (_cursorLockedR ? "  (LOCK)" : "");
-
-                    double xRel = area.AxisX.ValueToPosition(f);
-                    double yRel = area.AxisY.ValueToPosition(db);
-
-                    _cursorMarkRVisible = true;
-                    _cursorMarkRFreq = f;
-                    _cursorMarkRDb = db;
-
-
-                    const double TRI_Y_OFFSET = 0.0;
-                    yRel -= TRI_Y_OFFSET;
-
-
-                }
-                else
-                {
-                    txtR = $"R: {f:0.##} Hz  --" + (_cursorLockedR ? "  (LOCK)" : "");
-                }
-
-                if (_lblCursorRInfo != null)
-                {
-                    _lblCursorRInfo.Text = txtR;
-                    _lblCursorRInfo.Visible = true;
-                }
+                _cursorFreqR = freqAxis[_cursorIdxR];
+                UpdateOne(onC2, false, _cursorIdxR, _cursorLineR, _lblCursorRInfo, _cursorLockedR, c2Curve,
+                    ref _cursorMarkRVisible, ref _cursorMarkRFreq, ref _cursorMarkRDb, ref _cursorMarkRColor);
             }
             else
             {
@@ -1635,12 +1726,42 @@ namespace AudioHexViewer
                 if (_lblCursorRInfo != null) { _lblCursorRInfo.Text = ""; _lblCursorRInfo.Visible = false; }
                 _cursorMarkRVisible = false;
             }
+            //
+            // --- Delta (C2 - C1) ---
+            if (_lblCursorDeltaInfo != null)
+            {
+                // visible seulement si au moins un curseur activé
+                if (!onC1 && !onC2)
+                {
+                    _lblCursorDeltaInfo.Text = "";
+                    _lblCursorDeltaInfo.Visible = false;
+                }
+                else
+                {
+                    _lblCursorDeltaInfo.Visible = true;
 
-            // repositionne les labels (width change avec le texte)
+                    // seulement si les 2 curseurs ont une valeur amplitude valide
+                    if (_cursorMarkLVisible && _cursorMarkRVisible)
+                    {
+                        double dF = _cursorMarkRFreq - _cursorMarkLFreq; // C2 - C1
+                        double dA = _cursorMarkRDb - _cursorMarkLDb;      // C2 - C1
+
+                        _lblCursorDeltaInfo.ForeColor = Color.DimGray;
+                        _lblCursorDeltaInfo.Text = $"Δ:  ΔF={dF:0.##} Hz   ΔA={dA:0.##} dB";
+                    }
+                    else
+                    {
+                        _lblCursorDeltaInfo.ForeColor = Color.Gray;
+                        _lblCursorDeltaInfo.Text = "Δ:  —";
+                    }
+                }
+            }
+
+            //
             PositionCursorInfoLabels();
-
             chartSpectrum.Invalidate();
         }
+
 
 
 
@@ -2725,10 +2846,11 @@ namespace AudioHexViewer
             }
 
             if (_cursorMarkLVisible)
-                DrawDownTriangle(_cursorMarkLFreq, _cursorMarkLDb, Color.DodgerBlue);
+                DrawDownTriangle(_cursorMarkLFreq, _cursorMarkLDb, _cursorMarkLColor);
 
             if (_cursorMarkRVisible)
-                DrawDownTriangle(_cursorMarkRFreq, _cursorMarkRDb, Color.OrangeRed);
+                DrawDownTriangle(_cursorMarkRFreq, _cursorMarkRDb, _cursorMarkRColor);
+
 
             // ----------------------------
             // Y : ticks + labels mineurs (5 sous-divisions par majeur) - toujours actif
@@ -2813,7 +2935,7 @@ namespace AudioHexViewer
                 // ---------------------------------------------------------
                 // Ligne SR/N/Overlap au dessus du graphe, ALIGNÉE EN HAUTEUR avec AxisX.Title ("Frequency (Hz)")
                 // ---------------------------------------------------------
-                if (!string.IsNullOrWhiteSpace(_bottomInfoLine))
+                if (!string.IsNullOrWhiteSpace(_TopInfoLine))
                 {
                     var g = e.ChartGraphics.Graphics;
 
@@ -2848,7 +2970,7 @@ namespace AudioHexViewer
 
                         using (Brush b = new SolidBrush(Color.DarkBlue))
                         {
-                            g.DrawString(_bottomInfoLine, titleFont, b, x, y);
+                            g.DrawString(_TopInfoLine, titleFont, b, x, y);
 
                             // ---- Coin droit : infos filtres THD (si THD active) ----
                             if (_thdMeasuresEnabled)

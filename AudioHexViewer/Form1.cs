@@ -167,8 +167,21 @@ namespace AudioHexViewer
 
         // Cursors menu
         private ToolStripMenuItem? menuCursors;
-        private ToolStripMenuItem? menuCursorL;
-        private ToolStripMenuItem? menuCursorR;
+
+        private ToolStripMenuItem? menuC1Cursor;
+        private ToolStripMenuItem? menuC1Enabled;
+        private ToolStripMenuItem? menuC1TrackAuto;
+        private ToolStripMenuItem? menuC1TrackLeft;
+        private ToolStripMenuItem? menuC1TrackRight;
+
+        private ToolStripMenuItem? menuC2Cursor;
+        private ToolStripMenuItem? menuC2Enabled;
+        private ToolStripMenuItem? menuC2TrackAuto;
+        private ToolStripMenuItem? menuC2TrackLeft;
+        private ToolStripMenuItem? menuC2TrackRight;
+
+        private ToolStripMenuItem? menuCursorsSetValue;
+
 
 
         private enum CalStage
@@ -849,29 +862,93 @@ namespace AudioHexViewer
                 Alignment = ToolStripItemAlignment.Right
             };
 
-            menuCursorL = new ToolStripMenuItem("Cursor L")
-            {
-                CheckOnClick = true
-            };
-            menuCursorR = new ToolStripMenuItem("Cursor R")
-            {
-                CheckOnClick = true
-            };
+            // ---------- C1 ----------
+            menuC1Cursor = new ToolStripMenuItem("C1 Cursor");
 
-            menuCursorL.CheckedChanged += (_, __) =>
+            menuC1Enabled = new ToolStripMenuItem("Enabled") { CheckOnClick = true };
+            menuC1Enabled.CheckedChanged += (_, __) =>
             {
                 if (spectrumControl != null)
-                    spectrumControl.CursorLeftEnabled = menuCursorL.Checked;
+                    spectrumControl.CursorLeftEnabled = menuC1Enabled.Checked;
             };
 
-            menuCursorR.CheckedChanged += (_, __) =>
+            menuC1TrackAuto = new ToolStripMenuItem("Track: Auto") { CheckOnClick = true };
+            menuC1TrackLeft = new ToolStripMenuItem("Track: Left") { CheckOnClick = true };
+            menuC1TrackRight = new ToolStripMenuItem("Track: Right") { CheckOnClick = true };
+
+            void SetC1Track(SpectrumControl.CursorTrackMode mode)
+            {
+                // radio check
+                menuC1TrackAuto.Checked = (mode == SpectrumControl.CursorTrackMode.Auto);
+                menuC1TrackLeft.Checked = (mode == SpectrumControl.CursorTrackMode.Left);
+                menuC1TrackRight.Checked = (mode == SpectrumControl.CursorTrackMode.Right);
+
+                if (spectrumControl != null)
+                    spectrumControl.C1TrackMode = mode;
+            }
+
+            menuC1TrackAuto.Click += (_, __) => SetC1Track(SpectrumControl.CursorTrackMode.Auto);
+            menuC1TrackLeft.Click += (_, __) => SetC1Track(SpectrumControl.CursorTrackMode.Left);
+            menuC1TrackRight.Click += (_, __) => SetC1Track(SpectrumControl.CursorTrackMode.Right);
+
+            menuC1Cursor.DropDownItems.Add(menuC1Enabled);
+            menuC1Cursor.DropDownItems.Add(new ToolStripSeparator());
+            menuC1Cursor.DropDownItems.Add(menuC1TrackAuto);
+            menuC1Cursor.DropDownItems.Add(menuC1TrackLeft);
+            menuC1Cursor.DropDownItems.Add(menuC1TrackRight);
+
+            // ---------- C2 ----------
+            menuC2Cursor = new ToolStripMenuItem("C2 Cursor");
+
+            menuC2Enabled = new ToolStripMenuItem("Enabled") { CheckOnClick = true };
+            menuC2Enabled.CheckedChanged += (_, __) =>
             {
                 if (spectrumControl != null)
-                    spectrumControl.CursorRightEnabled = menuCursorR.Checked;
+                    spectrumControl.CursorRightEnabled = menuC2Enabled.Checked;
             };
 
-            menuCursors.DropDownItems.Add(menuCursorL);
-            menuCursors.DropDownItems.Add(menuCursorR);
+            menuC2TrackAuto = new ToolStripMenuItem("Track: Auto") { CheckOnClick = true };
+            menuC2TrackLeft = new ToolStripMenuItem("Track: Left") { CheckOnClick = true };
+            menuC2TrackRight = new ToolStripMenuItem("Track: Right") { CheckOnClick = true };
+
+            void SetC2Track(SpectrumControl.CursorTrackMode mode)
+            {
+                // radio check
+                menuC2TrackAuto.Checked = (mode == SpectrumControl.CursorTrackMode.Auto);
+                menuC2TrackLeft.Checked = (mode == SpectrumControl.CursorTrackMode.Left);
+                menuC2TrackRight.Checked = (mode == SpectrumControl.CursorTrackMode.Right);
+
+                if (spectrumControl != null)
+                    spectrumControl.C2TrackMode = mode;
+            }
+
+            menuC2TrackAuto.Click += (_, __) => SetC2Track(SpectrumControl.CursorTrackMode.Auto);
+            menuC2TrackLeft.Click += (_, __) => SetC2Track(SpectrumControl.CursorTrackMode.Left);
+            menuC2TrackRight.Click += (_, __) => SetC2Track(SpectrumControl.CursorTrackMode.Right);
+
+            menuC2Cursor.DropDownItems.Add(menuC2Enabled);
+            menuC2Cursor.DropDownItems.Add(new ToolStripSeparator());
+            menuC2Cursor.DropDownItems.Add(menuC2TrackAuto);
+            menuC2Cursor.DropDownItems.Add(menuC2TrackLeft);
+            menuC2Cursor.DropDownItems.Add(menuC2TrackRight);
+
+            // ---------- Set Value (Étape 4) ----------
+            menuCursorsSetValue = new ToolStripMenuItem("Set Value...");
+            menuCursorsSetValue.Click += (_, __) =>
+            {
+                MessageBox.Show(this, "Set Value... (implémenté à l'étape 4)", "Cursors",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            };
+
+            // Assemblage menu
+            menuCursors.DropDownItems.Add(menuC1Cursor);
+            menuCursors.DropDownItems.Add(menuC2Cursor);
+            menuCursors.DropDownItems.Add(new ToolStripSeparator());
+            menuCursors.DropDownItems.Add(menuCursorsSetValue);
+
+            // Valeurs par défaut (radio)
+            menuC1TrackAuto.Checked = true;
+            menuC2TrackAuto.Checked = true;
 
             // Insérer à côté de "Measures"
             int idxMeasures = menuStrip1.Items.IndexOf(menuMeasures);
@@ -880,6 +957,7 @@ namespace AudioHexViewer
             else
                 menuStrip1.Items.Add(menuCursors);
         }
+
         //
         private void menuThdSettings_Click(object sender, EventArgs e)
         {
@@ -2611,8 +2689,23 @@ namespace AudioHexViewer
                 spectrumControl = new SpectrumControl(GetAnalysisFrame, sampleRate);
                 menuEnableThd.Checked = _session.Spectrum.EnableThdMeasures; // état au démarrage
                 spectrumControl.SetThdMeasuresEnabled(menuEnableThd.Checked);
-                if (menuCursorL != null) spectrumControl.CursorLeftEnabled = menuCursorL.Checked;
-                if (menuCursorR != null) spectrumControl.CursorRightEnabled = menuCursorR.Checked;
+
+                if (menuC1Enabled != null) spectrumControl.CursorLeftEnabled = menuC1Enabled.Checked;
+                if (menuC2Enabled != null) spectrumControl.CursorRightEnabled = menuC2Enabled.Checked;
+
+                // Track (état menu)
+                if (menuC1TrackLeft != null && menuC1TrackLeft.Checked) spectrumControl.C1TrackMode = SpectrumControl.CursorTrackMode.Left;
+                else if (menuC1TrackRight != null && menuC1TrackRight.Checked) spectrumControl.C1TrackMode = SpectrumControl.CursorTrackMode.Right;
+                else
+
+                    spectrumControl.C1TrackMode = SpectrumControl.CursorTrackMode.Auto;
+
+                if (menuC2TrackLeft != null && menuC2TrackLeft.Checked) spectrumControl.C2TrackMode = SpectrumControl.CursorTrackMode.Left;
+                else if (menuC2TrackRight != null && menuC2TrackRight.Checked) spectrumControl.C2TrackMode = SpectrumControl.CursorTrackMode.Right;
+                else
+                    spectrumControl.C2TrackMode = SpectrumControl.CursorTrackMode.Auto;
+
+
                 spectrumControl.RunRequested += EnsureReadRunning;
                 spectrumControl.RunStateChanged += running =>
                 {
