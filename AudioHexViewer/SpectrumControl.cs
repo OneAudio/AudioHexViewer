@@ -14,6 +14,65 @@ namespace AudioHexViewer
 {
     public partial class SpectrumControl : UserControl
     {
+
+// --- Couleurs / thème du graphe (persistées via SessionSettings.Spectrum.Colors) ---
+private SpectrumColorSettings _colors = new SpectrumColorSettings();
+
+private Color FftLeftColor => Color.FromArgb(_colors.FftLeftArgb);
+private Color FftRightColor => Color.FromArgb(_colors.FftRightArgb);
+private Color OverlayColor => Color.FromArgb(_colors.OverlayArgb);
+private Color PeakHoldLeftColor => Color.FromArgb(_colors.PeakHoldLeftArgb);
+private Color PeakHoldRightColor => Color.FromArgb(_colors.PeakHoldRightArgb);
+private Color GridColor => Color.FromArgb(_colors.GridArgb);
+private Color BackgroundColor => Color.FromArgb(_colors.BackgroundArgb);
+
+public SpectrumColorSettings GetSpectrumColorSettingsSnapshot()
+    => _colors ?? new SpectrumColorSettings();
+
+public void ApplySpectrumColorSettings(SpectrumColorSettings? colors)
+{
+    _colors = colors ?? SpectrumColorSettings.Defaults();
+
+    // Appliquer au Chart (fond + grilles) + éléments UI (curseurs, stats, etc.)
+    ApplyChartTheme();
+    ApplyCursorTheme();
+    UpdateSpectrumChartAndStats();
+}
+
+private void ApplyChartTheme()
+{
+    if (chartSpectrum == null || chartSpectrum.ChartAreas.Count == 0)
+        return;
+
+    chartSpectrum.BackColor = BackgroundColor;
+    var area = chartSpectrum.ChartAreas.FindByName("SpectrumArea") ?? chartSpectrum.ChartAreas[0];
+    area.BackColor = BackgroundColor;
+
+    // Grilles X/Y (major+minor). Les intervalles sont réglés ailleurs, ici on ne fait que la couleur.
+    area.AxisX.MajorGrid.LineColor = GridColor;
+    area.AxisX.MinorGrid.LineColor = GridColor;
+    area.AxisY.MajorGrid.LineColor = GridColor;
+    area.AxisY.MinorGrid.LineColor = GridColor;
+
+    chartSpectrum.Invalidate();
+}
+
+private void ApplyCursorTheme()
+{
+    // Labels d'info des curseurs
+    if (_lblCursorLInfo != null) _lblCursorLInfo.ForeColor = FftLeftColor;
+    if (_lblCursorRInfo != null) _lblCursorRInfo.ForeColor = FftRightColor;
+
+    // Couleurs des marqueurs (triangles) selon voie trackée (valeur par défaut = FFT)
+    _cursorMarkLColor = FftLeftColor;
+    _cursorMarkRColor = FftRightColor;
+
+    // Couleurs des lignes de curseur
+    if (_cursorLineL != null) _cursorLineL.LineColor = Color.FromArgb(180, FftLeftColor);
+    if (_cursorLineR != null) _cursorLineR.LineColor = Color.FromArgb(180, FftRightColor);
+}
+
+
         public delegate (int[] Left, int[] Right) SampleProvider(int sampleCount);
 
         private readonly SampleProvider? _provider;
@@ -638,6 +697,9 @@ namespace AudioHexViewer
             area0.AxisY.Title = "Level (dBFS)";
             area0.AxisY.Minimum = -200;
             area0.AxisY.Maximum = 0;
+        
+
+            ApplyChartTheme();
         }
         //
         private void InitOverlayAnnotation()
@@ -914,7 +976,7 @@ namespace AudioHexViewer
                 AutoSize = true,
                 Text = "",
                 BackColor = Color.Transparent,          // plus de fond gris
-                ForeColor = Color.DodgerBlue,           // couleur courbe L
+                ForeColor = FftLeftColor,           // couleur courbe L
                 Font = new Font("Segoe UI", 8.5f),
                 Visible = false
             };
@@ -924,7 +986,7 @@ namespace AudioHexViewer
                 AutoSize = true,
                 Text = "",
                 BackColor = Color.Transparent,          // plus de fond gris
-                ForeColor = Color.OrangeRed,            // couleur courbe R
+                ForeColor = FftRightColor,            // couleur courbe R
                 Font = new Font("Segoe UI", 8.5f),
                 Visible = false
             };
@@ -998,7 +1060,7 @@ namespace AudioHexViewer
                 IsInfinitive = true,
                 LineDashStyle = ChartDashStyle.Dash,
                 LineWidth = 1,
-                LineColor = Color.FromArgb(180, Color.DodgerBlue),
+                LineColor = Color.FromArgb(180, FftLeftColor),
                 Visible = false
             };
 
@@ -1011,7 +1073,7 @@ namespace AudioHexViewer
                 IsInfinitive = true,
                 LineDashStyle = ChartDashStyle.Dash,
                 LineWidth = 1,
-                LineColor = Color.FromArgb(180, Color.OrangeRed),
+                LineColor = Color.FromArgb(180, FftRightColor),
                 Visible = false
             };
 
@@ -1157,6 +1219,9 @@ namespace AudioHexViewer
                 s.Averaging = 0;
             }
 
+            // Couleurs
+            s.Colors = GetSpectrumColorSettingsSnapshot();
+
             return s;
         }
 
@@ -1219,8 +1284,9 @@ namespace AudioHexViewer
                 _isRestoringSettings = false;
             }
 
-            // Un seul refresh final (évite 10 redraws)
-            UpdateSpectrumChartAndStats();
+            // Couleurs
+            ApplySpectrumColorSettings(s.Colors);
+            // ApplySpectrumColorSettings appelle déjà UpdateSpectrumChartAndStats()
         }
 
         //
@@ -1516,17 +1582,17 @@ namespace AudioHexViewer
 
             // Affichage sections LEFT / RIGHT si activées
             if (_statsShowLeft)
-                y = DrawSection("LEFT", Color.RoyalBlue, _rowsLeft);
+                y = DrawSection("LEFT", FftLeftColor, _rowsLeft);
 
             if (_statsShowRight)
-                y = DrawSection("RIGHT", Color.OrangeRed, _rowsRight);
+                y = DrawSection("RIGHT", FftRightColor, _rowsRight);
 
             g.Restore(saved);
         }
         //
         // Couleurs dynamiques des marqueurs (triangle) selon la voie réellement trackée
-        private Color _cursorMarkLColor = Color.DodgerBlue; // C1
-        private Color _cursorMarkRColor = Color.OrangeRed;  // C2
+        private Color _cursorMarkLColor = Color.DodgerBlue; // C1 (sera mis à jour par ApplyCursorTheme)
+        private Color _cursorMarkRColor = Color.OrangeRed;  // C2 (sera mis à jour par ApplyCursorTheme)
 
         private enum ResolvedCurve
         {
@@ -1561,12 +1627,12 @@ namespace AudioHexViewer
             }
         }
 
-        private static Color CurveColor(ResolvedCurve c)
+        private Color CurveColor(ResolvedCurve c)
         {
             return c switch
             {
-                ResolvedCurve.Left => Color.DodgerBlue,
-                ResolvedCurve.Right => Color.OrangeRed,
+                ResolvedCurve.Left => FftLeftColor,
+                ResolvedCurve.Right => FftRightColor,
                 _ => Color.Gray
             };
         }
@@ -2274,7 +2340,7 @@ namespace AudioHexViewer
             area.AxisY.MinorGrid.Interval = yMinor;
             area.AxisY.MinorGrid.IntervalOffset = 0.0;
             area.AxisY.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
-            area.AxisY.MinorGrid.LineColor = Color.LightGray;
+            area.AxisY.MinorGrid.LineColor = GridColor;
 
             area.AxisY.MinorTickMark.Enabled = false;
 
@@ -2359,7 +2425,7 @@ namespace AudioHexViewer
                 area.AxisX.MajorTickMark.Size = 2f;
 
                 area.AxisX.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
-                area.AxisX.MinorGrid.LineColor = Color.LightGray;
+                area.AxisX.MinorGrid.LineColor = GridColor;
             }
 
             // --- Ce qu'on affiche en fonction du combo Channel ---
@@ -2392,7 +2458,7 @@ namespace AudioHexViewer
                         var s = new ChartSeries($"OV{slot.Index + 1}_L");
                         s.ChartType = SeriesChartType.FastLine;
                         s.ChartArea = "SpectrumArea";
-                        s.Color = Color.Gray;
+                        s.Color = OverlayColor;
                         s.BorderDashStyle = ChartDashStyle.Dot;
                         s.BorderWidth = 1;
 
@@ -2434,7 +2500,7 @@ namespace AudioHexViewer
                 seriesL.ChartType = SeriesChartType.Line;
                 seriesL.BorderWidth = 2;
                 seriesL.ChartArea = "SpectrumArea";
-                seriesL.Color = Color.DodgerBlue;
+                seriesL.Color = FftLeftColor;
 
                 for (int i = startIndex; i < freqAxis.Length && i < currentLeftSpectrum.Length; i++)
                     seriesL.Points.AddXY(freqAxis[i], currentLeftSpectrum[i]);
@@ -2446,7 +2512,7 @@ namespace AudioHexViewer
                     var seriesLph = new ChartSeries("LeftPeakHold");
                     seriesLph.ChartType = SeriesChartType.FastLine;
                     seriesLph.ChartArea = "SpectrumArea";
-                    seriesLph.Color = Color.DodgerBlue;
+                    seriesLph.Color = PeakHoldLeftColor;
                     seriesLph.BorderDashStyle = ChartDashStyle.Dash;
                     seriesLph.BorderWidth = 1;
 
@@ -2464,7 +2530,7 @@ namespace AudioHexViewer
                 seriesR.ChartType = SeriesChartType.Line;
                 seriesR.BorderWidth = 2;
                 seriesR.ChartArea = "SpectrumArea";
-                seriesR.Color = Color.OrangeRed;
+                seriesR.Color = FftRightColor;
 
                 for (int i = startIndex; i < freqAxis.Length && i < currentRightSpectrum.Length; i++)
                     seriesR.Points.AddXY(freqAxis[i], currentRightSpectrum[i]);
@@ -2476,7 +2542,7 @@ namespace AudioHexViewer
                     var seriesRph = new ChartSeries("RightPeakHold");
                     seriesRph.ChartType = SeriesChartType.FastLine;
                     seriesRph.ChartArea = "SpectrumArea";
-                    seriesRph.Color = Color.OrangeRed;
+                    seriesRph.Color = PeakHoldRightColor;
                     seriesRph.BorderDashStyle = ChartDashStyle.Dash;
                     seriesRph.BorderWidth = 1;
 

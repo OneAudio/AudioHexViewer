@@ -1,4 +1,4 @@
-using NAudio.CoreAudioApi;
+﻿using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using System.Globalization;
 using System.Text;
@@ -151,6 +151,7 @@ namespace AudioHexViewer
         private HistogramControl? histogramControl;
         private SpectrumControl? spectrumControl;
         private ToolStripMenuItem? menuOverlay;
+        private ToolStripMenuItem? menuColors;
 
         private bool _spectrumRunning;
         private bool _histogramRunning;
@@ -765,6 +766,7 @@ namespace AudioHexViewer
             InitAnalysisUi();
 
             InitOverlayMenu();
+            InitColorsMenu();
 
             //this.WindowState = FormWindowState.Maximized; // Plein cran au dmarrage
             ShowHistogramArea();
@@ -1022,6 +1024,48 @@ namespace AudioHexViewer
 
             if (spectrumControl != null)
                 spectrumControl.SetThdMeasuresEnabled(enabled);
+        }
+
+
+        //
+        // --- Colors menu (FFT/Overlay/PeakHold/Grid/Background) ---
+        private void InitColorsMenu()
+        {
+            menuColors = new ToolStripMenuItem("Colors")
+            {
+                Alignment = ToolStripItemAlignment.Right
+            };
+
+            menuColors.Click += (_, __) => ShowColorsDialog();
+
+            // Insert right after Measures (same pattern as InitCursorsMenu)
+            int idxMeasures = menuStrip1.Items.IndexOf(menuMeasures);
+            if (idxMeasures >= 0)
+                menuStrip1.Items.Insert(idxMeasures + 1, menuColors);
+            else
+                menuStrip1.Items.Add(menuColors);
+        }
+
+        private void ShowColorsDialog()
+        {
+            if (spectrumControl == null)
+                return;
+
+            // Take current colors from the control (already contains loaded/persisted values)
+            var current = spectrumControl.GetSpectrumColorSettingsSnapshot();
+
+            using var dlg = new SpectrumColorsDialog(current);
+            if (dlg.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            spectrumControl.ApplySpectrumColorSettings(dlg.SelectedColors);
+
+            // Keep loaded settings in sync (used when re-applying settings later)
+            if (_loadedSessionSettings != null)
+                _loadedSessionSettings.Spectrum.Colors = dlg.SelectedColors;
+
+            // Persist via existing snapshot mechanism
+            SaveSessionSettingsSilently();
         }
 
         //

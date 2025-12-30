@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Drawing;
 using System.IO;
 using System.Text.Json;
 
@@ -48,11 +49,18 @@ namespace AudioHexViewer
         public int Averaging { get; set; } = 0;          // 0 = None, sinon 2/4/8/...
         public bool EnableThdMeasures { get; set; } = false;
 
+        // Couleurs du graphe (FFT/overlays/grille/fond)
+        public SpectrumColorSettings Colors { get; set; } = new SpectrumColorSettings();
+
         // --- Commit 11 : THD settings ---
         public ThdSettings Thd { get; set; } = new ThdSettings();
 
 
-        public sealed class ThdSettings
+        
+
+
+
+public sealed class ThdSettings
         {
             // Bande de mesure
             public bool UseHPF { get; set; } = true;          // Flow
@@ -77,6 +85,27 @@ namespace AudioHexViewer
             }
         }
     }
+
+public sealed class SpectrumColorSettings
+{
+    // Stockage ARGB (Color.ToArgb()) pour sérialisation JSON simple
+    public int FftLeftArgb { get; set; } = Color.DodgerBlue.ToArgb();
+    public int FftRightArgb { get; set; } = Color.OrangeRed.ToArgb();
+
+    public int OverlayArgb { get; set; } = Color.Gray.ToArgb();
+
+    // PeakHold : par défaut même couleur que les FFT
+    public int PeakHoldLeftArgb { get; set; } = Color.DodgerBlue.ToArgb();
+    public int PeakHoldRightArgb { get; set; } = Color.OrangeRed.ToArgb();
+
+    // Grille et fond
+    public int GridArgb { get; set; } = Color.LightGray.ToArgb();
+    public int BackgroundArgb { get; set; } = Color.White.ToArgb();
+
+    public static SpectrumColorSettings Defaults() => new SpectrumColorSettings();
+}
+
+
 
 
     public static class SessionSettingsManager
