@@ -1,4 +1,4 @@
-﻿using MathNet.Numerics;
+using MathNet.Numerics;
 using MathNet.Numerics.IntegralTransforms;
 using System;
 using System.Drawing;
@@ -20,11 +20,24 @@ private SpectrumColorSettings _colors = new SpectrumColorSettings();
 
 private Color FftLeftColor => Color.FromArgb(_colors.FftLeftArgb);
 private Color FftRightColor => Color.FromArgb(_colors.FftRightArgb);
-private Color OverlayColor => Color.FromArgb(_colors.OverlayArgb);
 private Color PeakHoldLeftColor => Color.FromArgb(_colors.PeakHoldLeftArgb);
 private Color PeakHoldRightColor => Color.FromArgb(_colors.PeakHoldRightArgb);
-private Color GridColor => Color.FromArgb(_colors.GridArgb);
+
+private Color GridMajorColor => Color.FromArgb(_colors.GridArgb);
+private Color GridMinorColor => Color.FromArgb(_colors.GridMinorArgb);
 private Color BackgroundColor => Color.FromArgb(_colors.BackgroundArgb);
+
+private Color LabelMajorColor => Color.FromArgb(_colors.LabelMajorArgb);
+private Color LabelMinorColor => Color.FromArgb(_colors.LabelMinorArgb);
+
+private Color GetOverlaySlotColor(int slotIndex)
+{
+    var arr = _colors.OverlaySlotArgb;
+    if (arr != null && slotIndex >= 0 && slotIndex < arr.Length)
+        return Color.FromArgb(arr[slotIndex]);
+    // fallback compat
+    return Color.FromArgb(_colors.OverlayArgb);
+}
 
 public SpectrumColorSettings GetSpectrumColorSettingsSnapshot()
     => _colors ?? new SpectrumColorSettings();
@@ -32,6 +45,7 @@ public SpectrumColorSettings GetSpectrumColorSettingsSnapshot()
 public void ApplySpectrumColorSettings(SpectrumColorSettings? colors)
 {
     _colors = colors ?? SpectrumColorSettings.Defaults();
+    _colors.Normalize();
 
     // Appliquer au Chart (fond + grilles) + éléments UI (curseurs, stats, etc.)
     ApplyChartTheme();
@@ -48,11 +62,40 @@ private void ApplyChartTheme()
     var area = chartSpectrum.ChartAreas.FindByName("SpectrumArea") ?? chartSpectrum.ChartAreas[0];
     area.BackColor = BackgroundColor;
 
-    // Grilles X/Y (major+minor). Les intervalles sont réglés ailleurs, ici on ne fait que la couleur.
-    area.AxisX.MajorGrid.LineColor = GridColor;
-    area.AxisX.MinorGrid.LineColor = GridColor;
-    area.AxisY.MajorGrid.LineColor = GridColor;
-    area.AxisY.MinorGrid.LineColor = GridColor;
+    // Grilles X/Y (major+minor). Les intervalles sont réglés ailleurs, ici on ne fait que les couleurs.
+    area.AxisX.MajorGrid.LineColor = GridMajorColor;
+    area.AxisY.MajorGrid.LineColor = GridMajorColor;
+    area.AxisX.MinorGrid.LineColor = GridMinorColor;
+    area.AxisY.MinorGrid.LineColor = GridMinorColor;
+
+    // Couleurs des labels. Note: le Chart WinForms n'a pas de "minor labels" texte distincts,
+    // donc LabelMinor s'applique aux ticks minor.
+    area.AxisX.LabelStyle.ForeColor = LabelMajorColor;
+    area.AxisY.LabelStyle.ForeColor = LabelMajorColor;
+    area.AxisX.TitleForeColor = LabelMajorColor;
+    area.AxisY.TitleForeColor = LabelMajorColor;
+
+    // Axis line + ticks = LabelMajor (minor ticks = LabelMinor)
+    area.AxisX.LineColor = LabelMajorColor;
+    area.AxisY.LineColor = LabelMajorColor;
+    area.AxisX.MajorTickMark.LineColor = LabelMajorColor;
+    area.AxisY.MajorTickMark.LineColor = LabelMajorColor;
+    area.AxisX.MinorTickMark.LineColor = LabelMinorColor;
+    area.AxisY.MinorTickMark.LineColor = LabelMinorColor;
+
+    // Axes secondaires (au cas où ils seraient activés)
+    area.AxisX2.MajorGrid.LineColor = GridMajorColor;
+    area.AxisY2.MajorGrid.LineColor = GridMajorColor;
+    area.AxisX2.MinorGrid.LineColor = GridMinorColor;
+    area.AxisY2.MinorGrid.LineColor = GridMinorColor;
+    area.AxisX2.LabelStyle.ForeColor = LabelMajorColor;
+    area.AxisY2.LabelStyle.ForeColor = LabelMajorColor;
+    area.AxisX2.LineColor = LabelMajorColor;
+    area.AxisY2.LineColor = LabelMajorColor;
+    area.AxisX2.MajorTickMark.LineColor = LabelMajorColor;
+    area.AxisY2.MajorTickMark.LineColor = LabelMajorColor;
+    area.AxisX2.MinorTickMark.LineColor = LabelMinorColor;
+    area.AxisY2.MinorTickMark.LineColor = LabelMinorColor;
 
     chartSpectrum.Invalidate();
 }
@@ -2340,7 +2383,7 @@ private void ApplyCursorTheme()
             area.AxisY.MinorGrid.Interval = yMinor;
             area.AxisY.MinorGrid.IntervalOffset = 0.0;
             area.AxisY.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
-            area.AxisY.MinorGrid.LineColor = GridColor;
+            area.AxisY.MinorGrid.LineColor = GridMinorColor;
 
             area.AxisY.MinorTickMark.Enabled = false;
 
@@ -2425,7 +2468,7 @@ private void ApplyCursorTheme()
                 area.AxisX.MajorTickMark.Size = 2f;
 
                 area.AxisX.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
-                area.AxisX.MinorGrid.LineColor = GridColor;
+                area.AxisX.MinorGrid.LineColor = GridMinorColor;
             }
 
             // --- Ce qu'on affiche en fonction du combo Channel ---
@@ -2458,9 +2501,9 @@ private void ApplyCursorTheme()
                         var s = new ChartSeries($"OV{slot.Index + 1}_L");
                         s.ChartType = SeriesChartType.FastLine;
                         s.ChartArea = "SpectrumArea";
-                        s.Color = OverlayColor;
+                        s.Color = GetOverlaySlotColor(slot.Index);
                         s.BorderDashStyle = ChartDashStyle.Dot;
-                        s.BorderWidth = 1;
+                        s.BorderWidth = _colors.OverlayWidth;
 
                         for (int i = startIndex; i < ov.Length; i++)
                         {
@@ -2479,9 +2522,9 @@ private void ApplyCursorTheme()
                         var s = new ChartSeries($"OV{slot.Index + 1}_R");
                         s.ChartType = SeriesChartType.FastLine;
                         s.ChartArea = "SpectrumArea";
-                        s.Color = Color.DarkGray;
+                        s.Color = GetOverlaySlotColor(slot.Index);
                         s.BorderDashStyle = ChartDashStyle.Dot;
-                        s.BorderWidth = 1;
+                        s.BorderWidth = _colors.OverlayWidth;
 
                         for (int i = startIndex; i < ov.Length; i++)
                         {
@@ -2498,7 +2541,7 @@ private void ApplyCursorTheme()
             {
                 var seriesL = new System.Windows.Forms.DataVisualization.Charting.Series("Left");
                 seriesL.ChartType = SeriesChartType.Line;
-                seriesL.BorderWidth = 2;
+                seriesL.BorderWidth = _colors.FftWidth;
                 seriesL.ChartArea = "SpectrumArea";
                 seriesL.Color = FftLeftColor;
 
@@ -2514,7 +2557,7 @@ private void ApplyCursorTheme()
                     seriesLph.ChartArea = "SpectrumArea";
                     seriesLph.Color = PeakHoldLeftColor;
                     seriesLph.BorderDashStyle = ChartDashStyle.Dash;
-                    seriesLph.BorderWidth = 1;
+                    seriesLph.BorderWidth = _colors.PeakHoldWidth;
 
                     for (int i = startIndex; i < freqAxis.Length && i < peakL.Length; i++)
                         seriesLph.Points.AddXY(freqAxis[i], peakL[i]);
@@ -2528,7 +2571,7 @@ private void ApplyCursorTheme()
             {
                 var seriesR = new System.Windows.Forms.DataVisualization.Charting.Series("Right");
                 seriesR.ChartType = SeriesChartType.Line;
-                seriesR.BorderWidth = 2;
+                seriesR.BorderWidth = _colors.FftWidth;
                 seriesR.ChartArea = "SpectrumArea";
                 seriesR.Color = FftRightColor;
 
@@ -2544,7 +2587,7 @@ private void ApplyCursorTheme()
                     seriesRph.ChartArea = "SpectrumArea";
                     seriesRph.Color = PeakHoldRightColor;
                     seriesRph.BorderDashStyle = ChartDashStyle.Dash;
-                    seriesRph.BorderWidth = 1;
+                    seriesRph.BorderWidth = _colors.PeakHoldWidth;
 
                     for (int i = startIndex; i < freqAxis.Length && i < peakR.Length; i++)
                         seriesRph.Points.AddXY(freqAxis[i], peakR[i]);
