@@ -1051,18 +1051,34 @@ namespace AudioHexViewer
             if (spectrumControl == null)
                 return;
 
-            // Take current colors from the control (already contains loaded/persisted values)
+            // Current colors from the control
             var current = spectrumControl.GetSpectrumColorSettingsSnapshot();
 
-            using var dlg = new SpectrumColorsDialog(current);
+            // Persisted defaults (used when clicking "Default" in the dialog)
+            var persistedDefaults =
+                _loadedSessionSettings?.Spectrum?.DefaultColors
+                ?? _session?.Spectrum?.DefaultColors
+                ?? SpectrumColorSettings.Defaults();
+
+            using var dlg = new SpectrumColorsDialog(current, persistedDefaults);
             if (dlg.ShowDialog(this) != DialogResult.OK)
                 return;
 
             spectrumControl.ApplySpectrumColorSettings(dlg.SelectedColors);
 
-            // Keep loaded settings in sync (used when re-applying settings later)
+            // Keep settings in sync (used when re-applying settings later + for persistence)
             if (_loadedSessionSettings != null)
+            {
                 _loadedSessionSettings.Spectrum.Colors = dlg.SelectedColors;
+
+                if (dlg.DefaultsChanged)
+                    _loadedSessionSettings.Spectrum.DefaultColors = dlg.SelectedDefaults;
+            }
+
+            // Also keep the always-present in-memory session in sync
+            _session.Spectrum.Colors = dlg.SelectedColors;
+            if (dlg.DefaultsChanged)
+                _session.Spectrum.DefaultColors = dlg.SelectedDefaults;
 
             // Persist via existing snapshot mechanism
             SaveSessionSettingsSilently();
@@ -1325,7 +1341,14 @@ namespace AudioHexViewer
                 s.Histogram = histogramControl.GetHistogramSettingsSnapshot();
 
             if (spectrumControl != null)
+            {
                 s.Spectrum = spectrumControl.GetSpectrumSettingsSnapshot();
+
+                // Preserve persisted spectrum default colors (used by SpectrumColorsDialog)
+                var persistedDefaults = _loadedSessionSettings?.Spectrum?.DefaultColors ?? _session?.Spectrum?.DefaultColors;
+                if (persistedDefaults != null)
+                    s.Spectrum.DefaultColors = persistedDefaults;
+            }
 
             // Histogram / Spectrum : on remplira à l'étape suivante (pour l'instant defaults)
             return s;

@@ -15,14 +15,14 @@ namespace AudioHexViewer
         public bool DefaultsChanged { get; private set; }
         public SpectrumColorSettings SelectedDefaults => Clone(_defaults);
 
-        public SpectrumColorsDialog(SpectrumColorSettings initial)
+        public SpectrumColorsDialog(SpectrumColorSettings initial, SpectrumColorSettings? defaults = null)
         {
             InitializeComponent();
 
             _colors = Clone(initial ?? SpectrumColorSettings.Defaults());
             _colors.Normalize();
 
-            _defaults = SpectrumColorSettings.Defaults();
+            _defaults = Clone(defaults ?? SpectrumColorSettings.Defaults());
             _defaults.Normalize();
             DefaultsChanged = false;
 
@@ -69,14 +69,6 @@ namespace AudioHexViewer
                 _colors = Clone(_defaults);
                 UpdateUiFromSettings();
             };
-
-            btnSetDefault.Click += (_, __) =>
-            {
-                _defaults = Clone(_colors);
-                DefaultsChanged = true;
-            };
-
-
 
             UpdateUiFromSettings();
         }
@@ -170,7 +162,7 @@ namespace AudioHexViewer
             nud.Increment = 1;
 
             nud.Size = new Size(42, 22);          // <= doit tenir dans la colonne 46
-            nud.Margin = new Padding(0, 4, 3, 4); // marge droite = 3 (comme les carrés)
+            nud.Margin = new Padding(0, 4, 3, 4); // marge droite = 3 (comme les carrs)
             nud.Anchor = AnchorStyles.Right;      // <<< important
             nud.TextAlign = HorizontalAlignment.Center;
         }

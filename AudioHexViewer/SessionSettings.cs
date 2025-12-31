@@ -214,6 +214,7 @@ public static class SessionSettingsManager
             try
             {
                 settings?.Spectrum?.Colors?.Normalize();
+                settings?.Spectrum?.DefaultColors?.Normalize();
 
                 var dir = Path.GetDirectoryName(SettingsFilePath);
                 if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
