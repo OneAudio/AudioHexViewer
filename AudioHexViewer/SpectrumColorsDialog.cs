@@ -143,8 +143,10 @@ namespace AudioHexViewer
             nud.DecimalPlaces = 0;
             nud.Increment = 1;
             nud.Size = new Size(44, 22);
-            nud.Margin = new Padding(3, 4, 3, 4);
+            // Keep vertical rhythm aligned with swatches
+            nud.Margin = new Padding(3, 6, 3, 6);
             nud.TextAlign = HorizontalAlignment.Center;
+            nud.Anchor = AnchorStyles.Left;
         }
 
         private static Label MakeLabel(string text)
@@ -152,7 +154,11 @@ namespace AudioHexViewer
             var l = new Label();
             l.Text = text;
             l.Dock = DockStyle.Fill;
-            l.TextAlign = ContentAlignment.MiddleLeft;
+
+            // Align text close to the color square (requested UI alignment)
+            l.TextAlign = ContentAlignment.MiddleRight;
+            l.Padding = new Padding(0, 0, 6, 0);
+
             return l;
         }
 

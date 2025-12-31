@@ -57,7 +57,7 @@ private void ApplyChartTheme()
 {
     if (chartSpectrum == null || chartSpectrum.ChartAreas.Count == 0)
         return;
-    
+
     // Fond du contrôle Chart (marges / zones hors "plot") : garder la couleur du parent.
     chartSpectrum.BackColor = chartSpectrum.Parent?.BackColor ?? SystemColors.Control;
     var area = chartSpectrum.ChartAreas.FindByName("SpectrumArea") ?? chartSpectrum.ChartAreas[0];
@@ -84,6 +84,13 @@ private void ApplyChartTheme()
     area.AxisX.MinorTickMark.LineColor = LabelMinorColor;
     area.AxisY.MinorTickMark.LineColor = LabelMinorColor;
 
+    // Activer les ticks "minor" pour que LabelMinor soit visible (sinon le Chart garde ses défauts).
+    area.AxisX.MinorTickMark.Enabled = false;
+    area.AxisY.MinorTickMark.Enabled = false;
+    area.AxisX.MinorTickMark.Size = 1f;
+    area.AxisY.MinorTickMark.Size = 1f;
+
+
     // Axes secondaires (au cas où ils seraient activés)
     area.AxisX2.MajorGrid.LineColor = GridMajorColor;
     area.AxisY2.MajorGrid.LineColor = GridMajorColor;
@@ -100,6 +107,28 @@ private void ApplyChartTheme()
 
     chartSpectrum.Invalidate();
 }
+
+private void ApplyLogXMinorGridStripLines(Axis axisX)
+{
+    // Pour un axe logarithmique, MinorGrid du Chart n'est pas exploitable pour avoir les lignes 2..9 par décade.
+    // On les simule avec des StripLines (1 par multiplicateur) en coordonnées log10.
+    axisX.StripLines.Clear();
+
+    for (int mult = 2; mult <= 9; mult++)
+    {
+        var sl = new StripLine
+        {
+            Interval = 1.0, // chaque décade
+            IntervalOffset = Math.Log10(mult), // position 2..9 dans la décade en unités log
+            StripWidth = 0.0,
+            BorderColor = GridMinorColor,
+            BorderDashStyle = ChartDashStyle.Dot,
+            BorderWidth = 1
+        };
+        axisX.StripLines.Add(sl);
+    }
+}
+
 
 private void ApplyCursorTheme()
 {
@@ -2386,8 +2415,10 @@ private void ApplyCursorTheme()
             area.AxisY.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
             area.AxisY.MinorGrid.LineColor = GridMinorColor;
 
+            // Activer les ticks mineurs pour que LabelMinor soit visible.
+            // Désactivé : on dessine nous-mêmes les ticks/labels mineurs.
             area.AxisY.MinorTickMark.Enabled = false;
-
+            area.AxisY.MinorTickMark.Size = 1f;
             int yDecimals = 0;
             if (yMinor < 1.0)
             {
@@ -2426,6 +2457,8 @@ private void ApplyCursorTheme()
 
                 area.AxisX.MinorGrid.Enabled = false;
 
+                ApplyLogXMinorGridStripLines(area.AxisX);
+
                 area.AxisX.MajorGrid.IntervalOffset = 0.0;
                 area.AxisX.MinorGrid.IntervalOffset = 0.0;
                 area.AxisX.MinorTickMark.IntervalOffset = 0.0;
@@ -2433,6 +2466,8 @@ private void ApplyCursorTheme()
             else
             {
                 area.AxisX.IsLogarithmic = false;
+
+                area.AxisX.StripLines.Clear();
 
                 double xSpan = fMax - fMin;
                 if (xSpan <= 0) xSpan = 1.0;
@@ -2909,12 +2944,16 @@ private void ApplyCursorTheme()
                 // On repasse en linéaire pour éviter les problèmes
                 area.AxisX.IsLogarithmic = false;
 
+                area.AxisX.StripLines.Clear();
+
                 // Bornes "safe" par défaut
                 area.AxisX.Minimum = 0.0;
                 area.AxisX.Maximum = _sampleRate > 0 ? _sampleRate / 2.0 : 1.0;
 
                 area.AxisX.MajorGrid.Enabled = true;
                 area.AxisX.MinorGrid.Enabled = false;
+
+                ApplyLogXMinorGridStripLines(area.AxisX);
 
             }
 
@@ -3114,8 +3153,8 @@ private void ApplyCursorTheme()
                     // Style (comme sous-labels X): police plus petite + gris
                     Font baseFont = area.AxisY.LabelStyle.Font ?? chartSpectrum.Font;
                     using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
-                    using (Brush minorBrush = new SolidBrush(Color.FromArgb(170, Color.Black)))
-                    using (Pen p = new Pen(Color.FromArgb(140, Color.Gray), 1.0f))
+                    using (Brush minorBrush = new SolidBrush(LabelMinorColor))
+                    using (Pen p = new Pen(LabelMinorColor, 1.0f))
                     {
                         const float tickLenLeft = 5f;   // longueur vers la gauche (extérieur)
                         const float gap = 1f;           // petit espace avant l’axe
@@ -3169,7 +3208,7 @@ private void ApplyCursorTheme()
                             var g = e.ChartGraphics.Graphics;
                             var saved = g.Save();
                             g.ResetClip();
-                            g.DrawString(txt, minorFont, minorBrush, xText, yText);
+                            TextRenderer.DrawText(g, txt, minorFont, new Point((int)xText, (int)yText), LabelMinorColor, TextFormatFlags.NoPadding);
                             g.Restore(saved);
 
                             lastLabelBottom = yText + sz.Height;
@@ -3265,7 +3304,7 @@ private void ApplyCursorTheme()
                     return;
 
                 // Lignes mineures log dessinées à la main : 2..9 * 10^n
-                using (Pen minorPen = new Pen(Color.FromArgb(80, Color.Gray), 1f))
+                using (Pen minorPen = new Pen(GridMinorColor, 1f))
                 {
                     minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
 
@@ -3276,7 +3315,7 @@ private void ApplyCursorTheme()
                     // Police "sous-label" : ~ moitié de la taille des labels d’axe
                     Font baseFont = area.AxisX.LabelStyle.Font ?? chartSpectrum.Font;
                     using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
-                    using (Brush minorBrush = new SolidBrush(Color.FromArgb(160, Color.Black)))
+                    using (Brush minorBrush = new SolidBrush(LabelMinorColor))
                     {
                         // Anti-chevauchement : on saute un label si trop proche du précédent
                         float lastLabelRight = float.NegativeInfinity;
@@ -3299,7 +3338,9 @@ private void ApplyCursorTheme()
 
                                 // 2) (optionnel) petite marque de tick en bas (évite l’effet "pas de marque")
                                 const float minorTickLen = 8f;
-                                e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom + minorTickLen);
+                                // Tick mineur (optionnel) — désactivé à la demande (labels suffisent)
+                                // e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom + minorTickLen);
+
 
                                 // 3) Label intermédiaire (2..9), police plus petite
                                 //    -> on réutilise ton format Hz/kHz
@@ -3316,7 +3357,7 @@ private void ApplyCursorTheme()
                                 if (xText <= lastLabelRight + 4f)
                                     continue;
 
-                                e.ChartGraphics.Graphics.DrawString(txt, minorFont, minorBrush, xText, yText);
+                                TextRenderer.DrawText(e.ChartGraphics.Graphics, txt, minorFont, new Point((int)xText, (int)yText), LabelMinorColor, TextFormatFlags.NoPadding);
                                 lastLabelRight = xText + sz.Width;
                             }
                         }
@@ -3347,13 +3388,13 @@ private void ApplyCursorTheme()
                         float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
                         float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
 
-                        using (Pen minorPen = new Pen(Color.FromArgb(80, Color.Gray), 1f))
+                        using (Pen minorPen = new Pen(LabelMinorColor, 1f))
                         {
                             minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
 
                             Font baseFont = area.AxisX.LabelStyle.Font ?? chartSpectrum.Font;
                             using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
-                            using (Brush minorBrush = new SolidBrush(Color.FromArgb(160, Color.Black)))
+                            using (Brush minorBrush = new SolidBrush(LabelMinorColor))
                             {
                                 const float minorTickLen = 6f;
 
@@ -3378,7 +3419,9 @@ private void ApplyCursorTheme()
                                     float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
 
                                     // 1) Tick mineur en bas (sans activer MinorTickMark du Chart)
-                                    e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom + minorTickLen);
+                                    // Tick mineur (optionnel) — désactivé à la demande (labels suffisent)
+                                // e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom + minorTickLen);
+
 
                                     // 2) Label mineur (même format que le log : Hz / kHz)
                                     string txt = FormatHzK(f);
@@ -3396,7 +3439,7 @@ private void ApplyCursorTheme()
                                         continue;
 
                                     // Dessin dans la zone de tracé (pas besoin de ResetClip ici)
-                                    e.ChartGraphics.Graphics.DrawString(txt, minorFont, minorBrush, xText, yText);
+                                    TextRenderer.DrawText(e.ChartGraphics.Graphics, txt, minorFont, new Point((int)xText, (int)yText), LabelMinorColor, TextFormatFlags.NoPadding);
                                     lastLabelRight = xText + sz.Width;
                                 }
                             }

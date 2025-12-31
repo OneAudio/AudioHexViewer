@@ -28,6 +28,9 @@ namespace AudioHexViewer
         private Label lblPkR;
         private Button btnPkR;
         private NumericUpDown nudPkWidth;
+        private Label lblFftWidthText;
+        private Label lblPkWidthText;
+
 
         private Label lblOv1;
         private Button btnOv1;
@@ -86,7 +89,7 @@ namespace AudioHexViewer
             // Form
             this.AutoScaleMode = AutoScaleMode.Font;
             this.AutoScaleMode = AutoScaleMode.Font;
-            // IMPORTANT : on laisse AutoSize gérer la taille
+            // IMPORTANT : on laisse AutoSize grer la taille
             this.AutoSize = true;
             this.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -96,7 +99,7 @@ namespace AudioHexViewer
             this.StartPosition = FormStartPosition.CenterParent;
             this.Text = "Colors";
             this.Padding = new Padding(10);
-            // optionnel : une largeur mini pour éviter les retours à la ligne bizarres
+            // optionnel : une largeur mini pour viter les retours  la ligne bizarres
             this.MinimumSize = new Size(300, 0);
 
 
@@ -127,33 +130,31 @@ namespace AudioHexViewer
             this.grpChart.AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
 
-            // --- Traces table: 5 cols (L label, L swatch, R label, R swatch, width) ---
-            this.tlpTraces.ColumnCount = 5;
-            this.tlpTraces.RowCount = 2;
-            this.tlpTraces.Dock = DockStyle.Fill;
-            this.tlpTraces.AutoSize = true;
-            this.tlpTraces.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            this.tlpTraces.Padding = new Padding(8, 10, 8, 8);
-            this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38F));
-            this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 26F));
-            this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38F));
-            this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 26F));
-            this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 48F));
-            this.tlpTraces.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            this.tlpTraces.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            // --- Traces table: 6 cols (labelL, swatchL, nudL, labelR, swatchR, nudR) ---
+this.tlpTraces.ColumnCount = 6;
+this.tlpTraces.RowCount = 3;
+this.tlpTraces.Dock = DockStyle.Fill;
+this.tlpTraces.AutoSize = true;
+this.tlpTraces.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+this.tlpTraces.Padding = new Padding(8, 10, 8, 8);
 
-            this.lblFftL = new Label();
-            this.lblFftL.Text = "FFT Left";
-            this.lblFftL.Dock = DockStyle.Fill;
-            this.lblFftL.TextAlign = ContentAlignment.MiddleLeft;
+// Fixed label columns to keep the dialog compact AND align swatch columns between groups
+this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label L
+this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24F)); // swatch L
+this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50F)); // nud L
+this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label R
+this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24F)); // swatch R
+this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50F)); // nud R
+
+this.tlpTraces.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+this.tlpTraces.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+this.tlpTraces.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+            this.lblFftL = MakeLabel("FFT Left");
 
             this.btnFftL = new Button();
             SetupColorButton(this.btnFftL);
 
-            this.lblFftR = new Label();
-            this.lblFftR.Text = "FFT Right";
-            this.lblFftR.Dock = DockStyle.Fill;
-            this.lblFftR.TextAlign = ContentAlignment.MiddleLeft;
+            this.lblFftR = MakeLabel("FFT Right");
 
             this.btnFftR = new Button();
             SetupColorButton(this.btnFftR);
@@ -161,18 +162,12 @@ namespace AudioHexViewer
             this.nudFftWidth = new NumericUpDown();
             SetupWidthNud(this.nudFftWidth);
 
-            this.lblPkL = new Label();
-            this.lblPkL.Text = "PkHold Left";
-            this.lblPkL.Dock = DockStyle.Fill;
-            this.lblPkL.TextAlign = ContentAlignment.MiddleLeft;
+            this.lblPkL = MakeLabel("PkHold Left");
 
             this.btnPkL = new Button();
             SetupColorButton(this.btnPkL);
 
-            this.lblPkR = new Label();
-            this.lblPkR.Text = "PkHold Right";
-            this.lblPkR.Dock = DockStyle.Fill;
-            this.lblPkR.TextAlign = ContentAlignment.MiddleLeft;
+            this.lblPkR = MakeLabel("PkHold Right");
 
             this.btnPkR = new Button();
             SetupColorButton(this.btnPkR);
@@ -180,37 +175,50 @@ namespace AudioHexViewer
             this.nudPkWidth = new NumericUpDown();
             SetupWidthNud(this.nudPkWidth);
 
+
+            this.lblFftWidthText = MakeLabel("FFT Traces");
+            this.lblPkWidthText = MakeLabel("PkHold Traces");
             this.tlpTraces.Controls.Add(this.lblFftL, 0, 0);
-            this.tlpTraces.Controls.Add(this.btnFftL, 1, 0);
-            this.tlpTraces.Controls.Add(this.lblFftR, 2, 0);
-            this.tlpTraces.Controls.Add(this.btnFftR, 3, 0);
-            this.tlpTraces.Controls.Add(this.nudFftWidth, 4, 0);
+this.tlpTraces.Controls.Add(this.btnFftL, 1, 0);
+this.tlpTraces.Controls.Add(this.lblPkL, 3, 0);
+this.tlpTraces.Controls.Add(this.btnPkL, 4, 0);
 
-            this.tlpTraces.Controls.Add(this.lblPkL, 0, 1);
-            this.tlpTraces.Controls.Add(this.btnPkL, 1, 1);
-            this.tlpTraces.Controls.Add(this.lblPkR, 2, 1);
-            this.tlpTraces.Controls.Add(this.btnPkR, 3, 1);
-            this.tlpTraces.Controls.Add(this.nudPkWidth, 4, 1);
+this.tlpTraces.Controls.Add(this.lblFftR, 0, 1);
+this.tlpTraces.Controls.Add(this.btnFftR, 1, 1);
+this.tlpTraces.Controls.Add(this.lblPkR, 3, 1);
+this.tlpTraces.Controls.Add(this.btnPkR, 4, 1);
 
+// Thickness row (one setting per trace type)
+this.tlpTraces.Controls.Add(this.lblFftWidthText, 0, 2);
+this.tlpTraces.Controls.Add(this.nudFftWidth, 2, 2);
+this.tlpTraces.Controls.Add(this.lblPkWidthText, 3, 2);
+this.tlpTraces.Controls.Add(this.nudPkWidth, 5, 2);
+
+// Span label over the empty swatch column so the text sits closer to the numeric up/down
+this.tlpTraces.SetColumnSpan(this.lblFftWidthText, 2); // columns 0-1
+this.tlpTraces.SetColumnSpan(this.lblPkWidthText, 2);  // columns 3-4
             this.grpTraces.Controls.Add(this.tlpTraces);
 
-            // --- Overlays table: 4 cols (labelL, swatchL, labelR, swatchR) + width row ---
-            this.tlpOverlays.ColumnCount = 4;
-            this.tlpOverlays.RowCount = 5;
-            this.tlpOverlays.Dock = DockStyle.Fill;
-            this.tlpOverlays.AutoSize = true;
-            this.tlpOverlays.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            this.tlpOverlays.Padding = new Padding(8, 10, 8, 8);
-            this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 26F));
-            this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 26F));
-            this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
-            this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
-            this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
-            this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
-            this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+            // --- Overlays table: 6 cols (labelL, swatchL, nudL, labelR, swatchR, nudR) ---
+this.tlpOverlays.ColumnCount = 6;
+this.tlpOverlays.RowCount = 5;
+this.tlpOverlays.Dock = DockStyle.Fill;
+this.tlpOverlays.AutoSize = true;
+this.tlpOverlays.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+this.tlpOverlays.Padding = new Padding(8, 10, 8, 8);
 
+this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label L
+this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24F)); // swatch L
+this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50F)); // nud L (used by Thickness)
+this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label R
+this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24F)); // swatch R
+this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50F)); // nud R (unused)
+
+this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
+this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
+this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
+this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
+this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
             this.lblOv1 = MakeLabel("Overlay 1");
             this.btnOv1 = MakeColorButton();
             this.lblOv5 = MakeLabel("Overlay 5");
@@ -231,56 +239,57 @@ namespace AudioHexViewer
             this.lblOv8 = MakeLabel("Overlay 8");
             this.btnOv8 = MakeColorButton();
 
-            this.lblOvWidth = new Label();
-            this.lblOvWidth.Text = "Overlay thickness";
-            this.lblOvWidth.Dock = DockStyle.Fill;
-            this.lblOvWidth.TextAlign = ContentAlignment.MiddleLeft;
+            this.lblOvWidth = MakeLabel("Thickness");
 
             this.nudOvWidth = new NumericUpDown();
             SetupWidthNud(this.nudOvWidth);
 
             this.tlpOverlays.Controls.Add(this.lblOv1, 0, 0);
-            this.tlpOverlays.Controls.Add(this.btnOv1, 1, 0);
-            this.tlpOverlays.Controls.Add(this.lblOv5, 2, 0);
-            this.tlpOverlays.Controls.Add(this.btnOv5, 3, 0);
+this.tlpOverlays.Controls.Add(this.btnOv1, 1, 0);
+this.tlpOverlays.Controls.Add(this.lblOv5, 3, 0);
+this.tlpOverlays.Controls.Add(this.btnOv5, 4, 0);
 
-            this.tlpOverlays.Controls.Add(this.lblOv2, 0, 1);
-            this.tlpOverlays.Controls.Add(this.btnOv2, 1, 1);
-            this.tlpOverlays.Controls.Add(this.lblOv6, 2, 1);
-            this.tlpOverlays.Controls.Add(this.btnOv6, 3, 1);
+this.tlpOverlays.Controls.Add(this.lblOv2, 0, 1);
+this.tlpOverlays.Controls.Add(this.btnOv2, 1, 1);
+this.tlpOverlays.Controls.Add(this.lblOv6, 3, 1);
+this.tlpOverlays.Controls.Add(this.btnOv6, 4, 1);
 
-            this.tlpOverlays.Controls.Add(this.lblOv3, 0, 2);
-            this.tlpOverlays.Controls.Add(this.btnOv3, 1, 2);
-            this.tlpOverlays.Controls.Add(this.lblOv7, 2, 2);
-            this.tlpOverlays.Controls.Add(this.btnOv7, 3, 2);
+this.tlpOverlays.Controls.Add(this.lblOv3, 0, 2);
+this.tlpOverlays.Controls.Add(this.btnOv3, 1, 2);
+this.tlpOverlays.Controls.Add(this.lblOv7, 3, 2);
+this.tlpOverlays.Controls.Add(this.btnOv7, 4, 2);
 
-            this.tlpOverlays.Controls.Add(this.lblOv4, 0, 3);
-            this.tlpOverlays.Controls.Add(this.btnOv4, 1, 3);
-            this.tlpOverlays.Controls.Add(this.lblOv8, 2, 3);
-            this.tlpOverlays.Controls.Add(this.btnOv8, 3, 3);
+this.tlpOverlays.Controls.Add(this.lblOv4, 0, 3);
+this.tlpOverlays.Controls.Add(this.btnOv4, 1, 3);
+this.tlpOverlays.Controls.Add(this.lblOv8, 3, 3);
+this.tlpOverlays.Controls.Add(this.btnOv8, 4, 3);
 
-            this.tlpOverlays.Controls.Add(this.lblOvWidth, 0, 4);
-            this.tlpOverlays.SetColumnSpan(this.lblOvWidth, 2);
-            this.tlpOverlays.Controls.Add(this.nudOvWidth, 2, 4);
-            this.tlpOverlays.SetColumnSpan(this.nudOvWidth, 2);
+// Thickness (one setting for all overlays)
+this.tlpOverlays.Controls.Add(this.lblOvWidth, 0, 4);
+this.tlpOverlays.Controls.Add(this.nudOvWidth, 2, 4);
 
+// Same alignment trick as above
+this.tlpOverlays.SetColumnSpan(this.lblOvWidth, 2); // columns 0-1
             this.grpOverlays.Controls.Add(this.tlpOverlays);
 
-            // --- Chart table: 4 cols, 3 rows ---
-            this.tlpChart.ColumnCount = 4;
-            this.tlpChart.RowCount = 3;
-            this.tlpChart.Dock = DockStyle.Fill;
-            this.tlpChart.AutoSize = true;
-            this.tlpChart.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            this.tlpChart.Padding = new Padding(8, 10, 8, 8);
-            this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 26F));
-            this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 26F));
-            this.tlpChart.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
-            this.tlpChart.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
-            this.tlpChart.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
+            // --- Chart table: 6 cols (labelL, swatchL, nudL, labelR, swatchR, nudR) ---
+this.tlpChart.ColumnCount = 6;
+this.tlpChart.RowCount = 3;
+this.tlpChart.Dock = DockStyle.Fill;
+this.tlpChart.AutoSize = true;
+this.tlpChart.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+this.tlpChart.Padding = new Padding(8, 10, 8, 8);
 
+this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label L
+this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24F)); // swatch L
+this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50F)); // nud L (unused)
+this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label R
+this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24F)); // swatch R
+this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50F)); // nud R (unused)
+
+this.tlpChart.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
+this.tlpChart.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
+this.tlpChart.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
             this.lblGridMaj = MakeLabel("Grid Major");
             this.btnGridMaj = MakeColorButton();
             this.lblBack = MakeLabel("Background");
@@ -295,18 +304,17 @@ namespace AudioHexViewer
             this.btnLabMin = MakeColorButton();
 
             this.tlpChart.Controls.Add(this.lblGridMaj, 0, 0);
-            this.tlpChart.Controls.Add(this.btnGridMaj, 1, 0);
-            this.tlpChart.Controls.Add(this.lblBack, 2, 0);
-            this.tlpChart.Controls.Add(this.btnBack, 3, 0);
+this.tlpChart.Controls.Add(this.btnGridMaj, 1, 0);
+this.tlpChart.Controls.Add(this.lblBack, 3, 0);
+this.tlpChart.Controls.Add(this.btnBack, 4, 0);
 
-            this.tlpChart.Controls.Add(this.lblGridMin, 0, 1);
-            this.tlpChart.Controls.Add(this.btnGridMin, 1, 1);
+this.tlpChart.Controls.Add(this.lblGridMin, 0, 1);
+this.tlpChart.Controls.Add(this.btnGridMin, 1, 1);
 
-            this.tlpChart.Controls.Add(this.lblLabMaj, 0, 2);
-            this.tlpChart.Controls.Add(this.btnLabMaj, 1, 2);
-            this.tlpChart.Controls.Add(this.lblLabMin, 2, 2);
-            this.tlpChart.Controls.Add(this.btnLabMin, 3, 2);
-
+this.tlpChart.Controls.Add(this.lblLabMaj, 0, 2);
+this.tlpChart.Controls.Add(this.btnLabMaj, 1, 2);
+this.tlpChart.Controls.Add(this.lblLabMin, 3, 2);
+this.tlpChart.Controls.Add(this.btnLabMin, 4, 2);
             this.grpChart.Controls.Add(this.tlpChart);
 
             // Buttons row
