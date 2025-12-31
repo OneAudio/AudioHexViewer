@@ -30,6 +30,8 @@ private Color BackgroundColor => Color.FromArgb(_colors.BackgroundArgb);
 private Color LabelMajorColor => Color.FromArgb(_colors.LabelMajorArgb);
 private Color LabelMinorColor => Color.FromArgb(_colors.LabelMinorArgb);
 
+
+private Color InfoTextColor => Color.FromArgb(_colors.InfoTextArgb);
 private Color GetOverlaySlotColor(int slotIndex)
 {
     var arr = _colors.OverlaySlotArgb;
@@ -1967,7 +1969,7 @@ private void ApplyCursorTheme()
 
                 if (lbl != null)
                 {
-                    lbl.ForeColor = col;
+                    lbl.ForeColor = InfoTextColor;
                     lbl.Text = $"{(isCursor1 ? "C1" : "C2")}({CurveLetter(curve)}): {f:0.##} Hz  {db:0.##} dBFS" + (locked ? "  (LOCK)" : "");
                     lbl.Visible = true;
                 }
@@ -2020,12 +2022,12 @@ private void ApplyCursorTheme()
                         double dF = _cursorMarkRFreq - _cursorMarkLFreq; // C2 - C1
                         double dA = _cursorMarkRDb - _cursorMarkLDb;      // C2 - C1
 
-                        _lblCursorDeltaInfo.ForeColor = Color.DimGray;
+                        _lblCursorDeltaInfo.ForeColor = InfoTextColor;
                         _lblCursorDeltaInfo.Text = $"Δ:  ΔF={dF:0.##} Hz   ΔA={dA:0.##} dB";
                     }
                     else
                     {
-                        _lblCursorDeltaInfo.ForeColor = Color.Gray;
+                        _lblCursorDeltaInfo.ForeColor = InfoTextColor;
                         _lblCursorDeltaInfo.Text = "Δ:  —";
                     }
                 }
@@ -3252,7 +3254,7 @@ private void ApplyCursorTheme()
                         // X : à gauche, dans la même bande que le titre d’axe
                         float x = tl.X + 90f;
 
-                        using (Brush b = new SolidBrush(Color.DarkBlue))
+                        using (Brush b = new SolidBrush(InfoTextColor))
                         {
                             g.DrawString(_TopInfoLine, titleFont, b, x, y);
 
@@ -3277,7 +3279,7 @@ private void ApplyCursorTheme()
                                 float xR = tr.X - sz.Width - 10f; // marge droite
                                 float yR = y;                     // même hauteur que la ligne gauche
 
-                                using (Brush b2 = new SolidBrush(Color.DarkBlue))
+                                using (Brush b2 = new SolidBrush(InfoTextColor))
                                 {
                                     g.DrawString(thdLine, titleFont, b2, xR, yR);
                                 }

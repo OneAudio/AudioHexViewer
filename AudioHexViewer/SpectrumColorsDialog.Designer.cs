@@ -57,13 +57,15 @@ namespace AudioHexViewer
         private Button btnGridMin;
         private Label lblBack;
         private Button btnBack;
+        private Label lblInfoText;
+        private Button btnInfoText;
         private Label lblLabMaj;
         private Button btnLabMaj;
         private Label lblLabMin;
         private Button btnLabMin;
 
+        private Button btnSetDefault;
         private Button btnDefault;
-        private Button btnCancel;
         private Button btnOk;
 
         protected override void Dispose(bool disposing)
@@ -136,15 +138,16 @@ this.tlpTraces.RowCount = 3;
 this.tlpTraces.Dock = DockStyle.Fill;
 this.tlpTraces.AutoSize = true;
 this.tlpTraces.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-this.tlpTraces.Padding = new Padding(8, 10, 8, 8);
+this.tlpTraces.Padding = new Padding(4, 6, 4, 4);
 
 // Fixed label columns to keep the dialog compact AND align swatch columns between groups
 this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label L
-this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24F)); // swatch L
-this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50F)); // nud L
+this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 46F)); // value L (swatch / nud)
+this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 0F));  // spacer
 this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label R
-this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24F)); // swatch R
-this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50F)); // nud R
+this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 46F)); // value R (swatch / nud)
+this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 0F));  // spacer
+
 
 this.tlpTraces.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
 this.tlpTraces.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
@@ -176,8 +179,8 @@ this.tlpTraces.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
             SetupWidthNud(this.nudPkWidth);
 
 
-            this.lblFftWidthText = MakeLabel("FFT Traces");
-            this.lblPkWidthText = MakeLabel("PkHold Traces");
+            this.lblFftWidthText = MakeLabel("FFT Thick");
+            this.lblPkWidthText = MakeLabel ("PkH Thick");
             this.tlpTraces.Controls.Add(this.lblFftL, 0, 0);
 this.tlpTraces.Controls.Add(this.btnFftL, 1, 0);
 this.tlpTraces.Controls.Add(this.lblPkL, 3, 0);
@@ -190,14 +193,12 @@ this.tlpTraces.Controls.Add(this.btnPkR, 4, 1);
 
 // Thickness row (one setting per trace type)
 this.tlpTraces.Controls.Add(this.lblFftWidthText, 0, 2);
-this.tlpTraces.Controls.Add(this.nudFftWidth, 2, 2);
+this.tlpTraces.Controls.Add(this.nudFftWidth, 1, 2);
 this.tlpTraces.Controls.Add(this.lblPkWidthText, 3, 2);
-this.tlpTraces.Controls.Add(this.nudPkWidth, 5, 2);
+this.tlpTraces.Controls.Add(this.nudPkWidth, 4, 2);
 
 // Span label over the empty swatch column so the text sits closer to the numeric up/down
-this.tlpTraces.SetColumnSpan(this.lblFftWidthText, 2); // columns 0-1
-this.tlpTraces.SetColumnSpan(this.lblPkWidthText, 2);  // columns 3-4
-            this.grpTraces.Controls.Add(this.tlpTraces);
+this.grpTraces.Controls.Add(this.tlpTraces);
 
             // --- Overlays table: 6 cols (labelL, swatchL, nudL, labelR, swatchR, nudR) ---
 this.tlpOverlays.ColumnCount = 6;
@@ -205,14 +206,15 @@ this.tlpOverlays.RowCount = 5;
 this.tlpOverlays.Dock = DockStyle.Fill;
 this.tlpOverlays.AutoSize = true;
 this.tlpOverlays.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-this.tlpOverlays.Padding = new Padding(8, 10, 8, 8);
+this.tlpOverlays.Padding = new Padding(4, 6, 4, 4);
 
 this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label L
-this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24F)); // swatch L
-this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50F)); // nud L (used by Thickness)
+this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 46F)); // value L (swatch / nud)
+this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 0F));  // spacer
 this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label R
-this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24F)); // swatch R
-this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50F)); // nud R (unused)
+this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 46F)); // value R (swatch / nud)
+this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 0F));  // spacer
+
 
 this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
 this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
@@ -239,7 +241,7 @@ this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
             this.lblOv8 = MakeLabel("Overlay 8");
             this.btnOv8 = MakeColorButton();
 
-            this.lblOvWidth = MakeLabel("Thickness");
+            this.lblOvWidth = MakeLabel("Ovl Thick");
 
             this.nudOvWidth = new NumericUpDown();
             SetupWidthNud(this.nudOvWidth);
@@ -266,11 +268,10 @@ this.tlpOverlays.Controls.Add(this.btnOv8, 4, 3);
 
 // Thickness (one setting for all overlays)
 this.tlpOverlays.Controls.Add(this.lblOvWidth, 0, 4);
-this.tlpOverlays.Controls.Add(this.nudOvWidth, 2, 4);
+this.tlpOverlays.Controls.Add(this.nudOvWidth, 1, 4);
 
 // Same alignment trick as above
-this.tlpOverlays.SetColumnSpan(this.lblOvWidth, 2); // columns 0-1
-            this.grpOverlays.Controls.Add(this.tlpOverlays);
+this.grpOverlays.Controls.Add(this.tlpOverlays);
 
             // --- Chart table: 6 cols (labelL, swatchL, nudL, labelR, swatchR, nudR) ---
 this.tlpChart.ColumnCount = 6;
@@ -278,14 +279,15 @@ this.tlpChart.RowCount = 3;
 this.tlpChart.Dock = DockStyle.Fill;
 this.tlpChart.AutoSize = true;
 this.tlpChart.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-this.tlpChart.Padding = new Padding(8, 10, 8, 8);
+this.tlpChart.Padding = new Padding(4, 6, 4, 4);
 
 this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label L
-this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24F)); // swatch L
-this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50F)); // nud L (unused)
+this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 46F)); // value L (swatch)
+this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 0F));  // spacer
 this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label R
-this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24F)); // swatch R
-this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50F)); // nud R (unused)
+this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 46F)); // value R (swatch)
+this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 0F));  // spacer
+
 
 this.tlpChart.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
 this.tlpChart.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
@@ -297,6 +299,9 @@ this.tlpChart.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
 
             this.lblGridMin = MakeLabel("Grid Minor");
             this.btnGridMin = MakeColorButton();
+
+            this.lblInfoText = MakeLabel("Info Text");
+            this.btnInfoText = MakeColorButton();
             // right cell row2 used for labels
             this.lblLabMaj = MakeLabel("Label Major");
             this.btnLabMaj = MakeColorButton();
@@ -310,6 +315,8 @@ this.tlpChart.Controls.Add(this.btnBack, 4, 0);
 
 this.tlpChart.Controls.Add(this.lblGridMin, 0, 1);
 this.tlpChart.Controls.Add(this.btnGridMin, 1, 1);
+this.tlpChart.Controls.Add(this.lblInfoText, 3, 1);
+this.tlpChart.Controls.Add(this.btnInfoText, 4, 1);
 
 this.tlpChart.Controls.Add(this.lblLabMaj, 0, 2);
 this.tlpChart.Controls.Add(this.btnLabMaj, 1, 2);
@@ -327,18 +334,17 @@ this.tlpChart.Controls.Add(this.btnLabMin, 4, 2);
             this.tlpButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
             this.tlpButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
 
+            this.btnSetDefault = new Button();
+            this.btnSetDefault.Text = "SetDefault";
+            this.btnSetDefault.AutoSize = true;
+            this.btnSetDefault.Anchor = AnchorStyles.None;
+            this.btnSetDefault.Padding = new Padding(6, 2, 6, 2);
+
             this.btnDefault = new Button();
             this.btnDefault.Text = "Default";
             this.btnDefault.AutoSize = true;
             this.btnDefault.Anchor = AnchorStyles.None;
             this.btnDefault.Padding = new Padding(6, 2, 6, 2);
-
-            this.btnCancel = new Button();
-            this.btnCancel.Text = "Cancel";
-            this.btnCancel.DialogResult = DialogResult.Cancel;
-            this.btnCancel.AutoSize = true;
-            this.btnCancel.Anchor = AnchorStyles.None;
-            this.btnCancel.Padding = new Padding(6, 2, 6, 2);
 
             this.btnOk = new Button();
             this.btnOk.Text = "OK";
@@ -347,9 +353,11 @@ this.tlpChart.Controls.Add(this.btnLabMin, 4, 2);
             this.btnOk.Anchor = AnchorStyles.None;
             this.btnOk.Padding = new Padding(6, 2, 6, 2);
 
-            this.tlpButtons.Controls.Add(this.btnDefault, 0, 0);
-            this.tlpButtons.Controls.Add(this.btnCancel, 1, 0);
+            // ordre : SetDefault | Default | OK
+            this.tlpButtons.Controls.Add(this.btnSetDefault, 0, 0);
+            this.tlpButtons.Controls.Add(this.btnDefault, 1, 0);
             this.tlpButtons.Controls.Add(this.btnOk, 2, 0);
+
 
             // Add to root
             this.tlpRoot.Controls.Add(this.grpTraces, 0, 0);
@@ -360,7 +368,6 @@ this.tlpChart.Controls.Add(this.btnLabMin, 4, 2);
             this.Controls.Add(this.tlpRoot);
 
             this.AcceptButton = this.btnOk;
-            this.CancelButton = this.btnCancel;
         }
 
     }

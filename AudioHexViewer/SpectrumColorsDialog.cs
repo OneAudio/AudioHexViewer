@@ -10,12 +10,21 @@ namespace AudioHexViewer
 
         public SpectrumColorSettings SelectedColors => Clone(_colors);
 
+        private SpectrumColorSettings _defaults;
+
+        public bool DefaultsChanged { get; private set; }
+        public SpectrumColorSettings SelectedDefaults => Clone(_defaults);
+
         public SpectrumColorsDialog(SpectrumColorSettings initial)
         {
             InitializeComponent();
 
             _colors = Clone(initial ?? SpectrumColorSettings.Defaults());
             _colors.Normalize();
+
+            _defaults = SpectrumColorSettings.Defaults();
+            _defaults.Normalize();
+            DefaultsChanged = false;
 
             // Click handlers (color swatches)
             btnFftL.Click += (_, __) => Pick(() => _colors.FftLeftArgb, v => _colors.FftLeftArgb = v, btnFftL);
@@ -38,6 +47,7 @@ namespace AudioHexViewer
             btnBack.Click += (_, __) => Pick(() => _colors.BackgroundArgb, v => _colors.BackgroundArgb = v, btnBack);
             btnLabMaj.Click += (_, __) => Pick(() => _colors.LabelMajorArgb, v => _colors.LabelMajorArgb = v, btnLabMaj);
             btnLabMin.Click += (_, __) => Pick(() => _colors.LabelMinorArgb, v => _colors.LabelMinorArgb = v, btnLabMin);
+            btnInfoText.Click += (_, __) => Pick(() => _colors.InfoTextArgb, v => _colors.InfoTextArgb = v, btnInfoText);
 
             // Thickness
             nudFftWidth.Value = ClampToRange(_colors.FftWidth);
@@ -48,12 +58,25 @@ namespace AudioHexViewer
             nudPkWidth.ValueChanged += (_, __) => _colors.PeakHoldWidth = (int)nudPkWidth.Value;
             nudOvWidth.ValueChanged += (_, __) => _colors.OverlayWidth = (int)nudOvWidth.Value;
 
-            // Default
+            btnSetDefault.Click += (_, __) =>
+            {
+                _defaults = Clone(_colors);
+                DefaultsChanged = true;
+            };
+
             btnDefault.Click += (_, __) =>
             {
-                _colors = SpectrumColorSettings.Defaults();
+                _colors = Clone(_defaults);
                 UpdateUiFromSettings();
             };
+
+            btnSetDefault.Click += (_, __) =>
+            {
+                _defaults = Clone(_colors);
+                DefaultsChanged = true;
+            };
+
+
 
             UpdateUiFromSettings();
         }
@@ -105,6 +128,7 @@ namespace AudioHexViewer
             btnBack.BackColor = Color.FromArgb(_colors.BackgroundArgb);
             btnLabMaj.BackColor = Color.FromArgb(_colors.LabelMajorArgb);
             btnLabMin.BackColor = Color.FromArgb(_colors.LabelMinorArgb);
+            btnInfoText.BackColor = Color.FromArgb(_colors.InfoTextArgb);
 
             var ov = _colors.OverlaySlotArgb;
             btnOv1.BackColor = Color.FromArgb(ov[0]);
@@ -126,7 +150,8 @@ namespace AudioHexViewer
         private static void SetupColorButton(Button b)
         {
             b.Size = new Size(18, 18);
-            b.Margin = new Padding(3, 6, 3, 6);
+            b.Margin = new Padding(0, 6, 3, 6);   // marge droite = 3
+            b.Anchor = AnchorStyles.Right;        // <<< important
             b.FlatStyle = FlatStyle.Flat;
             b.FlatAppearance.BorderSize = 1;
             b.Text = "";
@@ -135,6 +160,7 @@ namespace AudioHexViewer
             b.UseVisualStyleBackColor = false;
         }
 
+
         private static void SetupWidthNud(NumericUpDown nud)
         {
             nud.Minimum = 1;
@@ -142,22 +168,24 @@ namespace AudioHexViewer
             nud.Value = 2;
             nud.DecimalPlaces = 0;
             nud.Increment = 1;
-            nud.Size = new Size(44, 22);
-            // Keep vertical rhythm aligned with swatches
-            nud.Margin = new Padding(3, 6, 3, 6);
+
+            nud.Size = new Size(42, 22);          // <= doit tenir dans la colonne 46
+            nud.Margin = new Padding(0, 4, 3, 4); // marge droite = 3 (comme les carrés)
+            nud.Anchor = AnchorStyles.Right;      // <<< important
             nud.TextAlign = HorizontalAlignment.Center;
-            nud.Anchor = AnchorStyles.Left;
         }
+
 
         private static Label MakeLabel(string text)
         {
             var l = new Label();
             l.Text = text;
-            l.Dock = DockStyle.Fill;
+            l.AutoSize = true;
+            l.Anchor = AnchorStyles.Right;
 
             // Align text close to the color square (requested UI alignment)
             l.TextAlign = ContentAlignment.MiddleRight;
-            l.Padding = new Padding(0, 0, 6, 0);
+            l.Padding = new Padding(0, 0, 4, 0);
 
             return l;
         }
@@ -190,7 +218,8 @@ namespace AudioHexViewer
                 BackgroundArgb = src.BackgroundArgb,
 
                 LabelMajorArgb = src.LabelMajorArgb,
-                LabelMinorArgb = src.LabelMinorArgb
+                LabelMinorArgb = src.LabelMinorArgb,
+                InfoTextArgb = src.InfoTextArgb
             };
 
             if (src.OverlaySlotArgb != null)

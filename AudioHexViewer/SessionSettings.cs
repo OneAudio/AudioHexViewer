@@ -42,6 +42,8 @@ namespace AudioHexViewer
 
     public sealed class SpectrumSettings
     {
+        public SpectrumColorSettings? DefaultColors { get; set; }
+
         public string Channel { get; set; } = "L+R";     // Left/Right/L+R
         public bool RemoveDC { get; set; } = true;       // DC checkbox
         public string Window { get; set; } = "Rectangular"; // Rectangular/Hann/Hamming/Blackman-Harris-4/Blackman-Harris-7
@@ -120,6 +122,7 @@ public sealed class SpectrumColorSettings
     // Labels (Major/Minor). Axis line + ticks = LabelMajor
     public int LabelMajorArgb { get; set; } = Color.Black.ToArgb();
     public int LabelMinorArgb { get; set; } = Color.DimGray.ToArgb();
+    public int InfoTextArgb { get; set; } = Color.DarkBlue.ToArgb();
 
     public static SpectrumColorSettings Defaults()
     {
@@ -191,6 +194,8 @@ public static class SessionSettingsManager
                 var s = JsonSerializer.Deserialize<SessionSettings>(json);
                 // Normalize newly added settings (compat with older SessionSettings.json)
                 s?.Spectrum?.Colors?.Normalize();
+                s?.Spectrum?.DefaultColors?.Normalize();
+
                 return s;
             }
             catch (Exception ex)
