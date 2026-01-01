@@ -3252,7 +3252,7 @@ private void ApplyCursorTheme()
                         //float y = bl.Y - titleFont.Height - 2f;
 
                         // X : à gauche, dans la même bande que le titre d’axe
-                        float x = tl.X + 90f;
+                        float x = tl.X + 110f;
 
                         using (Brush b = new SolidBrush(InfoTextColor))
                         {
@@ -3307,6 +3307,7 @@ private void ApplyCursorTheme()
 
                 // Lignes mineures log dessinées à la main : 2..9 * 10^n
                 using (Pen minorPen = new Pen(GridMinorColor, 1f))
+                using (Pen tickPen = new Pen(LabelMinorColor, 1f))
                 {
                     minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
 
@@ -3339,9 +3340,9 @@ private void ApplyCursorTheme()
                                 e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, top, xPixel, bottom);
 
                                 // 2) (optionnel) petite marque de tick en bas (évite l’effet "pas de marque")
-                                const float minorTickLen = 8f;
-                                // Tick mineur (optionnel) — désactivé à la demande (labels suffisent)
-                                // e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom + minorTickLen);
+                                const float minorTickLen = 5f;
+                                // Tick mineur (label minor)
+                                e.ChartGraphics.Graphics.DrawLine(tickPen, xPixel, bottom, xPixel, bottom + minorTickLen);
 
 
                                 // 3) Label intermédiaire (2..9), police plus petite
@@ -3353,7 +3354,8 @@ private void ApplyCursorTheme()
                                 float xText = xPixel - sz.Width / 2f;
 
                                 // Dessin *dans* la zone de tracé, juste au-dessus de l’axe (évite de chevaucher les labels décades)
-                                float yText = bottom - minorTickLen + 10f;
+                                const float minorLabelYOffset = 16f; // <-- ajuste ici (plus grand = plus bas)
+                                float yText = bottom - minorTickLen + minorLabelYOffset;
 
                                 // Anti-chevauchement en pixels (même si fenêtre large, ça évite les cas extrêmes)
                                 if (xText <= lastLabelRight + 4f)
@@ -3398,7 +3400,7 @@ private void ApplyCursorTheme()
                             using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
                             using (Brush minorBrush = new SolidBrush(LabelMinorColor))
                             {
-                                const float minorTickLen = 6f;
+                                const float minorTickLen = 5f;
 
                                 // Anti-chevauchement horizontal (en pixels)
                                 float lastLabelRight = float.NegativeInfinity;
@@ -3421,8 +3423,7 @@ private void ApplyCursorTheme()
                                     float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
 
                                     // 1) Tick mineur en bas (sans activer MinorTickMark du Chart)
-                                    // Tick mineur (optionnel) — désactivé à la demande (labels suffisent)
-                                // e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom + minorTickLen);
+                                    e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom + minorTickLen);
 
 
                                     // 2) Label mineur (même format que le log : Hz / kHz)
