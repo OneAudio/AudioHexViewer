@@ -65,6 +65,7 @@ namespace AudioHexViewer
         // Hauteur minimale de la fentre
         private int _minWidth;
         private int _minHeightNoGraphs;
+        private int _minHeightWithGraphs;
         // Dsactivation temporaire du redimensionnement
         private FormBorderStyle _borderStyleWithGraphs;
         private bool _borderStyleSaved;
@@ -78,15 +79,6 @@ namespace AudioHexViewer
         private List<RecordFrame> recordBuffer = new List<RecordFrame>();
 
         private readonly object _recordLock = new object();
-
-        // --- Capture 1 seconde pour histogramme ---
-        //private List<RecordFrame> histBuffer = new List<RecordFrame>();
-
-        //// Historique continu (tampon roulant) alimenté par la carte son
-        //private readonly object histLock = new object();
-
-        //// Index absolu du premier échantillon présent dans histBuffer (sert à gérer les RemoveRange)
-        //private long histBaseIndex = 0;
 
         // Ring buffer “REW-like” pour les derniers échantillons audio (capacité = menu Buffer)
         private StereoRingBuffer? _audioRing;
@@ -779,6 +771,9 @@ namespace AudioHexViewer
             _minWidth = this.Width;
             // Calcule la hauteur minimale "sans graphs" (sans bouger la fentre)
             _minHeightNoGraphs = ComputeNoGraphsHeight();
+            // Hauteur mini quand les graphs sont visibles (à ajuster si besoin)
+            _minHeightWithGraphs = Math.Max(this.Height, _minHeightNoGraphs + 260);
+
             // Hauteur avec graphs
             _borderStyleWithGraphs = this.FormBorderStyle;
             _borderStyleSaved = true;
@@ -2237,44 +2232,50 @@ namespace AudioHexViewer
             // Hauteur totale fentre
             return targetClientHeight + nonClientHeight;
         }
+        //
+        private void ApplyShowGraphsState()
+        {
+            bool show = menuShowGraphs.Checked;
+
+            splitMain.Panel2Collapsed = !show;
+
+            if (show)
+            {
+                // IMPORTANT: réactiver le resize + le bouton "agrandir"
+                this.FormBorderStyle = FormBorderStyle.Sizable;
+                this.MaximizeBox = true;
+                this.MinimizeBox = true;   // optionnel mais conseillé
+                this.MaximumSize = Size.Empty; // aucune limite max (évite le carré grisé)
+
+                if (_minHeightWithGraphs <= 0)
+                    _minHeightWithGraphs = Math.Max(this.Height, _minHeightNoGraphs + 260);
+
+                this.MinimumSize = new Size(_minWidth, _minHeightWithGraphs);
+            }
+            else
+            {
+                // Mode compact (pas de resize)
+                this.FormBorderStyle = FormBorderStyle.FixedSingle;
+                this.MaximizeBox = false;
+
+                this.MinimumSize = new Size(_minWidth, _minHeightNoGraphs);
+                this.MaximumSize = Size.Empty;
+
+                // Si la fenêtre est maximisée, repasser en Normal sinon on ne peut pas la réduire
+                if (this.WindowState == FormWindowState.Maximized)
+                    this.WindowState = FormWindowState.Normal;
+
+                // Forcer la taille compacte en largeur + hauteur
+                this.Size = new Size(_minWidth, _minHeightNoGraphs);
+            }
+        }
+
 
         //
         private void menuShowGraphs_Click(object? sender, EventArgs e)
         {
-            if (menuShowGraphs.Checked)
-            {
-                // Show graphs
-                splitMain.Panel2Collapsed = false;
-
-                // Ractiver le redimensionnement
-                if (_borderStyleSaved)
-                    this.FormBorderStyle = _borderStyleWithGraphs;
-                this.MaximizeBox = true;
-
-                if (_hasHeightWithGraphs)
-                    this.Height = _heightWithGraphs;
-
-                return;
-            }
-
-            // Hide graphs
-            _heightWithGraphs = this.Height;
-            _hasHeightWithGraphs = true;
-
-            splitMain.Panel2Collapsed = true;
-
-            // Mettre la hauteur compacte (ton code existant)
-            int targetHeight = ComputeNoGraphsHeight();
-            this.Height = Math.Max(targetHeight, this.MinimumSize.Height);
-
-            // Verrouiller compltement la taille (plus de resize possible)
-            this.FormBorderStyle = FormBorderStyle.FixedSingle;
-            this.MaximizeBox = false;
+            ApplyShowGraphsState();
         }
-
-
-
-
         //
         private void btnRecord_Click(object sender, EventArgs e)
         {
@@ -3239,6 +3240,7 @@ namespace AudioHexViewer
                 ApplyAnalysisSettings(_loadedSessionSettings);
 
             ApplyLoadedSessionSettingsToExistingControls();
+            BeginInvoke(new Action(ApplyShowGraphsState));
         }
 
          private void splitContainer1_Panel2_Paint(object sender, PaintEventArgs e)

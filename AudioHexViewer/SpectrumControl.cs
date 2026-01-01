@@ -3276,7 +3276,7 @@ private void ApplyCursorTheme()
                                 PointF tr = e.ChartGraphics.GetAbsolutePoint(new PointF(pos.X + pos.Width, pos.Y));
 
                                 SizeF sz = g.MeasureString(thdLine, titleFont);
-                                float xR = tr.X - sz.Width - 10f; // marge droite
+                                float xR = tr.X - sz.Width - 22f; // marge droite
                                 float yR = y;                     // même hauteur que la ligne gauche
 
                                 using (Brush b2 = new SolidBrush(InfoTextColor))
