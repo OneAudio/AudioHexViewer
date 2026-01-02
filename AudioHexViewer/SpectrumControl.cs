@@ -46,6 +46,7 @@ private Color GetOverlaySlotColor(int slotIndex)
         private sealed class ExportRenderContext
         {
             public string? HeaderTitle { get; init; }
+            public int HeaderPx { get; init; }
         }
 
         //
@@ -3207,14 +3208,18 @@ private void ApplyCursorTheme()
 
                         if (lines.Length > 0)
                         {
-                            using var titleFont = new Font(chart.Font.FontFamily, chart.Font.SizeInPoints * 1.45f, FontStyle.Bold);
+                            //Dessin du texte centré au dessus du plot, police agrandie et en gras   
+                            using var titleFont = new Font(chart.Font.FontFamily, chart.Font.SizeInPoints * 1.20f, FontStyle.Bold);
+                            // Couleur noire pour le texte (plus lisible sur fond blanc exporté)
                             using var b = new SolidBrush(Color.Black);
+                            // Format centré
                             using var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
 
                             float lineH = titleFont.GetHeight(g);
                             float totalH = lineH * lines.Length;
 
-                            float y = plotForText.Top - totalH - (8f * sExport);
+                            // Position Y : un peu au dessus du plot, décalage 20 pixels * sExport
+                            float y = plotForText.Top - totalH - (20f * sExport);
                             if (y < 2f) y = 2f;
 
                             for (int i = 0; i < lines.Length; i++)
@@ -3245,7 +3250,7 @@ private void ApplyCursorTheme()
             new PointF(x, y),
             new PointF(x - w/2f, y - h),
             new PointF(x + w/2f, y - h)
-        };
+            };
 
                 using var brush = new SolidBrush(Color.FromArgb(220, color));
                 e.ChartGraphics.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
@@ -3324,7 +3329,8 @@ private void ApplyCursorTheme()
                 // ---------------------------------------------------------
                 // Ligne SR/N/Overlap au dessus du graphe
                 // ---------------------------------------------------------
-                if (!isExport && !string.IsNullOrWhiteSpace(_TopInfoLine))
+                //if (!isExport && !string.IsNullOrWhiteSpace(_TopInfoLine))
+                if (!string.IsNullOrWhiteSpace(_TopInfoLine))
                 {
                     var g = e.ChartGraphics.Graphics;
                     var saved = g.Save();
@@ -3523,49 +3529,49 @@ private void ApplyCursorTheme()
                 g.Restore(saved);
             }
             //
-            if (isExport && !string.IsNullOrWhiteSpace(_TopInfoLine) && !plotForText.IsEmpty)
-            {
-                var g = e.ChartGraphics.Graphics;
-                var saved = g.Save();
-                g.ResetClip();
+            //if (isExport && !string.IsNullOrWhiteSpace(_TopInfoLine) && !plotForText.IsEmpty)
+            //{
+            //    var g = e.ChartGraphics.Graphics;
+            //    var saved = g.Save();
+            //    g.ResetClip();
 
-                try
-                {
-                    // On construit 1 ou 2 lignes (TopInfo + THD)
-                    string? thdLine = null;
-                    if (_thdMeasuresEnabled)
-                    {
-                        string FormatHz(double hz) => (hz >= 1000.0) ? $"{hz / 1000.0:F0} kHz" : $"{hz:F0} Hz";
-                        string hpf = _thdUi.UseHPF ? FormatHz(_thdUi.FlowHz) : "OFF";
-                        string lpf = _thdUi.UseLPF ? FormatHz(_thdUi.FhighHz) : "OFF";
-                        thdLine = $"THD filter - HPF: {hpf}, LPF: {lpf}";
-                    }
+            //    try
+            //    {
+            //        // On construit 1 ou 2 lignes (TopInfo + THD)
+            //        string? thdLine = null;
+            //        if (_thdMeasuresEnabled)
+            //        {
+            //            string FormatHz(double hz) => (hz >= 1000.0) ? $"{hz / 1000.0:F0} kHz" : $"{hz:F0} Hz";
+            //            string hpf = _thdUi.UseHPF ? FormatHz(_thdUi.FlowHz) : "OFF";
+            //            string lpf = _thdUi.UseLPF ? FormatHz(_thdUi.FhighHz) : "OFF";
+            //            thdLine = $"THD filter - HPF: {hpf}, LPF: {lpf}";
+            //        }
 
-                    var lines = (thdLine == null) ? new[] { _TopInfoLine } : new[] { _TopInfoLine, thdLine };
+            //        var lines = (thdLine == null) ? new[] { _TopInfoLine } : new[] { _TopInfoLine, thdLine };
 
-                    using var font = new Font(chart.Font.FontFamily, chart.Font.SizeInPoints * 0.95f, FontStyle.Regular);
-                    using var b = new SolidBrush(InfoTextColor);
-                    using var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
+            //        using var font = new Font(chart.Font.FontFamily, chart.Font.SizeInPoints * 0.95f, FontStyle.Regular);
+            //        using var b = new SolidBrush(InfoTextColor);
+            //        using var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
 
-                    float lineH = font.GetHeight(g);
-                    float totalH = lineH * lines.Length;
+            //        float lineH = font.GetHeight(g);
+            //        float totalH = lineH * lines.Length;
 
-                    // Bas du plot (dans le graphe, sans toucher aux labels d’axe)
-                    float y = plotForText.Bottom - totalH - (4f * sExport);
-                    if (y < plotForText.Top + 2f) y = plotForText.Top + 2f;
+            //        // Bas du plot (dans le graphe, sans toucher aux labels d’axe)
+            //        float y = plotForText.Bottom - totalH - (4f * sExport);
+            //        if (y < plotForText.Top + 2f) y = plotForText.Top + 2f;
 
-                    // (optionnel) fond léger pour lisibilité
-                    // using var bg = new SolidBrush(Color.FromArgb(180, Color.White));
-                    // g.FillRectangle(bg, plotForText.Left, y - 2, plotForText.Width, totalH + 4);
+            //        // (optionnel) fond léger pour lisibilité
+            //        // using var bg = new SolidBrush(Color.FromArgb(180, Color.White));
+            //        // g.FillRectangle(bg, plotForText.Left, y - 2, plotForText.Width, totalH + 4);
 
-                    for (int i = 0; i < lines.Length; i++)
-                    {
-                        var r = new RectangleF(plotForText.Left, y + i * lineH, plotForText.Width, lineH);
-                        g.DrawString(lines[i], font, b, r, fmt);
-                    }
-                }
-                finally { g.Restore(saved); }
-            }
+            //        for (int i = 0; i < lines.Length; i++)
+            //        {
+            //            var r = new RectangleF(plotForText.Left, y + i * lineH, plotForText.Width, lineH);
+            //            g.DrawString(lines[i], font, b, r, fmt);
+            //        }
+            //    }
+            //    finally { g.Restore(saved); }
+            //}
 
             //
             try
@@ -3671,9 +3677,14 @@ private void ApplyCursorTheme()
         {
             RebuildStatsRowsFromLabels();
 
+
             using var clone = ChartExport.CloneChart(chartSpectrum);
 
-            clone.Size = new Size(chartSpectrum.Width * scale, chartSpectrum.Height * scale);
+            int headerPx = (headerTitle != null && headerTitle.Trim().Length > 0)
+            ? (int)(60 * scale)   // 80px à scale=1, donc 120px à scale=2
+            : 0;
+
+            clone.Size = new Size( chartSpectrum.Width * scale, chartSpectrum.Height * scale + headerPx);
 
             clone.BackColor = Color.White;
             foreach (var a in clone.ChartAreas)
@@ -3690,6 +3701,9 @@ private void ApplyCursorTheme()
 
             // Marge stats sur le clone (tu as déjà la version reservedScale qui marche)
             ApplyChartStatsMargin(clone, invalidate: false, reservedScale: scale);
+
+            if (headerPx > 0)
+                ApplyExportHeaderMargin(clone, headerPx);
 
             clone.PostPaint += ChartSpectrum_PostPaint;
 
@@ -3727,7 +3741,26 @@ private void ApplyCursorTheme()
                     => new Font(f.FontFamily, f.SizeInPoints * s, f.Style);
             }
         }
+        //
+        private static void ApplyExportHeaderMargin(System.Windows.Forms.DataVisualization.Charting.Chart chart, int headerPx)
+        {
+            var area = chart.ChartAreas["SpectrumArea"];
 
+            int h = chart.ClientSize.Height;
+            if (h <= 0) return;
+
+            //
+            float headerPct = 100f * headerPx / h;
+
+            // On garde la même largeur, on descend juste l’area et on réduit légèrement la hauteur
+            area.Position.Auto = false;
+            area.Position = new ElementPosition(
+                area.Position.X,
+                area.Position.Y + headerPct,
+                area.Position.Width,
+                Math.Max(5f, area.Position.Height - headerPct)
+            );
+        }
 
         //
         //
