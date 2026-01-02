@@ -48,6 +48,8 @@ namespace AudioHexViewer
             menuMeasures = new ToolStripMenuItem();
             menuEnableThd = new ToolStripMenuItem();
             menuThdSettings = new ToolStripMenuItem();
+            exportToolStripMenuItem = new ToolStripMenuItem();
+            menuExportPng = new ToolStripMenuItem();
             splitMain = new SplitContainer();
             lblFormatInfo = new Label();
             label3 = new Label();
@@ -77,8 +79,6 @@ namespace AudioHexViewer
             tabSpectrum = new TabPage();
             txtLeft = new RichTextBox();
             txtRight = new RichTextBox();
-            exportToolStripMenuItem = new ToolStripMenuItem();
-            menuExportGraphPng = new ToolStripMenuItem();
             menuStrip1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)splitMain).BeginInit();
             splitMain.Panel1.SuspendLayout();
@@ -221,6 +221,20 @@ namespace AudioHexViewer
             menuThdSettings.Size = new Size(151, 22);
             menuThdSettings.Text = "THD Settings...";
             menuThdSettings.Click += menuThdSettings_Click;
+            // 
+            // exportToolStripMenuItem
+            // 
+            exportToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { menuExportPng });
+            exportToolStripMenuItem.Name = "exportToolStripMenuItem";
+            exportToolStripMenuItem.Size = new Size(53, 21);
+            exportToolStripMenuItem.Text = "Export";
+            // 
+            // menuExportPng
+            // 
+            menuExportPng.Name = "menuExportPng";
+            menuExportPng.Size = new Size(183, 22);
+            menuExportPng.Text = "Export graph to PNG";
+            menuExportPng.Click += menuExportPng_Click;
             // 
             // splitMain
             // 
@@ -570,20 +584,6 @@ namespace AudioHexViewer
             txtRight.Text = "";
             txtRight.Visible = false;
             // 
-            // exportToolStripMenuItem
-            // 
-            exportToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { menuExportGraphPng });
-            exportToolStripMenuItem.Name = "exportToolStripMenuItem";
-            exportToolStripMenuItem.Size = new Size(53, 21);
-            exportToolStripMenuItem.Text = "Export";
-            // 
-            // menuExportGraphPng
-            // 
-            menuExportGraphPng.Name = "menuExportGraphPng";
-            menuExportGraphPng.Size = new Size(180, 22);
-            menuExportGraphPng.Text = "Graph - PNG";
-            menuExportGraphPng.Click += menuExportGraphPng_Click;
-            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
@@ -660,6 +660,6 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuThdSettings;
         private ToolStripMenuItem menuEnableThd;
         private ToolStripMenuItem exportToolStripMenuItem;
-        private ToolStripMenuItem menuExportGraphPng;
+        private ToolStripMenuItem menuExportPng;
     }
 }

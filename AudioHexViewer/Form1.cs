@@ -3341,10 +3341,6 @@ namespace AudioHexViewer
             btnStart.PerformClick();          // stop READ (ta logique existante)
         }
 
-        private void menuExportGraphPng_Click(object sender, EventArgs e)
-        {
-            ExportActiveGraphToPng();
-        }
         //
         private void ExportActiveGraphToPng()
         {
@@ -3392,6 +3388,21 @@ namespace AudioHexViewer
                 MessageBox.Show(ex.Message, "Export PNG", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
+        private void menuExportPng_Click(object sender, EventArgs e)
+        {
+            using var dlg = new ExportPngDialog();
+
+            // Optionnel : tu peux pré-remplir un chemin si tu veux
+            // dlg.SetDefaultPath(...); (on ne l’a pas codé, donc ignore)
+
+            if (dlg.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            // ⚠️ IMPORTANT : remplace "spectrumControl1" par le NOM EXACT de ton contrôle
+            spectrumControl.ExportPng(dlg.FilePath, dlg.Scale, dlg.TitleText);
+        }
+
         //
         //
 

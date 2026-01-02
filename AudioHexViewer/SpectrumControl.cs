@@ -32,6 +32,8 @@ private Color LabelMinorColor => Color.FromArgb(_colors.LabelMinorArgb);
 
 
 private Color InfoTextColor => Color.FromArgb(_colors.InfoTextArgb);
+
+// Couleur d’un overlay selon son index de slot
 private Color GetOverlaySlotColor(int slotIndex)
 {
     var arr = _colors.OverlaySlotArgb;
@@ -40,8 +42,14 @@ private Color GetOverlaySlotColor(int slotIndex)
     // fallback compat
     return Color.FromArgb(_colors.OverlayArgb);
 }
+        //
+        private sealed class ExportRenderContext
+        {
+            public string? HeaderTitle { get; init; }
+        }
 
-public SpectrumColorSettings GetSpectrumColorSettingsSnapshot()
+        //
+        public SpectrumColorSettings GetSpectrumColorSettingsSnapshot()
     => _colors ?? new SpectrumColorSettings();
 
 public void ApplySpectrumColorSettings(SpectrumColorSettings? colors)
@@ -3176,6 +3184,50 @@ private void ApplyCursorTheme()
             if (area == null || area.Name != "SpectrumArea")
                 return;
 
+            RectangleF plotForText = GetPlotRectPixels(chart, area);
+
+            if (isExport && chart.Tag is ExportRenderContext ctx && !string.IsNullOrWhiteSpace(ctx.HeaderTitle))
+            {
+                var g = e.ChartGraphics.Graphics;
+                var saved = g.Save();
+                g.ResetClip();
+
+                try
+                {
+                    if (!plotForText.IsEmpty)
+                    {
+                        var lines = ctx.HeaderTitle
+                            .Replace("\r\n", "\n")
+                            .Split('\n')
+                            .Select(l => l.Trim())
+                            .Where(l => l.Length > 0)
+                            .Take(3)
+                            .Select(l => l.Length > 50 ? l.Substring(0, 50) : l)
+                            .ToArray();
+
+                        if (lines.Length > 0)
+                        {
+                            using var titleFont = new Font(chart.Font.FontFamily, chart.Font.SizeInPoints * 1.45f, FontStyle.Bold);
+                            using var b = new SolidBrush(Color.Black);
+                            using var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
+
+                            float lineH = titleFont.GetHeight(g);
+                            float totalH = lineH * lines.Length;
+
+                            float y = plotForText.Top - totalH - (8f * sExport);
+                            if (y < 2f) y = 2f;
+
+                            for (int i = 0; i < lines.Length; i++)
+                            {
+                                var r = new RectangleF(plotForText.Left, y + i * lineH, plotForText.Width, lineH);
+                                g.DrawString(lines[i], titleFont, b, r, fmt);
+                            }
+                        }
+                    }
+                }
+                finally { g.Restore(saved); }
+            }
+
             /// ----------------------------
             // Dessin des marqueurs de curseur
             /// ----------------------------
@@ -3272,7 +3324,7 @@ private void ApplyCursorTheme()
                 // ---------------------------------------------------------
                 // Ligne SR/N/Overlap au dessus du graphe
                 // ---------------------------------------------------------
-                if (!string.IsNullOrWhiteSpace(_TopInfoLine))
+                if (!isExport && !string.IsNullOrWhiteSpace(_TopInfoLine))
                 {
                     var g = e.ChartGraphics.Graphics;
                     var saved = g.Save();
@@ -3470,7 +3522,52 @@ private void ApplyCursorTheme()
 
                 g.Restore(saved);
             }
+            //
+            if (isExport && !string.IsNullOrWhiteSpace(_TopInfoLine) && !plotForText.IsEmpty)
+            {
+                var g = e.ChartGraphics.Graphics;
+                var saved = g.Save();
+                g.ResetClip();
 
+                try
+                {
+                    // On construit 1 ou 2 lignes (TopInfo + THD)
+                    string? thdLine = null;
+                    if (_thdMeasuresEnabled)
+                    {
+                        string FormatHz(double hz) => (hz >= 1000.0) ? $"{hz / 1000.0:F0} kHz" : $"{hz:F0} Hz";
+                        string hpf = _thdUi.UseHPF ? FormatHz(_thdUi.FlowHz) : "OFF";
+                        string lpf = _thdUi.UseLPF ? FormatHz(_thdUi.FhighHz) : "OFF";
+                        thdLine = $"THD filter - HPF: {hpf}, LPF: {lpf}";
+                    }
+
+                    var lines = (thdLine == null) ? new[] { _TopInfoLine } : new[] { _TopInfoLine, thdLine };
+
+                    using var font = new Font(chart.Font.FontFamily, chart.Font.SizeInPoints * 0.95f, FontStyle.Regular);
+                    using var b = new SolidBrush(InfoTextColor);
+                    using var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
+
+                    float lineH = font.GetHeight(g);
+                    float totalH = lineH * lines.Length;
+
+                    // Bas du plot (dans le graphe, sans toucher aux labels d’axe)
+                    float y = plotForText.Bottom - totalH - (4f * sExport);
+                    if (y < plotForText.Top + 2f) y = plotForText.Top + 2f;
+
+                    // (optionnel) fond léger pour lisibilité
+                    // using var bg = new SolidBrush(Color.FromArgb(180, Color.White));
+                    // g.FillRectangle(bg, plotForText.Left, y - 2, plotForText.Width, totalH + 4);
+
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        var r = new RectangleF(plotForText.Left, y + i * lineH, plotForText.Width, lineH);
+                        g.DrawString(lines[i], font, b, r, fmt);
+                    }
+                }
+                finally { g.Restore(saved); }
+            }
+
+            //
             try
             {
                 DrawChartStatsPanel(e.ChartGraphics.Graphics, chart, area);
@@ -3570,7 +3667,7 @@ private void ApplyCursorTheme()
             }
         }
         //
-        public void ExportPng(string filePath, int scale = 2)
+        public void ExportPng(string filePath, int scale = 2, string? headerTitle = null)
         {
             RebuildStatsRowsFromLabels();
 
@@ -3585,37 +3682,37 @@ private void ApplyCursorTheme()
             // Uniformiser la taille des textes UNIQUEMENT SUR LE CLONE
             ApplyUniformExportScaling(clone, scale);
 
-            // IMPORTANT : si tu avais des CustomLabels, on les vire
-            var area = clone.ChartAreas["SpectrumArea"];
-            area.AxisX.CustomLabels.Clear();
-
-            // ✅ Le point clé : même formatage que le GUI (k au-delà de 1000, log décades, etc.)
+            // Même formatage chiffres/labels que la GUI
             clone.FormatNumber += ChartSpectrum_FormatNumber;
 
-            // Marge stats (déjà ok chez toi)
+            // Contexte export (titre user) — uniquement pour le clone
+            clone.Tag = new ExportRenderContext { HeaderTitle = headerTitle };
+
+            // Marge stats sur le clone (tu as déjà la version reservedScale qui marche)
             ApplyChartStatsMargin(clone, invalidate: false, reservedScale: scale);
 
             clone.PostPaint += ChartSpectrum_PostPaint;
 
             ChartExport.SavePngRendered(clone, filePath, dpi: 300);
 
+            // ===== helper local =====
             static void ApplyUniformExportScaling(System.Windows.Forms.DataVisualization.Charting.Chart c, int s)
             {
                 if (s <= 1) return;
 
                 c.Font = new Font(c.Font.FontFamily, c.Font.SizeInPoints * s, c.Font.Style);
 
-                foreach (var a in c.ChartAreas)
+                foreach (var area in c.ChartAreas)
                 {
-                    if (a.AxisX.LabelStyle.Font != null)
-                        a.AxisX.LabelStyle.Font = Scale(a.AxisX.LabelStyle.Font, s);
-                    if (a.AxisY.LabelStyle.Font != null)
-                        a.AxisY.LabelStyle.Font = Scale(a.AxisY.LabelStyle.Font, s);
+                    if (area.AxisX.LabelStyle.Font != null)
+                        area.AxisX.LabelStyle.Font = Scale(area.AxisX.LabelStyle.Font, s);
+                    if (area.AxisY.LabelStyle.Font != null)
+                        area.AxisY.LabelStyle.Font = Scale(area.AxisY.LabelStyle.Font, s);
 
-                    if (a.AxisX.TitleFont != null)
-                        a.AxisX.TitleFont = Scale(a.AxisX.TitleFont, s);
-                    if (a.AxisY.TitleFont != null)
-                        a.AxisY.TitleFont = Scale(a.AxisY.TitleFont, s);
+                    if (area.AxisX.TitleFont != null)
+                        area.AxisX.TitleFont = Scale(area.AxisX.TitleFont, s);
+                    if (area.AxisY.TitleFont != null)
+                        area.AxisY.TitleFont = Scale(area.AxisY.TitleFont, s);
                 }
 
                 foreach (var leg in c.Legends)
@@ -3630,6 +3727,7 @@ private void ApplyCursorTheme()
                     => new Font(f.FontFamily, f.SizeInPoints * s, f.Style);
             }
         }
+
 
         //
         //
