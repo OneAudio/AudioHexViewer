@@ -381,9 +381,9 @@ namespace AudioHexViewer
 
             spectrumControl?.SetGlobalSampleSize(analysisSampleSize);
             spectrumControl?.UpdateHopSamples(analysisHopSamples);
-         }
+        }
         //
-        
+
         private void SetAnalysisSampleSize(int nSamples)
         {
             if (nSamples < 2048) nSamples = 2048;
@@ -439,7 +439,7 @@ namespace AudioHexViewer
                     try
                     {
                         SetAnalysisSampleSize(chosen);
-                        UpdateSampleSizeMenuChecks();                       
+                        UpdateSampleSizeMenuChecks();
                     }
                     finally
                     {
@@ -451,8 +451,8 @@ namespace AudioHexViewer
             }
         }
         //
-                private readonly (string Label, double Value)[] _overlapOptions =
-        {
+        private readonly (string Label, double Value)[] _overlapOptions =
+{
             ("0%", 0.0),
             ("50%", 0.5),
             ("75%", 0.75),
@@ -1256,7 +1256,7 @@ namespace AudioHexViewer
         //
         private void LoadUiSettingsFromSettingsFiles()
         {
-      
+
             // 1) Essai du nouveau fichier SessionSettings.json
             var session = SessionSettingsManager.LoadOrNull();
             if (session != null && session.Ui != null)
@@ -1732,12 +1732,12 @@ namespace AudioHexViewer
                         spectrumControl.UpdateHopSamples(analysisHopSamples);
                     }
 
-                    
+
                     // Mode continu : pas de squence Once
                     histOnceActive = false;
                     histOnceTargetSamples = 0;
                     histOnceAccumSamples = 0;
-                    
+
                     // -------------------------------------------
 
                     // Dmarrage de la capture audio
@@ -3243,7 +3243,7 @@ namespace AudioHexViewer
             BeginInvoke(new Action(ApplyShowGraphsState));
         }
 
-         private void splitContainer1_Panel2_Paint(object sender, PaintEventArgs e)
+        private void splitContainer1_Panel2_Paint(object sender, PaintEventArgs e)
         {
         }
         private void lblFormatInfo_Click(object sender, EventArgs e)
@@ -3276,16 +3276,16 @@ namespace AudioHexViewer
                     slotItem.Text = $"Slot {i + 1}";
                 else
                     if (!srKnown)
-                    {
-                        // SR pas encore connu => on n’affiche pas "incompatible"
-                        slotItem.Text = $"Slot {i + 1}: {st.name}";
-                    }
-                    else
-                    {
-                        slotItem.Text = st.compatible
-                            ? $"Slot {i + 1}: {st.name}"
-                            : $"Slot {i + 1}: {st.name} (incompatible)";
-                    }
+                {
+                    // SR pas encore connu => on n’affiche pas "incompatible"
+                    slotItem.Text = $"Slot {i + 1}: {st.name}";
+                }
+                else
+                {
+                    slotItem.Text = st.compatible
+                        ? $"Slot {i + 1}: {st.name}"
+                        : $"Slot {i + 1}: {st.name} (incompatible)";
+                }
 
 
                 // checkbox Enabled reflète l’état réel
@@ -3341,7 +3341,59 @@ namespace AudioHexViewer
             btnStart.PerformClick();          // stop READ (ta logique existante)
         }
 
+        private void menuExportGraphPng_Click(object sender, EventArgs e)
+        {
+            ExportActiveGraphToPng();
+        }
+        //
+        private void ExportActiveGraphToPng()
+        {
+            // Détermine quel onglet est affiché (Spectrum vs Histogram)
+            // Dans ton projet, tu as tabAnalysis et tabSpectrum.
+            bool isSpectrum = (tabAnalysis.SelectedTab == tabSpectrum);
 
+            if (isSpectrum && spectrumControl == null)
+            {
+                MessageBox.Show("Le spectre n'est pas initialisé.", "Export PNG",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (!isSpectrum && histogramControl == null)
+            {
+                MessageBox.Show("L'histogramme n'est pas initialisé.", "Export PNG",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using var sfd = new SaveFileDialog();
+            sfd.Filter = "PNG (*.png)|*.png";
+            sfd.DefaultExt = "png";
+
+            string kind = isSpectrum ? "Spectrum" : "Histogram";
+            sfd.FileName = $"AudioHexViewer_{kind}_{DateTime.Now:yyyyMMdd_HHmmss}.png";
+
+            if (sfd.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            try
+            {
+                // Qualité recommandée :
+                // scale = 2 => très bon rendu, taille de fichier généralement raisonnable
+                const int scale = 2;
+
+                if (isSpectrum)
+                    spectrumControl!.ExportPng(sfd.FileName, scale);
+                else
+                    histogramControl!.ExportPng(sfd.FileName, scale);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, "Export PNG", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+        //
+        //
 
     }
 

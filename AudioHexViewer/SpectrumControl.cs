@@ -320,9 +320,9 @@ private void ApplyCursorTheme()
             return db.ToString("F" + decimals);
         }
         //
-        private RectangleF GetPlotRectPixels(ChartArea area)
+        private static RectangleF GetPlotRectPixels(Chart chart, ChartArea area)
         {
-            var cr = chartSpectrum.ClientRectangle;
+            var cr = chart.ClientRectangle;
             if (cr.Width <= 0 || cr.Height <= 0) return RectangleF.Empty;
 
             // Rectangle externe de la ChartArea (en pixels)
@@ -350,6 +350,7 @@ private void ApplyCursorTheme()
 
             return inner;
         }
+
         //
         // Échelle des labels secondaires X et Y (95% de la taille normale)
         private const float MinorLabelScale = 0.9f;
@@ -1112,6 +1113,51 @@ private void ApplyCursorTheme()
 
             _lblCursorDeltaInfo.Location = new Point(xDelta, y + 8); // centré verticalement
         }
+        //
+        private void DrawCursorInfoOverlay(Graphics g, Chart chart)
+        {
+            // Si tes labels n’existent pas, rien à faire
+            if (_lblCursorLInfo == null || _lblCursorRInfo == null || _lblCursorDeltaInfo == null)
+                return;
+
+            // Si pas visibles à l’écran, pas besoin de dessiner
+            bool anyVisible = _lblCursorLInfo.Visible || _lblCursorRInfo.Visible || _lblCursorDeltaInfo.Visible;
+            if (!anyVisible)
+                return;
+
+            // Même logique que PositionCursorInfoLabels() mais en "draw" dans l'image export
+            const int yOffsetFromBottom = 40;
+            const int xOffsetFromRight = 450;
+
+            int y = Math.Max(0, chart.ClientSize.Height - yOffsetFromBottom);
+            int xStart = Math.Max(6, chart.ClientSize.Width - xOffsetFromRight);
+
+            var saved = g.Save();
+            g.ResetClip();
+
+            using var font = new Font("Segoe UI", 8.5f);
+
+            // Lignes C1/C2
+            if (_lblCursorLInfo.Visible && !string.IsNullOrWhiteSpace(_lblCursorLInfo.Text))
+                g.DrawString(_lblCursorLInfo.Text, font, new SolidBrush(_lblCursorLInfo.ForeColor), xStart, y);
+
+            if (_lblCursorRInfo.Visible && !string.IsNullOrWhiteSpace(_lblCursorRInfo.Text))
+                g.DrawString(_lblCursorRInfo.Text, font, new SolidBrush(_lblCursorRInfo.ForeColor), xStart, y + 16);
+
+            // Delta un peu à droite (reprend ton calcul PreferredWidth)
+            int w1 = _lblCursorLInfo.PreferredWidth;
+            int w2 = _lblCursorRInfo.PreferredWidth;
+            int xDelta = xStart + Math.Max(w1, w2) + 14;
+
+            // Clamp dans la zone
+            int maxX = Math.Max(6, chart.ClientSize.Width - _lblCursorDeltaInfo.PreferredWidth - 6);
+            if (xDelta > maxX) xDelta = maxX;
+
+            if (_lblCursorDeltaInfo.Visible && !string.IsNullOrWhiteSpace(_lblCursorDeltaInfo.Text))
+                g.DrawString(_lblCursorDeltaInfo.Text, font, new SolidBrush(_lblCursorDeltaInfo.ForeColor), xDelta, y + 8);
+
+            g.Restore(saved);
+        }
 
         //
         // ---------------- CURSORS ----------------
@@ -1481,10 +1527,15 @@ private void ApplyCursorTheme()
         //
         private void ApplyChartStatsMargin()
         {
-            var area = chartSpectrum.ChartAreas.FirstOrDefault(a => a.Name == "SpectrumArea");
+            ApplyChartStatsMargin(chartSpectrum, invalidate: true);
+        }
+
+        private void ApplyChartStatsMargin(Chart chart, bool invalidate)
+        {
+            var area = chart.ChartAreas.FirstOrDefault(a => a.Name == "SpectrumArea");
             if (area == null) return;
 
-            int w = chartSpectrum.ClientSize.Width;
+            int w = chart.ClientSize.Width;
             if (w <= 0) return;
 
             int reserved = ChartStatsWidthPx;
@@ -1509,8 +1560,10 @@ private void ApplyCursorTheme()
 
             area.Position = new ElementPosition(left, top, width, height);
 
-            chartSpectrum.Invalidate();
+            if (invalidate)
+                chart.Invalidate();
         }
+
 
         private string BuildChartStatsText(bool left)
         {
@@ -1523,12 +1576,12 @@ private void ApplyCursorTheme()
             return $"{rms}\n{peak}\n{meas}";
         }
 
-        void DrawChartStatsPanel(Graphics g, ChartArea area)
+        private void DrawChartStatsPanel(Graphics g, Chart chart, ChartArea area)
         {
-            var plot = GetPlotRectPixels(area);
+            var plot = GetPlotRectPixels(chart, area);
             if (plot.IsEmpty) return;
 
-            var cr = chartSpectrum.ClientRectangle;
+            var cr = chart.ClientRectangle;
 
             float panelLeft = plot.Right + 8f;
             float panelRight = cr.Right - 6f;
@@ -1549,12 +1602,12 @@ private void ApplyCursorTheme()
             float xL = rect.X + pad;
             float xR = rect.Right - pad;
 
-            // Polices (NE PAS disposer chartSpectrum.Font)
-            var fontBase = chartSpectrum.Font;
+            // Polices
+            var fontBase = chart.Font;
             using var fontHeader = new Font(fontBase, FontStyle.Bold);
             using var fontBold = new Font(fontBase, FontStyle.Bold);
             using var fontStrong = new Font(fontBase.FontFamily, fontBase.SizeInPoints + 1.5f, FontStyle.Bold);
-            using var brushStrong = new SolidBrush(Color.DimGray); // très léger "fond"
+            using var brushStrong = new SolidBrush(Color.DimGray);
             using var fontHarm = new Font(fontBase.FontFamily, Math.Max(6f, fontBase.SizeInPoints - 1.0f), FontStyle.Regular);
 
             using var brushText = new SolidBrush(Color.DimGray);
@@ -3101,6 +3154,8 @@ private void ApplyCursorTheme()
 
         private void ChartSpectrum_PostPaint(object sender, ChartPaintEventArgs e)
         {
+            var chart = (System.Windows.Forms.DataVisualization.Charting.Chart)sender;
+
             // IMPORTANT: ne pas comparer les instances (e.ChartElement != area peut être vrai même pour la bonne zone)
             var area = e.ChartElement as ChartArea;
             if (area == null || area.Name != "SpectrumArea")
@@ -3153,7 +3208,7 @@ private void ApplyCursorTheme()
                     float xLeftPlot = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Minimum);
 
                     // Style (comme sous-labels X): police plus petite + gris
-                    Font baseFont = area.AxisY.LabelStyle.Font ?? chartSpectrum.Font;
+                    Font baseFont = area.AxisY.LabelStyle.Font ?? chart.Font;
                     using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
                     using (Brush minorBrush = new SolidBrush(LabelMinorColor))
                     using (Pen p = new Pen(LabelMinorColor, 1.0f))
@@ -3210,7 +3265,10 @@ private void ApplyCursorTheme()
                             var g = e.ChartGraphics.Graphics;
                             var saved = g.Save();
                             g.ResetClip();
-                            TextRenderer.DrawText(g, txt, minorFont, new Point((int)xText, (int)yText), LabelMinorColor, TextFormatFlags.NoPadding);
+                            //TextRenderer.DrawText(g, txt, minorFont, new Point((int)xText, (int)yText), LabelMinorColor, TextFormatFlags.NoPadding);
+                            using var b = new SolidBrush(LabelMinorColor);
+                            e.ChartGraphics.Graphics.DrawString(txt, minorFont, b, xText, yText);
+
                             g.Restore(saved);
 
                             lastLabelBottom = yText + sz.Height;
@@ -3232,7 +3290,7 @@ private void ApplyCursorTheme()
                     try
                     {
                         // Font : même famille/taille que le titre d’axe X si défini, sinon chart font
-                        Font titleFont = area.AxisX.TitleFont ?? chartSpectrum.Font;
+                        Font titleFont = area.AxisX.TitleFont ?? chart.Font;
 
                         // Coordonnées "absolues" (pixels) du bas du ChartArea
                         // area.Position est en % (0..100) du Chart
@@ -3316,7 +3374,7 @@ private void ApplyCursorTheme()
                     float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
 
                     // Police "sous-label" : ~ moitié de la taille des labels d’axe
-                    Font baseFont = area.AxisX.LabelStyle.Font ?? chartSpectrum.Font;
+                    Font baseFont = area.AxisX.LabelStyle.Font ?? chart.Font;
                     using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
                     using (Brush minorBrush = new SolidBrush(LabelMinorColor))
                     {
@@ -3361,7 +3419,9 @@ private void ApplyCursorTheme()
                                 if (xText <= lastLabelRight + 4f)
                                     continue;
 
-                                TextRenderer.DrawText(e.ChartGraphics.Graphics, txt, minorFont, new Point((int)xText, (int)yText), LabelMinorColor, TextFormatFlags.NoPadding);
+                                using var b = new SolidBrush(LabelMinorColor);
+                                e.ChartGraphics.Graphics.DrawString(txt, minorFont, b, xText, yText);
+
                                 lastLabelRight = xText + sz.Width;
                             }
                         }
@@ -3396,7 +3456,7 @@ private void ApplyCursorTheme()
                         {
                             minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
 
-                            Font baseFont = area.AxisX.LabelStyle.Font ?? chartSpectrum.Font;
+                            Font baseFont = area.AxisX.LabelStyle.Font ?? chart.Font;
                             using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
                             using (Brush minorBrush = new SolidBrush(LabelMinorColor))
                             {
@@ -3442,7 +3502,8 @@ private void ApplyCursorTheme()
                                         continue;
 
                                     // Dessin dans la zone de tracé (pas besoin de ResetClip ici)
-                                    TextRenderer.DrawText(e.ChartGraphics.Graphics, txt, minorFont, new Point((int)xText, (int)yText), LabelMinorColor, TextFormatFlags.NoPadding);
+                                    using var b = new SolidBrush(LabelMinorColor);
+                                    e.ChartGraphics.Graphics.DrawString(txt, minorFont, b, xText, yText);
                                     lastLabelRight = xText + sz.Width;
                                 }
                             }
@@ -3480,14 +3541,24 @@ private void ApplyCursorTheme()
 
                 g.Restore(saved);
             }
+
             try
             {
-                DrawChartStatsPanel(e.ChartGraphics.Graphics, area);
+                DrawChartStatsPanel(e.ChartGraphics.Graphics, chart, area);
+
+                // Les labels WinForms existent déjà à l'écran.
+                // On ne dessine l'overlay texte que sur le chart "clone" (export PNG).
+                if (!ReferenceEquals(chart, chartSpectrum))
+                {
+                    DrawCursorInfoOverlay(e.ChartGraphics.Graphics, chart);
+                }
+
             }
             catch
             {
                 // sécurité : ne jamais laisser un crash UI tuer l'application
             }
+
 
         }
         private void lblRightMeas_Click(object sender, EventArgs e)
@@ -3570,6 +3641,33 @@ private void ApplyCursorTheme()
                 foreach (var ln in meas.Replace("\r\n", "\n").Split('\n'))
                     AddLine(ln);
             }
+        }
+        //
+        public void ExportPng(string filePath, int scale = 2)
+        {
+            // 1) Reconstruit les lignes du panneau stats (important pour l’export)
+            RebuildStatsRowsFromLabels();
+
+            // 2) Clone du chart (SaveImage propre)
+            using var clone = ChartExport.CloneChart(chartSpectrum);
+
+            // Taille export : x2 = bon compromis qualité/poids
+            clone.Size = new Size(chartSpectrum.Width * scale, chartSpectrum.Height * scale);
+
+            // Fond blanc (évite le noir/transparence)
+            clone.BackColor = Color.White;
+            foreach (var a in clone.ChartAreas)
+                a.BackColor = Color.White;
+
+            // 3) Appliquer la même marge stats sur LE CLONE (sinon le panneau se retrouve au mauvais endroit)
+            ApplyChartStatsMargin(clone, invalidate: false);
+
+            // 4) Re-brancher le PostPaint (sur le clone)
+            clone.PostPaint += ChartSpectrum_PostPaint;
+
+
+            // 5) Rendu PNG
+            ChartExport.SavePngRendered(clone, filePath, dpi: 300);
         }
 
 

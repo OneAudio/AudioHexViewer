@@ -45,6 +45,9 @@ namespace AudioHexViewer
             menuSampleSize = new ToolStripMenuItem();
             menuOverlap = new ToolStripMenuItem();
             menuBuffer = new ToolStripMenuItem();
+            menuMeasures = new ToolStripMenuItem();
+            menuEnableThd = new ToolStripMenuItem();
+            menuThdSettings = new ToolStripMenuItem();
             splitMain = new SplitContainer();
             lblFormatInfo = new Label();
             label3 = new Label();
@@ -74,9 +77,8 @@ namespace AudioHexViewer
             tabSpectrum = new TabPage();
             txtLeft = new RichTextBox();
             txtRight = new RichTextBox();
-            menuMeasures = new ToolStripMenuItem();
-            menuEnableThd = new ToolStripMenuItem();
-            menuThdSettings = new ToolStripMenuItem();
+            exportToolStripMenuItem = new ToolStripMenuItem();
+            menuExportGraphPng = new ToolStripMenuItem();
             menuStrip1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)splitMain).BeginInit();
             splitMain.Panel1.SuspendLayout();
@@ -99,7 +101,7 @@ namespace AudioHexViewer
             // menuStrip1
             // 
             menuStrip1.AutoSize = false;
-            menuStrip1.Items.AddRange(new ToolStripItem[] { menuDeviceInfo, menuHelp, menuData, menuSampleSize, menuOverlap, menuBuffer, menuMeasures });
+            menuStrip1.Items.AddRange(new ToolStripItem[] { menuDeviceInfo, menuHelp, menuData, menuSampleSize, menuOverlap, menuBuffer, menuMeasures, exportToolStripMenuItem });
             menuStrip1.Location = new Point(0, 0);
             menuStrip1.Name = "menuStrip1";
             menuStrip1.Size = new Size(1138, 25);
@@ -159,32 +161,6 @@ namespace AudioHexViewer
             menuData.Size = new Size(43, 21);
             menuData.Text = "Data";
             // 
-            //
-            // 
-            // menuMeasures
-            // 
-            menuMeasures.Alignment = ToolStripItemAlignment.Right;
-            menuMeasures.DropDownItems.AddRange(new ToolStripItem[] { menuEnableThd, menuThdSettings });
-            menuMeasures.Name = "menuMeasures";
-            menuMeasures.Size = new Size(73, 21);
-            menuMeasures.Text = "Measures";
-            // 
-            // menuThdSettings
-            // 
-            menuThdSettings.Name = "menuThdSettings";
-            menuThdSettings.Size = new Size(180, 22);
-            menuThdSettings.Text = "THD Settings...";
-            menuThdSettings.Click += menuThdSettings_Click;
-            // 
-            // menuEnableThd
-            // 
-            menuEnableThd.Name = "menuEnableThd";
-            menuEnableThd.Size = new Size(180, 22);
-            menuEnableThd.Text = "Enable THD";
-            menuEnableThd.CheckOnClick = true;
-            menuEnableThd.Checked = false;
-            menuEnableThd.CheckedChanged += menuEnableThd_CheckedChanged;
-            //
             // menuShowAllFormats
             // 
             menuShowAllFormats.Name = "menuShowAllFormats";
@@ -222,6 +198,29 @@ namespace AudioHexViewer
             menuBuffer.Name = "menuBuffer";
             menuBuffer.Size = new Size(51, 21);
             menuBuffer.Text = "Buffer";
+            // 
+            // menuMeasures
+            // 
+            menuMeasures.Alignment = ToolStripItemAlignment.Right;
+            menuMeasures.DropDownItems.AddRange(new ToolStripItem[] { menuEnableThd, menuThdSettings });
+            menuMeasures.Name = "menuMeasures";
+            menuMeasures.Size = new Size(69, 21);
+            menuMeasures.Text = "Measures";
+            // 
+            // menuEnableThd
+            // 
+            menuEnableThd.CheckOnClick = true;
+            menuEnableThd.Name = "menuEnableThd";
+            menuEnableThd.Size = new Size(151, 22);
+            menuEnableThd.Text = "Enable THD";
+            menuEnableThd.CheckedChanged += menuEnableThd_CheckedChanged;
+            // 
+            // menuThdSettings
+            // 
+            menuThdSettings.Name = "menuThdSettings";
+            menuThdSettings.Size = new Size(151, 22);
+            menuThdSettings.Text = "THD Settings...";
+            menuThdSettings.Click += menuThdSettings_Click;
             // 
             // splitMain
             // 
@@ -571,6 +570,20 @@ namespace AudioHexViewer
             txtRight.Text = "";
             txtRight.Visible = false;
             // 
+            // exportToolStripMenuItem
+            // 
+            exportToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { menuExportGraphPng });
+            exportToolStripMenuItem.Name = "exportToolStripMenuItem";
+            exportToolStripMenuItem.Size = new Size(53, 21);
+            exportToolStripMenuItem.Text = "Export";
+            // 
+            // menuExportGraphPng
+            // 
+            menuExportGraphPng.Name = "menuExportGraphPng";
+            menuExportGraphPng.Size = new Size(180, 22);
+            menuExportGraphPng.Text = "Graph - PNG";
+            menuExportGraphPng.Click += menuExportGraphPng_Click;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
@@ -646,7 +659,7 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuMeasures;
         private ToolStripMenuItem menuThdSettings;
         private ToolStripMenuItem menuEnableThd;
-
-
+        private ToolStripMenuItem exportToolStripMenuItem;
+        private ToolStripMenuItem menuExportGraphPng;
     }
 }

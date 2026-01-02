@@ -791,6 +791,23 @@ namespace AudioHexViewer
                 lblRightMinMax.Text = "Min/Max: -";
             }
         }
-               
+        //
+        public void ExportPng(string filePath, int scale = 2)
+        {
+            using var clone = ChartExport.CloneChart(chartHistogram);
+
+            clone.Size = new Size(chartHistogram.Width * scale, chartHistogram.Height * scale);
+
+            clone.BackColor = Color.White;
+            foreach (var area in clone.ChartAreas)
+                area.BackColor = Color.White;
+
+            // si tu as un PostPaint histogramme :
+            // clone.PostPaint += chartHistogram_PostPaint;
+
+            ChartExport.SavePngRendered(clone, filePath, dpi: 300);
+        }
+
+        //
     }
 }
