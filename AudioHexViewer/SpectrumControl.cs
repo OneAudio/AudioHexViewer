@@ -1116,18 +1116,24 @@ private void ApplyCursorTheme()
         //
         private void DrawCursorInfoOverlay(Graphics g, Chart chart)
         {
-            // Si tes labels n’existent pas, rien à faire
             if (_lblCursorLInfo == null || _lblCursorRInfo == null || _lblCursorDeltaInfo == null)
                 return;
 
-            // Si pas visibles à l’écran, pas besoin de dessiner
             bool anyVisible = _lblCursorLInfo.Visible || _lblCursorRInfo.Visible || _lblCursorDeltaInfo.Visible;
             if (!anyVisible)
                 return;
 
-            // Même logique que PositionCursorInfoLabels() mais en "draw" dans l'image export
-            const int yOffsetFromBottom = 40;
-            const int xOffsetFromRight = 450;
+            // === SCALE EXPORT ===
+            // chart = clone en export, chartSpectrum = chart UI
+            float s = 1f;
+            if (chartSpectrum != null && chartSpectrum.Width > 0)
+                s = (float)chart.Width / chartSpectrum.Width;
+
+            // Même logique que PositionCursorInfoLabels(), mais scale-aware
+            int yOffsetFromBottom = (int)Math.Round(40f * s);
+            int xOffsetFromRight = (int)Math.Round(450f * s);
+            int lineStep = (int)Math.Round(16f * s);
+            int padDelta = (int)Math.Round(14f * s);
 
             int y = Math.Max(0, chart.ClientSize.Height - yOffsetFromBottom);
             int xStart = Math.Max(6, chart.ClientSize.Width - xOffsetFromRight);
@@ -1135,29 +1141,32 @@ private void ApplyCursorTheme()
             var saved = g.Save();
             g.ResetClip();
 
-            using var font = new Font("Segoe UI", 8.5f);
+            using var font = new Font("Segoe UI", 8.5f * s, FontStyle.Regular);
 
             // Lignes C1/C2
             if (_lblCursorLInfo.Visible && !string.IsNullOrWhiteSpace(_lblCursorLInfo.Text))
-                g.DrawString(_lblCursorLInfo.Text, font, new SolidBrush(_lblCursorLInfo.ForeColor), xStart, y);
+                using (var b = new SolidBrush(_lblCursorLInfo.ForeColor))
+                    g.DrawString(_lblCursorLInfo.Text, font, b, xStart, y);
 
             if (_lblCursorRInfo.Visible && !string.IsNullOrWhiteSpace(_lblCursorRInfo.Text))
-                g.DrawString(_lblCursorRInfo.Text, font, new SolidBrush(_lblCursorRInfo.ForeColor), xStart, y + 16);
+                using (var b = new SolidBrush(_lblCursorRInfo.ForeColor))
+                    g.DrawString(_lblCursorRInfo.Text, font, b, xStart, y + lineStep);
 
-            // Delta un peu à droite (reprend ton calcul PreferredWidth)
-            int w1 = _lblCursorLInfo.PreferredWidth;
-            int w2 = _lblCursorRInfo.PreferredWidth;
-            int xDelta = xStart + Math.Max(w1, w2) + 14;
+            // Delta à droite
+            int w1 = (int)g.MeasureString(_lblCursorLInfo.Text ?? "", font).Width;
+            int w2 = (int)g.MeasureString(_lblCursorRInfo.Text ?? "", font).Width;
+            int xDelta = xStart + Math.Max(w1, w2) + padDelta;
 
-            // Clamp dans la zone
-            int maxX = Math.Max(6, chart.ClientSize.Width - _lblCursorDeltaInfo.PreferredWidth - 6);
+            int maxX = Math.Max(6, chart.ClientSize.Width - (int)g.MeasureString(_lblCursorDeltaInfo.Text ?? "", font).Width - 6);
             if (xDelta > maxX) xDelta = maxX;
 
             if (_lblCursorDeltaInfo.Visible && !string.IsNullOrWhiteSpace(_lblCursorDeltaInfo.Text))
-                g.DrawString(_lblCursorDeltaInfo.Text, font, new SolidBrush(_lblCursorDeltaInfo.ForeColor), xDelta, y + 8);
+                using (var b = new SolidBrush(_lblCursorDeltaInfo.ForeColor))
+                    g.DrawString(_lblCursorDeltaInfo.Text, font, b, xDelta, y + lineStep / 2);
 
             g.Restore(saved);
         }
+
 
         //
         // ---------------- CURSORS ----------------
@@ -3151,12 +3160,18 @@ private void ApplyCursorTheme()
         {
 
         }
-
+        //
         private void ChartSpectrum_PostPaint(object sender, ChartPaintEventArgs e)
         {
             var chart = (System.Windows.Forms.DataVisualization.Charting.Chart)sender;
 
-            // IMPORTANT: ne pas comparer les instances (e.ChartElement != area peut être vrai même pour la bonne zone)
+            bool isExport = !ReferenceEquals(chart, chartSpectrum);
+
+            // Facteur géométrique (utile pour triangles/ticks), UI=1, export≈scale
+            float sExport = 1f;
+            if (isExport && chartSpectrum != null && chartSpectrum.Width > 0)
+                sExport = (float)chart.Width / chartSpectrum.Width;
+
             var area = e.ChartElement as ChartArea;
             if (area == null || area.Name != "SpectrumArea")
                 return;
@@ -3166,20 +3181,19 @@ private void ApplyCursorTheme()
             /// ----------------------------
             void DrawDownTriangle(double f, double db, Color color)
             {
-                // Position exacte en pixels
                 float x = (float)area.AxisX.ValueToPixelPosition(f);
                 float y = (float)area.AxisY.ValueToPixelPosition(db);
 
-                // Triangle inversé : pointe basse sur la courbe
-                const float h = 10f;  // hauteur triangle (px)
-                const float w = 12f;  // largeur triangle (px)
+                // Scale géométrique pour export (sinon triangle "petit" en x2)
+                float h = 10f * sExport;
+                float w = 12f * sExport;
 
                 var pts = new[]
                 {
-                new PointF(x, y),              // pointe basse (sur la courbe)
-                new PointF(x - w/2f, y - h),    // haut gauche
-                new PointF(x + w/2f, y - h)     // haut droit
-            };
+            new PointF(x, y),
+            new PointF(x - w/2f, y - h),
+            new PointF(x + w/2f, y - h)
+        };
 
                 using var brush = new SolidBrush(Color.FromArgb(220, color));
                 e.ChartGraphics.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
@@ -3192,9 +3206,8 @@ private void ApplyCursorTheme()
             if (_cursorMarkRVisible)
                 DrawDownTriangle(_cursorMarkRFreq, _cursorMarkRDb, _cursorMarkRColor);
 
-
             // ----------------------------
-            // Y : ticks + labels mineurs (5 sous-divisions par majeur) - toujours actif
+            // Y : ticks + labels mineurs
             // ----------------------------
             {
                 double yMajor = area.AxisY.MajorGrid.Interval;
@@ -3207,149 +3220,103 @@ private void ApplyCursorTheme()
 
                     float xLeftPlot = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Minimum);
 
-                    // Style (comme sous-labels X): police plus petite + gris
                     Font baseFont = area.AxisY.LabelStyle.Font ?? chart.Font;
                     using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
-                    using (Brush minorBrush = new SolidBrush(LabelMinorColor))
                     using (Pen p = new Pen(LabelMinorColor, 1.0f))
                     {
-                        const float tickLenLeft = 5f;   // longueur vers la gauche (extérieur)
-                        const float gap = 1f;           // petit espace avant l’axe
-                        const float margin = 8f;   // marge texte-axe
+                        float tickLenLeft = 5f * sExport;
+                        float gap = 1f * sExport;
+                        float margin = 8f * sExport;
 
-                        // Anti-chevauchement vertical simple
                         float lastLabelBottom = float.NegativeInfinity;
 
-                        // Dernier tick mineur <= yMax, mais ancré sur yMin (et pas sur 0)
                         double yStart = yMin + Math.Floor((yMax - yMin) / yMinor) * yMinor;
-
-                        // Ancrage d'index sur yMin (cohérent avec IntervalOffset = yMin)
                         double y0 = yMin;
-
-
 
                         int minorPerMajor = (int)Math.Round(yMajor / yMinor);
                         if (minorPerMajor <= 0) minorPerMajor = 5;
 
                         for (double y = yStart; y >= yMin - 1e-9; y -= yMinor)
                         {
-                            // skip majeurs
-                            // Skip si on tombe sur un majeur : on teste l'index (y - y0)/yMinor
                             int idx = (int)Math.Round((y - y0) / yMinor);
-
-                            // modulo robuste (si idx négatif)
                             int m = idx % minorPerMajor;
                             if (m < 0) m += minorPerMajor;
-
-                            // Skip si c'est un majeur
-                            if (m == 0)
-                                continue;
-
-
+                            if (m == 0) continue;
 
                             float yPix = (float)area.AxisY.ValueToPixelPosition(y);
 
-                            // Tick
                             e.ChartGraphics.Graphics.DrawLine(p, xLeftPlot - gap, yPix, xLeftPlot - gap - tickLenLeft, yPix);
 
-                            // Texte (à gauche de l’axe)
                             string txt = FormatDbMinor(y, yMinor);
 
                             SizeF sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
-
                             float xText = xLeftPlot - sz.Width - margin;
                             float yText = yPix - sz.Height / 2f;
 
-                            if (yText <= lastLabelBottom + 2f) continue;
+                            if (yText <= lastLabelBottom + 2f * sExport) continue;
 
                             var g = e.ChartGraphics.Graphics;
                             var saved = g.Save();
                             g.ResetClip();
-                            //TextRenderer.DrawText(g, txt, minorFont, new Point((int)xText, (int)yText), LabelMinorColor, TextFormatFlags.NoPadding);
+
                             using var b = new SolidBrush(LabelMinorColor);
-                            e.ChartGraphics.Graphics.DrawString(txt, minorFont, b, xText, yText);
+                            g.DrawString(txt, minorFont, b, xText, yText);
 
                             g.Restore(saved);
 
                             lastLabelBottom = yText + sz.Height;
                         }
-
                     }
                 }
+
                 // ---------------------------------------------------------
-                // Ligne SR/N/Overlap au dessus du graphe, ALIGNÉE EN HAUTEUR avec AxisX.Title ("Frequency (Hz)")
+                // Ligne SR/N/Overlap au dessus du graphe
                 // ---------------------------------------------------------
                 if (!string.IsNullOrWhiteSpace(_TopInfoLine))
                 {
                     var g = e.ChartGraphics.Graphics;
-
-                    // On sort du clip de la zone de tracé, car on dessine dans la marge (zone du titre d’axe)
-                    var savedClip = g.Clip;
+                    var saved = g.Save();
                     g.ResetClip();
 
                     try
                     {
-                        // Font : même famille/taille que le titre d’axe X si défini, sinon chart font
+                        RectangleF plot = GetPlotRectPixels(chart, area);
+                        if (plot.IsEmpty) return;
+
+                        // IMPORTANT : ici on NE multiplie PAS par sExport.
+                        // En export, les fonts du clone sont déjà agrandies dans ExportPng().
                         Font titleFont = area.AxisX.TitleFont ?? chart.Font;
 
-                        // Coordonnées "absolues" (pixels) du bas du ChartArea
-                        // area.Position est en % (0..100) du Chart
-                        var pos = area.Position;
+                        float y = plot.Top - titleFont.GetHeight(g) - 2f * sExport;
+                        if (y < 2f) y = 2f;
 
-                        // bottom-left du ChartArea en pixels
-                        //PointF bl = e.ChartGraphics.GetAbsolutePoint(new PointF(pos.X, pos.Y + pos.Height));
-                        // Y : juste AU-DESSUS de la zone de tracé (plot)
-                        float yPlotTop = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
-                        float y = yPlotTop - titleFont.Height - 2f;
-
-                        // top-left du ChartArea en pixels (utile pour obtenir x)
-                        PointF tl = e.ChartGraphics.GetAbsolutePoint(new PointF(pos.X, pos.Y));
-
-                        // Y : on se place sur la "ligne" du titre d’axe X :
-                        // approximativement 1 hauteur de font au-dessus du bas du ChartArea.
-                        //float y = bl.Y - titleFont.Height - 2f;
-
-                        // X : à gauche, dans la même bande que le titre d’axe
-                        float x = tl.X + 110f;
+                        float xLeft = plot.Left;
 
                         using (Brush b = new SolidBrush(InfoTextColor))
                         {
-                            g.DrawString(_TopInfoLine, titleFont, b, x, y);
+                            g.DrawString(_TopInfoLine, titleFont, b, xLeft, y);
 
-                            // ---- Coin droit : infos filtres THD (si THD active) ----
                             if (_thdMeasuresEnabled)
                             {
-                                string FormatHz(double hz)
-                                {
-                                    if (hz >= 1000.0) return $"{hz / 1000.0:F0} kHz";
-                                    return $"{hz:F0} Hz";
-                                }
+                                string FormatHz(double hz) => (hz >= 1000.0) ? $"{hz / 1000.0:F0} kHz" : $"{hz:F0} Hz";
 
                                 string hpf = _thdUi.UseHPF ? FormatHz(_thdUi.FlowHz) : "OFF";
                                 string lpf = _thdUi.UseLPF ? FormatHz(_thdUi.FhighHz) : "OFF";
-
                                 string thdLine = $"THD filter - HPF: {hpf}, LPF: {lpf}";
 
-                                // top-right du ChartArea (pixels)
-                                PointF tr = e.ChartGraphics.GetAbsolutePoint(new PointF(pos.X + pos.Width, pos.Y));
-
                                 SizeF sz = g.MeasureString(thdLine, titleFont);
-                                float xR = tr.X - sz.Width - 22f; // marge droite
-                                float yR = y;                     // même hauteur que la ligne gauche
+                                float xRight = plot.Right - sz.Width - 6f * sExport;
+                                if (xRight < xLeft + 10f * sExport) xRight = xLeft + 10f * sExport;
 
-                                using (Brush b2 = new SolidBrush(InfoTextColor))
-                                {
-                                    g.DrawString(thdLine, titleFont, b2, xR, yR);
-                                }
+                                g.DrawString(thdLine, titleFont, b, xRight, y);
                             }
                         }
                     }
                     finally
                     {
-                        g.Clip = savedClip;
+                        g.Restore(saved);
                     }
                 }
-
             }
 
             bool useLog = chkLogX != null && chkLogX.Checked;
@@ -3359,26 +3326,21 @@ private void ApplyCursorTheme()
                 double fMin = area.AxisX.Minimum;
                 double fMax = area.AxisX.Maximum;
 
-                // Sécurité : en log, on ne dessine rien si bornes invalides
                 if (fMin <= 0 || fMax <= fMin)
                     return;
 
-                // Lignes mineures log dessinées à la main : 2..9 * 10^n
                 using (Pen minorPen = new Pen(GridMinorColor, 1f))
                 using (Pen tickPen = new Pen(LabelMinorColor, 1f))
                 {
                     minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
 
-                    // On calcule top/bottom une seule fois
                     float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
                     float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
 
-                    // Police "sous-label" : ~ moitié de la taille des labels d’axe
                     Font baseFont = area.AxisX.LabelStyle.Font ?? chart.Font;
                     using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
                     using (Brush minorBrush = new SolidBrush(LabelMinorColor))
                     {
-                        // Anti-chevauchement : on saute un label si trop proche du précédent
                         float lastLabelRight = float.NegativeInfinity;
 
                         double decadeStart = Math.Pow(10, Math.Floor(Math.Log10(fMin)));
@@ -3394,29 +3356,20 @@ private void ApplyCursorTheme()
 
                                 float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
 
-                                // 1) Ligne verticale (ta sous-grille existante)
                                 e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, top, xPixel, bottom);
 
-                                // 2) (optionnel) petite marque de tick en bas (évite l’effet "pas de marque")
-                                const float minorTickLen = 5f;
-                                // Tick mineur (label minor)
+                                float minorTickLen = 5f * sExport;
                                 e.ChartGraphics.Graphics.DrawLine(tickPen, xPixel, bottom, xPixel, bottom + minorTickLen);
 
+                                string txt = FormatHzK(f);
 
-                                // 3) Label intermédiaire (2..9), police plus petite
-                                //    -> on réutilise ton format Hz/kHz
-                                string txt = FormatHzK(f);   // ex: 2k, 3k, 5k, 20k...
-
-                                // Mesure + centrage
                                 var sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
                                 float xText = xPixel - sz.Width / 2f;
 
-                                // Dessin *dans* la zone de tracé, juste au-dessus de l’axe (évite de chevaucher les labels décades)
-                                const float minorLabelYOffset = 16f; // <-- ajuste ici (plus grand = plus bas)
+                                float minorLabelYOffset = 10f * sExport;
                                 float yText = bottom - minorTickLen + minorLabelYOffset;
 
-                                // Anti-chevauchement en pixels (même si fenêtre large, ça évite les cas extrêmes)
-                                if (xText <= lastLabelRight + 4f)
+                                if (xText <= lastLabelRight + 4f * sExport)
                                     continue;
 
                                 using var b = new SolidBrush(LabelMinorColor);
@@ -3427,28 +3380,22 @@ private void ApplyCursorTheme()
                         }
                     }
                 }
-
             }
             else
             {
-                // ---------------------------------------------------------
-                // X linéaire : ticks + labels mineurs (même esprit que pour Y)
-                // ---------------------------------------------------------
                 double fMin = area.AxisX.Minimum;
                 double fMax = area.AxisX.Maximum;
 
                 double xMajor = area.AxisX.MajorGrid.Interval;
                 double xMinor = area.AxisX.MinorGrid.Interval;
 
-                // Sécurités : si l'intervalle n'est pas fixé, on ne dessine pas
                 if (xMajor > 0)
                 {
                     if (xMinor <= 0)
-                        xMinor = xMajor / 5.0; // fallback cohérent avec ton paramétrage linéaire
+                        xMinor = xMajor / 5.0;
 
                     if (xMinor > 0)
                     {
-                        // Zone verticale (top/bottom) + baseline (bottom)
                         float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
                         float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
 
@@ -3460,48 +3407,34 @@ private void ApplyCursorTheme()
                             using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
                             using (Brush minorBrush = new SolidBrush(LabelMinorColor))
                             {
-                                const float minorTickLen = 5f;
-
-                                // Anti-chevauchement horizontal (en pixels)
+                                float minorTickLen = 5f * sExport;
                                 float lastLabelRight = float.NegativeInfinity;
 
-                                // Aligne le premier tick mineur sur la grille mineure
                                 double firstMinor = fMin + xMinor;
-
-                                // Petite tolérance pour tester "multiple de majeur"
                                 const double eps = 1e-9;
 
                                 for (double f = firstMinor; f <= fMax + eps; f += xMinor)
                                 {
                                     if (f < fMin - eps) continue;
 
-                                    // Skip si c'est un majeur (multiple de xMajor)
                                     double q = (f - fMin) / xMajor;
                                     if (Math.Abs(q - Math.Round(q)) < 1e-6)
                                         continue;
 
                                     float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
 
-                                    // 1) Tick mineur en bas (sans activer MinorTickMark du Chart)
                                     e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom + minorTickLen);
 
-
-                                    // 2) Label mineur (même format que le log : Hz / kHz)
                                     string txt = FormatHzK(f);
 
                                     var sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
                                     float xText = xPixel - sz.Width / 2f;
 
-                                    // Position du texte : 
-                                    // Sous l’axe : on descend sous la ligne d'axe + tick
-                                    float yText = bottom + minorTickLen + 2f;
+                                    float yText = bottom + minorTickLen + 2f * sExport;
 
-
-                                    // Anti-chevauchement
-                                    if (xText <= lastLabelRight + 4f)
+                                    if (xText <= lastLabelRight + 4f * sExport)
                                         continue;
 
-                                    // Dessin dans la zone de tracé (pas besoin de ResetClip ici)
                                     using var b = new SolidBrush(LabelMinorColor);
                                     e.ChartGraphics.Graphics.DrawString(txt, minorFont, b, xText, yText);
                                     lastLabelRight = xText + sz.Width;
@@ -3511,26 +3444,22 @@ private void ApplyCursorTheme()
                     }
                 }
             }
-            // ---------------------------------------------------------
-            // Cadre du plot : toujours visible (y compris à droite)
-            // ---------------------------------------------------------
+
+            // Cadre du plot
             {
                 var g = e.ChartGraphics.Graphics;
 
-                // Coordonnées du rectangle du plot en pixels
                 float xLeft = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Minimum);
                 float xRight = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Maximum);
 
                 float yTop = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
                 float yBottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
 
-                // Sécurité : parfois les axes sont inversés selon config
                 float x0 = Math.Min(xLeft, xRight);
                 float x1 = Math.Max(xLeft, xRight);
                 float y0 = Math.Min(yTop, yBottom);
                 float y1 = Math.Max(yTop, yBottom);
 
-                // On sort du clip pour ne pas perdre le bord
                 var saved = g.Save();
                 g.ResetClip();
 
@@ -3546,21 +3475,19 @@ private void ApplyCursorTheme()
             {
                 DrawChartStatsPanel(e.ChartGraphics.Graphics, chart, area);
 
-                // Les labels WinForms existent déjà à l'écran.
-                // On ne dessine l'overlay texte que sur le chart "clone" (export PNG).
-                if (!ReferenceEquals(chart, chartSpectrum))
+                // Export only
+                if (isExport)
                 {
                     DrawCursorInfoOverlay(e.ChartGraphics.Graphics, chart);
                 }
-
             }
             catch
             {
                 // sécurité : ne jamais laisser un crash UI tuer l'application
             }
-
-
         }
+
+        //
         private void lblRightMeas_Click(object sender, EventArgs e)
         {
 
@@ -3645,31 +3572,97 @@ private void ApplyCursorTheme()
         //
         public void ExportPng(string filePath, int scale = 2)
         {
-            // 1) Reconstruit les lignes du panneau stats (important pour l’export)
             RebuildStatsRowsFromLabels();
 
-            // 2) Clone du chart (SaveImage propre)
             using var clone = ChartExport.CloneChart(chartSpectrum);
 
-            // Taille export : x2 = bon compromis qualité/poids
             clone.Size = new Size(chartSpectrum.Width * scale, chartSpectrum.Height * scale);
 
-            // Fond blanc (évite le noir/transparence)
             clone.BackColor = Color.White;
             foreach (var a in clone.ChartAreas)
                 a.BackColor = Color.White;
 
-            // 3) Appliquer la même marge stats sur LE CLONE (sinon le panneau se retrouve au mauvais endroit)
-            ApplyChartStatsMargin(clone, invalidate: false);
+            // Uniformiser la taille des textes UNIQUEMENT SUR LE CLONE
+            ApplyUniformExportScaling(clone, scale);
 
-            // 4) Re-brancher le PostPaint (sur le clone)
+            // IMPORTANT : si tu avais des CustomLabels, on les vire
+            var area = clone.ChartAreas["SpectrumArea"];
+            area.AxisX.CustomLabels.Clear();
+
+            // ✅ Le point clé : même formatage que le GUI (k au-delà de 1000, log décades, etc.)
+            clone.FormatNumber += ChartSpectrum_FormatNumber;
+
+            // Marge stats (déjà ok chez toi)
+            ApplyChartStatsMargin(clone, invalidate: false, reservedScale: scale);
+
             clone.PostPaint += ChartSpectrum_PostPaint;
 
-
-            // 5) Rendu PNG
             ChartExport.SavePngRendered(clone, filePath, dpi: 300);
+
+            static void ApplyUniformExportScaling(System.Windows.Forms.DataVisualization.Charting.Chart c, int s)
+            {
+                if (s <= 1) return;
+
+                c.Font = new Font(c.Font.FontFamily, c.Font.SizeInPoints * s, c.Font.Style);
+
+                foreach (var a in c.ChartAreas)
+                {
+                    if (a.AxisX.LabelStyle.Font != null)
+                        a.AxisX.LabelStyle.Font = Scale(a.AxisX.LabelStyle.Font, s);
+                    if (a.AxisY.LabelStyle.Font != null)
+                        a.AxisY.LabelStyle.Font = Scale(a.AxisY.LabelStyle.Font, s);
+
+                    if (a.AxisX.TitleFont != null)
+                        a.AxisX.TitleFont = Scale(a.AxisX.TitleFont, s);
+                    if (a.AxisY.TitleFont != null)
+                        a.AxisY.TitleFont = Scale(a.AxisY.TitleFont, s);
+                }
+
+                foreach (var leg in c.Legends)
+                    if (leg.Font != null)
+                        leg.Font = Scale(leg.Font, s);
+
+                foreach (var t in c.Titles)
+                    if (t.Font != null)
+                        t.Font = Scale(t.Font, s);
+
+                static Font Scale(Font f, int s)
+                    => new Font(f.FontFamily, f.SizeInPoints * s, f.Style);
+            }
         }
 
+        //
+        //
+        private void ApplyChartStatsMargin(Chart chart, bool invalidate, float reservedScale)
+        {
+            var area = chart.ChartAreas.FirstOrDefault(a => a.Name == "SpectrumArea");
+            if (area == null) return;
+
+            int w = chart.ClientSize.Width;
+            if (w <= 0) return;
+
+            int reserved = (int)(ChartStatsWidthPx * reservedScale);
+
+            int maxReserved = Math.Max(120, w - ChartStatsMinPlotWidthPx);
+            reserved = Math.Min(reserved, maxReserved);
+
+            float reservedPct = 100f * reserved / w;
+            reservedPct = Math.Max(0f, Math.Min(60f, reservedPct)); // tu peux monter à 60% si besoin
+
+            area.Position.Auto = false;
+
+            const float left = 3f;
+            const float top = 3f;
+            const float height = 94f;
+
+            float width = 97f - reservedPct;
+            if (width < 10f) width = 10f;
+
+            area.Position = new ElementPosition(left, top, width, height);
+
+            if (invalidate)
+                chart.Invalidate();
+        }
 
         //
     }
