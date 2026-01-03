@@ -2,6 +2,8 @@
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
+using System.IO;
+
 
 public sealed class ExportPngDialog : Form
 {
@@ -33,7 +35,7 @@ public sealed class ExportPngDialog : Form
     //
     public ExportPngDialog()
     {
-        Text = "Export PNG";
+        Text = "Export PNG or PDF";
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -94,7 +96,7 @@ public sealed class ExportPngDialog : Form
 
         var titleLabel = new Label
         {
-            Text = "Titre (max 3 lignes, ~50 caractères/ligne) :",
+            Text = "Main Title (3 lines, 50 characters/lines maxi) :",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft
         };
@@ -201,15 +203,27 @@ public sealed class ExportPngDialog : Form
     {
         using var sfd = new SaveFileDialog
         {
-            Filter = "PNG (*.png)|*.png",
-            DefaultExt = "png",
-            AddExtension = true,
-            FileName = "AudioHexViewer_Spectrum.png"
+            Filter = "PNG (*.png)|*.png|PDF (*.pdf)|*.pdf",
+            FilterIndex = 1,
+
+            // On gère l'extension nous-mêmes (plus fiable quand on propose plusieurs formats)
+            AddExtension = false,
+
+            FileName = "Graph_"
         };
 
-        if (sfd.ShowDialog(this) == DialogResult.OK)
-            _tbPath.Text = sfd.FileName;
+        if (sfd.ShowDialog(this) != DialogResult.OK)
+            return;
+
+        string path = sfd.FileName;
+
+        // Si l'utilisateur n'a pas mis d'extension, on la déduit du filtre choisi
+        if (string.IsNullOrWhiteSpace(Path.GetExtension(path)))
+            path += (sfd.FilterIndex == 2) ? ".pdf" : ".png";
+
+        _tbPath.Text = path;
     }
+
     //
     private void CenterTitleText()
     {
@@ -322,7 +336,7 @@ public sealed class ExportPngDialog : Form
             foreach (char c in _tbTitle.Text)
                 if (c == '\n') lines++;
 
-            _lblHint.Text = $"{lines}/3 lignes — {used}/150 caractères — reste {remaining}";
+            _lblHint.Text = $"{lines}/3 lines — {used}/150 characters — remain {remaining}";
         }
         finally
         {

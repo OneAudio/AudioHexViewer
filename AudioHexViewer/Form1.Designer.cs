@@ -232,8 +232,8 @@ namespace AudioHexViewer
             // menuExportPng
             // 
             menuExportPng.Name = "menuExportPng";
-            menuExportPng.Size = new Size(183, 22);
-            menuExportPng.Text = "Export graph to PNG";
+            menuExportPng.Size = new Size(209, 22);
+            menuExportPng.Text = "Export graph to PNG/PDF";
             menuExportPng.Click += menuExportPng_Click;
             // 
             // splitMain

@@ -3396,17 +3396,50 @@ namespace AudioHexViewer
 
             dlg.TitleText = _lastExportPngTitle;
 
-            // Optionnel : tu peux pré-remplir un chemin si tu veux
-            // dlg.SetDefaultPath(...); (on ne l’a pas codé, donc ignore)
-
             if (dlg.ShowDialog(this) != DialogResult.OK)
                 return;
 
             _lastExportPngTitle = dlg.TitleText;
 
-            // ⚠️ IMPORTANT : remplace "spectrumControl1" par le NOM EXACT de ton contrôle
-            spectrumControl.ExportPng(dlg.FilePath, dlg.Scale, dlg.TitleText);
+            string outPath = dlg.FilePath;
+            if (string.IsNullOrWhiteSpace(outPath))
+                return;
+
+            string ext = Path.GetExtension(outPath).ToLowerInvariant();
+
+            try
+            {
+                if (ext == ".pdf")
+                {
+                    // 1) Génère un PNG temporaire (rendu IDENTIQUE)
+                    string tmpPng = Path.Combine(
+                        Path.GetTempPath(),
+                        $"AudioHexViewer_{Guid.NewGuid():N}.png"
+                    );
+
+                    spectrumControl.ExportPng(tmpPng, dlg.Scale, dlg.TitleText);
+
+                    // 2) Emballe dans un PDF A4 paysage, image fit largeur
+                    PdfExport.SaveA4LandscapeFromPng(tmpPng, outPath);
+
+                    // 3) Nettoyage
+                    try { File.Delete(tmpPng); } catch { /* ignore */ }
+                }
+                else
+                {
+                    // PNG par défaut
+                    if (ext != ".png")
+                        outPath = Path.ChangeExtension(outPath, ".png");
+
+                    spectrumControl.ExportPng(outPath, dlg.Scale, dlg.TitleText);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Export", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
+
 
         //
         //

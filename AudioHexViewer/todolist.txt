@@ -20,10 +20,12 @@ Necessite d'avoir le module et la phase dans le calcul de la FFT.
 Et donc ajouter aussi la possibilité de tracer la phase lorsque
 on utilise le mode L/R
 
-8 - Ajouter une sortie en pdf en plus de PNG ? 
-
 9 - Revoir le calcul de la moyenne, il semble y avoir un problème 
 (visible surtout lorsque elle est faible 2...4)
 
+10- Améliorer l'export pour que la sortie dépendent de l'onglet choisi (FFT ou histogramme)
+
+11- Uniformiser l'onglet de mesure de l'histogramme pour qu'il soir semblable
+à celui de la FFT.
 
 
