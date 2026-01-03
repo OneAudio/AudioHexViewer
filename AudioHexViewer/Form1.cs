@@ -175,6 +175,7 @@ namespace AudioHexViewer
 
         private ToolStripMenuItem? menuCursorsSetValue;
 
+        private string _lastExportPngTitle = "";
 
 
         private enum CalStage
@@ -3393,11 +3394,15 @@ namespace AudioHexViewer
         {
             using var dlg = new ExportPngDialog();
 
+            dlg.TitleText = _lastExportPngTitle;
+
             // Optionnel : tu peux pré-remplir un chemin si tu veux
             // dlg.SetDefaultPath(...); (on ne l’a pas codé, donc ignore)
 
             if (dlg.ShowDialog(this) != DialogResult.OK)
                 return;
+
+            _lastExportPngTitle = dlg.TitleText;
 
             // ⚠️ IMPORTANT : remplace "spectrumControl1" par le NOM EXACT de ton contrôle
             spectrumControl.ExportPng(dlg.FilePath, dlg.Scale, dlg.TitleText);
