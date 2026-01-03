@@ -3432,6 +3432,29 @@ namespace AudioHexViewer
                         outPath = Path.ChangeExtension(outPath, ".png");
 
                     spectrumControl.ExportPng(outPath, dlg.Scale, dlg.TitleText);
+
+                    // Détermine quel onglet est affiché (Spectrum vs Histogram)
+                    bool isSpectrum = (tabAnalysis.SelectedTab == tabSpectrum);
+
+                    if (isSpectrum && spectrumControl == null)
+                    {
+                        MessageBox.Show("Le spectre n'est pas initialisé.", "Export PNG",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+
+                    if (!isSpectrum && histogramControl == null)
+                    {
+                        MessageBox.Show("L'histogramme n'est pas initialisé.", "Export PNG",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+
+                    if (isSpectrum)
+                        spectrumControl!.ExportPng(dlg.FilePath, dlg.Scale, dlg.TitleText);
+                    else
+                        histogramControl!.ExportPng(dlg.FilePath, dlg.Scale, dlg.TitleText);
+
                 }
             }
             catch (Exception ex)

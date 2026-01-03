@@ -792,6 +792,158 @@ namespace AudioHexViewer
             }
         }
         //
+        public void ExportPng(string filePath, int scale = 2, string? headerTitle = null)
+        {
+            using var clone = ChartExport.CloneChart(chartHistogram);
+
+            bool hasHeader = !string.IsNullOrWhiteSpace(headerTitle);
+            int headerPx = hasHeader ? (int)(60 * scale) : 0;
+
+            clone.Size = new Size(chartHistogram.Width * scale, chartHistogram.Height * scale + headerPx);
+
+            clone.BackColor = Color.White;
+            foreach (var area in clone.ChartAreas)
+                area.BackColor = Color.White;
+
+            ApplyUniformExportScaling(clone, scale);
+
+            if (hasHeader)
+                ApplyExportHeaderMargin(clone, headerPx);
+
+            if (hasHeader)
+            {
+                clone.Tag = new ExportHeaderContext
+                {
+                    HeaderTitle = headerTitle!,
+                    HeaderPx = headerPx,
+                    Scale = scale
+                };
+                clone.PostPaint += Clone_PostPaint_DrawHeader;
+            }
+
+            ChartExport.SavePngRendered(clone, filePath, dpi: 300);
+
+            if (hasHeader)
+            {
+                clone.PostPaint -= Clone_PostPaint_DrawHeader;
+                clone.Tag = null;
+            }
+        }
+
+        private sealed class ExportHeaderContext
+        {
+            public string HeaderTitle = "";
+            public int HeaderPx;
+            public int Scale;
+        }
+
+        private static void ApplyExportHeaderMargin(System.Windows.Forms.DataVisualization.Charting.Chart chart, int headerPx)
+        {
+            var area = chart.ChartAreas["HistogramArea"];
+
+            int h = chart.ClientSize.Height;
+            if (h <= 0) return;
+
+            float headerPct = 100f * headerPx / h;
+
+            // IMPORTANT :
+            // Quand Position.Auto == true, X/Y/Width/Height peuvent être à 0 tant que le layout n’a pas été calculé.
+            // Si on force Auto=false en se basant sur ces valeurs, on "fige" un rectangle nul => plus rien ne s’affiche.
+            float x = area.Position.X;
+            float y = area.Position.Y;
+            float w = area.Position.Width;
+            float hh = area.Position.Height;
+
+            if (area.Position.Auto || w < 1f || hh < 1f)
+            {
+                // Valeurs “saines” (proches du layout par défaut)
+                x = 3f;
+                y = 3f;
+                w = 94f;
+                hh = 90f;
+            }
+
+            area.Position.Auto = false;
+
+            float newY = y + headerPct;
+            float newH = Math.Max(5f, hh - headerPct);
+
+            // clamp sécurité
+            if (newY > 95f) newY = 95f;
+            if (newY + newH > 99f) newH = Math.Max(5f, 99f - newY);
+
+            area.Position = new ElementPosition(x, newY, w, newH);
+        }
+
+
+        private static void Clone_PostPaint_DrawHeader(object? sender, ChartPaintEventArgs e)
+        {
+            if (sender is not Chart chart) return;
+            if (chart.Tag is not ExportHeaderContext ctx) return;
+            if (ctx.HeaderPx <= 0) return;
+            if (string.IsNullOrWhiteSpace(ctx.HeaderTitle)) return;
+
+            string txt = ctx.HeaderTitle.Replace("\r\n", "\n").Replace('\r', '\n');
+            var lines = txt.Split('\n');
+
+            // Police du titre (un peu plus grosse + gras)
+            using var font = new Font(chart.Font.FontFamily, chart.Font.SizeInPoints * 1.20f, FontStyle.Bold);
+            using var brush = new SolidBrush(Color.Black);
+
+            using var sf = new StringFormat
+            {
+                Alignment = StringAlignment.Center,
+                LineAlignment = StringAlignment.Near
+            };
+
+            float lineH = font.GetHeight(e.ChartGraphics.Graphics);
+            float gap = 2f * ctx.Scale;
+            float totalH = lines.Length * lineH + (lines.Length - 1) * gap;
+
+            float y = (ctx.HeaderPx - totalH) / 2f;
+            if (y < 2f) y = 2f;
+
+            foreach (var line in lines)
+            {
+                var rect = new RectangleF(0, y, chart.ClientSize.Width, lineH + 2);
+                e.ChartGraphics.Graphics.DrawString(line, font, brush, rect, sf);
+                y += lineH + gap;
+                if (y > ctx.HeaderPx) break;
+            }
+        }
+
+        private static void ApplyUniformExportScaling(Chart c, int s)
+        {
+            if (s <= 1) return;
+
+            c.Font = new Font(c.Font.FontFamily, c.Font.SizeInPoints * s, c.Font.Style);
+
+            foreach (var area in c.ChartAreas)
+            {
+                if (area.AxisX.LabelStyle.Font != null)
+                    area.AxisX.LabelStyle.Font = Scale(area.AxisX.LabelStyle.Font, s);
+                if (area.AxisY.LabelStyle.Font != null)
+                    area.AxisY.LabelStyle.Font = Scale(area.AxisY.LabelStyle.Font, s);
+
+                if (area.AxisX.TitleFont != null)
+                    area.AxisX.TitleFont = Scale(area.AxisX.TitleFont, s);
+                if (area.AxisY.TitleFont != null)
+                    area.AxisY.TitleFont = Scale(area.AxisY.TitleFont, s);
+            }
+
+            foreach (var leg in c.Legends)
+                if (leg.Font != null)
+                    leg.Font = Scale(leg.Font, s);
+
+            foreach (var t in c.Titles)
+                if (t.Font != null)
+                    t.Font = Scale(t.Font, s);
+
+            static Font Scale(Font f, int s)
+                => new Font(f.FontFamily, f.SizeInPoints * s, f.Style);
+        }
+
+        //
         public void ExportPng(string filePath, int scale = 2)
         {
             using var clone = ChartExport.CloneChart(chartHistogram);
