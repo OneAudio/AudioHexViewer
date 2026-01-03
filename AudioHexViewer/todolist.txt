@@ -1,15 +1,12 @@
 Chose à faire :
 --------------
-Le 29/12/2025
+Le 03/01/2026
 
 1 - Ajouter la possibilitée d'avoir la FFT en dBV en utilisant les paramètres
 de la calibration.
 
 2 - Faire que les différentes mesures soient en dBV également lorsque on choisi
 l'affichage de la FFT en dBV (Méthode de choix à définir ?)
-
-3 - Ajouter le nécessaire pour qu'il soit possible de choisir les couleurs
-des différentes courbes : Left , Right, Left-Hold, Right-Hold, Mem 0 à Mem 8
 
 4 - Améliorer les mesures de THD, TD+N, etc et les comparer avec
 le résultat de REW et Arta.
@@ -23,9 +20,7 @@ Necessite d'avoir le module et la phase dans le calcul de la FFT.
 Et donc ajouter aussi la possibilité de tracer la phase lorsque
 on utilise le mode L/R
 
-7 - Prévoir un théme d'affichage "Dark" ?
-
-8 - Imprimer en pdf ou image ?
+8 - Ajouter une sortie en pdf en plus de PNG ? 
 
 9 - Revoir le calcul de la moyenne, il semble y avoir un problème 
 (visible surtout lorsque elle est faible 2...4)
