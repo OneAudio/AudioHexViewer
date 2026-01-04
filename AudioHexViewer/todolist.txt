@@ -1,6 +1,6 @@
 Chose à faire :
 --------------
-Le 03/01/2026
+Le 04/01/2026
 
 1 - Ajouter la possibilitée d'avoir la FFT en dBV en utilisant les paramètres
 de la calibration.
@@ -23,9 +23,15 @@ on utilise le mode L/R
 9 - Revoir le calcul de la moyenne, il semble y avoir un problème 
 (visible surtout lorsque elle est faible 2...4)
 
-10- Améliorer l'export pour que la sortie dépendent de l'onglet choisi (FFT ou histogramme)
-
-11- Uniformiser l'onglet de mesure de l'histogramme pour qu'il soir semblable
+10- ONGLET HISTOGRAMME :
+------------------------
+a) Uniformiser l'onglet de mesure de l'histogramme pour qu'il soir semblable
 à celui de la FFT.
+b) Ajouter aussi une boite de dialogue comme le spectrum pour la configuration
+des axes x / y.
+c) Ajouter au dessus du graph une ligne avec les  paramètres de l'histogramme,
+comme pour le spectrum.
+d) Ajouter le dessin d'un loie normale sursposé à l'histogramme (option case à cocher)  
 
-
+11 -Déplacer les fonctions Measure(THD) et Cursors du menu principal
+vers l'onglet Spectrum avecd es boutons.

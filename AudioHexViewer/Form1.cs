@@ -3409,15 +3409,35 @@ namespace AudioHexViewer
 
             try
             {
+                // Détermine quel onglet est affiché (Spectrum vs Histogram)
+                bool isSpectrum = (tabAnalysis.SelectedTab == tabSpectrum);
+
+                if (isSpectrum && spectrumControl == null)
+                {
+                    MessageBox.Show("Le spectre n'est pas initialisé.", "Export",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                if (!isSpectrum && histogramControl == null)
+                {
+                    MessageBox.Show("L'histogramme n'est pas initialisé.", "Export",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
                 if (ext == ".pdf")
                 {
-                    // 1) Génère un PNG temporaire (rendu IDENTIQUE)
+                    // 1) Génère un PNG temporaire depuis l'onglet ACTIF (rendu IDENTIQUE)
                     string tmpPng = Path.Combine(
                         Path.GetTempPath(),
                         $"AudioHexViewer_{Guid.NewGuid():N}.png"
                     );
 
-                    spectrumControl.ExportPng(tmpPng, dlg.Scale, dlg.TitleText);
+                    if (isSpectrum)
+                        spectrumControl!.ExportPng(tmpPng, dlg.Scale, dlg.TitleText);
+                    else
+                        histogramControl!.ExportPng(tmpPng, dlg.Scale, dlg.TitleText);
 
                     // 2) Emballe dans un PDF A4 paysage, image fit largeur
                     PdfExport.SaveA4LandscapeFromPng(tmpPng, outPath);
@@ -3431,30 +3451,10 @@ namespace AudioHexViewer
                     if (ext != ".png")
                         outPath = Path.ChangeExtension(outPath, ".png");
 
-                    spectrumControl.ExportPng(outPath, dlg.Scale, dlg.TitleText);
-
-                    // Détermine quel onglet est affiché (Spectrum vs Histogram)
-                    bool isSpectrum = (tabAnalysis.SelectedTab == tabSpectrum);
-
-                    if (isSpectrum && spectrumControl == null)
-                    {
-                        MessageBox.Show("Le spectre n'est pas initialisé.", "Export PNG",
-                            MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        return;
-                    }
-
-                    if (!isSpectrum && histogramControl == null)
-                    {
-                        MessageBox.Show("L'histogramme n'est pas initialisé.", "Export PNG",
-                            MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        return;
-                    }
-
                     if (isSpectrum)
-                        spectrumControl!.ExportPng(dlg.FilePath, dlg.Scale, dlg.TitleText);
+                        spectrumControl!.ExportPng(outPath, dlg.Scale, dlg.TitleText);
                     else
-                        histogramControl!.ExportPng(dlg.FilePath, dlg.Scale, dlg.TitleText);
-
+                        histogramControl!.ExportPng(outPath, dlg.Scale, dlg.TitleText);
                 }
             }
             catch (Exception ex)
