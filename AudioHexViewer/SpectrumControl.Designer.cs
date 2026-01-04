@@ -27,6 +27,9 @@
             comboAveraging = new ComboBox();
             lblChannel = new Label();
             comboChannel = new ComboBox();
+            lblUnits = new Label();
+            comboLevelUnit = new ComboBox();
+            btnCalLevel = new Button();
             lblWindowInfo = new Label();
             btnRun = new Button();
             chkLogX = new CheckBox();
@@ -36,11 +39,15 @@
             lblRightHeader = new Label();
             lblRightRms = new Label();
             lblRightPeak = new Label();
+            lblRightRmsV = new Label();
+            lblRightPeakV = new Label();
             grpLeftStats = new GroupBox();
             lblLeftMeas = new Label();
             lblLeftHeader = new Label();
             lblLeftRms = new Label();
             lblLeftPeak = new Label();
+            lblLeftRmsV = new Label();
+            lblLeftPeakV = new Label();
             chkCursorL = new CheckBox();
             chkCursorR = new CheckBox();
             panelStats = new Panel();
@@ -62,6 +69,9 @@
             panelTop.Controls.Add(comboWindow);
             panelTop.Controls.Add(lblAveraging);
             panelTop.Controls.Add(comboAveraging);
+            panelTop.Controls.Add(lblUnits);
+            panelTop.Controls.Add(comboLevelUnit);
+            panelTop.Controls.Add(btnCalLevel);
             panelTop.Controls.Add(lblChannel);
             panelTop.Controls.Add(comboChannel);
             panelTop.Controls.Add(lblWindowInfo);
@@ -158,6 +168,32 @@
             comboAveraging.Name = "comboAveraging";
             comboAveraging.Size = new Size(90, 23);
             comboAveraging.TabIndex = 5;
+// 
+// lblUnits
+// 
+lblUnits.AutoSize = true;
+lblUnits.Location = new Point(735, 10);
+lblUnits.Name = "lblUnits";
+lblUnits.Size = new Size(34, 15);
+lblUnits.TabIndex = 13;
+lblUnits.Text = "Units";
+// 
+// comboLevelUnit
+// 
+comboLevelUnit.DropDownStyle = ComboBoxStyle.DropDownList;
+comboLevelUnit.Location = new Point(775, 7);
+comboLevelUnit.Name = "comboLevelUnit";
+comboLevelUnit.Size = new Size(80, 23);
+comboLevelUnit.TabIndex = 14;
+// 
+// btnCalLevel
+// 
+btnCalLevel.Location = new Point(865, 6);
+btnCalLevel.Name = "btnCalLevel";
+btnCalLevel.Size = new Size(80, 25);
+btnCalLevel.TabIndex = 15;
+btnCalLevel.Text = "Cal Level";
+btnCalLevel.UseVisualStyleBackColor = true;
             // 
             // lblChannel
             // 
@@ -217,6 +253,8 @@
             grpRightStats.Controls.Add(lblRightHeader);
             grpRightStats.Controls.Add(lblRightRms);
             grpRightStats.Controls.Add(lblRightPeak);
+            grpRightStats.Controls.Add(lblRightRmsV);
+            grpRightStats.Controls.Add(lblRightPeakV);
             grpRightStats.Location = new Point(5, 222);
             grpRightStats.Name = "grpRightStats";
             grpRightStats.Size = new Size(140, 180);
@@ -257,12 +295,30 @@
             lblRightPeak.Size = new Size(100, 23);
             lblRightPeak.TabIndex = 2;
             // 
+            // lblRightRmsV
+            // 
+            lblRightRmsV.Location = new Point(10, 88);
+            lblRightRmsV.Name = "lblRightRmsV";
+            lblRightRmsV.Size = new Size(120, 23);
+            lblRightRmsV.TabIndex = 18;
+            lblRightRmsV.Visible = false;
+            // 
+            // lblRightPeakV
+            // 
+            lblRightPeakV.Location = new Point(10, 111);
+            lblRightPeakV.Name = "lblRightPeakV";
+            lblRightPeakV.Size = new Size(120, 23);
+            lblRightPeakV.TabIndex = 19;
+            lblRightPeakV.Visible = false;
+            // 
             // grpLeftStats
             // 
             grpLeftStats.Controls.Add(lblLeftMeas);
             grpLeftStats.Controls.Add(lblLeftHeader);
             grpLeftStats.Controls.Add(lblLeftRms);
             grpLeftStats.Controls.Add(lblLeftPeak);
+            grpLeftStats.Controls.Add(lblLeftRmsV);
+            grpLeftStats.Controls.Add(lblLeftPeakV);
             grpLeftStats.Location = new Point(5, 11);
             grpLeftStats.Name = "grpLeftStats";
             grpLeftStats.Size = new Size(140, 180);
@@ -302,6 +358,22 @@
             lblLeftPeak.Name = "lblLeftPeak";
             lblLeftPeak.Size = new Size(100, 23);
             lblLeftPeak.TabIndex = 2;
+            // 
+            // lblLeftRmsV
+            // 
+            lblLeftRmsV.Location = new Point(10, 88);
+            lblLeftRmsV.Name = "lblLeftRmsV";
+            lblLeftRmsV.Size = new Size(120, 23);
+            lblLeftRmsV.TabIndex = 18;
+            lblLeftRmsV.Visible = false;
+            // 
+            // lblLeftPeakV
+            // 
+            lblLeftPeakV.Location = new Point(10, 111);
+            lblLeftPeakV.Name = "lblLeftPeakV";
+            lblLeftPeakV.Size = new Size(120, 23);
+            lblLeftPeakV.TabIndex = 19;
+            lblLeftPeakV.Visible = false;
             // 
             // chkCursorL
             // 
@@ -355,6 +427,9 @@
         #endregion
 
         private Panel panelTop;
+        private Label lblUnits;
+        private ComboBox comboLevelUnit;
+        private Button btnCalLevel;
         private Label lblWindow;
         private ComboBox comboWindow;
         private Label lblAveraging;
@@ -381,10 +456,14 @@
         private Label lblLeftHeader;
         private Label lblLeftRms;
         private Label lblLeftPeak;
+        private Label lblLeftRmsV;
+        private Label lblLeftPeakV;
         private GroupBox grpRightStats;
         private Label lblRightMeas;
         private Label lblRightHeader;
         private Label lblRightRms;
         private Label lblRightPeak;
+        private Label lblRightRmsV;
+        private Label lblRightPeakV;
     }
 }

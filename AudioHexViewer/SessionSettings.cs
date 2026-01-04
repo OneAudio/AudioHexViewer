@@ -49,6 +49,18 @@ namespace AudioHexViewer
         public string Window { get; set; } = "Rectangular"; // Rectangular/Hann/Hamming/Blackman-Harris-4/Blackman-Harris-7
         public bool LogFreq { get; set; } = false;       // log freq
         public int Averaging { get; set; } = 0;          // 0 = None, sinon 2/4/8/...
+// Unité d'affichage de l'axe Y (FFT)
+// - "dBFS" : niveau relatif au full-scale numérique (actuel)
+// - "dBV"  : niveau absolu RMS, 0 dBV = 1 Vrms (disponible si calibration faite)
+public string LevelUnit { get; set; } = "dBFS";
+
+// Calibration niveau (conversion dBFS -> dBV) : dBV = dBFS + Offset
+public bool LevelCalValidLeft { get; set; } = false;
+public double LevelCalOffsetDbLeft { get; set; } = 0.0;
+
+public bool LevelCalValidRight { get; set; } = false;
+public double LevelCalOffsetDbRight { get; set; } = 0.0;
+
         public bool EnableThdMeasures { get; set; } = false;
 
         // Couleurs du graphe (FFT/overlays/grille/fond)

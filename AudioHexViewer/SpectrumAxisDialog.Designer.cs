@@ -67,7 +67,7 @@
             // 
             numYMax.DecimalPlaces = 1;
             numYMax.Location = new Point(114, 12);
-            numYMax.Maximum = new decimal(new int[] { 0, 0, 0, 0 });
+            numYMax.Maximum = new decimal(new int[] { 100, 0, 0, 0 });
             numYMax.Minimum = new decimal(new int[] { 300, 0, 0, int.MinValue });
             numYMax.Name = "numYMax";
             numYMax.Size = new Size(90, 23);

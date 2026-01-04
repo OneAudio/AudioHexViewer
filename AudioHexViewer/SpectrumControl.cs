@@ -1,6 +1,7 @@
 using MathNet.Numerics;
 using MathNet.Numerics.IntegralTransforms;
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Numerics;
@@ -8,6 +9,8 @@ using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
 using static AudioHexViewer.SpectrumControl;
 using ChartSeries = System.Windows.Forms.DataVisualization.Charting.Series;
+using System.Globalization;
+
 
 
 namespace AudioHexViewer
@@ -199,6 +202,31 @@ private void ApplyCursorTheme()
         private double[]? currentRightSpectrum;
         private double[]? freqAxis;
 
+// --- Calibration niveau FFT (dBFS -> dBV) ---
+// Convention utilisée dans le projet :
+// - Les courbes FFT sont en "dBFS" avec 0 dBFS pour une sinusoïde full-scale (peak FS).
+// - Après calibration : dBV = dBFS + offset, où 0 dBV = 1 Vrms.
+private bool _levelCalValidLeft = false;
+private bool _levelCalValidRight = false;
+private double _levelCalOffsetDbLeft = 0.0;
+private double _levelCalOffsetDbRight = 0.0;
+
+private string _levelUnit = "dBFS"; // "dBFS" ou "dBV"
+
+// Dernières mesures RMS en dBFS (issues du buffer temps brut)
+private double? _lastRmsDbfsLeft = null;
+private double? _lastRmsDbfsRight = null;
+
+
+        // Layout original des labels "Meas" (pour pouvoir insérer des lignes Volts en mode dBV)
+        private bool _voltLayoutInit = false;
+        private System.Drawing.Point _leftMeasOrigLoc;
+        private System.Drawing.Size _leftMeasOrigSize;
+        private System.Drawing.Point _rightMeasOrigLoc;
+        private System.Drawing.Size _rightMeasOrigSize;
+
+
+
         private bool isLive = false;
 
         // Axes personnalisés (null = auto)
@@ -327,6 +355,56 @@ private void ApplyCursorTheme()
             int decimals = GetStepDecimals(stepMinor);
 
             return db.ToString("F" + decimals);
+        }
+        //
+        private static string FormatVoltage(double volts)
+        {
+            if (double.IsNaN(volts) || double.IsInfinity(volts)) return "—";
+
+            double a = Math.Abs(volts);
+
+            // Choix d'unité
+            double scaled;
+            string unit;
+            if (a >= 1.0)
+            {
+                scaled = volts;
+                unit = "V";
+            }
+            else if (a >= 1e-3)
+            {
+                scaled = volts * 1e3;
+                unit = "mV";
+            }
+            else
+            {
+                scaled = volts * 1e6;
+                unit = "µV";
+            }
+
+            // 4 chiffres significatifs, sans notation scientifique
+            string num = ToSignificantDigitsNoExponent(scaled, 4);
+
+            return $"{num} {unit}";
+        }
+
+        private static string ToSignificantDigitsNoExponent(double value, int sigDigits)
+        {
+            if (value == 0.0) return "0";
+
+            double abs = Math.Abs(value);
+            int magnitude = (int)Math.Floor(Math.Log10(abs));
+            int decimals = sigDigits - 1 - magnitude;
+            if (decimals < 0) decimals = 0;
+            if (decimals > 12) decimals = 12; // sécurité
+
+            double rounded = Math.Round(value, decimals, MidpointRounding.AwayFromZero);
+
+            // Format fixe (pas de E-xxx), puis trim des zéros inutiles
+            string s = rounded.ToString("F" + decimals, CultureInfo.InvariantCulture);
+            if (decimals > 0) s = s.TrimEnd('0').TrimEnd('.');
+
+            return s;
         }
         //
         private static RectangleF GetPlotRectPixels(Chart chart, ChartArea area)
@@ -478,6 +556,7 @@ private void ApplyCursorTheme()
         public SpectrumControl()
         {
             InitializeComponent();
+            EnsureVoltLayoutInit();
             // Étape 1 : on garde le SplitContainer mais on masque la zone Stats (Panel2)
             panelStats.Visible = false; // panel stats n'est plus utilisé visuellement
             InitChartAppearance();
@@ -504,6 +583,69 @@ private void ApplyCursorTheme()
             chartSpectrum.MouseLeave += (s, e) => { /* optionnel : cacher texte */ };
 
         }
+
+        private void EnsureVoltLayoutInit()
+        {
+            if (_voltLayoutInit) return;
+            // Ces contrôles existent même si la zone Stats est masquée / déplacée par le layout du host.
+            _leftMeasOrigLoc = lblLeftMeas.Location;
+            _leftMeasOrigSize = lblLeftMeas.Size;
+            _rightMeasOrigLoc = lblRightMeas.Location;
+            _rightMeasOrigSize = lblRightMeas.Size;
+            _voltLayoutInit = true;
+        }
+
+        private void SetVoltLabelsVisible(bool showLeft, bool showRight)
+        {
+            EnsureVoltLayoutInit();
+
+            // LEFT
+            if (lblLeftRmsV != null && lblLeftPeakV != null)
+            {
+                lblLeftRmsV.Visible = showLeft;
+                lblLeftPeakV.Visible = showLeft;
+                if (showLeft)
+                {
+                    lblLeftMeas.Location = new System.Drawing.Point(_leftMeasOrigLoc.X, _leftMeasOrigLoc.Y + 46);
+                    lblLeftMeas.Size = new System.Drawing.Size(_leftMeasOrigSize.Width, Math.Max(20, _leftMeasOrigSize.Height - 46));
+                }
+                else
+                {
+                    lblLeftMeas.Location = _leftMeasOrigLoc;
+                    lblLeftMeas.Size = _leftMeasOrigSize;
+                }
+            }
+
+            // RIGHT
+            if (lblRightRmsV != null && lblRightPeakV != null)
+            {
+                lblRightRmsV.Visible = showRight;
+                lblRightPeakV.Visible = showRight;
+                if (showRight)
+                {
+                    lblRightMeas.Location = new System.Drawing.Point(_rightMeasOrigLoc.X, _rightMeasOrigLoc.Y + 46);
+                    lblRightMeas.Size = new System.Drawing.Size(_rightMeasOrigSize.Width, Math.Max(20, _rightMeasOrigSize.Height - 46));
+                }
+                else
+                {
+                    lblRightMeas.Location = _rightMeasOrigLoc;
+                    lblRightMeas.Size = _rightMeasOrigSize;
+                }
+            }
+        }
+
+        private static string FormatVolts(double v)
+        {
+            v = Math.Abs(v);
+            if (v >= 100.0) return v.ToString("0.0");
+            if (v >= 10.0) return v.ToString("0.00");
+            if (v >= 1.0) return v.ToString("0.000");
+            if (v >= 0.1) return v.ToString("0.0000");
+            if (v >= 0.01) return v.ToString("0.00000");
+            if (v >= 0.001) return v.ToString("0.000000");
+            return v.ToString("0.###E+0");
+        }
+
         //
         //
         public void ApplyThdSettings(SpectrumSettings.ThdSettings s)
@@ -615,9 +757,32 @@ private void ApplyCursorTheme()
             if (min == double.PositiveInfinity || max == double.NegativeInfinity)
                 return (-200.0, 0.0);
 
-            // Clamp final dans [-200 ; 0]
-            min = Math.Max(-200.0, min);
-            max = Math.Min(0.0, max);
+            // Appliquer la même logique d'unité que l'affichage (dBFS / dBV)
+            string modeForUnit = (comboChannel?.SelectedItem as string) ?? "L+R";
+            bool useDbvAxis = UseDbvForMode(modeForUnit);
+
+            if (useDbvAxis)
+            {
+                // Comme on peut afficher L et R avec des offsets différents, on couvre les 2
+                var shifts = new List<double>();
+                if (string.Equals(modeForUnit, "Left", StringComparison.OrdinalIgnoreCase) || string.Equals(modeForUnit, "L+R", StringComparison.OrdinalIgnoreCase))
+                    shifts.Add(_levelCalOffsetDbLeft);
+                if (string.Equals(modeForUnit, "Right", StringComparison.OrdinalIgnoreCase) || string.Equals(modeForUnit, "L+R", StringComparison.OrdinalIgnoreCase))
+                    shifts.Add(_levelCalOffsetDbRight);
+
+                if (shifts.Count > 0)
+                {
+                    min += shifts.Min();
+                    max += shifts.Max();
+                }
+            }
+
+            // Clamp final (on autorise jusqu'à +100 dB pour permettre l'affichage en dBV)
+            const double YMIN_FLOOR = -300.0;
+            const double YMAX_CAP = 100.0;
+
+            min = Math.Max(YMIN_FLOOR, min);
+            max = Math.Min(YMAX_CAP, max);
 
             return (min, max);
         }
@@ -985,6 +1150,9 @@ private void ApplyCursorTheme()
                 if (_isRestoringSettings)
                     return;
 
+                // Mise à jour immédiate de l'UI d'unité (même en LIVE)
+                UpdateLevelUnitUi();
+
                 // IMPORTANT :
                 // En mode LIVE on ne force PAS un redraw immédiat, car la voie nouvellement choisie
                 // n'a pas encore son spectre calculé (il arrive au prochain AcquireOnce()).
@@ -1014,6 +1182,46 @@ private void ApplyCursorTheme()
                 }
             };
 
+
+// Unité de niveau (FFT) : dBFS / dBV (si calibré)
+if (comboLevelUnit != null)
+{
+    comboLevelUnit.Items.Clear();
+    comboLevelUnit.Items.Add("dBFS");
+    comboLevelUnit.Items.Add("dBV");
+    comboLevelUnit.SelectedIndex = 0;
+
+    comboLevelUnit.SelectedIndexChanged += (s, e) =>
+    {
+        if (_isRestoringSettings)
+            return;
+
+        _levelUnit = (comboLevelUnit.SelectedItem as string) ?? "dBFS";
+
+        // Si on n'a pas la calibration pour le mode courant, on force dBFS
+        if (_levelUnit == "dBV" && !IsDbvAvailableForCurrentMode())
+        {
+            _levelUnit = "dBFS";
+            comboLevelUnit.SelectedIndex = 0;
+        }
+
+        // éviter des limites incohérentes après un changement d'unité
+        customYMin = null;
+        customYMax = null;
+
+        if (!isLive)
+            UpdateSpectrumChartAndStats();
+    };
+}
+
+if (btnCalLevel != null)
+{
+    btnCalLevel.Click += (s, e) => ShowLevelCalibrationDialog();
+}
+
+// En startup, on grise / active selon calibration et mode
+UpdateLevelUnitUi();
+
             // Log X axis 
             if (chkLogX != null)
             {
@@ -1027,6 +1235,140 @@ private void ApplyCursorTheme()
             }
 
         }
+// ============================================================
+//  Level calibration (FFT) : dBFS <-> dBV
+// ============================================================
+
+private bool IsDbvAvailableForMode(string mode)
+{
+    // Mode = "Left" / "Right" / "L+R"
+    if (string.Equals(mode, "Left", StringComparison.OrdinalIgnoreCase))
+        return _levelCalValidLeft;
+
+    if (string.Equals(mode, "Right", StringComparison.OrdinalIgnoreCase))
+        return _levelCalValidRight;
+
+    // L+R => on affiche les 2 courbes, donc il faut les 2 calibrations
+    return _levelCalValidLeft && _levelCalValidRight;
+}
+
+private bool IsDbvAvailableForCurrentMode()
+{
+    string mode = (comboChannel?.SelectedItem as string) ?? "L+R";
+    return IsDbvAvailableForMode(mode);
+}
+
+private bool UseDbvForMode(string mode)
+{
+    return string.Equals(_levelUnit, "dBV", StringComparison.OrdinalIgnoreCase) && IsDbvAvailableForMode(mode);
+}
+
+private bool UseDbvForCurrentMode()
+{
+    string mode = (comboChannel?.SelectedItem as string) ?? "L+R";
+    return UseDbvForMode(mode);
+}
+
+private string CurrentLevelUnitLabel()
+{
+    return UseDbvForCurrentMode() ? "dBV" : "dBFS";
+}
+
+private double DbfsToDisplay(double dbfs, bool isRightChannel, string mode)
+{
+    if (!UseDbvForMode(mode))
+        return dbfs;
+
+    return dbfs + (isRightChannel ? _levelCalOffsetDbRight : _levelCalOffsetDbLeft);
+}
+
+private void UpdateLevelUnitUi()
+{
+    if (comboLevelUnit == null)
+        return;
+
+    bool canDbv = IsDbvAvailableForCurrentMode();
+
+    // On grise complètement la ComboBox tant que dBV n'est pas dispo,
+    // conformément au cahier des charges.
+    comboLevelUnit.Enabled = canDbv;
+
+    if (!canDbv)
+    {
+        _levelUnit = "dBFS";
+        if (comboLevelUnit.SelectedIndex != 0)
+            comboLevelUnit.SelectedIndex = 0;
+        return;
+    }
+
+    // Si dBV est dispo, on restaure la sélection cohérente
+    if (string.Equals(_levelUnit, "dBV", StringComparison.OrdinalIgnoreCase))
+    {
+        if (comboLevelUnit.SelectedIndex != 1)
+            comboLevelUnit.SelectedIndex = 1;
+    }
+    else
+    {
+        if (comboLevelUnit.SelectedIndex != 0)
+            comboLevelUnit.SelectedIndex = 0;
+    }
+}
+
+private (bool ok, string message) CalibrateLevel(bool isRight, double knownVrms)
+{
+    if (knownVrms <= 0.0 || double.IsNaN(knownVrms) || double.IsInfinity(knownVrms))
+        return (false, "Valeur Vrms invalide (doit être > 0).");
+
+    double? measuredDbfs = isRight ? _lastRmsDbfsRight : _lastRmsDbfsLeft;
+    if (measuredDbfs == null)
+        return (false, "Pas de mesure disponible. Lancez d'abord une acquisition (RUN), puis réessayez.");
+
+    // dBV = 20*log10(Vrms / 1V). 0 dBV = 1 Vrms.
+    double knownDbv = 20.0 * Math.Log10(knownVrms);
+
+    // Décalage : dBV = dBFS + offset
+    double offset = knownDbv - measuredDbfs.Value;
+
+    if (isRight)
+    {
+        _levelCalValidRight = true;
+        _levelCalOffsetDbRight = offset;
+    }
+    else
+    {
+        _levelCalValidLeft = true;
+        _levelCalOffsetDbLeft = offset;
+    }
+
+    // Vrms d'une sinusoïde "0 dBFS" (full-scale) : Vrms_FS = 10^(offset/20)
+    double vrmsFs = Math.Pow(10.0, offset / 20.0);
+
+    UpdateLevelUnitUi();
+
+    if (!isLive)
+        UpdateSpectrumChartAndStats();
+
+    string chan = isRight ? "R" : "L";
+    return (true, $"Voie {chan} : RMS mesuré = {measuredDbfs.Value:F2} dBFS. Offset = {offset:+0.00;-0.00;0.00} dB. => 0 dBFS ≈ {vrmsFs:F4} Vrms");
+}
+
+private void ShowLevelCalibrationDialog()
+{
+    var dlg = new LevelCalibrationDialog();
+
+    // États init
+    dlg.SetCurrentCalibration(
+        _levelCalValidLeft, _levelCalOffsetDbLeft,
+        _levelCalValidRight, _levelCalOffsetDbRight,
+        _lastRmsDbfsLeft, _lastRmsDbfsRight);
+
+    dlg.CalibrateLeft = (vrms) => CalibrateLevel(false, vrms);
+    dlg.CalibrateRight = (vrms) => CalibrateLevel(true, vrms);
+
+    dlg.ShowDialog(this);
+}
+
+
         //
         private void UpdateCursorVisibility()
         {
@@ -1361,6 +1703,14 @@ private void ApplyCursorTheme()
             // Couleurs
             s.Colors = GetSpectrumColorSettingsSnapshot();
 
+            
+// Niveau (FFT) : unité et calibration
+s.LevelUnit = _levelUnit;
+s.LevelCalValidLeft = _levelCalValidLeft;
+s.LevelCalOffsetDbLeft = _levelCalOffsetDbLeft;
+s.LevelCalValidRight = _levelCalValidRight;
+s.LevelCalOffsetDbRight = _levelCalOffsetDbRight;
+
             return s;
         }
 
@@ -1417,6 +1767,16 @@ private void ApplyCursorTheme()
                             comboAveraging.SelectedIndex = aIdx;
                     }
                 }
+
+// Niveau (FFT) : unité + calibration (dBFS -> dBV)
+_levelUnit = string.IsNullOrWhiteSpace(s.LevelUnit) ? "dBFS" : s.LevelUnit;
+_levelCalValidLeft = s.LevelCalValidLeft;
+_levelCalOffsetDbLeft = s.LevelCalOffsetDbLeft;
+_levelCalValidRight = s.LevelCalValidRight;
+_levelCalOffsetDbRight = s.LevelCalOffsetDbRight;
+
+UpdateLevelUnitUi();
+
             }
             finally
             {
@@ -2029,6 +2389,12 @@ private void ApplyCursorTheme()
 
                 double db = spec[idx];
 
+                // Conversion éventuelle dBFS -> dBV selon unité choisie
+                if (UseDbvForCurrentMode())
+                {
+                    db += (curve == ResolvedCurve.Right) ? _levelCalOffsetDbRight : _levelCalOffsetDbLeft;
+                }
+
                 // Couleur selon la VOIE réellement trackée
                 var col = CurveColor(curve);
                 line.LineColor = Color.FromArgb(180, col);
@@ -2041,7 +2407,7 @@ private void ApplyCursorTheme()
                 if (lbl != null)
                 {
                     lbl.ForeColor = InfoTextColor;
-                    lbl.Text = $"{(isCursor1 ? "C1" : "C2")}({CurveLetter(curve)}): {f:0.##} Hz  {db:0.##} dBFS" + (locked ? "  (LOCK)" : "");
+                    lbl.Text = $"{(isCursor1 ? "C1" : "C2")}({CurveLetter(curve)}): {f:0.##} Hz  {db:0.##} {CurrentLevelUnitLabel()}" + (locked ? "  (LOCK)" : "");
                     lbl.Visible = true;
                 }
             }
@@ -2427,12 +2793,59 @@ private void ApplyCursorTheme()
             if (fMax > uiMax)
                 fMax = uiMax;
 
-            // --- Axe Y (dBFS) avec limites custom éventuelles ---
-            double yMinAuto = -200.0;
-            double yMaxAuto = 0.0;
+// --- Axe Y (dBFS / dBV) avec limites custom éventuelles ---
+string modeForUnit = (comboChannel?.SelectedItem as string) ?? "L+R";
+bool useDbvAxis = UseDbvForMode(modeForUnit);
+
+double yMinAuto = -200.0;
+double yMaxAuto = 0.0;
+
+// Limite supérieure autorisée (utile en dBV après calibration).
+// On garde une échelle par défaut de 200 dB (span = 200).
+const double YMAX_CAP = 100.0;
+const double DEFAULT_SPAN_DB = 200.0;
+
+
+if (useDbvAxis)
+{
+    // En dBV, on applique un décalage (offset) : dBV = dBFS + offset
+    // En mode L+R, les offsets peuvent être différents => on prend un range qui couvre les 2
+    var shifts = new List<double>();
+    if (string.Equals(modeForUnit, "Left", StringComparison.OrdinalIgnoreCase) || string.Equals(modeForUnit, "L+R", StringComparison.OrdinalIgnoreCase))
+        shifts.Add(_levelCalOffsetDbLeft);
+    if (string.Equals(modeForUnit, "Right", StringComparison.OrdinalIgnoreCase) || string.Equals(modeForUnit, "L+R", StringComparison.OrdinalIgnoreCase))
+        shifts.Add(_levelCalOffsetDbRight);
+
+    if (shifts.Count > 0)
+    {
+        yMinAuto += shifts.Min();
+        yMaxAuto += shifts.Max();
+    }
+
+    area.AxisY.Title = "Level (dBV)";
+}
+else
+{
+    area.AxisY.Title = "Level (dBFS)";
+}
+
+// Cap sur le range auto pour éviter un axe Y qui parte trop haut
+if (yMaxAuto > YMAX_CAP)
+{
+    yMaxAuto = YMAX_CAP;
+    yMinAuto = yMaxAuto - DEFAULT_SPAN_DB;
+}
 
             double yMin = customYMin ?? yMinAuto;
             double yMax = customYMax ?? yMaxAuto;
+
+            // Cap sur le YMax choisi. Si seul YMax est auto, on conserve le span par défaut.
+            if (yMax > YMAX_CAP)
+            {
+                yMax = YMAX_CAP;
+                if (customYMin == null)
+                    yMin = yMax - DEFAULT_SPAN_DB;
+            }
 
             if (yMin >= yMax)
                 yMin = yMax - 10.0; // au moins 10 dB de span
@@ -2585,6 +2998,8 @@ private void ApplyCursorTheme()
             bool showLeft = (mode == "Left" || mode == "L+R") && (currentLeftSpectrum != null);
             bool showRight = (mode == "Right" || mode == "L+R") && (currentRightSpectrum != null);
             bool peakHoldOn = (chkPeakHold != null && chkPeakHold.Checked);
+            bool useDbvPlot = UseDbvForMode(mode);
+
 
             _statsShowLeft = showLeft;
             _statsShowRight = showRight;
@@ -2655,7 +3070,7 @@ private void ApplyCursorTheme()
                 seriesL.Color = FftLeftColor;
 
                 for (int i = startIndex; i < freqAxis.Length && i < currentLeftSpectrum.Length; i++)
-                    seriesL.Points.AddXY(freqAxis[i], currentLeftSpectrum[i]);
+                    seriesL.Points.AddXY(freqAxis[i], useDbvPlot ? (currentLeftSpectrum[i] + _levelCalOffsetDbLeft) : currentLeftSpectrum[i]);
 
                 chartSpectrum.Series.Add(seriesL);
 
@@ -2669,7 +3084,7 @@ private void ApplyCursorTheme()
                     seriesLph.BorderWidth = _colors.PeakHoldWidth;
 
                     for (int i = startIndex; i < freqAxis.Length && i < peakL.Length; i++)
-                        seriesLph.Points.AddXY(freqAxis[i], peakL[i]);
+                        seriesLph.Points.AddXY(freqAxis[i], useDbvPlot ? (peakL[i] + _levelCalOffsetDbLeft) : peakL[i]);
 
                     chartSpectrum.Series.Add(seriesLph);
                 }
@@ -2685,7 +3100,7 @@ private void ApplyCursorTheme()
                 seriesR.Color = FftRightColor;
 
                 for (int i = startIndex; i < freqAxis.Length && i < currentRightSpectrum.Length; i++)
-                    seriesR.Points.AddXY(freqAxis[i], currentRightSpectrum[i]);
+                    seriesR.Points.AddXY(freqAxis[i], useDbvPlot ? (currentRightSpectrum[i] + _levelCalOffsetDbRight) : currentRightSpectrum[i]);
 
                 chartSpectrum.Series.Add(seriesR);
 
@@ -2699,13 +3114,16 @@ private void ApplyCursorTheme()
                     seriesRph.BorderWidth = _colors.PeakHoldWidth;
 
                     for (int i = startIndex; i < freqAxis.Length && i < peakR.Length; i++)
-                        seriesRph.Points.AddXY(freqAxis[i], peakR[i]);
+                        seriesRph.Points.AddXY(freqAxis[i], useDbvPlot ? (peakR[i] + _levelCalOffsetDbRight) : peakR[i]);
 
                     chartSpectrum.Series.Add(seriesRph);
                 }
             }
 
             // --- Stats temporelles : LEFT ---
+            bool showLeftVolts = false;
+            bool showRightVolts = false;
+
             if (timeL != null && timeL.Length > 0)
             {
                 double peakLfs = 0.0;
@@ -2735,13 +3153,41 @@ private void ApplyCursorTheme()
                 if (rmsLDb < -200.0) rmsLDb = -200.0;
                 if (peakLDb < -200.0) peakLDb = -200.0;
 
-                lblLeftRms.Text = $"RMS:  {rmsLDb:F2} dBFS";
-                lblLeftPeak.Text = $"Peak: {peakLDb:F2} dBFS";
+                bool leftUseDbv = (_levelUnit == "dBV") && _levelCalValidLeft;
+
+                double rmsLDisp = leftUseDbv ? (rmsLDb + _levelCalOffsetDbLeft) : rmsLDb;
+                double peakLDisp = leftUseDbv ? (peakLDb + _levelCalOffsetDbLeft) : peakLDb;
+                string unitL = leftUseDbv ? "dBV" : "dBFS";
+
+                lblLeftRms.Text = $"RMS:  {rmsLDisp:F2} {unitL}";
+                _lastRmsDbfsLeft = rmsLDb;
+                lblLeftPeak.Text = $"Peak: {peakLDisp:F2} {unitL}";
+                showLeftVolts = leftUseDbv;
+                if (lblLeftRmsV != null && lblLeftPeakV != null)
+                {
+                    if (showLeftVolts)
+                    {
+                        // 0 dBV = 1 Vrms
+                        double vrms = Math.Pow(10.0, rmsLDisp / 20.0);
+                        double vpk = Math.Pow(10.0, peakLDisp / 20.0);
+                        lblLeftRmsV.Text = $"RMS:  {FormatVoltage(vrms)}";
+                        lblLeftPeakV.Text = $"Peak: {FormatVoltage(vpk)}";
+
+                    }
+                    else
+                    {
+                        lblLeftRmsV.Text = "";
+                        lblLeftPeakV.Text = "";
+                    }
+                }
             }
             else
             {
                 lblLeftRms.Text = "RMS:";
+                _lastRmsDbfsLeft = null;
                 lblLeftPeak.Text = "Peak:";
+                if (lblLeftRmsV != null) lblLeftRmsV.Text = "";
+                if (lblLeftPeakV != null) lblLeftPeakV.Text = "";
             }
 
             // --- Stats temporelles : RIGHT ---
@@ -2774,14 +3220,44 @@ private void ApplyCursorTheme()
                 if (rmsRDb < -200.0) rmsRDb = -200.0;
                 if (peakRDb < -200.0) peakRDb = -200.0;
 
-                lblRightRms.Text = $"RMS:  {rmsRDb:F2} dBFS";
-                lblRightPeak.Text = $"Peak: {peakRDb:F2} dBFS";
+                bool rightUseDbv = (_levelUnit == "dBV") && _levelCalValidRight;
+
+                double rmsRDisp = rightUseDbv ? (rmsRDb + _levelCalOffsetDbRight) : rmsRDb;
+                double peakRDisp = rightUseDbv ? (peakRDb + _levelCalOffsetDbRight) : peakRDb;
+                string unitR = rightUseDbv ? "dBV" : "dBFS";
+
+                lblRightRms.Text = $"RMS:  {rmsRDisp:F2} {unitR}";
+                _lastRmsDbfsRight = rmsRDb;
+                lblRightPeak.Text = $"Peak: {peakRDisp:F2} {unitR}";
+                showRightVolts = rightUseDbv;
+                if (lblRightRmsV != null && lblRightPeakV != null)
+                {
+                    if (showRightVolts)
+                    {
+                        // 0 dBV = 1 Vrms
+                        double vrms = Math.Pow(10.0, rmsRDisp / 20.0);
+                        double vpk = Math.Pow(10.0, peakRDisp / 20.0);
+                        lblRightRmsV.Text = $"RMS:  {FormatVoltage(vrms)}";
+                        lblRightPeakV.Text = $"Peak: {FormatVoltage(vpk)}";
+
+                    }
+                    else
+                    {
+                        lblRightRmsV.Text = "";
+                        lblRightPeakV.Text = "";
+                    }
+                }
             }
             else
             {
                 lblRightRms.Text = "";
+                _lastRmsDbfsRight = null;
                 lblRightPeak.Text = "";
             }
+
+            // Ajuste l'UI des valeurs en Volts (visible uniquement en dBV calibré)
+            SetVoltLabelsVisible(showLeftVolts, showRightVolts);
+
 
             // =========================
             //   MESURES ANALYTIQUES
@@ -3621,15 +4097,19 @@ private void ApplyCursorTheme()
             BuildRowsForChannel(_rowsLeft,
                 lblLeftRms?.Text,
                 lblLeftPeak?.Text,
+                lblLeftRmsV?.Text,
+                lblLeftPeakV?.Text,
                 lblLeftMeas?.Text);
 
             BuildRowsForChannel(_rowsRight,
                 lblRightRms?.Text,
                 lblRightPeak?.Text,
+                lblRightRmsV?.Text,
+                lblRightPeakV?.Text,
                 lblRightMeas?.Text);
         }
 
-        private static void BuildRowsForChannel(List<StatRow> dst, string? rms, string? peak, string? meas)
+        private static void BuildRowsForChannel(List<StatRow> dst, string? rms, string? peak, string? rmsV, string? peakV, string? meas)
         {
             void AddLine(string? line)
             {
@@ -3665,6 +4145,8 @@ private void ApplyCursorTheme()
 
             AddLine(rms);
             AddLine(peak);
+            AddLine(rmsV);
+            AddLine(peakV);
 
             if (!string.IsNullOrWhiteSpace(meas) && meas.Trim() != "—")
             {

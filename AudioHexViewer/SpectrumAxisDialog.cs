@@ -424,20 +424,41 @@ namespace AudioHexViewer
                 return;
             }
 
-            yMaxData = Math.Min(0.0, yMaxData);
-            yMinData = Math.Max(-200.0, yMinData);
+            // Clamp to numeric bounds (supports dBFS and dBV)
+            double yMaxAllowed = (double)numYMax.Maximum;
+            double yMinAllowed = (double)numYMin.Minimum;
 
+            // Guard: ensure we have a sane range from the provider
+            if (yMaxData < yMinData)
+            {
+                var tmp = yMaxData;
+                yMaxData = yMinData;
+                yMinData = tmp;
+            }
+
+            // Pre-clamp to allowed bounds
+            yMaxData = Math.Min(yMaxAllowed, yMaxData);
+            yMinData = Math.Max(yMinAllowed, yMinData);
+
+            // Round to nice 10 dB steps
             double yMax = Math.Ceiling(yMaxData / 10.0) * 10.0;
             double yMin = Math.Floor(yMinData / 10.0) * 10.0;
 
-            yMax = Math.Min(0.0, yMax);
-            yMin = Math.Max(-200.0, yMin);
+            // Final clamp after rounding
+            yMax = Math.Min(yMaxAllowed, yMax);
+            yMin = Math.Max(yMinAllowed, yMin);
 
             if ((yMax - yMin) < 20.0)
             {
                 yMin = yMax - 20.0;
-                if (yMin < -200.0) { yMin = -200.0; yMax = yMin + 20.0; }
-                if (yMax > 0.0) { yMax = 0.0; yMin = yMax - 20.0; if (yMin < -200.0) yMin = -200.0; }
+
+                if (yMin < yMinAllowed) { yMin = yMinAllowed; yMax = yMin + 20.0; }
+                if (yMax > yMaxAllowed)
+                {
+                    yMax = yMaxAllowed;
+                    yMin = yMax - 20.0;
+                    if (yMin < yMinAllowed) yMin = yMinAllowed;
+                }
             }
 
             yMax = Math.Max((double)numYMax.Minimum, Math.Min((double)numYMax.Maximum, yMax));
