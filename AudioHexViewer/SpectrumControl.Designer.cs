@@ -20,6 +20,8 @@
             chkRemoveDC = new CheckBox();
             chkPeakHold = new CheckBox();
             btnResetPeakHold = new Button();
+            chkEnableThd = new CheckBox();
+            btnThdSettings = new Button();
             btnResetAvg = new Button();
             lblWindow = new Label();
             comboWindow = new ComboBox();
@@ -64,6 +66,8 @@
             panelTop.Controls.Add(chkRemoveDC);
             panelTop.Controls.Add(chkPeakHold);
             panelTop.Controls.Add(btnResetPeakHold);
+            panelTop.Controls.Add(chkEnableThd);
+            panelTop.Controls.Add(btnThdSettings);
             panelTop.Controls.Add(btnResetAvg);
             panelTop.Controls.Add(lblWindow);
             panelTop.Controls.Add(comboWindow);
@@ -124,7 +128,30 @@
             btnResetPeakHold.Text = "Clear Hold";
             btnResetPeakHold.UseVisualStyleBackColor = true;
             btnResetPeakHold.Click += btnResetPeakHold_Click;
+            //
             // 
+            // chkEnableThd
+            // 
+            chkEnableThd.AutoSize = true;
+            chkEnableThd.Location = new Point(735, 35);
+            chkEnableThd.Name = "chkEnableThd";
+            chkEnableThd.Size = new Size(89, 19);
+            chkEnableThd.TabIndex = 30;
+            chkEnableThd.Text = "Enable THD";
+            chkEnableThd.UseVisualStyleBackColor = true;
+            chkEnableThd.CheckedChanged += chkEnableThd_CheckedChanged;
+            // 
+            // btnThdSettings
+            // 
+            btnThdSettings.Location = new Point(835, 31);
+            btnThdSettings.Name = "btnThdSettings";
+            btnThdSettings.Size = new Size(95, 23);
+            btnThdSettings.TabIndex = 31;
+            btnThdSettings.TabStop = false;
+            btnThdSettings.Text = "THD Settings";
+            btnThdSettings.UseVisualStyleBackColor = true;
+            btnThdSettings.Click += btnThdSettings_Click;
+ 
             // btnResetAvg
             // 
             btnResetAvg.Location = new Point(556, 7);
@@ -443,6 +470,8 @@ btnCalLevel.UseVisualStyleBackColor = true;
 
         private System.Windows.Forms.DataVisualization.Charting.Chart chartSpectrum;
         private CheckBox chkLogX;
+        private CheckBox chkEnableThd;
+        private Button btnThdSettings;
         private Button btnResetAvg;
         private CheckBox chkRemoveDC;
         private Label lblAvgProgress;

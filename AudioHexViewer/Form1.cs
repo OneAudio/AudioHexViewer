@@ -976,51 +976,59 @@ namespace AudioHexViewer
             menuC1TrackAuto.Checked = true;
             menuC2TrackAuto.Checked = true;
 
-            // Insérer à côté de "Measures"
-            int idxMeasures = menuStrip1.Items.IndexOf(menuMeasures);
-            if (idxMeasures >= 0)
-                menuStrip1.Items.Insert(idxMeasures + 1, menuCursors);
-            else
-                menuStrip1.Items.Add(menuCursors);
+            // Ajouter au menu principal (top-level)
+            menuStrip1.Items.Add(menuCursors);
         }
 
         //
-        private void menuThdSettings_Click(object sender, EventArgs e)
+
+        // --------------------------------------------------------------------
+        // THD : logique + persistance (UI lives in SpectrumControl)
+        // --------------------------------------------------------------------
+
+        private void ApplyThdEnabled(bool enabled)
         {
-            try
-            {
-                int sr = currentFormat != null ? currentFormat.SampleRate : 0;
-
-                using (var dlg = new ThdSettingsDialog(_session.Spectrum.Thd, sr))
-                {
-                    if (dlg.ShowDialog(this) != DialogResult.OK)
-                        return;
-
-                    _session.Spectrum.Thd = dlg.Result;
-
-                    if (spectrumControl != null)
-                        spectrumControl.ApplyThdSettings(_session.Spectrum.Thd);
-
-                    if (!SessionSettingsManager.Save(_session, out string? err) && !string.IsNullOrWhiteSpace(err))
-                        MessageBox.Show(this, err, "Save settings failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(this, ex.ToString(), "Crash in THD setting", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-        //
-        private void menuEnableThd_CheckedChanged(object sender, EventArgs e)
-        {
-            bool enabled = menuEnableThd.Checked;
-
             _session.Spectrum.EnableThdMeasures = enabled;
-            SessionSettingsManager.Save(_session, out _);
 
             if (spectrumControl != null)
+            {
                 spectrumControl.SetThdMeasuresEnabled(enabled);
+                spectrumControl.SetThdEnabledUi(enabled);
+            }
+
+            if (!SessionSettingsManager.Save(_session, out string? err) && !string.IsNullOrWhiteSpace(err))
+                MessageBox.Show(this, err, "Save settings failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
+
+
+private void ShowThdSettings()
+{
+    try
+    {
+        int sr = currentFormat != null ? currentFormat.SampleRate : 0;
+
+        using (var dlg = new ThdSettingsDialog(_session.Spectrum.Thd, sr))
+        {
+            if (dlg.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            _session.Spectrum.Thd = dlg.Result;
+
+            if (spectrumControl != null)
+                spectrumControl.ApplyThdSettings(_session.Spectrum.Thd);
+
+            if (!SessionSettingsManager.Save(_session, out string? err) && !string.IsNullOrWhiteSpace(err))
+                MessageBox.Show(this, err, "Save settings failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+    catch (Exception ex)
+    {
+        MessageBox.Show(this, ex.ToString(), "Crash in THD setting", MessageBoxButtons.OK, MessageBoxIcon.Error);
+    }
+}
+
+        //
+
 
 
         //
@@ -1035,12 +1043,9 @@ namespace AudioHexViewer
             menuColors.Click += (_, __) => ShowColorsDialog();
 
             // Insert right after Measures (same pattern as InitCursorsMenu)
-            int idxMeasures = menuStrip1.Items.IndexOf(menuMeasures);
-            if (idxMeasures >= 0)
-                menuStrip1.Items.Insert(idxMeasures + 1, menuColors);
-            else
-                menuStrip1.Items.Add(menuColors);
-        }
+            // Ajouter au menu principal (top-level)
+            menuStrip1.Items.Add(menuColors);
+}
 
         private void ShowColorsDialog()
         {
@@ -2784,9 +2789,13 @@ namespace AudioHexViewer
                 int sampleRate = currentFormat?.SampleRate ?? 48000;
 
                 spectrumControl = new SpectrumControl(GetAnalysisFrame, sampleRate);
-                menuEnableThd.Checked = _session.Spectrum.EnableThdMeasures; // état au démarrage
-                spectrumControl.SetThdMeasuresEnabled(menuEnableThd.Checked);
-
+                // THD : logique + persistance (UI lives in SpectrumControl) (button + checkbox in the Spectrum tab)
+                spectrumControl.ThdEnabledChanged += enabled => ApplyThdEnabled(enabled);
+                spectrumControl.ThdSettingsRequested += () => ShowThdSettings();
+                // Sync state from session
+                spectrumControl.ApplyThdSettings(_session.Spectrum.Thd);
+                spectrumControl.SetThdMeasuresEnabled(_session.Spectrum.EnableThdMeasures);
+                spectrumControl.SetThdEnabledUi(_session.Spectrum.EnableThdMeasures);
                 if (menuC1Enabled != null) spectrumControl.CursorLeftEnabled = menuC1Enabled.Checked;
                 if (menuC2Enabled != null) spectrumControl.CursorRightEnabled = menuC2Enabled.Checked;
 
