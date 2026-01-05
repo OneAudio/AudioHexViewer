@@ -16,6 +16,7 @@
         private void InitializeComponent()
         {
             panelTop = new Panel();
+            label1 = new Label();
             lblAvgProgress = new Label();
             chkRemoveDC = new CheckBox();
             chkPeakHold = new CheckBox();
@@ -27,11 +28,11 @@
             comboWindow = new ComboBox();
             lblAveraging = new Label();
             comboAveraging = new ComboBox();
-            lblChannel = new Label();
-            comboChannel = new ComboBox();
             lblUnits = new Label();
             comboLevelUnit = new ComboBox();
             btnCalLevel = new Button();
+            lblChannel = new Label();
+            comboChannel = new ComboBox();
             lblWindowInfo = new Label();
             btnRun = new Button();
             chkLogX = new CheckBox();
@@ -62,6 +63,7 @@
             // 
             // panelTop
             // 
+            panelTop.Controls.Add(label1);
             panelTop.Controls.Add(lblAvgProgress);
             panelTop.Controls.Add(chkRemoveDC);
             panelTop.Controls.Add(chkPeakHold);
@@ -84,15 +86,25 @@
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 0);
             panelTop.Name = "panelTop";
-            panelTop.Size = new Size(1138, 60);
+            panelTop.Size = new Size(1138, 65);
             panelTop.TabIndex = 1;
+            // 
+            // label1
+            // 
+            label1.AutoSize = true;
+            label1.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            label1.Location = new Point(975, 15);
+            label1.Name = "label1";
+            label1.Size = new Size(38, 15);
+            label1.TabIndex = 32;
+            label1.Text = "T Acq";
             // 
             // lblAvgProgress
             // 
             lblAvgProgress.AutoSize = true;
             lblAvgProgress.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
             lblAvgProgress.ForeColor = SystemColors.HotTrack;
-            lblAvgProgress.Location = new Point(636, 7);
+            lblAvgProgress.Location = new Point(373, 7);
             lblAvgProgress.Name = "lblAvgProgress";
             lblAvgProgress.Size = new Size(51, 21);
             lblAvgProgress.TabIndex = 14;
@@ -101,17 +113,17 @@
             // chkRemoveDC
             // 
             chkRemoveDC.AutoSize = true;
-            chkRemoveDC.Location = new Point(60, 35);
+            chkRemoveDC.Location = new Point(604, 12);
             chkRemoveDC.Name = "chkRemoveDC";
-            chkRemoveDC.Size = new Size(85, 19);
+            chkRemoveDC.Size = new Size(42, 19);
             chkRemoveDC.TabIndex = 13;
-            chkRemoveDC.Text = "remove DC";
+            chkRemoveDC.Text = "AC";
             chkRemoveDC.UseVisualStyleBackColor = true;
             // 
             // chkPeakHold
             // 
             chkPeakHold.AutoSize = true;
-            chkPeakHold.Location = new Point(460, 36);
+            chkPeakHold.Location = new Point(453, 12);
             chkPeakHold.Name = "chkPeakHold";
             chkPeakHold.Size = new Size(77, 19);
             chkPeakHold.TabIndex = 17;
@@ -120,61 +132,60 @@
             // 
             // btnResetPeakHold
             // 
-            btnResetPeakHold.Location = new Point(556, 31);
+            btnResetPeakHold.Location = new Point(529, 8);
             btnResetPeakHold.Name = "btnResetPeakHold";
-            btnResetPeakHold.Size = new Size(74, 23);
+            btnResetPeakHold.Size = new Size(53, 23);
             btnResetPeakHold.TabIndex = 18;
             btnResetPeakHold.TabStop = false;
-            btnResetPeakHold.Text = "Clear Hold";
+            btnResetPeakHold.Text = "CLEAR";
             btnResetPeakHold.UseVisualStyleBackColor = true;
             btnResetPeakHold.Click += btnResetPeakHold_Click;
-            //
             // 
             // chkEnableThd
             // 
             chkEnableThd.AutoSize = true;
-            chkEnableThd.Location = new Point(735, 35);
+            chkEnableThd.Location = new Point(453, 36);
             chkEnableThd.Name = "chkEnableThd";
-            chkEnableThd.Size = new Size(89, 19);
+            chkEnableThd.Size = new Size(49, 19);
             chkEnableThd.TabIndex = 30;
-            chkEnableThd.Text = "Enable THD";
+            chkEnableThd.Text = "THD";
             chkEnableThd.UseVisualStyleBackColor = true;
             chkEnableThd.CheckedChanged += chkEnableThd_CheckedChanged;
             // 
             // btnThdSettings
             // 
-            btnThdSettings.Location = new Point(835, 31);
+            btnThdSettings.Location = new Point(508, 35);
             btnThdSettings.Name = "btnThdSettings";
-            btnThdSettings.Size = new Size(95, 23);
+            btnThdSettings.Size = new Size(74, 23);
             btnThdSettings.TabIndex = 31;
             btnThdSettings.TabStop = false;
-            btnThdSettings.Text = "THD Settings";
+            btnThdSettings.Text = "THD SET";
             btnThdSettings.UseVisualStyleBackColor = true;
             btnThdSettings.Click += btnThdSettings_Click;
- 
+            // 
             // btnResetAvg
             // 
-            btnResetAvg.Location = new Point(556, 7);
+            btnResetAvg.Location = new Point(371, 33);
             btnResetAvg.Name = "btnResetAvg";
-            btnResetAvg.Size = new Size(74, 23);
+            btnResetAvg.Size = new Size(53, 23);
             btnResetAvg.TabIndex = 12;
-            btnResetAvg.Text = "Clear AVG";
+            btnResetAvg.Text = "CLEAR";
             btnResetAvg.UseVisualStyleBackColor = true;
             btnResetAvg.Click += btnResetAvg_Click;
             // 
             // lblWindow
             // 
             lblWindow.AutoSize = true;
-            lblWindow.Location = new Point(203, 10);
+            lblWindow.Location = new Point(126, 11);
             lblWindow.Name = "lblWindow";
-            lblWindow.Size = new Size(51, 15);
+            lblWindow.Size = new Size(68, 15);
             lblWindow.TabIndex = 2;
-            lblWindow.Text = "Window";
+            lblWindow.Text = "Windowing";
             // 
             // comboWindow
             // 
             comboWindow.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboWindow.Location = new Point(260, 7);
+            comboWindow.Location = new Point(126, 33);
             comboWindow.Name = "comboWindow";
             comboWindow.Size = new Size(130, 23);
             comboWindow.TabIndex = 3;
@@ -182,67 +193,68 @@
             // lblAveraging
             // 
             lblAveraging.AutoSize = true;
-            lblAveraging.Location = new Point(426, 10);
+            lblAveraging.Location = new Point(280, 11);
             lblAveraging.Name = "lblAveraging";
-            lblAveraging.Size = new Size(28, 15);
+            lblAveraging.Size = new Size(61, 15);
             lblAveraging.TabIndex = 4;
-            lblAveraging.Text = "Avg";
+            lblAveraging.Text = "Averaging";
             // 
             // comboAveraging
             // 
             comboAveraging.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboAveraging.Location = new Point(460, 7);
+            comboAveraging.Location = new Point(280, 33);
             comboAveraging.Name = "comboAveraging";
-            comboAveraging.Size = new Size(90, 23);
+            comboAveraging.Size = new Size(85, 23);
             comboAveraging.TabIndex = 5;
-// 
-// lblUnits
-// 
-lblUnits.AutoSize = true;
-lblUnits.Location = new Point(735, 10);
-lblUnits.Name = "lblUnits";
-lblUnits.Size = new Size(34, 15);
-lblUnits.TabIndex = 13;
-lblUnits.Text = "Units";
-// 
-// comboLevelUnit
-// 
-comboLevelUnit.DropDownStyle = ComboBoxStyle.DropDownList;
-comboLevelUnit.Location = new Point(775, 7);
-comboLevelUnit.Name = "comboLevelUnit";
-comboLevelUnit.Size = new Size(80, 23);
-comboLevelUnit.TabIndex = 14;
-// 
-// btnCalLevel
-// 
-btnCalLevel.Location = new Point(865, 6);
-btnCalLevel.Name = "btnCalLevel";
-btnCalLevel.Size = new Size(80, 25);
-btnCalLevel.TabIndex = 15;
-btnCalLevel.Text = "Cal Level";
-btnCalLevel.UseVisualStyleBackColor = true;
+            // 
+            // lblUnits
+            // 
+            lblUnits.AutoSize = true;
+            lblUnits.Location = new Point(811, 9);
+            lblUnits.Name = "lblUnits";
+            lblUnits.Size = new Size(44, 15);
+            lblUnits.TabIndex = 13;
+            lblUnits.Text = "Y Units";
+            // 
+            // comboLevelUnit
+            // 
+            comboLevelUnit.DropDownStyle = ComboBoxStyle.DropDownList;
+            comboLevelUnit.Location = new Point(861, 6);
+            comboLevelUnit.Name = "comboLevelUnit";
+            comboLevelUnit.Size = new Size(74, 23);
+            comboLevelUnit.TabIndex = 14;
+            // 
+            // btnCalLevel
+            // 
+            btnCalLevel.Location = new Point(861, 33);
+            btnCalLevel.Name = "btnCalLevel";
+            btnCalLevel.Size = new Size(74, 23);
+            btnCalLevel.TabIndex = 15;
+            btnCalLevel.Text = "Calibrate";
+            btnCalLevel.UseVisualStyleBackColor = true;
             // 
             // lblChannel
             // 
             lblChannel.AutoSize = true;
-            lblChannel.Location = new Point(3, 10);
+            lblChannel.Location = new Point(17, 11);
             lblChannel.Name = "lblChannel";
-            lblChannel.Size = new Size(51, 15);
+            lblChannel.Size = new Size(85, 15);
             lblChannel.TabIndex = 6;
-            lblChannel.Text = "Channel";
+            lblChannel.Text = "Channel Mode";
             // 
             // comboChannel
             // 
             comboChannel.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboChannel.Location = new Point(60, 7);
+            comboChannel.Location = new Point(17, 33);
             comboChannel.Name = "comboChannel";
-            comboChannel.Size = new Size(100, 23);
+            comboChannel.Size = new Size(85, 23);
             comboChannel.TabIndex = 7;
             // 
             // lblWindowInfo
             // 
             lblWindowInfo.AutoSize = true;
-            lblWindowInfo.Location = new Point(990, 40);
+            lblWindowInfo.ForeColor = SystemColors.HotTrack;
+            lblWindowInfo.Location = new Point(975, 36);
             lblWindowInfo.Name = "lblWindowInfo";
             lblWindowInfo.Size = new Size(47, 15);
             lblWindowInfo.TabIndex = 8;
@@ -251,7 +263,7 @@ btnCalLevel.UseVisualStyleBackColor = true;
             // btnRun
             // 
             btnRun.FlatStyle = FlatStyle.Flat;
-            btnRun.Location = new Point(1044, 4);
+            btnRun.Location = new Point(1043, 10);
             btnRun.Name = "btnRun";
             btnRun.Size = new Size(79, 51);
             btnRun.TabIndex = 9;
@@ -260,18 +272,18 @@ btnCalLevel.UseVisualStyleBackColor = true;
             // chkLogX
             // 
             chkLogX.AutoSize = true;
-            chkLogX.Location = new Point(260, 35);
+            chkLogX.Location = new Point(604, 36);
             chkLogX.Name = "chkLogX";
-            chkLogX.Size = new Size(67, 19);
+            chkLogX.Size = new Size(58, 19);
             chkLogX.TabIndex = 11;
-            chkLogX.Text = "log freq";
+            chkLogX.Text = "LOG F";
             // 
             // chartSpectrum
             // 
             chartSpectrum.Dock = DockStyle.Fill;
-            chartSpectrum.Location = new Point(0, 60);
+            chartSpectrum.Location = new Point(0, 65);
             chartSpectrum.Name = "chartSpectrum";
-            chartSpectrum.Size = new Size(1138, 440);
+            chartSpectrum.Size = new Size(1138, 435);
             chartSpectrum.TabIndex = 0;
             // 
             // grpRightStats
@@ -427,10 +439,10 @@ btnCalLevel.UseVisualStyleBackColor = true;
             panelStats.Controls.Add(grpLeftStats);
             panelStats.Controls.Add(grpRightStats);
             panelStats.Dock = DockStyle.Fill;
-            panelStats.Location = new Point(0, 60);
+            panelStats.Location = new Point(0, 65);
             panelStats.Name = "panelStats";
             panelStats.Padding = new Padding(8);
-            panelStats.Size = new Size(1138, 440);
+            panelStats.Size = new Size(1138, 435);
             panelStats.TabIndex = 0;
             // 
             // SpectrumControl
@@ -494,5 +506,6 @@ btnCalLevel.UseVisualStyleBackColor = true;
         private Label lblRightPeak;
         private Label lblRightRmsV;
         private Label lblRightPeakV;
+        private Label label1;
     }
 }
