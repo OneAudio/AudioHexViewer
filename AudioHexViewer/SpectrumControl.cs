@@ -1,6 +1,7 @@
 using MathNet.Numerics;
 using MathNet.Numerics.IntegralTransforms;
 using System;
+using System.Globalization;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -9,8 +10,6 @@ using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
 using static AudioHexViewer.SpectrumControl;
 using ChartSeries = System.Windows.Forms.DataVisualization.Charting.Series;
-using System.Globalization;
-
 
 
 namespace AudioHexViewer
@@ -217,6 +216,18 @@ private string _levelUnit = "dBFS"; // "dBFS" ou "dBV"
 private double? _lastRmsDbfsLeft = null;
 private double? _lastRmsDbfsRight = null;
 
+// Dernières mesures RMS en FS (AC, DC retiré) — base de calibration/volts linéaires
+private double? _lastRmsFsLeft = null;
+private double? _lastRmsFsRight = null;
+
+// Gain linéaire Vrms / FS_rms (AC) — dérivé de la calibration
+private double _levelGainVrmsPerFsLeft = 0.0;
+private double _levelGainVrmsPerFsRight = 0.0;
+
+// Dernières composantes DC en volts (utile pour l'affichage dans le panneau mesures)
+private double? _lastVdcVoltsLeft = null;
+private double? _lastVdcVoltsRight = null;
+
 
         // Layout original des labels "Meas" (pour pouvoir insérer des lignes Volts en mode dBV)
         private bool _voltLayoutInit = false;
@@ -355,56 +366,6 @@ private double? _lastRmsDbfsRight = null;
             int decimals = GetStepDecimals(stepMinor);
 
             return db.ToString("F" + decimals);
-        }
-        //
-        private static string FormatVoltage(double volts)
-        {
-            if (double.IsNaN(volts) || double.IsInfinity(volts)) return "—";
-
-            double a = Math.Abs(volts);
-
-            // Choix d'unité
-            double scaled;
-            string unit;
-            if (a >= 1.0)
-            {
-                scaled = volts;
-                unit = "V";
-            }
-            else if (a >= 1e-3)
-            {
-                scaled = volts * 1e3;
-                unit = "mV";
-            }
-            else
-            {
-                scaled = volts * 1e6;
-                unit = "µV";
-            }
-
-            // 4 chiffres significatifs, sans notation scientifique
-            string num = ToSignificantDigitsNoExponent(scaled, 4);
-
-            return $"{num} {unit}";
-        }
-
-        private static string ToSignificantDigitsNoExponent(double value, int sigDigits)
-        {
-            if (value == 0.0) return "0";
-
-            double abs = Math.Abs(value);
-            int magnitude = (int)Math.Floor(Math.Log10(abs));
-            int decimals = sigDigits - 1 - magnitude;
-            if (decimals < 0) decimals = 0;
-            if (decimals > 12) decimals = 12; // sécurité
-
-            double rounded = Math.Round(value, decimals, MidpointRounding.AwayFromZero);
-
-            // Format fixe (pas de E-xxx), puis trim des zéros inutiles
-            string s = rounded.ToString("F" + decimals, CultureInfo.InvariantCulture);
-            if (decimals > 0) s = s.TrimEnd('0').TrimEnd('.');
-
-            return s;
         }
         //
         private static RectangleF GetPlotRectPixels(Chart chart, ChartArea area)
@@ -634,16 +595,46 @@ private double? _lastRmsDbfsRight = null;
             }
         }
 
-        private static string FormatVolts(double v)
+        private static double OffsetDbFromGain(double gainVrmsPerFs)
         {
-            v = Math.Abs(v);
-            if (v >= 100.0) return v.ToString("0.0");
-            if (v >= 10.0) return v.ToString("0.00");
-            if (v >= 1.0) return v.ToString("0.000");
-            if (v >= 0.1) return v.ToString("0.0000");
-            if (v >= 0.01) return v.ToString("0.00000");
-            if (v >= 0.001) return v.ToString("0.000000");
-            return v.ToString("0.###E+0");
+            if (gainVrmsPerFs <= 0.0 || double.IsNaN(gainVrmsPerFs) || double.IsInfinity(gainVrmsPerFs))
+                return 0.0;
+            return 20.0 * Math.Log10(gainVrmsPerFs / Math.Sqrt(2.0));
+        }
+
+        private static double GainFromOffsetDb(double offsetDb)
+        {
+            return Math.Sqrt(2.0) * Math.Pow(10.0, offsetDb / 20.0);
+        }
+
+        // Affichage tension : V si >=1V, mV si [1mV..1V), µV si <1mV.
+        // 4 chiffres significatifs (zéros conservés), sans notation scientifique.
+        private static string FormatVoltage(double volts)
+        {
+            if (double.IsNaN(volts) || double.IsInfinity(volts)) return "—";
+
+            // Zéro : format stable
+            if (volts == 0.0) return "0.000 V";
+
+            double abs = Math.Abs(volts);
+            double scale;
+            string unit;
+            if (abs >= 1.0) { scale = 1.0; unit = "V"; }
+            else if (abs >= 1e-3) { scale = 1e3; unit = "mV"; }
+            else { scale = 1e6; unit = "µV"; }
+
+            double v = volts * scale;
+            double a = Math.Abs(v);
+
+            int magnitude = (int)Math.Floor(Math.Log10(a));
+            int decimals = 4 - 1 - magnitude;
+            if (decimals < 0) decimals = 0;
+            if (decimals > 6) decimals = 6;
+
+            double rounded = Math.Round(v, decimals, MidpointRounding.AwayFromZero);
+            string num = rounded.ToString("F" + decimals, CultureInfo.InvariantCulture);
+
+            return $"{num} {unit}";
         }
 
         //
@@ -1319,29 +1310,29 @@ private (bool ok, string message) CalibrateLevel(bool isRight, double knownVrms)
     if (knownVrms <= 0.0 || double.IsNaN(knownVrms) || double.IsInfinity(knownVrms))
         return (false, "Valeur Vrms invalide (doit être > 0).");
 
-    double? measuredDbfs = isRight ? _lastRmsDbfsRight : _lastRmsDbfsLeft;
-    if (measuredDbfs == null)
-        return (false, "Pas de mesure disponible. Lancez d'abord une acquisition (RUN), puis réessayez.");
+    // On calibre à partir du RMS AC en FS (DC retiré) — pas depuis le dBFS.
+    double? measuredRmsFs = isRight ? _lastRmsFsRight : _lastRmsFsLeft;
+    if (measuredRmsFs == null || measuredRmsFs.Value <= 0.0)
+        return (false, "Pas de mesure RMS (FS) disponible. Lancez d'abord une acquisition (RUN), puis réessayez.");
 
-    // dBV = 20*log10(Vrms / 1V). 0 dBV = 1 Vrms.
-    double knownDbv = 20.0 * Math.Log10(knownVrms);
+    // Gain linéaire : Vrms / FS_rms (AC)
+    double gain = knownVrms / measuredRmsFs.Value;
 
-    // Décalage : dBV = dBFS + offset
-    double offset = knownDbv - measuredDbfs.Value;
+    // Offset appliqué aux courbes FFT : dBV = dBFS + offset
+    double offset = OffsetDbFromGain(gain);
 
     if (isRight)
     {
         _levelCalValidRight = true;
+        _levelGainVrmsPerFsRight = gain;
         _levelCalOffsetDbRight = offset;
     }
     else
     {
         _levelCalValidLeft = true;
+        _levelGainVrmsPerFsLeft = gain;
         _levelCalOffsetDbLeft = offset;
     }
-
-    // Vrms d'une sinusoïde "0 dBFS" (full-scale) : Vrms_FS = 10^(offset/20)
-    double vrmsFs = Math.Pow(10.0, offset / 20.0);
 
     UpdateLevelUnitUi();
 
@@ -1349,7 +1340,9 @@ private (bool ok, string message) CalibrateLevel(bool isRight, double knownVrms)
         UpdateSpectrumChartAndStats();
 
     string chan = isRight ? "R" : "L";
-    return (true, $"Voie {chan} : RMS mesuré = {measuredDbfs.Value:F2} dBFS. Offset = {offset:+0.00;-0.00;0.00} dB. => 0 dBFS ≈ {vrmsFs:F4} Vrms");
+    double vrmsAt0Dbfs = gain / Math.Sqrt(2.0); // 0 dBFS (peak FS=1) -> Vrms
+    return (true, $"Voie {chan} : RMS_FS(ac) = {measuredRmsFs.Value:F6}.\r\n Gain = {gain:G6} Vrms/FS.\r\n " +
+                  $"Offset = {offset:+0.00;-0.00;0.00} dB.\r\n => 0 dBFS ≈ {vrmsAt0Dbfs:F6} Vrms");
 }
 
 private void ShowLevelCalibrationDialog()
@@ -1774,6 +1767,10 @@ _levelCalValidLeft = s.LevelCalValidLeft;
 _levelCalOffsetDbLeft = s.LevelCalOffsetDbLeft;
 _levelCalValidRight = s.LevelCalValidRight;
 _levelCalOffsetDbRight = s.LevelCalOffsetDbRight;
+
+// Reconstituer le gain linéaire (Vrms/FS_rms) depuis l'offset dB persisté
+_levelGainVrmsPerFsLeft = _levelCalValidLeft ? GainFromOffsetDb(_levelCalOffsetDbLeft) : 0.0;
+_levelGainVrmsPerFsRight = _levelCalValidRight ? GainFromOffsetDb(_levelCalOffsetDbRight) : 0.0;
 
 UpdateLevelUnitUi();
 
@@ -3146,6 +3143,7 @@ if (yMaxAuto > YMAX_CAP)
                     sumSqL += x * x;
                 }
                 double rmsL = Math.Sqrt(sumSqL / timeL.Length);
+                _lastRmsFsLeft = rmsL;
 
                 double rmsLDb = rmsL > 0 ? 20.0 * Math.Log10(rmsL * Math.Sqrt(2.0)) : -200.0;
                 double peakLDb = peakLfs > 0 ? 20.0 * Math.Log10(peakLfs) : -200.0;
@@ -3167,15 +3165,25 @@ if (yMaxAuto > YMAX_CAP)
                 {
                     if (showLeftVolts)
                     {
-                        // 0 dBV = 1 Vrms
-                        double vrms = Math.Pow(10.0, rmsLDisp / 20.0);
-                        double vpk = Math.Pow(10.0, peakLDisp / 20.0);
-                        lblLeftRmsV.Text = $"RMS:  {FormatVoltage(vrms)}";
-                        lblLeftPeakV.Text = $"Peak: {FormatVoltage(vpk)}";
+                        // Conversion directe depuis les métriques linéaires (FS) via le gain de calibration.
+                        double gain = (_levelGainVrmsPerFsLeft > 0.0) ? _levelGainVrmsPerFsLeft : GainFromOffsetDb(_levelCalOffsetDbLeft);
 
+                        // 1) Vrms AC : RMS de (sample-mean)
+                        double vrms = rmsL * gain;
+
+                        // 2) Vpeak : max(|sample|) sur la fenêtre (DC compris)
+                        double vpk = peakLfs * gain;
+
+                        // 3) Vdc : moyenne des échantillons (V moyen)
+                        double vdc = (meanL / (double)SpectrumAnalyzer.Max24Pos) * gain;
+                        _lastVdcVoltsLeft = vdc;
+
+                        lblLeftRmsV.Text = $"Vrms: {FormatVoltage(vrms)}";
+                        lblLeftPeakV.Text = $"Vpeak: {FormatVoltage(vpk)}";
                     }
                     else
                     {
+                        _lastVdcVoltsLeft = null;
                         lblLeftRmsV.Text = "";
                         lblLeftPeakV.Text = "";
                     }
@@ -3213,6 +3221,7 @@ if (yMaxAuto > YMAX_CAP)
                     sumSqR += x * x;
                 }
                 double rmsR = Math.Sqrt(sumSqR / timeR.Length);
+                _lastRmsFsRight = rmsR;
 
                 double rmsRDb = rmsR > 0 ? 20.0 * Math.Log10(rmsR * Math.Sqrt(2.0)) : -200.0;
                 double peakRDb = peakRfs > 0 ? 20.0 * Math.Log10(peakRfs) : -200.0;
@@ -3234,15 +3243,19 @@ if (yMaxAuto > YMAX_CAP)
                 {
                     if (showRightVolts)
                     {
-                        // 0 dBV = 1 Vrms
-                        double vrms = Math.Pow(10.0, rmsRDisp / 20.0);
-                        double vpk = Math.Pow(10.0, peakRDisp / 20.0);
-                        lblRightRmsV.Text = $"RMS:  {FormatVoltage(vrms)}";
-                        lblRightPeakV.Text = $"Peak: {FormatVoltage(vpk)}";
+                        double gain = (_levelGainVrmsPerFsRight > 0.0) ? _levelGainVrmsPerFsRight : GainFromOffsetDb(_levelCalOffsetDbRight);
 
+                        double vrms = rmsR * gain;
+                        double vpk = peakRfs * gain;
+                        double vdc = (meanR / (double)SpectrumAnalyzer.Max24Pos) * gain;
+                        _lastVdcVoltsRight = vdc;
+
+                        lblRightRmsV.Text = $"Vrms: {FormatVoltage(vrms)}";
+                        lblRightPeakV.Text = $"Vpeak: {FormatVoltage(vpk)}";
                     }
                     else
                     {
+                        _lastVdcVoltsRight = null;
                         lblRightRmsV.Text = "";
                         lblRightPeakV.Text = "";
                     }
@@ -3296,7 +3309,12 @@ if (yMaxAuto > YMAX_CAP)
                             thdnText = $"THD+N: {mL.ThdNDb:F1} dB";
                         }
 
+                        string vdcPrefixL = (_levelUnit == "dBV" && _levelCalValidLeft && _lastVdcVoltsLeft.HasValue)
+                            ? $"Vdc: {FormatVoltage(_lastVdcVoltsLeft.Value)}\n"
+                            : "";
+
                         lblLeftMeas.Text =
+                            vdcPrefixL +
                             $"F0: {mL.FundamentalHz:F1} Hz\n" +
                             thdText + "\n" +
                             thdnText + "\n" +
@@ -3331,7 +3349,10 @@ if (yMaxAuto > YMAX_CAP)
                 {
                     // THD OFF => F0 uniquement (rapide)
                     var f0 = EstimateFundamentalHz(currentLeftSpectrum, _sampleRate, lastFftSize);
-                    lblLeftMeas.Text = f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "—";
+                    string vdcPrefixL = (_levelUnit == "dBV" && _levelCalValidLeft && _lastVdcVoltsLeft.HasValue)
+                        ? $"Vdc: {FormatVoltage(_lastVdcVoltsLeft.Value)}\n"
+                        : "";
+                    lblLeftMeas.Text = vdcPrefixL + (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "—");
                 }
             }
             else if (lblLeftMeas != null)
@@ -3364,7 +3385,12 @@ if (yMaxAuto > YMAX_CAP)
                             thdnText = $"THD+N: {mR.ThdNDb:F1} dB";
                         }
 
+                        string vdcPrefixR = (_levelUnit == "dBV" && _levelCalValidRight && _lastVdcVoltsRight.HasValue)
+                            ? $"Vdc: {FormatVoltage(_lastVdcVoltsRight.Value)}\n"
+                            : "";
+
                         lblRightMeas.Text =
+                            vdcPrefixR +
                             $"F0: {mR.FundamentalHz:F1} Hz\n" +
                             thdText + "\n" +
                             thdnText + "\n" +
@@ -3398,7 +3424,10 @@ if (yMaxAuto > YMAX_CAP)
                 {
                     // THD OFF => F0 uniquement (rapide)
                     var f0 = EstimateFundamentalHz(currentRightSpectrum, _sampleRate, lastFftSize);
-                    lblRightMeas.Text = f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "—";
+                    string vdcPrefixR = (_levelUnit == "dBV" && _levelCalValidRight && _lastVdcVoltsRight.HasValue)
+                        ? $"Vdc: {FormatVoltage(_lastVdcVoltsRight.Value)}\n"
+                        : "";
+                    lblRightMeas.Text = vdcPrefixR + (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "—");
                 }
             }
             else if (lblRightMeas != null)
