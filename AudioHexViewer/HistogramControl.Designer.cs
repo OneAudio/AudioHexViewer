@@ -45,7 +45,7 @@
             splitContainerMain = new SplitContainer();
             lblBinPow = new Label();
             lblRangePow = new Label();
-            chkAC = new CheckBox();
+            ChkAC = new CheckBox();
             lblChannel = new Label();
             comboChannel = new ComboBox();
             panelTop = new Panel();
@@ -229,16 +229,16 @@
             lblRangePow.TabIndex = 13;
             lblRangePow.Text = "Range LSB";
             // 
-            // chkAC
+            // ChkAC
             // 
-            chkAC.AutoSize = true;
-            chkAC.Location = new Point(60, 35);
-            chkAC.Name = "chkAC";
-            chkAC.Size = new Size(85, 19);
-            chkAC.TabIndex = 2;
-            chkAC.Text = "remove DC";
-            chkAC.UseVisualStyleBackColor = true;
-            chkAC.CheckedChanged += chkAC_CheckedChanged;
+            ChkAC.AutoSize = true;
+            ChkAC.Location = new Point(60, 35);
+            ChkAC.Name = "ChkAC";
+            ChkAC.Size = new Size(85, 19);
+            ChkAC.TabIndex = 2;
+            ChkAC.Text = "remove DC";
+            ChkAC.UseVisualStyleBackColor = true;
+            ChkAC.CheckedChanged += ChkAC_CheckedChanged;
             // 
             // lblChannel
             // 
@@ -258,7 +258,7 @@
             comboChannel.Name = "comboChannel";
             comboChannel.Size = new Size(100, 23);
             comboChannel.TabIndex = 0;
-            comboChannel.SelectedIndexChanged += comboChannel_SelectedIndexChanged;
+            comboChannel.SelectedIndexChanged += ComboChannel_SelectedIndexChanged;
             // 
             // panelTop
             // 
@@ -268,7 +268,7 @@
             panelTop.Controls.Add(btnRun);
             panelTop.Controls.Add(lblBinPow);
             panelTop.Controls.Add(lblRangePow);
-            panelTop.Controls.Add(chkAC);
+            panelTop.Controls.Add(ChkAC);
             panelTop.Controls.Add(lblChannel);
             panelTop.Controls.Add(comboChannel);
             panelTop.Dock = DockStyle.Top;
@@ -294,7 +294,7 @@
             comboBinLsb.Name = "comboBinLsb";
             comboBinLsb.Size = new Size(90, 23);
             comboBinLsb.TabIndex = 15;
-            comboBinLsb.SelectedIndexChanged += comboBinLsb_SelectedIndexChanged;
+            comboBinLsb.SelectedIndexChanged += ComboBinLsb_SelectedIndexChanged;
             // 
             // comboRangeLsb
             // 
@@ -304,7 +304,7 @@
             comboRangeLsb.Name = "comboRangeLsb";
             comboRangeLsb.Size = new Size(130, 23);
             comboRangeLsb.TabIndex = 13;
-            comboRangeLsb.SelectedIndexChanged += comboRangeLsb_SelectedIndexChanged;
+            comboRangeLsb.SelectedIndexChanged += ComboRangeLsb_SelectedIndexChanged;
             // 
             // btnRun
             // 
@@ -358,7 +358,7 @@
         private SplitContainer splitContainerMain;
         private Label lblBinPow;
         private Label lblRangePow;
-        private CheckBox chkAC;
+        private CheckBox ChkAC;
         private Label lblChannel;
         private ComboBox comboChannel;
         private Panel panelTop;

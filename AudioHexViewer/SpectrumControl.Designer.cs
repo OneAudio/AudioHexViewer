@@ -139,7 +139,7 @@
             btnResetPeakHold.TabStop = false;
             btnResetPeakHold.Text = "CLEAR";
             btnResetPeakHold.UseVisualStyleBackColor = true;
-            btnResetPeakHold.Click += btnResetPeakHold_Click;
+            btnResetPeakHold.Click += BtnResetPeakHold_Click;
             // 
             // chkEnableThd
             // 
@@ -150,7 +150,7 @@
             chkEnableThd.TabIndex = 30;
             chkEnableThd.Text = "THD";
             chkEnableThd.UseVisualStyleBackColor = true;
-            chkEnableThd.CheckedChanged += chkEnableThd_CheckedChanged;
+            chkEnableThd.CheckedChanged += ChkEnableThd_CheckedChanged;
             // 
             // btnThdSettings
             // 
@@ -161,7 +161,7 @@
             btnThdSettings.TabStop = false;
             btnThdSettings.Text = "THD SET";
             btnThdSettings.UseVisualStyleBackColor = true;
-            btnThdSettings.Click += btnThdSettings_Click;
+            btnThdSettings.Click += BtnThdSettings_Click;
             // 
             // btnResetAvg
             // 
@@ -171,7 +171,7 @@
             btnResetAvg.TabIndex = 12;
             btnResetAvg.Text = "CLEAR";
             btnResetAvg.UseVisualStyleBackColor = true;
-            btnResetAvg.Click += btnResetAvg_Click;
+            btnResetAvg.Click += BtnResetAvg_Click;
             // 
             // lblWindow
             // 
@@ -308,7 +308,7 @@
             lblRightMeas.Size = new Size(128, 92);
             lblRightMeas.TabIndex = 18;
             lblRightMeas.Text = "---";
-            lblRightMeas.Click += lblRightMeas_Click;
+            lblRightMeas.Click += LblRightMeas_Click;
             // 
             // lblRightHeader
             // 
@@ -372,7 +372,7 @@
             lblLeftMeas.Size = new Size(128, 92);
             lblLeftMeas.TabIndex = 17;
             lblLeftMeas.Text = "---";
-            lblLeftMeas.Click += lblLeftMeas_Click;
+            lblLeftMeas.Click += LblLeftMeas_Click;
             // 
             // lblLeftHeader
             // 

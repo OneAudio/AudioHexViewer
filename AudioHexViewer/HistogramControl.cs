@@ -128,7 +128,7 @@ namespace AudioHexViewer
         {
             return new AudioHexViewer.HistogramSettings
             {
-                AC = chkAC.Checked,
+                AC = ChkAC.Checked,
                 Channel = comboChannel.SelectedItem as string ?? "Both",
                 RangeLsb = GetRangeLsb(),
                 BinLsb = GetBinLsb(),
@@ -141,7 +141,7 @@ namespace AudioHexViewer
         {
             if (s == null) return;
 
-            chkAC.Checked = s.AC;
+            ChkAC.Checked = s.AC;
 
             int chIdx = comboChannel.Items.IndexOf(s.Channel);
             if (chIdx >= 0)
@@ -261,7 +261,7 @@ namespace AudioHexViewer
 
             // Valeurs par défaut
             comboChannel.SelectedItem = "Both";
-            chkAC.Checked = true;
+            ChkAC.Checked = true;
 
             int defaultRange = 1024;
             int defaultBin = 1;
@@ -290,7 +290,7 @@ namespace AudioHexViewer
                     comboChannel.SelectedItem = "Both";
 
                 // AC
-                chkAC.Checked = s.AC;
+                ChkAC.Checked = s.AC;
 
                 // Range / Bin via ComboBox
                 int rangeLsb = s.RangeLsb < 1 ? 1 : s.RangeLsb;
@@ -536,16 +536,16 @@ namespace AudioHexViewer
             lblRightMinMax.Text = "Min/Max:";
         }
 
-        private void comboChannel_SelectedIndexChanged(object sender, EventArgs e) => RebuildHistogram();
-        private void chkAC_CheckedChanged(object sender, EventArgs e) => RebuildHistogram();
+        private void ComboChannel_SelectedIndexChanged(object sender, EventArgs e) => RebuildHistogram();
+        private void ChkAC_CheckedChanged(object sender, EventArgs e) => RebuildHistogram();
 
-        private void comboRangeLsb_SelectedIndexChanged(object sender, EventArgs e)
+        private void ComboRangeLsb_SelectedIndexChanged(object sender, EventArgs e)
         {
             lastRangeLsb = GetRangeLsb();
             RebuildHistogram();
         }
 
-        private void comboBinLsb_SelectedIndexChanged(object sender, EventArgs e)
+        private void ComboBinLsb_SelectedIndexChanged(object sender, EventArgs e)
         {
             lastBinLsb = GetBinLsb();
             RebuildHistogram();
@@ -567,7 +567,7 @@ namespace AudioHexViewer
             }
 
             string mode = comboChannel.SelectedItem as string ?? "Both";
-            bool ac = chkAC.Checked;
+            bool ac = ChkAC.Checked;
 
             int lsbRange = GetRangeLsb();
             if (lsbRange < 1) lsbRange = 1;

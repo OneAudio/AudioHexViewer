@@ -952,7 +952,7 @@ private double? _lastVpkVoltsRight = null;
             lblWindowInfo.Text = $"≈ {sec:F2} s";
         }
 
-        private void btnResetAvg_Click(object? sender, EventArgs e)
+        private void BtnResetAvg_Click(object? sender, EventArgs e)
         {
             ResetAveragingState();
 
@@ -2575,7 +2575,7 @@ UpdateLevelUnitUi();
         //
         // ---------------- PEAK HOLD ----------------
 
-        private void btnResetPeakHold_Click(object? sender, EventArgs e)
+        private void BtnResetPeakHold_Click(object? sender, EventArgs e)
         {
             _post.ResetPeakHoldState();
             UpdateSpectrumChartAndStats();
@@ -3693,7 +3693,7 @@ lblRightMeas.Text = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "—");
         }
 
 
-        private void lblLeftMeas_Click(object sender, EventArgs e)
+        private void LblLeftMeas_Click(object sender, EventArgs e)
         {
 
         }
@@ -4119,7 +4119,7 @@ lblRightMeas.Text = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "—");
         }
 
         //
-        private void lblRightMeas_Click(object sender, EventArgs e)
+        private void LblRightMeas_Click(object sender, EventArgs e)
         {
 
         }
@@ -4372,7 +4372,7 @@ lblRightMeas.Text = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "—");
         // --------------------------------------------------------------------
         // THD UI handlers (checkbox + button in the Spectrum tab)
         // --------------------------------------------------------------------
-        private void chkEnableThd_CheckedChanged(object sender, EventArgs e)
+        private void ChkEnableThd_CheckedChanged(object sender, EventArgs e)
         {
             if (_suppressThdUiEvents)
                 return;
@@ -4386,7 +4386,7 @@ lblRightMeas.Text = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "—");
             ThdEnabledChanged?.Invoke(enabled);
         }
 
-        private void btnThdSettings_Click(object sender, EventArgs e)
+        private void BtnThdSettings_Click(object sender, EventArgs e)
         {
             ThdSettingsRequested?.Invoke();
         }

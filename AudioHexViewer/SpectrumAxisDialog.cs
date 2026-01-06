@@ -41,14 +41,8 @@ namespace AudioHexViewer
         }
 
         // caps UI
-        private static readonly double[] AllowedFmaxCaps =
-        {
-            25_000,
-            50_000,
-            100_000,
-            200_000,
-            400_000
-        };
+        private static readonly double[] AllowedFmaxCaps = 
+            { 25_000, 50_000, 100_000, 200_000, 400_000 };
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [Browsable(false)]
