@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Windows.Forms;
+using System.ComponentModel;
 
 namespace AudioHexViewer
 {
@@ -11,7 +12,10 @@ namespace AudioHexViewer
     /// </summary>
     internal sealed partial class LevelCalibrationDialog : Form
     {
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Func<double, (bool ok, string message)>? CalibrateLeft { get; set; }
+
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Func<double, (bool ok, string message)>? CalibrateRight { get; set; }
 
         public LevelCalibrationDialog()

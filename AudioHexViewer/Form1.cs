@@ -1,11 +1,8 @@
 ﻿using NAudio.CoreAudioApi;
 using NAudio.Wave;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
-using System.IO;
-using System.Diagnostics;
-using System.Text.Json;
-using System.Linq;
 // ...
 
 
@@ -60,15 +57,15 @@ namespace AudioHexViewer
         private bool captureOutput = false; // false = IN (capture), true = OUT (loopback)
 
         // Taille de la fentre principale (avec/sans graphes)
-        private int _heightWithGraphs;
-        private bool _hasHeightWithGraphs;
+        //private int _heightWithGraphs;
+        //private bool _hasHeightWithGraphs;
         // Hauteur minimale de la fentre
         private int _minWidth;
         private int _minHeightNoGraphs;
         private int _minHeightWithGraphs;
         // Dsactivation temporaire du redimensionnement
         private FormBorderStyle _borderStyleWithGraphs;
-        private bool _borderStyleSaved;
+        //private bool _borderStyleSaved;
 
         private SessionSettings _session = SessionSettingsManager.LoadOrNull() ?? new SessionSettings();
 
@@ -96,8 +93,8 @@ namespace AudioHexViewer
         private int analysisSampleSize = 131072;  // défaut
         private double analysisOverlap = 0.0;     // 0..1
         private int analysisHopSamples = 131072;  // = N*(1-overlap)
-        private bool _updatingSampleSizeUi = false;
-        private long analysisCursorStart = 0;     // index absolu de début de la dernière fenêtre utilisée
+        //private bool _updatingSampleSizeUi = false;
+        //private long analysisCursorStart = 0;     // index absolu de début de la dernière fenêtre utilisée
 
         private System.Windows.Forms.Timer? analysisTimer;
 
@@ -109,9 +106,9 @@ namespace AudioHexViewer
         private const int MaxHistogramSeconds = 24; // on garde jusqu' 24 s d'historique
 
         // --- Mode "Once" pour l'histogramme ---
-        private bool histOnceActive = false;
-        private int histOnceTargetSamples = 0;
-        private int histOnceAccumSamples = 0;
+        //private bool histOnceActive = false;
+        //private int histOnceTargetSamples = 0;
+        //private int histOnceAccumSamples = 0;
 
         // Seuils dBFS pour le bargraphe
         private const double DbMin = -80.0;      // plancher d'affichage
@@ -156,7 +153,7 @@ namespace AudioHexViewer
 
         private Form? dataFormatsWindow;
 
-        private bool histogramVisible = false;
+        //private bool histogramVisible = false;
 
         // Cursors menu
         private ToolStripMenuItem? menuCursors;
@@ -391,7 +388,7 @@ namespace AudioHexViewer
             if (nSamples > 1048576) nSamples = 1048576;
 
             analysisSampleSize = nSamples;
-            analysisCursorStart = 0; // repart sur la fin du buffer
+            //analysisCursorStart = 0; // repart sur la fin du buffer
 
             RecomputeHopAndTimer();
 
@@ -605,7 +602,7 @@ namespace AudioHexViewer
             if (overlap > 0.99) overlap = 0.99;
 
             analysisOverlap = overlap;
-            analysisCursorStart = 0;
+            //analysisCursorStart = 0;
 
             RecomputeHopAndTimer();
 
@@ -777,7 +774,7 @@ namespace AudioHexViewer
 
             // Hauteur avec graphs
             _borderStyleWithGraphs = this.FormBorderStyle;
-            _borderStyleSaved = true;
+            //_borderStyleSaved = true;
 
             // Verrouille largeur min + hauteur min (sans graphs)
             this.MinimumSize = new Size(_minWidth, _minHeightNoGraphs);
@@ -1001,31 +998,31 @@ namespace AudioHexViewer
         }
 
 
-private void ShowThdSettings()
-{
-    try
-    {
-        int sr = currentFormat != null ? currentFormat.SampleRate : 0;
-
-        using (var dlg = new ThdSettingsDialog(_session.Spectrum.Thd, sr))
+        private void ShowThdSettings()
         {
-            if (dlg.ShowDialog(this) != DialogResult.OK)
-                return;
+            try
+            {
+                int sr = currentFormat != null ? currentFormat.SampleRate : 0;
 
-            _session.Spectrum.Thd = dlg.Result;
+                using (var dlg = new ThdSettingsDialog(_session.Spectrum.Thd, sr))
+                {
+                    if (dlg.ShowDialog(this) != DialogResult.OK)
+                        return;
 
-            if (spectrumControl != null)
-                spectrumControl.ApplyThdSettings(_session.Spectrum.Thd);
+                    _session.Spectrum.Thd = dlg.Result;
 
-            if (!SessionSettingsManager.Save(_session, out string? err) && !string.IsNullOrWhiteSpace(err))
-                MessageBox.Show(this, err, "Save settings failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    if (spectrumControl != null)
+                        spectrumControl.ApplyThdSettings(_session.Spectrum.Thd);
+
+                    if (!SessionSettingsManager.Save(_session, out string? err) && !string.IsNullOrWhiteSpace(err))
+                        MessageBox.Show(this, err, "Save settings failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.ToString(), "Crash in THD setting", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
-    }
-    catch (Exception ex)
-    {
-        MessageBox.Show(this, ex.ToString(), "Crash in THD setting", MessageBoxButtons.OK, MessageBoxIcon.Error);
-    }
-}
 
         //
 
@@ -1045,7 +1042,7 @@ private void ShowThdSettings()
             // Insert right after Measures (same pattern as InitCursorsMenu)
             // Ajouter au menu principal (top-level)
             menuStrip1.Items.Add(menuColors);
-}
+        }
 
         private void ShowColorsDialog()
         {
@@ -1077,9 +1074,12 @@ private void ShowThdSettings()
             }
 
             // Also keep the always-present in-memory session in sync
-            _session.Spectrum.Colors = dlg.SelectedColors;
-            if (dlg.DefaultsChanged)
-                _session.Spectrum.DefaultColors = dlg.SelectedDefaults;
+            if (_session.Spectrum != null)
+            {
+                _session.Spectrum.Colors = dlg.SelectedColors;
+                if (dlg.DefaultsChanged)
+                    _session.Spectrum.DefaultColors = dlg.SelectedDefaults;
+            }
 
             // Persist via existing snapshot mechanism
             SaveSessionSettingsSilently();
@@ -1740,9 +1740,9 @@ private void ShowThdSettings()
 
 
                     // Mode continu : pas de squence Once
-                    histOnceActive = false;
-                    histOnceTargetSamples = 0;
-                    histOnceAccumSamples = 0;
+                    //histOnceActive = false;
+                    //histOnceTargetSamples = 0;
+                    //histOnceAccumSamples = 0;
 
                     // -------------------------------------------
 
@@ -1784,10 +1784,10 @@ private void ShowThdSettings()
             }
             else
             {
-                // Si on est dj en train de capturer -> clique = STOP (on annule aussi un ventuel Once en cours)
-                histOnceActive = false;
-                histOnceTargetSamples = 0;
-                histOnceAccumSamples = 0;
+                //// Si on est dj en train de capturer -> clique = STOP (on annule aussi un ventuel Once en cours)
+                //histOnceActive = false;
+                //histOnceTargetSamples = 0;
+                //histOnceAccumSamples = 0;
 
                 try
                 {
@@ -1800,7 +1800,7 @@ private void ShowThdSettings()
                         lastAnalysisLeft = Array.Empty<int>();
                         lastAnalysisRight = Array.Empty<int>();
                     }
-                    analysisCursorStart = 0;
+                    //analysisCursorStart = 0;
                 }
                 catch
                 {
@@ -2490,8 +2490,6 @@ private void ShowThdSettings()
 
                         if (shouldAdd)
                         {
-                            bool justFinished = false;
-
                             lock (_recordLock)
                             {
                                 if (isRecordingOneSecond && recordSamplesCollected < recordSamplesNeeded)
@@ -2503,7 +2501,6 @@ private void ShowThdSettings()
                                     {
                                         // Stop immédiat (plus aucun ajout après)
                                         isRecordingOneSecond = false;
-                                        justFinished = true;
 
                                         // Snapshot immuable pour sauvegarde UI
                                         recordSnapshotToSave = new List<RecordFrame>(recordBuffer);
@@ -3198,7 +3195,6 @@ private void ShowThdSettings()
             double pBlueEnd = DbToPercent(DbBlueToGreen);
             double pGreenEnd = DbToPercent(DbGreenToOrange);
             double pOrangeEnd = DbToPercent(DbOrangeToRed);
-            double pRedEnd = 100.0;
 
             for (int i = 0; i < LedCount; i++)
             {
@@ -3403,12 +3399,12 @@ private void ShowThdSettings()
         {
             using var dlg = new ExportPngDialog();
 
-            dlg.TitleText = _lastExportPngTitle;
+            dlg.SetTitleText(_lastExportPngTitle);
 
             if (dlg.ShowDialog(this) != DialogResult.OK)
                 return;
 
-            _lastExportPngTitle = dlg.TitleText;
+            _lastExportPngTitle = dlg.GetTitleText();
 
             string outPath = dlg.FilePath;
             if (string.IsNullOrWhiteSpace(outPath))
@@ -3444,9 +3440,9 @@ private void ShowThdSettings()
                     );
 
                     if (isSpectrum)
-                        spectrumControl!.ExportPng(tmpPng, dlg.Scale, dlg.TitleText);
+                        spectrumControl!.ExportPng(tmpPng, dlg.ExpScale, dlg.GetTitleText());
                     else
-                        histogramControl!.ExportPng(tmpPng, dlg.Scale, dlg.TitleText);
+                        histogramControl!.ExportPng(tmpPng, dlg.ExpScale, dlg.GetTitleText());
 
                     // 2) Emballe dans un PDF A4 paysage, image fit largeur
                     PdfExport.SaveA4LandscapeFromPng(tmpPng, outPath);
@@ -3461,9 +3457,9 @@ private void ShowThdSettings()
                         outPath = Path.ChangeExtension(outPath, ".png");
 
                     if (isSpectrum)
-                        spectrumControl!.ExportPng(outPath, dlg.Scale, dlg.TitleText);
+                        spectrumControl!.ExportPng(outPath, dlg.ExpScale, dlg.GetTitleText());
                     else
-                        histogramControl!.ExportPng(outPath, dlg.Scale, dlg.TitleText);
+                        histogramControl!.ExportPng(outPath, dlg.ExpScale, dlg.GetTitleText());
                 }
             }
             catch (Exception ex)

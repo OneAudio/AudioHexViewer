@@ -17,15 +17,18 @@ public sealed class ExportPngDialog : Form
     private readonly Button _btnCancel = new Button();
 
     public string FilePath => _tbPath.Text.Trim();
-    public int Scale => (int)_nudScale.Value;
-    public string TitleText
+
+    // Export Scale: 1 to 4 
+    public int ExpScale => (int)_nudScale.Value;
+    public string GetTitleText()
     {
-        get => _tbTitle.Text;
-        set
-        {
-            _tbTitle.Text = value ?? string.Empty;
-            EnforceTitleLimits();
-        }
+        return _tbTitle.Text;
+    }
+
+    public void SetTitleText(string value)
+    {
+        _tbTitle.Text = value ?? string.Empty;
+        EnforceTitleLimits();
     }
     //
     private bool _inEnforce;
