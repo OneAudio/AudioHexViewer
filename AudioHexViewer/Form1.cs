@@ -3,8 +3,9 @@ using NAudio.Wave;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
-// ...
-
+using System.IO;// ...
+using System.Text.Json;
+using System.Linq;
 
 namespace AudioHexViewer
 {
@@ -214,6 +215,43 @@ namespace AudioHexViewer
             if (db <= DbMin) return 0.0;
             if (db >= 0.0) return 100.0;
             return (db - DbMin) / (0.0 - DbMin) * 100.0;
+        }
+        //
+        // Formatage tension (évite la notation scientifique, garde une mantisse "stable")
+        // - V si >= 1 V
+        // - mV si < 1 V et >= 1 mV
+        // - µV si < 1 mV
+        // Mantisse affichée avec ~4 chiffres significatifs et zéros conservés.
+        private static string FormatVoltageWithUnit(double volts)
+        {
+            double a = Math.Abs(volts);
+
+            string unit;
+            double v;
+            if (a >= 1.0)
+            {
+                unit = "V";
+                v = volts;
+            }
+            else if (a >= 1e-3)
+            {
+                unit = "mV";
+                v = volts * 1e3;
+            }
+            else
+            {
+                unit = "µV";
+                v = volts * 1e6;
+            }
+
+            double av = Math.Abs(v);
+
+            // 4 chiffres significatifs avec zéros conservés
+            string fmt = av >= 100 ? "F1"
+                      : av >= 10 ? "F2"
+                      : "F3";
+
+            return $"{v.ToString(fmt, CultureInfo.InvariantCulture)} {unit}";
         }
 
         private class RecordFrame
@@ -796,7 +834,9 @@ namespace AudioHexViewer
                 "Hex (24 bits)",
                 "Binary (24b)",
                 "Float",
-                "Voltage (V)"
+                "Voltage (Vrms)",
+                "Voltage (Vpeak)",
+                "Voltage (Vdc)"
             });
             comboDisplayMode.SelectedIndex = 0;
             comboDisplayMode.SelectedIndexChanged += comboDisplayMode_SelectedIndexChanged;
@@ -1858,58 +1898,19 @@ namespace AudioHexViewer
         //
         private void btnCalV_Click(object sender, EventArgs e)
         {
-            if (capture == null || currentFormat == null)
+            // Unification calibration: le bouton CAL V ouvre désormais le même dialog
+            // que la calibration Spectrum (niveau AC), afin de servir à la fois au mode dBV et aux mesures en volts.
+            if (spectrumControl == null)
             {
-                MessageBox.Show("Dmarre la capture (READ) avant de lancer la calibration.",
+                MessageBox.Show("Le contrôle Spectrum n'est pas initialisé.",
                                 "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            if (calibTimer.Enabled || calibStage != CalStage.None)
-            {
-                MessageBox.Show("Une calibration est dj en cours.",
-                                "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
+            spectrumControl.ShowLevelCalibrationDialog(this);
 
-            // Demander quelles voies calibrer
-            var rLeft = MessageBox.Show("Calibrer la voie GAUCHE ?", "Calibration",
-                                        MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-            calibDoLeft = (rLeft == DialogResult.Yes);
-
-            var rRight = MessageBox.Show("Calibrer la voie DROITE ?", "Calibration",
-                                         MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-            calibDoRight = (rRight == DialogResult.Yes);
-
-            if (!calibDoLeft && !calibDoRight)
-            {
-                MessageBox.Show("Aucune voie  calibrer. Calibration annule.",
-                                "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            // Avertir si calibration existante
-            if ((calibDoLeft && calibValidLeft) || (calibDoRight && calibValidRight))
-            {
-                var r = MessageBox.Show(
-                    "Une calibration existe dj pour au moins une voie. Voulez-vous la remplacer ?",
-                    "Calibration",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Question);
-
-                if (r != DialogResult.Yes)
-                    return;
-            }
-
-            // On commence par la voie gauche si demande, sinon la droite
-            if (calibDoLeft)
-            {
-                StartChannelCalibration(CalChannel.Left);
-            }
-            else
-            {
-                StartChannelCalibration(CalChannel.Right);
-            }
+            // Rafraîchir l'affichage principal (si l'utilisateur est en mode Voltage*)
+            UpdateMainDisplayFromLastValues();
         }
         //
         //
@@ -2595,22 +2596,31 @@ namespace AudioHexViewer
             leftText.AppendLine(FormatRow("Decimal (24b)", left24.ToString()));
             leftText.AppendLine(FormatRow("Hex (24 bits)", leftHex24));
             leftText.AppendLine(FormatRow("Binary (24b)", leftBits));
-            if (calibValidLeft)
-                leftText.AppendLine(FormatRow("Voltage (V)", displayVoltsLeft.ToString("F4", CultureInfo.InvariantCulture)));
-            else
-                leftText.AppendLine(FormatRow("Voltage (V)", "N/A"));
+            // Mesures en volts (issues de SpectrumControl / calibration unifiée)
+            double? vrmsL = null, vpkL = null, vdcL = null;
+            double? vrmsR = null, vpkR = null, vdcR = null;
+            bool calL = false, calR = false;
 
+            if (spectrumControl != null)
+            {
+                calL = spectrumControl.VoltageCalibrationValidLeft;
+                calR = spectrumControl.VoltageCalibrationValidRight;
+                spectrumControl.GetLastVoltages(out vrmsL, out vpkL, out vdcL, out vrmsR, out vpkR, out vdcR);
+            }
+
+            leftText.AppendLine(FormatRow("Voltage (Vrms)", (calL && vrmsL.HasValue) ? FormatVoltageWithUnit(vrmsL.Value) : "Uncalibrated"));
+            leftText.AppendLine(FormatRow("Voltage (Vpeak)", (calL && vpkL.HasValue) ? FormatVoltageWithUnit(vpkL.Value) : "Uncalibrated"));
+            leftText.AppendLine(FormatRow("Voltage (Vdc)", (calL && vdcL.HasValue) ? FormatVoltageWithUnit(vdcL.Value) : "Uncalibrated"));    
             var rightText = new StringBuilder();
             rightText.AppendLine(FormatRow("---RIGHT---", ""));
             rightText.AppendLine(FormatRow("Float", rightF.ToString("G9")));
             rightText.AppendLine(FormatRow("Decimal (24b)", right24.ToString()));
             rightText.AppendLine(FormatRow("Hex (24 bits)", rightHex24));
             rightText.AppendLine(FormatRow("Binary (24b)", rightBits));
-            if (calibValidRight)
-                rightText.AppendLine(FormatRow("Voltage (V)", displayVoltsRight.ToString("F4", CultureInfo.InvariantCulture)));
-            else
-                rightText.AppendLine(FormatRow("Voltage (V)", "N/A"));
-
+            
+            rightText.AppendLine(FormatRow("Voltage (Vrms)", (calR && vrmsR.HasValue) ? FormatVoltageWithUnit(vrmsR.Value) : "Uncalibrated"));
+            rightText.AppendLine(FormatRow("Voltage (Vpeak)", (calR && vpkR.HasValue) ? FormatVoltageWithUnit(vpkR.Value) : "Uncalibrated"));
+            rightText.AppendLine(FormatRow("Voltage (Vdc)", (calR && vdcR.HasValue) ? FormatVoltageWithUnit(vdcR.Value) : "Uncalibrated"));
             // Sauvegarde des dernires valeurs (si utilis ailleurs)
             lastLeftFloat = leftF;
             lastRightFloat = rightF;
@@ -2904,17 +2914,33 @@ namespace AudioHexViewer
                     rightText = lastRightBits;
                     break;
 
-                case "Voltage (V)":
-                    // si pas calibr, on signale N/A
-                    if (calibValidLeft)
-                        leftText = lastLeftVolts.ToString("F4", CultureInfo.InvariantCulture);
-                    else
-                        leftText = "N/A";
+                case "Voltage (Vrms)":
+                case "Voltage (Vpeak)":
+                case "Voltage (Vdc)":
+                    // Mesures en volts issues de SpectrumControl (calibration unifiée)
+                    double? vrmsL = null, vpkL = null, vdcL = null;
+                    double? vrmsR = null, vpkR = null, vdcR = null;
+                    bool calL = false, calR = false;
 
-                    if (calibValidRight)
-                        rightText = lastRightVolts.ToString("F4", CultureInfo.InvariantCulture);
-                    else
-                        rightText = "N/A";
+                    if (spectrumControl != null)
+                    {
+                        calL = spectrumControl.VoltageCalibrationValidLeft;
+                        calR = spectrumControl.VoltageCalibrationValidRight;
+                        spectrumControl.GetLastVoltages(out vrmsL, out vpkL, out vdcL, out vrmsR, out vpkR, out vdcR);
+                    }
+
+                    double? selL =
+                        mode == "Voltage (Vrms)" ? vrmsL :
+                        mode == "Voltage (Vpeak)" ? vpkL :
+                        vdcL;
+
+                    double? selR =
+                        mode == "Voltage (Vrms)" ? vrmsR :
+                        mode == "Voltage (Vpeak)" ? vpkR :
+                        vdcR;
+
+                    leftText = (calL && selL.HasValue) ? FormatVoltageWithUnit(selL.Value) : "Uncalibrated";
+                    rightText = (calR && selR.HasValue) ? FormatVoltageWithUnit(selR.Value) : "Uncalibrated";
                     break;
 
                 default:

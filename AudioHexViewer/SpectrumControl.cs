@@ -228,40 +228,60 @@ private void ApplyCursorTheme()
         private double[]? currentRightSpectrum;
         private double[]? freqAxis;
 
-// --- Calibration niveau FFT (dBFS -> dBV) ---
-// Convention utilisée dans le projet :
-// - Les courbes FFT sont en "dBFS" avec 0 dBFS pour une sinusoïde full-scale (peak FS).
-// - Après calibration : dBV = dBFS + offset, où 0 dBV = 1 Vrms.
-private bool _levelCalValidLeft = false;
-private bool _levelCalValidRight = false;
-private double _levelCalOffsetDbLeft = 0.0;
-private double _levelCalOffsetDbRight = 0.0;
+        // --- Calibration niveau FFT (dBFS -> dBV) ---
+        // Convention utilisée dans le projet :
+        // - Les courbes FFT sont en "dBFS" avec 0 dBFS pour une sinusoïde full-scale (peak FS).
+        // - Après calibration : dBV = dBFS + offset, où 0 dBV = 1 Vrms.
+        private bool _levelCalValidLeft = false;
+        private bool _levelCalValidRight = false;
+        private double _levelCalOffsetDbLeft = 0.0;
+        private double _levelCalOffsetDbRight = 0.0;
 
-private string _levelUnit = "dBFS"; // "dBFS" ou "dBV"
+        private string _levelUnit = "dBFS"; // "dBFS" ou "dBV"
 
-// Dernières mesures RMS en dBFS (issues du buffer temps brut)
-private double? _lastRmsDbfsLeft = null;
-private double? _lastRmsDbfsRight = null;
+        // Dernières mesures RMS en dBFS (issues du buffer temps brut)
+        private double? _lastRmsDbfsLeft = null;
+        private double? _lastRmsDbfsRight = null;
 
-// Dernières mesures RMS en FS (AC, DC retiré) — base de calibration/volts linéaires
-private double? _lastRmsFsLeft = null;
-private double? _lastRmsFsRight = null;
+        // Dernières mesures RMS en FS (AC, DC retiré) — base de calibration/volts linéaires
+        private double? _lastRmsFsLeft = null;
+        private double? _lastRmsFsRight = null;
 
-// Gain linéaire Vrms / FS_rms (AC) — dérivé de la calibration
-private double _levelGainVrmsPerFsLeft = 0.0;
-private double _levelGainVrmsPerFsRight = 0.0;
+        // Gain linéaire Vrms / FS_rms (AC) — dérivé de la calibration
+        private double _levelGainVrmsPerFsLeft = 0.0;
+        private double _levelGainVrmsPerFsRight = 0.0;
 
-// Dernières composantes DC en volts (utile pour l'affichage dans le panneau mesures)
-private double? _lastVdcVoltsLeft = null;
-private double? _lastVdcVoltsRight = null;
+        // Dernières composantes DC en volts (utile pour l'affichage dans le panneau mesures)
+        private double? _lastVdcVoltsLeft = null;
+        private double? _lastVdcVoltsRight = null;
 
-// Dernières mesures linéaires en volts (affichage)
-private double? _lastVrmsVoltsLeft = null;
-private double? _lastVrmsVoltsRight = null;
-private double? _lastVpkVoltsLeft = null;
-private double? _lastVpkVoltsRight = null;
+        // Dernières mesures linéaires en volts (affichage)
+        private double? _lastVrmsVoltsLeft = null;
+        private double? _lastVrmsVoltsRight = null;
+        private double? _lastVpkVoltsLeft = null;
+        private double? _lastVpkVoltsRight = null;
 
+        // --- Exposition des mesures en volts (pour Form1 / affichage principal) ---
+        public bool VoltageCalibrationValidLeft => _levelCalValidLeft;
+        public bool VoltageCalibrationValidRight => _levelCalValidRight;
 
+        /// <summary>
+        /// Retourne les dernières mesures en volts (linéaires) calculées par SpectrumControl.
+        /// Valeurs null si non disponibles (ex: pas de calibration ou pas encore de mesure).
+        /// Vrms = RMS AC (DC retiré), Vpeak = max(|sample|) sur la fenêtre (DC compris), Vdc = moyenne (DC).
+        /// </summary>
+        public void GetLastVoltages(
+            out double? vrmsLeft, out double? vpeakLeft, out double? vdcLeft,
+            out double? vrmsRight, out double? vpeakRight, out double? vdcRight)
+        {
+            vrmsLeft = _lastVrmsVoltsLeft;
+            vpeakLeft = _lastVpkVoltsLeft;
+            vdcLeft = _lastVdcVoltsLeft;
+
+            vrmsRight = _lastVrmsVoltsRight;
+            vpeakRight = _lastVpkVoltsRight;
+            vdcRight = _lastVdcVoltsRight;
+        }
 
         // Layout original des labels "Meas" (pour pouvoir insérer des lignes Volts en mode dBV)
         private bool _voltLayoutInit = false;
@@ -269,8 +289,6 @@ private double? _lastVpkVoltsRight = null;
         private System.Drawing.Size _leftMeasOrigSize;
         private System.Drawing.Point _rightMeasOrigLoc;
         private System.Drawing.Size _rightMeasOrigSize;
-
-
 
         private bool isLive = false;
 
@@ -408,6 +426,7 @@ private double? _lastVpkVoltsRight = null;
             return db.ToString("F" + decimals);
         }
         //
+        // Calcul du rectangle "plot" (interne) en pixels
         private static RectangleF GetPlotRectPixels(Chart chart, ChartArea area)
         {
             var cr = chart.ClientRectangle;
@@ -455,6 +474,7 @@ private double? _lastVpkVoltsRight = null;
             return count;
         }
         //
+        // Choix du meilleur pas exact (sans ajustement de span)
         private static bool TryChooseBestExactStep(int spanHz, out int segments, out int stepHz)
         {
             int[] candidates = { 3, 4, 5, 6, 7, 8, 9, 10 };
@@ -960,7 +980,7 @@ private double? _lastVpkVoltsRight = null;
             AcquireOnce();
         }
 
-
+        // 
         private void InitChartAppearance()
         {
             var areas = chartSpectrum.ChartAreas;
@@ -1093,9 +1113,6 @@ private double? _lastVpkVoltsRight = null;
                 $"{avgText}    " +
                 $"{acdcText}";
 
-
-
-
             _overlayInfoAnno.Visible = false;   // on ne l’utilise plus
             chartSpectrum.Invalidate();         // force un repaint pour voir la ligne mise à jour
 
@@ -1212,46 +1229,38 @@ private double? _lastVpkVoltsRight = null;
                     RunStateChanged?.Invoke(false);
                 }
             };
+            // Unité de niveau (FFT) : dBFS / dBV (si calibré)
+            if (comboLevelUnit != null)
+            {
+                comboLevelUnit.Items.Clear();
+                comboLevelUnit.Items.Add("dBFS");
+                comboLevelUnit.Items.Add("dBV");
+                comboLevelUnit.SelectedIndex = 0;
 
+                comboLevelUnit.SelectedIndexChanged += (s, e) =>
+                {
+                    if (_isRestoringSettings)
+                        return;
 
-// Unité de niveau (FFT) : dBFS / dBV (si calibré)
-if (comboLevelUnit != null)
-{
-    comboLevelUnit.Items.Clear();
-    comboLevelUnit.Items.Add("dBFS");
-    comboLevelUnit.Items.Add("dBV");
-    comboLevelUnit.SelectedIndex = 0;
+                    _levelUnit = (comboLevelUnit.SelectedItem as string) ?? "dBFS";
 
-    comboLevelUnit.SelectedIndexChanged += (s, e) =>
-    {
-        if (_isRestoringSettings)
-            return;
+                    // Si on n'a pas la calibration pour le mode courant, on force dBFS
+                    if (_levelUnit == "dBV" && !IsDbvAvailableForCurrentMode())
+                    {
+                        _levelUnit = "dBFS";
+                        comboLevelUnit.SelectedIndex = 0;
+                    }
 
-        _levelUnit = (comboLevelUnit.SelectedItem as string) ?? "dBFS";
+                    // éviter des limites incohérentes après un changement d'unité
+                    customYMin = null;
+                    customYMax = null;
 
-        // Si on n'a pas la calibration pour le mode courant, on force dBFS
-        if (_levelUnit == "dBV" && !IsDbvAvailableForCurrentMode())
-        {
-            _levelUnit = "dBFS";
-            comboLevelUnit.SelectedIndex = 0;
-        }
+                    if (!isLive)
+                        UpdateSpectrumChartAndStats();
+                };
+            }
 
-        // éviter des limites incohérentes après un changement d'unité
-        customYMin = null;
-        customYMax = null;
-
-        if (!isLive)
-            UpdateSpectrumChartAndStats();
-    };
-}
-
-if (btnCalLevel != null)
-{
-    btnCalLevel.Click += (s, e) => ShowLevelCalibrationDialog();
-}
-
-// En startup, on grise / active selon calibration et mode
-UpdateLevelUnitUi();
+            UpdateLevelUnitUi();
 
             // Log X axis 
             if (chkLogX != null)
@@ -1266,142 +1275,144 @@ UpdateLevelUnitUi();
             }
 
         }
-// ============================================================
-//  Level calibration (FFT) : dBFS <-> dBV
-// ============================================================
 
-private bool IsDbvAvailableForMode(string mode)
-{
-    // Mode = "Left" / "Right" / "L+R"
-    if (string.Equals(mode, "Left", StringComparison.OrdinalIgnoreCase))
-        return _levelCalValidLeft;
+        // ============================================================
+        //  Level calibration (FFT) : dBFS <-> dBV
+        // ============================================================
+        private bool IsDbvAvailableForMode(string mode)
+        {
+            // Mode = "Left" / "Right" / "L+R"
+            if (string.Equals(mode, "Left", StringComparison.OrdinalIgnoreCase))
+                return _levelCalValidLeft;
 
-    if (string.Equals(mode, "Right", StringComparison.OrdinalIgnoreCase))
-        return _levelCalValidRight;
+            if (string.Equals(mode, "Right", StringComparison.OrdinalIgnoreCase))
+                return _levelCalValidRight;
 
-    // L+R => on affiche les 2 courbes, donc il faut les 2 calibrations
-    return _levelCalValidLeft && _levelCalValidRight;
-}
+            // L+R => on affiche les 2 courbes, donc il faut les 2 calibrations
+            return _levelCalValidLeft && _levelCalValidRight;
+        }
 
-private bool IsDbvAvailableForCurrentMode()
-{
-    string mode = (comboChannel?.SelectedItem as string) ?? "L+R";
-    return IsDbvAvailableForMode(mode);
-}
+        private bool IsDbvAvailableForCurrentMode()
+        {
+            string mode = (comboChannel?.SelectedItem as string) ?? "L+R";
+            return IsDbvAvailableForMode(mode);
+        }
 
-private bool UseDbvForMode(string mode)
-{
-    return string.Equals(_levelUnit, "dBV", StringComparison.OrdinalIgnoreCase) && IsDbvAvailableForMode(mode);
-}
+        private bool UseDbvForMode(string mode)
+        {
+            return string.Equals(_levelUnit, "dBV", StringComparison.OrdinalIgnoreCase) && IsDbvAvailableForMode(mode);
+        }
 
-private bool UseDbvForCurrentMode()
-{
-    string mode = (comboChannel?.SelectedItem as string) ?? "L+R";
-    return UseDbvForMode(mode);
-}
+        private bool UseDbvForCurrentMode()
+        {
+            string mode = (comboChannel?.SelectedItem as string) ?? "L+R";
+            return UseDbvForMode(mode);
+        }
 
-private string CurrentLevelUnitLabel()
-{
-    return UseDbvForCurrentMode() ? "dBV" : "dBFS";
-}
+        private string CurrentLevelUnitLabel()
+        {
+            return UseDbvForCurrentMode() ? "dBV" : "dBFS";
+        }
 
-private double DbfsToDisplay(double dbfs, bool isRightChannel, string mode)
-{
-    if (!UseDbvForMode(mode))
-        return dbfs;
+        private double DbfsToDisplay(double dbfs, bool isRightChannel, string mode)
+        {
+            if (!UseDbvForMode(mode))
+                return dbfs;
 
-    return dbfs + (isRightChannel ? _levelCalOffsetDbRight : _levelCalOffsetDbLeft);
-}
+            return dbfs + (isRightChannel ? _levelCalOffsetDbRight : _levelCalOffsetDbLeft);
+        }
 
-private void UpdateLevelUnitUi()
-{
-    if (comboLevelUnit == null)
-        return;
+        // Met à jour l'état de la ComboBox d'unité de niveau (dBFS/dBV)
+        private void UpdateLevelUnitUi()
+        {
+            if (comboLevelUnit == null)
+                return;
 
-    bool canDbv = IsDbvAvailableForCurrentMode();
+            bool canDbv = IsDbvAvailableForCurrentMode();
 
-    // On grise complètement la ComboBox tant que dBV n'est pas dispo,
-    // conformément au cahier des charges.
-    comboLevelUnit.Enabled = canDbv;
+            // On grise complètement la ComboBox tant que dBV n'est pas dispo,
+            // conformément au cahier des charges.
+            comboLevelUnit.Enabled = canDbv;
 
-    if (!canDbv)
-    {
-        _levelUnit = "dBFS";
-        if (comboLevelUnit.SelectedIndex != 0)
-            comboLevelUnit.SelectedIndex = 0;
-        return;
-    }
+            if (!canDbv)
+            {
+                _levelUnit = "dBFS";
+                if (comboLevelUnit.SelectedIndex != 0)
+                    comboLevelUnit.SelectedIndex = 0;
+                return;
+            }
 
-    // Si dBV est dispo, on restaure la sélection cohérente
-    if (string.Equals(_levelUnit, "dBV", StringComparison.OrdinalIgnoreCase))
-    {
-        if (comboLevelUnit.SelectedIndex != 1)
-            comboLevelUnit.SelectedIndex = 1;
-    }
-    else
-    {
-        if (comboLevelUnit.SelectedIndex != 0)
-            comboLevelUnit.SelectedIndex = 0;
-    }
-}
+            // Si dBV est dispo, on restaure la sélection cohérente
+            if (string.Equals(_levelUnit, "dBV", StringComparison.OrdinalIgnoreCase))
+            {
+                if (comboLevelUnit.SelectedIndex != 1)
+                    comboLevelUnit.SelectedIndex = 1;
+            }
+            else
+            {
+                if (comboLevelUnit.SelectedIndex != 0)
+                    comboLevelUnit.SelectedIndex = 0;
+            }
+        }
 
-private (bool ok, string message) CalibrateLevel(bool isRight, double knownVrms)
-{
-    if (knownVrms <= 0.0 || double.IsNaN(knownVrms) || double.IsInfinity(knownVrms))
-        return (false, "Valeur Vrms invalide (doit être > 0).");
+        // Calibrage d'une voie (L ou R) en Vrms connu.
+        private (bool ok, string message) CalibrateLevel(bool isRight, double knownVrms)
+        {
+            if (knownVrms <= 0.0 || double.IsNaN(knownVrms) || double.IsInfinity(knownVrms))
+                return (false, "Valeur Vrms invalide (doit être > 0).");
 
-    // On calibre à partir du RMS AC en FS (DC retiré) — pas depuis le dBFS.
-    double? measuredRmsFs = isRight ? _lastRmsFsRight : _lastRmsFsLeft;
-    if (measuredRmsFs == null || measuredRmsFs.Value <= 0.0)
-        return (false, "Pas de mesure RMS (FS) disponible. Lancez d'abord une acquisition (RUN), puis réessayez.");
+            // On calibre à partir du RMS AC en FS (DC retiré) — pas depuis le dBFS.
+            double? measuredRmsFs = isRight ? _lastRmsFsRight : _lastRmsFsLeft;
+            if (measuredRmsFs == null || measuredRmsFs.Value <= 0.0)
+                return (false, "Pas de mesure RMS (FS) disponible. Lancez d'abord une acquisition (RUN), puis réessayez.");
 
-    // Gain linéaire : Vrms / FS_rms (AC)
-    double gain = knownVrms / measuredRmsFs.Value;
+            // Gain linéaire : Vrms / FS_rms (AC)
+            double gain = knownVrms / measuredRmsFs.Value;
 
-    // Offset appliqué aux courbes FFT : dBV = dBFS + offset
-    double offset = OffsetDbFromGain(gain);
+            // Offset appliqué aux courbes FFT : dBV = dBFS + offset
+            double offset = OffsetDbFromGain(gain);
 
-    if (isRight)
-    {
-        _levelCalValidRight = true;
-        _levelGainVrmsPerFsRight = gain;
-        _levelCalOffsetDbRight = offset;
-    }
-    else
-    {
-        _levelCalValidLeft = true;
-        _levelGainVrmsPerFsLeft = gain;
-        _levelCalOffsetDbLeft = offset;
-    }
+            if (isRight)
+            {
+                _levelCalValidRight = true;
+                _levelGainVrmsPerFsRight = gain;
+                _levelCalOffsetDbRight = offset;
+            }
+            else
+            {
+                _levelCalValidLeft = true;
+                _levelGainVrmsPerFsLeft = gain;
+                _levelCalOffsetDbLeft = offset;
+            }
 
-    UpdateLevelUnitUi();
+            UpdateLevelUnitUi();
 
-    if (!isLive)
-        UpdateSpectrumChartAndStats();
+            if (!isLive)
+                UpdateSpectrumChartAndStats();
 
-    string chan = isRight ? "R" : "L";
-    double vrmsAt0Dbfs = gain / Math.Sqrt(2.0); // 0 dBFS (peak FS=1) -> Vrms
-    return (true, $"Voie {chan} : RMS_FS(ac) = {measuredRmsFs.Value:F6}. Gain = {gain:G6} Vrms/FS. " +
-                  $"Offset = {offset:+0.00;-0.00;0.00} dB. => 0 dBFS ≈ {vrmsAt0Dbfs:F6} Vrms");
-}
+            string chan = isRight ? "R" : "L";
+            double vrmsAt0Dbfs = gain / Math.Sqrt(2.0); // 0 dBFS (peak FS=1) -> Vrms
+            return (true, $"Voie {chan} : RMS_FS(ac) = {measuredRmsFs.Value:F6}. Gain = {gain:G6} Vrms/FS. " +
+                          $"Offset = {offset:+0.00;-0.00;0.00} dB. => 0 dBFS ≈ {vrmsAt0Dbfs:F6} Vrms");
+        }
 
-private void ShowLevelCalibrationDialog()
-{
-    var dlg = new LevelCalibrationDialog();
+        //      
+        public void ShowLevelCalibrationDialog(IWin32Window? owner = null)
+        {
+            var dlg = new LevelCalibrationDialog();
 
-    // États init
-    dlg.SetCurrentCalibration(
-        _levelCalValidLeft, _levelCalOffsetDbLeft,
-        _levelCalValidRight, _levelCalOffsetDbRight,
-        _lastRmsDbfsLeft, _lastRmsDbfsRight);
+            // États init
+            dlg.SetCurrentCalibration(
+                _levelCalValidLeft, _levelCalOffsetDbLeft,
+                _levelCalValidRight, _levelCalOffsetDbRight,
+                _lastRmsDbfsLeft, _lastRmsDbfsRight);
 
-    dlg.CalibrateLeft = (vrms) => CalibrateLevel(false, vrms);
-    dlg.CalibrateRight = (vrms) => CalibrateLevel(true, vrms);
+            dlg.CalibrateLeft = (vrms) => CalibrateLevel(false, vrms);
+            dlg.CalibrateRight = (vrms) => CalibrateLevel(true, vrms);
 
-    dlg.ShowDialog(this);
-}
-
-
+            dlg.ShowDialog(this);
+        }
+        
         //
         private void UpdateCursorVisibility()
         {
@@ -1550,8 +1561,6 @@ private void ShowLevelCalibrationDialog()
 
             g.Restore(saved);
         }
-
-
         //
         // ---------------- CURSORS ----------------
         private void InitCursors()
@@ -1735,14 +1744,13 @@ private void ShowLevelCalibrationDialog()
 
             // Couleurs
             s.Colors = GetSpectrumColorSettingsSnapshot();
-
             
-// Niveau (FFT) : unité et calibration
-s.LevelUnit = _levelUnit;
-s.LevelCalValidLeft = _levelCalValidLeft;
-s.LevelCalOffsetDbLeft = _levelCalOffsetDbLeft;
-s.LevelCalValidRight = _levelCalValidRight;
-s.LevelCalOffsetDbRight = _levelCalOffsetDbRight;
+            // Niveau (FFT) : unité et calibration
+            s.LevelUnit = _levelUnit;
+            s.LevelCalValidLeft = _levelCalValidLeft;
+            s.LevelCalOffsetDbLeft = _levelCalOffsetDbLeft;
+            s.LevelCalValidRight = _levelCalValidRight;
+            s.LevelCalOffsetDbRight = _levelCalOffsetDbRight;
 
             return s;
         }
@@ -1801,18 +1809,18 @@ s.LevelCalOffsetDbRight = _levelCalOffsetDbRight;
                     }
                 }
 
-// Niveau (FFT) : unité + calibration (dBFS -> dBV)
-_levelUnit = string.IsNullOrWhiteSpace(s.LevelUnit) ? "dBFS" : s.LevelUnit;
-_levelCalValidLeft = s.LevelCalValidLeft;
-_levelCalOffsetDbLeft = s.LevelCalOffsetDbLeft;
-_levelCalValidRight = s.LevelCalValidRight;
-_levelCalOffsetDbRight = s.LevelCalOffsetDbRight;
+            // Niveau (FFT) : unité + calibration (dBFS -> dBV)
+            _levelUnit = string.IsNullOrWhiteSpace(s.LevelUnit) ? "dBFS" : s.LevelUnit;
+            _levelCalValidLeft = s.LevelCalValidLeft;
+            _levelCalOffsetDbLeft = s.LevelCalOffsetDbLeft;
+            _levelCalValidRight = s.LevelCalValidRight;
+            _levelCalOffsetDbRight = s.LevelCalOffsetDbRight;
 
-// Reconstituer le gain linéaire (Vrms/FS_rms) depuis l'offset dB persisté
-_levelGainVrmsPerFsLeft = _levelCalValidLeft ? GainFromOffsetDb(_levelCalOffsetDbLeft) : 0.0;
-_levelGainVrmsPerFsRight = _levelCalValidRight ? GainFromOffsetDb(_levelCalOffsetDbRight) : 0.0;
+            // Reconstituer le gain linéaire (Vrms/FS_rms) depuis l'offset dB persisté
+            _levelGainVrmsPerFsLeft = _levelCalValidLeft ? GainFromOffsetDb(_levelCalOffsetDbLeft) : 0.0;
+            _levelGainVrmsPerFsRight = _levelCalValidRight ? GainFromOffsetDb(_levelCalOffsetDbRight) : 0.0;
 
-UpdateLevelUnitUi();
+            UpdateLevelUnitUi();
 
             }
             finally
@@ -1878,12 +1886,13 @@ UpdateLevelUnitUi();
         }
 
 
-        //
+        // --- Recherche de l’indice de fréquence le plus proche ---
         private static int FindNearestFreqIndex(double[] axis, double f)
         {
             return FindNearestFreqIndex(axis, f, 0);
         }
 
+        // 
         private static int FindNearestFreqIndex(double[] axis, double f, int minIndex)
         {
             if (axis == null || axis.Length == 0)
@@ -3193,10 +3202,15 @@ if (yMaxAuto > YMAX_CAP)
                 showLeftVolts = leftUseDbv;
                 if (lblLeftRmsV != null && lblLeftPeakV != null)
                 {
-                    if (showLeftVolts)
+                    // On calcule TOUJOURS les métriques en volts dès que la calibration est valide,
+                    // même si l'affichage FFT reste en dBFS (pour pouvoir les réutiliser ailleurs : Form1).
+                    if (_levelCalValidLeft)
                     {
                         // Conversion directe depuis les métriques linéaires (FS) via le gain de calibration.
-                        double gain = (_levelGainVrmsPerFsLeft > 0.0) ? _levelGainVrmsPerFsLeft : GainFromOffsetDb(_levelCalOffsetDbLeft);
+                        double gain =
+                            (_levelGainVrmsPerFsLeft > 0.0)
+                                ? _levelGainVrmsPerFsLeft
+                                : GainFromOffsetDb(_levelCalOffsetDbLeft);
 
                         // 1) Vrms AC : RMS de (sample-mean)
                         double vrms = rmsL * gain;
@@ -3206,12 +3220,22 @@ if (yMaxAuto > YMAX_CAP)
 
                         // 3) Vdc : moyenne des échantillons (V moyen)
                         double vdc = (meanL / (double)SpectrumAnalyzer.Max24Pos) * gain;
+
                         _lastVdcVoltsLeft = vdc;
                         _lastVrmsVoltsLeft = vrms;
                         _lastVpkVoltsLeft = vpk;
 
-                        lblLeftRmsV.Text = $"Vrms: {FormatVoltage(vrms)}";
-                        lblLeftPeakV.Text = $"Vpeak: {FormatVoltage(vpk)}";
+                        if (showLeftVolts)
+                        {
+                            // Affichage uniquement en mode dBV (côté FFT)
+                            lblLeftRmsV.Text = $"Vrms:  {FormatVoltage(vrms)}";
+                            lblLeftPeakV.Text = $"Vpeak: {FormatVoltage(vpk)}";
+                        }
+                        else
+                        {
+                            lblLeftRmsV.Text = "";
+                            lblLeftPeakV.Text = "";
+                        }
                     }
                     else
                     {
@@ -3278,19 +3302,33 @@ if (yMaxAuto > YMAX_CAP)
                 showRightVolts = rightUseDbv;
                 if (lblRightRmsV != null && lblRightPeakV != null)
                 {
-                    if (showRightVolts)
+                    // On calcule TOUJOURS les métriques en volts dès que la calibration est valide,
+                    // même si l'affichage FFT reste en dBFS (pour pouvoir les réutiliser ailleurs : Form1).
+                    if (_levelCalValidRight)
                     {
-                        double gain = (_levelGainVrmsPerFsRight > 0.0) ? _levelGainVrmsPerFsRight : GainFromOffsetDb(_levelCalOffsetDbRight);
+                        double gain =
+                            (_levelGainVrmsPerFsRight > 0.0)
+                                ? _levelGainVrmsPerFsRight
+                                : GainFromOffsetDb(_levelCalOffsetDbRight);
 
                         double vrms = rmsR * gain;
                         double vpk = peakRfs * gain;
                         double vdc = (meanR / (double)SpectrumAnalyzer.Max24Pos) * gain;
+
                         _lastVdcVoltsRight = vdc;
                         _lastVrmsVoltsRight = vrms;
                         _lastVpkVoltsRight = vpk;
 
-                        lblRightRmsV.Text = $"Vrms: {FormatVoltage(vrms)}";
-                        lblRightPeakV.Text = $"Vpeak: {FormatVoltage(vpk)}";
+                        if (showRightVolts)
+                        {
+                            lblRightRmsV.Text = $"Vrms:  {FormatVoltage(vrms)}";
+                            lblRightPeakV.Text = $"Vpeak: {FormatVoltage(vpk)}";
+                        }
+                        else
+                        {
+                            lblRightRmsV.Text = "";
+                            lblRightPeakV.Text = "";
+                        }
                     }
                     else
                     {
@@ -3349,7 +3387,12 @@ if (yMaxAuto > YMAX_CAP)
                             thdText = $"THD: {mL.ThdDb:F1} dB";
                             thdnText = $"THD+N: {mL.ThdNDb:F1} dB";
                         }
-lblLeftMeas.Text =
+                        string vdcPrefixL = (_levelUnit == "dBV" && _levelCalValidLeft && _lastVdcVoltsLeft.HasValue)
+                            ? $"Vdc: {FormatVoltage(_lastVdcVoltsLeft.Value)}\n"
+                            : "";
+
+                        lblLeftMeas.Text =
+                        vdcPrefixL +
                             $"F0: {mL.FundamentalHz:F1} Hz\n" +
                             thdText + "\n" +
                             thdnText + "\n" +
@@ -3384,7 +3427,11 @@ lblLeftMeas.Text =
                 {
                     // THD OFF => F0 uniquement (rapide)
                     var f0 = EstimateFundamentalHz(currentLeftSpectrum, _sampleRate, lastFftSize);
-lblLeftMeas.Text = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "—");
+                    string vdcPrefixL = (_levelUnit == "dBV" && _levelCalValidLeft && _lastVdcVoltsLeft.HasValue)
+                        ? $"Vdc: {FormatVoltage(_lastVdcVoltsLeft.Value)}\n"
+                        : "";
+
+                    lblLeftMeas.Text = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "—");
                 }
             }
             else if (lblLeftMeas != null)
@@ -3416,7 +3463,12 @@ lblLeftMeas.Text = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "—");
                             thdText = $"THD: {mR.ThdDb:F1} dB";
                             thdnText = $"THD+N: {mR.ThdNDb:F1} dB";
                         }
-lblRightMeas.Text =
+                        string vdcPrefixR = (_levelUnit == "dBV" && _levelCalValidRight && _lastVdcVoltsRight.HasValue)
+                            ? $"Vdc: {FormatVoltage(_lastVdcVoltsRight.Value)}\n"
+                            : "";
+
+                        lblRightMeas.Text =
+                            vdcPrefixR +
                             $"F0: {mR.FundamentalHz:F1} Hz\n" +
                             thdText + "\n" +
                             thdnText + "\n" +
@@ -3450,7 +3502,11 @@ lblRightMeas.Text =
                 {
                     // THD OFF => F0 uniquement (rapide)
                     var f0 = EstimateFundamentalHz(currentRightSpectrum, _sampleRate, lastFftSize);
-lblRightMeas.Text = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "—");
+                    string vdcPrefixR = (_levelUnit == "dBV" && _levelCalValidRight && _lastVdcVoltsRight.HasValue)
+                        ? $"Vdc: {FormatVoltage(_lastVdcVoltsRight.Value)}\n"
+                        : "";
+
+                    lblRightMeas.Text = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "—");
                 }
             }
             else if (lblRightMeas != null)

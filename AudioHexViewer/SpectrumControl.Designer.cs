@@ -30,7 +30,6 @@
             comboAveraging = new ComboBox();
             lblUnits = new Label();
             comboLevelUnit = new ComboBox();
-            btnCalLevel = new Button();
             lblChannel = new Label();
             comboChannel = new ComboBox();
             lblWindowInfo = new Label();
@@ -77,7 +76,6 @@
             panelTop.Controls.Add(comboAveraging);
             panelTop.Controls.Add(lblUnits);
             panelTop.Controls.Add(comboLevelUnit);
-            panelTop.Controls.Add(btnCalLevel);
             panelTop.Controls.Add(lblChannel);
             panelTop.Controls.Add(comboChannel);
             panelTop.Controls.Add(lblWindowInfo);
@@ -223,15 +221,6 @@
             comboLevelUnit.Name = "comboLevelUnit";
             comboLevelUnit.Size = new Size(74, 23);
             comboLevelUnit.TabIndex = 14;
-            // 
-            // btnCalLevel
-            // 
-            btnCalLevel.Location = new Point(861, 33);
-            btnCalLevel.Name = "btnCalLevel";
-            btnCalLevel.Size = new Size(74, 23);
-            btnCalLevel.TabIndex = 15;
-            btnCalLevel.Text = "Calibrate";
-            btnCalLevel.UseVisualStyleBackColor = true;
             // 
             // lblChannel
             // 
@@ -468,7 +457,6 @@
         private Panel panelTop;
         private Label lblUnits;
         private ComboBox comboLevelUnit;
-        private Button btnCalLevel;
         private Label lblWindow;
         private ComboBox comboWindow;
         private Label lblAveraging;
