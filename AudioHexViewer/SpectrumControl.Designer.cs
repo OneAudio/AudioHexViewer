@@ -35,6 +35,15 @@
             lblWindowInfo = new Label();
             btnRun = new Button();
             chkLogX = new CheckBox();
+            tlpCursors = new TableLayoutPanel();
+            btnC1 = new Button();
+            btnC1Track = new Button();
+            btnC1Pk = new Button();
+            btnC1Set = new Button();
+            btnC2 = new Button();
+            btnC2Track = new Button();
+            btnC2Pk = new Button();
+            btnC2Set = new Button();
             chartSpectrum = new System.Windows.Forms.DataVisualization.Charting.Chart();
             grpRightStats = new GroupBox();
             lblRightMeas = new Label();
@@ -53,7 +62,9 @@
             chkCursorL = new CheckBox();
             chkCursorR = new CheckBox();
             panelStats = new Panel();
+            label2 = new Label();
             panelTop.SuspendLayout();
+            tlpCursors.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)chartSpectrum).BeginInit();
             grpRightStats.SuspendLayout();
             grpLeftStats.SuspendLayout();
@@ -62,6 +73,7 @@
             // 
             // panelTop
             // 
+            panelTop.Controls.Add(label2);
             panelTop.Controls.Add(label1);
             panelTop.Controls.Add(lblAvgProgress);
             panelTop.Controls.Add(chkRemoveDC);
@@ -81,6 +93,7 @@
             panelTop.Controls.Add(lblWindowInfo);
             panelTop.Controls.Add(btnRun);
             panelTop.Controls.Add(chkLogX);
+            panelTop.Controls.Add(tlpCursors);
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 0);
             panelTop.Name = "panelTop";
@@ -91,7 +104,7 @@
             // 
             label1.AutoSize = true;
             label1.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            label1.Location = new Point(975, 15);
+            label1.Location = new Point(990, 25);
             label1.Name = "label1";
             label1.Size = new Size(38, 15);
             label1.TabIndex = 32;
@@ -208,7 +221,7 @@
             // lblUnits
             // 
             lblUnits.AutoSize = true;
-            lblUnits.Location = new Point(811, 9);
+            lblUnits.Location = new Point(850, 11);
             lblUnits.Name = "lblUnits";
             lblUnits.Size = new Size(44, 15);
             lblUnits.TabIndex = 13;
@@ -217,7 +230,7 @@
             // comboLevelUnit
             // 
             comboLevelUnit.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboLevelUnit.Location = new Point(861, 6);
+            comboLevelUnit.Location = new Point(900, 7);
             comboLevelUnit.Name = "comboLevelUnit";
             comboLevelUnit.Size = new Size(74, 23);
             comboLevelUnit.TabIndex = 14;
@@ -243,7 +256,7 @@
             // 
             lblWindowInfo.AutoSize = true;
             lblWindowInfo.ForeColor = SystemColors.HotTrack;
-            lblWindowInfo.Location = new Point(975, 36);
+            lblWindowInfo.Location = new Point(990, 40);
             lblWindowInfo.Name = "lblWindowInfo";
             lblWindowInfo.Size = new Size(47, 15);
             lblWindowInfo.TabIndex = 8;
@@ -266,6 +279,118 @@
             chkLogX.Size = new Size(58, 19);
             chkLogX.TabIndex = 11;
             chkLogX.Text = "LOG F";
+            // 
+            // tlpCursors
+            // 
+            tlpCursors.ColumnCount = 4;
+            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34F));
+            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 42F));
+            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 32F));
+            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 32F));
+            tlpCursors.Controls.Add(btnC1, 0, 0);
+            tlpCursors.Controls.Add(btnC1Track, 1, 0);
+            tlpCursors.Controls.Add(btnC1Pk, 2, 0);
+            tlpCursors.Controls.Add(btnC1Set, 3, 0);
+            tlpCursors.Controls.Add(btnC2, 0, 1);
+            tlpCursors.Controls.Add(btnC2Track, 1, 1);
+            tlpCursors.Controls.Add(btnC2Pk, 2, 1);
+            tlpCursors.Controls.Add(btnC2Set, 3, 1);
+            tlpCursors.Location = new Point(675, 16);
+            tlpCursors.Margin = new Padding(0);
+            tlpCursors.Name = "tlpCursors";
+            tlpCursors.RowCount = 2;
+            tlpCursors.RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
+            tlpCursors.RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
+            tlpCursors.Size = new Size(140, 46);
+            tlpCursors.TabIndex = 33;
+            // 
+            // btnC1
+            // 
+            btnC1.Dock = DockStyle.Fill;
+            btnC1.Location = new Point(0, 0);
+            btnC1.Margin = new Padding(0);
+            btnC1.Name = "btnC1";
+            btnC1.Size = new Size(34, 23);
+            btnC1.TabIndex = 0;
+            btnC1.Text = "C1";
+            btnC1.UseVisualStyleBackColor = true;
+            // 
+            // btnC1Track
+            // 
+            btnC1Track.Dock = DockStyle.Fill;
+            btnC1Track.Location = new Point(34, 0);
+            btnC1Track.Margin = new Padding(0);
+            btnC1Track.Name = "btnC1Track";
+            btnC1Track.Size = new Size(42, 23);
+            btnC1Track.TabIndex = 1;
+            btnC1Track.Text = "L";
+            btnC1Track.UseVisualStyleBackColor = true;
+            // 
+            // btnC1Pk
+            // 
+            btnC1Pk.Dock = DockStyle.Fill;
+            btnC1Pk.Location = new Point(76, 0);
+            btnC1Pk.Margin = new Padding(0);
+            btnC1Pk.Name = "btnC1Pk";
+            btnC1Pk.Size = new Size(32, 23);
+            btnC1Pk.TabIndex = 2;
+            btnC1Pk.Text = "Pk";
+            btnC1Pk.UseVisualStyleBackColor = true;
+            // 
+            // btnC1Set
+            // 
+            btnC1Set.Dock = DockStyle.Fill;
+            btnC1Set.Location = new Point(108, 0);
+            btnC1Set.Margin = new Padding(0);
+            btnC1Set.Name = "btnC1Set";
+            btnC1Set.Size = new Size(32, 23);
+            btnC1Set.TabIndex = 3;
+            btnC1Set.Text = "Set";
+            btnC1Set.UseVisualStyleBackColor = true;
+            // 
+            // btnC2
+            // 
+            btnC2.Dock = DockStyle.Fill;
+            btnC2.Location = new Point(0, 23);
+            btnC2.Margin = new Padding(0);
+            btnC2.Name = "btnC2";
+            btnC2.Size = new Size(34, 23);
+            btnC2.TabIndex = 4;
+            btnC2.Text = "C2";
+            btnC2.UseVisualStyleBackColor = true;
+            // 
+            // btnC2Track
+            // 
+            btnC2Track.Dock = DockStyle.Fill;
+            btnC2Track.Location = new Point(34, 23);
+            btnC2Track.Margin = new Padding(0);
+            btnC2Track.Name = "btnC2Track";
+            btnC2Track.Size = new Size(42, 23);
+            btnC2Track.TabIndex = 5;
+            btnC2Track.Text = "R";
+            btnC2Track.UseVisualStyleBackColor = true;
+            // 
+            // btnC2Pk
+            // 
+            btnC2Pk.Dock = DockStyle.Fill;
+            btnC2Pk.Location = new Point(76, 23);
+            btnC2Pk.Margin = new Padding(0);
+            btnC2Pk.Name = "btnC2Pk";
+            btnC2Pk.Size = new Size(32, 23);
+            btnC2Pk.TabIndex = 6;
+            btnC2Pk.Text = "Pk";
+            btnC2Pk.UseVisualStyleBackColor = true;
+            // 
+            // btnC2Set
+            // 
+            btnC2Set.Dock = DockStyle.Fill;
+            btnC2Set.Location = new Point(108, 23);
+            btnC2Set.Margin = new Padding(0);
+            btnC2Set.Name = "btnC2Set";
+            btnC2Set.Size = new Size(32, 23);
+            btnC2Set.TabIndex = 7;
+            btnC2Set.Text = "Set";
+            btnC2Set.UseVisualStyleBackColor = true;
             // 
             // chartSpectrum
             // 
@@ -434,6 +559,16 @@
             panelStats.Size = new Size(1138, 435);
             panelStats.TabIndex = 0;
             // 
+            // label2
+            // 
+            label2.AutoSize = true;
+            label2.Location = new Point(692, 0);
+            label2.Name = "label2";
+            label2.Size = new Size(91, 15);
+            label2.TabIndex = 34;
+            label2.Text = "Cursors settings";
+            label2.Click += label2_Click;
+            // 
             // SpectrumControl
             // 
             BorderStyle = BorderStyle.FixedSingle;
@@ -444,6 +579,7 @@
             Size = new Size(1138, 500);
             panelTop.ResumeLayout(false);
             panelTop.PerformLayout();
+            tlpCursors.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)chartSpectrum).EndInit();
             grpRightStats.ResumeLayout(false);
             grpLeftStats.ResumeLayout(false);
@@ -495,5 +631,18 @@
         private Label lblRightRmsV;
         private Label lblRightPeakV;
         private Label label1;
+        //
+        // Cursor Controls
+        private TableLayoutPanel tlpCursors;
+        private Button btnC1;
+        private Button btnC1Track;
+        private Button btnC1Pk;
+        private Button btnC1Set;
+
+        private Button btnC2;
+        private Button btnC2Track;
+        private Button btnC2Pk;
+        private Button btnC2Set;
+        private Label label2;
     }
 }

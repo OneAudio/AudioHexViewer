@@ -196,7 +196,11 @@ namespace AudioHexViewer
             if (_cursorLineL != null) _cursorLineL.LineColor = Color.FromArgb(180, FftLeftColor);
             if (_cursorLineR != null) _cursorLineR.LineColor = Color.FromArgb(180, FftRightColor);
         }
-
+        //
+        // 
+        private bool _cursorUiBindDone;
+        private Font? _cursorBtnRegular;
+        private Font? _cursorBtnBold;
 
         public delegate (int[] Left, int[] Right) SampleProvider(int sampleCount);
 
@@ -212,7 +216,7 @@ namespace AudioHexViewer
 
         private readonly SpectrumMetricsOptions _metricsOpt = new SpectrumMetricsOptions();
 
-        private SpectrumSettings.ThdSettings _thdUi = new SpectrumSettings.ThdSettings  ();
+        private SpectrumSettings.ThdSettings _thdUi = new SpectrumSettings.ThdSettings();
 
         public enum ChannelMode
         {
@@ -608,7 +612,8 @@ namespace AudioHexViewer
             ApplyThdSettings(_thdUi);
             UpdateRunButtonAppearance();
             InitOverlayAnnotation();
-            InitCursorBarUi(); // NEW: curseurs C1/C2 dans l’onglet Spectrum
+            // Curseurs
+            InitCursorBarUi();
 
             // Clic droit sur la zone du spectre -> ouverture de la boîte d'axes
             chartSpectrum.MouseUp += ChartSpectrum_MouseUp;
@@ -1020,7 +1025,7 @@ namespace AudioHexViewer
             area0.AxisY.Title = "Level (dBFS)";
             area0.AxisY.Minimum = -200;
             area0.AxisY.Maximum = 0;
-        
+
 
             ApplyChartTheme();
         }
@@ -1235,7 +1240,7 @@ namespace AudioHexViewer
             };
 
 
-            
+
             // Bouton RUN
             btnRun.Click += (s, e) =>
             {
@@ -1466,7 +1471,7 @@ namespace AudioHexViewer
 
             dlg.ShowDialog(this);
 
-            
+
         }
 
         //
@@ -1625,7 +1630,7 @@ namespace AudioHexViewer
                 return;
 
             // Eviter double init
-            if (_cursorLineL != null || _cursorLineR != null )
+            if (_cursorLineL != null || _cursorLineR != null)
                 return;
 
             var area = chartSpectrum.ChartAreas["SpectrumArea"];
@@ -1800,7 +1805,7 @@ namespace AudioHexViewer
 
             // Couleurs
             s.Colors = GetSpectrumColorSettingsSnapshot();
-            
+
             // Niveau (FFT) : unité et calibration
             s.LevelUnit = _levelUnit;
             s.LevelCalValidLeft = _levelCalValidLeft;
@@ -1865,18 +1870,18 @@ namespace AudioHexViewer
                     }
                 }
 
-            // Niveau (FFT) : unité + calibration (dBFS -> dBV)
-            _levelUnit = string.IsNullOrWhiteSpace(s.LevelUnit) ? "dBFS" : s.LevelUnit;
-            _levelCalValidLeft = s.LevelCalValidLeft;
-            _levelCalOffsetDbLeft = s.LevelCalOffsetDbLeft;
-            _levelCalValidRight = s.LevelCalValidRight;
-            _levelCalOffsetDbRight = s.LevelCalOffsetDbRight;
+                // Niveau (FFT) : unité + calibration (dBFS -> dBV)
+                _levelUnit = string.IsNullOrWhiteSpace(s.LevelUnit) ? "dBFS" : s.LevelUnit;
+                _levelCalValidLeft = s.LevelCalValidLeft;
+                _levelCalOffsetDbLeft = s.LevelCalOffsetDbLeft;
+                _levelCalValidRight = s.LevelCalValidRight;
+                _levelCalOffsetDbRight = s.LevelCalOffsetDbRight;
 
-            // Reconstituer le gain linéaire (Vrms/FS_rms) depuis l'offset dB persisté
-            _levelGainVrmsPerFsLeft = _levelCalValidLeft ? GainFromOffsetDb(_levelCalOffsetDbLeft) : 0.0;
-            _levelGainVrmsPerFsRight = _levelCalValidRight ? GainFromOffsetDb(_levelCalOffsetDbRight) : 0.0;
+                // Reconstituer le gain linéaire (Vrms/FS_rms) depuis l'offset dB persisté
+                _levelGainVrmsPerFsLeft = _levelCalValidLeft ? GainFromOffsetDb(_levelCalOffsetDbLeft) : 0.0;
+                _levelGainVrmsPerFsRight = _levelCalValidRight ? GainFromOffsetDb(_levelCalOffsetDbRight) : 0.0;
 
-            UpdateLevelUnitUi();
+                UpdateLevelUnitUi();
 
             }
             finally
@@ -2600,7 +2605,7 @@ namespace AudioHexViewer
             }
             else
             {
-                
+
                 _hasEverRun = true; // Détécte que le run a été lancé au moins une fois
 
                 if (liveTimer == null)
@@ -2888,48 +2893,48 @@ namespace AudioHexViewer
             if (fMax > uiMax)
                 fMax = uiMax;
 
-// --- Axe Y (dBFS / dBV) avec limites custom éventuelles ---
-string modeForUnit = (comboChannel?.SelectedItem as string) ?? "L+R";
-bool useDbvAxis = UseDbvForMode(modeForUnit);
+            // --- Axe Y (dBFS / dBV) avec limites custom éventuelles ---
+            string modeForUnit = (comboChannel?.SelectedItem as string) ?? "L+R";
+            bool useDbvAxis = UseDbvForMode(modeForUnit);
 
-double yMinAuto = -200.0;
-double yMaxAuto = 0.0;
+            double yMinAuto = -200.0;
+            double yMaxAuto = 0.0;
 
-// Limite supérieure autorisée (utile en dBV après calibration).
-// On garde une échelle par défaut de 200 dB (span = 200).
-const double YMAX_CAP = 100.0;
-const double DEFAULT_SPAN_DB = 200.0;
+            // Limite supérieure autorisée (utile en dBV après calibration).
+            // On garde une échelle par défaut de 200 dB (span = 200).
+            const double YMAX_CAP = 100.0;
+            const double DEFAULT_SPAN_DB = 200.0;
 
 
-if (useDbvAxis)
-{
-    // En dBV, on applique un décalage (offset) : dBV = dBFS + offset
-    // En mode L+R, les offsets peuvent être différents => on prend un range qui couvre les 2
-    var shifts = new List<double>();
-    if (string.Equals(modeForUnit, "Left", StringComparison.OrdinalIgnoreCase) || string.Equals(modeForUnit, "L+R", StringComparison.OrdinalIgnoreCase))
-        shifts.Add(_levelCalOffsetDbLeft);
-    if (string.Equals(modeForUnit, "Right", StringComparison.OrdinalIgnoreCase) || string.Equals(modeForUnit, "L+R", StringComparison.OrdinalIgnoreCase))
-        shifts.Add(_levelCalOffsetDbRight);
+            if (useDbvAxis)
+            {
+                // En dBV, on applique un décalage (offset) : dBV = dBFS + offset
+                // En mode L+R, les offsets peuvent être différents => on prend un range qui couvre les 2
+                var shifts = new List<double>();
+                if (string.Equals(modeForUnit, "Left", StringComparison.OrdinalIgnoreCase) || string.Equals(modeForUnit, "L+R", StringComparison.OrdinalIgnoreCase))
+                    shifts.Add(_levelCalOffsetDbLeft);
+                if (string.Equals(modeForUnit, "Right", StringComparison.OrdinalIgnoreCase) || string.Equals(modeForUnit, "L+R", StringComparison.OrdinalIgnoreCase))
+                    shifts.Add(_levelCalOffsetDbRight);
 
-    if (shifts.Count > 0)
-    {
-        yMinAuto += shifts.Min();
-        yMaxAuto += shifts.Max();
-    }
+                if (shifts.Count > 0)
+                {
+                    yMinAuto += shifts.Min();
+                    yMaxAuto += shifts.Max();
+                }
 
-    area.AxisY.Title = "Level (dBV)";
-}
-else
-{
-    area.AxisY.Title = "Level (dBFS)";
-}
+                area.AxisY.Title = "Level (dBV)";
+            }
+            else
+            {
+                area.AxisY.Title = "Level (dBFS)";
+            }
 
-// Cap sur le range auto pour éviter un axe Y qui parte trop haut
-if (yMaxAuto > YMAX_CAP)
-{
-    yMaxAuto = YMAX_CAP;
-    yMinAuto = yMaxAuto - DEFAULT_SPAN_DB;
-}
+            // Cap sur le range auto pour éviter un axe Y qui parte trop haut
+            if (yMaxAuto > YMAX_CAP)
+            {
+                yMaxAuto = YMAX_CAP;
+                yMinAuto = yMaxAuto - DEFAULT_SPAN_DB;
+            }
 
             double yMin = customYMin ?? yMinAuto;
             double yMax = customYMax ?? yMaxAuto;
@@ -4256,7 +4261,7 @@ if (yMaxAuto > YMAX_CAP)
         private readonly List<StatRow> _rowsLeft = new();
         private readonly List<StatRow> _rowsRight = new();
 
-                private void RebuildStatsRowsFromLabels()
+        private void RebuildStatsRowsFromLabels()
         {
             _rowsLeft.Clear();
             _rowsRight.Clear();
@@ -4372,7 +4377,7 @@ if (yMaxAuto > YMAX_CAP)
             ? (int)(60 * scale)   // 80px à scale=1, donc 120px à scale=2
             : 0;
 
-            clone.Size = new Size( chartSpectrum.Width * scale, chartSpectrum.Height * scale + headerPx);
+            clone.Size = new Size(chartSpectrum.Width * scale, chartSpectrum.Height * scale + headerPx);
 
             clone.BackColor = Color.White;
             foreach (var a in clone.ChartAreas)
@@ -4506,6 +4511,9 @@ if (yMaxAuto > YMAX_CAP)
             ThdSettingsRequested?.Invoke();
         }
 
+        private void label2_Click(object sender, EventArgs e)
+        {
 
+        }
     }
 }

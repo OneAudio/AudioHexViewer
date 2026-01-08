@@ -34,149 +34,136 @@ namespace AudioHexViewer
         /// </summary>
         private void InitCursorBarUi()
         {
-            if (_cursorBar != null) return;
-            if (panelStats == null) return;
+            // Déjà bindé ? (important : tlpCursors existe déjà car Designer)
+            if (_c1Toggle != null) return;
 
             // On masque les anciennes cases "Cursor L/R" (elles restent la source de vérité)
             if (chkCursorL != null) chkCursorL.Visible = false;
             if (chkCursorR != null) chkCursorR.Visible = false;
 
-            // Défauts demandés : C1 sur L, C2 sur R
+            // --- Bind vers les contrôles créés dans SpectrumControl.Designer.cs ---
+            _cursorBar = tlpCursors;
+
+            _c1Toggle = btnC1;
+            _c1TrackBtn = btnC1Track;
+            _c1Peak = btnC1Pk;
+            _c1Set = btnC1Set;
+
+            _c2Toggle = btnC2;
+            _c2TrackBtn = btnC2Track;
+            _c2Peak = btnC2Pk;
+            _c2Set = btnC2Set;
+
+            if (_cursorBar == null || _c1Toggle == null || _c2Toggle == null
+                || _c1TrackBtn == null || _c2TrackBtn == null
+                || _c1Peak == null || _c2Peak == null
+                || _c1Set == null || _c2Set == null)
+                return;
+
+            // Fix “centrage” + look uniforme (sinon dépend du Designer)
+            var all = new[] { _c1Toggle, _c1TrackBtn, _c1Peak, _c1Set, _c2Toggle, _c2TrackBtn, _c2Peak, _c2Set };
+            foreach (var b in all)
+            {
+                b.TextAlign = ContentAlignment.MiddleCenter;
+                b.Margin = new Padding(0);
+                b.Padding = new Padding(0);
+                b.TabStop = false;
+            }
+
+            // Police pour C1/C2 (actif = bold)
+            _toggleFontRegular ??= _c1Toggle.Font;
+            _toggleFontBold ??= new Font(_c1Toggle.Font, FontStyle.Bold);
+
+            // Défauts demandés : C1=L, C2=R (si tu veux conserver des settings, on peut conditionner)
             C1TrackMode = CursorTrackMode.Left;
             C2TrackMode = CursorTrackMode.Right;
 
-            _cursorBar = new TableLayoutPanel
-            {
-                ColumnCount = 4,
-                RowCount = 2,
-                Size = new Size(150, 46),
-                Anchor = AnchorStyles.None,
-                Margin = new Padding(0),
-                Padding = new Padding(0)
-            };
-
-            _cursorBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 35)); // C1/C2
-            _cursorBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 45)); // L/R/A (bouton)
-            _cursorBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 35)); // Pk
-            _cursorBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 35)); // Set
-
-            _cursorBar.RowStyles.Add(new RowStyle(SizeType.Absolute, 23));
-            _cursorBar.RowStyles.Add(new RowStyle(SizeType.Absolute, 23));
-
-            // --- Ligne C1 ---
-            _c1Toggle = MakeToggleButton("C1");
-            _c1TrackBtn = MakeTrackCycleButton("Left");
-            _c1Peak = MakeSmallButton("Pk");
-            _c1Set = MakeSmallButton("Set");
-
-            // --- Ligne C2 ---
-            _c2Toggle = MakeToggleButton("C2");
-            _c2TrackBtn = MakeTrackCycleButton("Right");
-            _c2Peak = MakeSmallButton("Pk");
-            _c2Set = MakeSmallButton("Set");
-
-            _cursorBar.Controls.Add(_c1Toggle, 0, 0);
-            _cursorBar.Controls.Add(_c1TrackBtn, 1, 0);
-            _cursorBar.Controls.Add(_c1Peak, 2, 0);
-            _cursorBar.Controls.Add(_c1Set, 3, 0);
-
-            _cursorBar.Controls.Add(_c2Toggle, 0, 1);
-            _cursorBar.Controls.Add(_c2TrackBtn, 1, 1);
-            _cursorBar.Controls.Add(_c2Peak, 2, 1);
-            _cursorBar.Controls.Add(_c2Set, 3, 1);
-
-            chartSpectrum.Controls.Add(_cursorBar);
-            chartSpectrum.Resize += (_, __) => PositionCursorBar();
-            this.Resize += (_, __) => PositionCursorBar();
-            PositionCursorBar();
-
-
-            _cursorBar.BringToFront();  
-            _cursorBar.BringToFront();
-
-            // --- EVENTS ---
-            _c1Toggle.Click += (_, __) =>
-            {
-                if (_cursorUiSync) return;
-                CursorLeftEnabled = !CursorLeftEnabled;
-                SyncCursorUiFromModel();
-            };
-
-            _c2Toggle.Click += (_, __) =>
-            {
-                if (_cursorUiSync) return;
-                CursorRightEnabled = !CursorRightEnabled;
-                SyncCursorUiFromModel();
-            };
-
-            _c1TrackBtn.Click += (_, __) =>
-            {
-                if (_cursorUiSync) return;
-                CycleTrackButton(_c1TrackBtn, isC1: true);
-            };
-
-            _c2TrackBtn.Click += (_, __) =>
-            {
-                if (_cursorUiSync) return;
-                CycleTrackButton(_c2TrackBtn, isC1: false);
-            };
-
-            _c1Peak.Click += (_, __) => MoveCursorToPeak(isC1: true);
-            _c2Peak.Click += (_, __) => MoveCursorToPeak(isC1: false);
-
-            _c1Set.Click += (_, __) => OpenSimpleSetDialog(isC1: true);
-            _c2Set.Click += (_, __) => OpenSimpleSetDialog(isC1: false);
-
-            // Repositionnement automatique sous le panneau mesures
-            panelStats.Resize += (_, __) => PositionCursorBar();
-            if (chartSpectrum != null)
-                chartSpectrum.Resize += (_, __) => PositionCursorBar();
-
-            // Si quelqu’un change les anciennes checkbox (même invisibles), on se resynchronise
-            if (chkCursorL != null) chkCursorL.CheckedChanged += (_, __) => { if (!_cursorUiSync) SyncCursorUiFromModel(); };
-            if (chkCursorR != null) chkCursorR.CheckedChanged += (_, __) => { if (!_cursorUiSync) SyncCursorUiFromModel(); };
-
-            // Init visuel + position
+            WireCursorBarEvents();
             SyncCursorUiFromModel();
-            PositionCursorBar();
+        }
+        //
+        private void WireCursorBarEvents()
+        {
+            if (_c1Toggle == null || _c2Toggle == null || _c1TrackBtn == null || _c2TrackBtn == null
+                || _c1Peak == null || _c2Peak == null || _c1Set == null || _c2Set == null)
+                return;
+
+            // IMPORTANT : éviter de brancher deux fois si InitCursorBarUi est rappelé
+            _c1Toggle.Click -= C1Toggle_Click;
+            _c2Toggle.Click -= C2Toggle_Click;
+            _c1TrackBtn.Click -= C1Track_Click;
+            _c2TrackBtn.Click -= C2Track_Click;
+            _c1Peak.Click -= C1Peak_Click;
+            _c2Peak.Click -= C2Peak_Click;
+            _c1Set.Click -= C1Set_Click;
+            _c2Set.Click -= C2Set_Click;
+
+            _c1Toggle.Click += C1Toggle_Click;
+            _c2Toggle.Click += C2Toggle_Click;
+            _c1TrackBtn.Click += C1Track_Click;
+            _c2TrackBtn.Click += C2Track_Click;
+            _c1Peak.Click += C1Peak_Click;
+            _c2Peak.Click += C2Peak_Click;
+            _c1Set.Click += C1Set_Click;
+            _c2Set.Click += C2Set_Click;
+
+            // Si quelque chose ailleurs modifie les checkbox (même invisibles), on resynchronise l’UI
+            if (chkCursorL != null)
+            {
+                chkCursorL.CheckedChanged -= ChkCursorL_CheckedChanged;
+                chkCursorL.CheckedChanged += ChkCursorL_CheckedChanged;
+            }
+            if (chkCursorR != null)
+            {
+                chkCursorR.CheckedChanged -= ChkCursorR_CheckedChanged;
+                chkCursorR.CheckedChanged += ChkCursorR_CheckedChanged;
+            }
         }
 
-        /// <summary>
-        /// Positionne la barre sous le panneau de mesures (grpRightStats), alignée à droite.
-        /// </summary>
-        private void PositionCursorBar()
+        private void C1Toggle_Click(object? sender, EventArgs e)
         {
-            if (_cursorBar == null || chartSpectrum == null) return;
-            if (chartSpectrum.ChartAreas.Count == 0) return;
+            if (_cursorUiSync) return;
+            CursorLeftEnabled = !CursorLeftEnabled;   // <-- C’EST ÇA “piloter chkCursorL”
+            SyncCursorUiFromModel();
+        }
 
-            var area = chartSpectrum.ChartAreas.FirstOrDefault(a => a.Name == "SpectrumArea")
-                       ?? chartSpectrum.ChartAreas[0];
+        private void C2Toggle_Click(object? sender, EventArgs e)
+        {
+            if (_cursorUiSync) return;
+            CursorRightEnabled = !CursorRightEnabled; // <-- C’EST ÇA “piloter chkCursorR”
+            SyncCursorUiFromModel();
+        }
 
-            var plot = GetPlotRectPixels(chartSpectrum, area);
-            if (plot.IsEmpty) return;
+        private void C1Track_Click(object? sender, EventArgs e)
+        {
+            if (_cursorUiSync) return;
+            CycleTrackButton(_c1TrackBtn!, isC1: true);
+            SyncCursorUiFromModel();
+        }
 
-            var cr = chartSpectrum.ClientRectangle;
+        private void C2Track_Click(object? sender, EventArgs e)
+        {
+            if (_cursorUiSync) return;
+            CycleTrackButton(_c2TrackBtn!, isC1: false);
+            SyncCursorUiFromModel();
+        }
 
-            // Limite gauche : ne pas rentrer dans la zone du graphe (colonne blanche commence après plot.Right)
-            int panelLeft = (int)Math.Round(plot.Right + 8f);
+        private void C1Peak_Click(object? sender, EventArgs e) => MoveCursorToPeak(isC1: true);
+        private void C2Peak_Click(object? sender, EventArgs e) => MoveCursorToPeak(isC1: false);
 
-            // Ancrage coin bas-droite (fixe) : position basée sur le contrôle, pas sur plot.Bottom
-            int x = cr.Right - _cursorBar.Width - CursorBarMarginRight - CursorBarOffsetLeft;
-            int y = cr.Bottom - _cursorBar.Height - CursorBarMarginBottom;
+        private void C1Set_Click(object? sender, EventArgs e) => OpenSimpleSetDialog(isC1: true);
+        private void C2Set_Click(object? sender, EventArgs e) => OpenSimpleSetDialog(isC1: false);
 
-            // Clamp : garder dans la "colonne blanche" à droite du plot
-            if (x < panelLeft) x = panelLeft;
+        private void ChkCursorL_CheckedChanged(object? sender, EventArgs e)
+        {
+            if (_cursorUiSync) return;
+            SyncCursorUiFromModel();
+        }
 
-            // Clamp sécurité vertical (évite de monter trop haut si fenêtre très petite)
-            int minY = (int)Math.Round(plot.Top + 2f);
-            if (y < minY) y = minY;
-
-            _cursorBar.Location = new Point(x, y);
-            _cursorBar.Visible = true;
-            _cursorBar.BringToFront();
-
-            // Important : repositionner les labels C1/C2/Δ pour éviter chevauchement
-            PositionCursorInfoLabels();
+        private void ChkCursorR_CheckedChanged(object? sender, EventArgs e)
+        {
+            if (_cursorUiSync) return;
+            SyncCursorUiFromModel();
         }
 
 
@@ -200,50 +187,6 @@ namespace AudioHexViewer
             }
         }
 
-        // --------- UI helpers ---------
-
-        private Button MakeToggleButton(string text)
-        {
-            var b = new Button
-            {
-                Text = text,
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Margin = new Padding(0),
-                Padding = new Padding(0),
-                UseVisualStyleBackColor = true
-            };
-
-            // cache fonts (1 fois)
-            _toggleFontRegular ??= b.Font;
-            _toggleFontBold ??= new Font(b.Font, FontStyle.Bold);
-
-            return b;
-        }
-
-        private static Button MakeTrackCycleButton(string initialText)
-        {
-            return new Button
-            {
-                Text = initialText,
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Margin = new Padding(0),
-                Padding = new Padding(0)
-            };
-        }
-
-        private static Button MakeSmallButton(string text)
-        {
-            return new Button
-            {
-                Text = text,
-                Dock = DockStyle.Fill,
-                Margin = new Padding(0),
-                Padding = new Padding(0)
-            };
-        }
-
         private void UpdateToggleVisual(Button b, bool enabled)
         {
             // rendu "comme les autres" : même bouton Windows, juste en gras quand actif
@@ -265,7 +208,7 @@ namespace AudioHexViewer
             chartSpectrum?.Invalidate();
         }
 
-        private static string NextTrackText(string cur) => cur switch { "Left" => "Right", "Right" => "Auto", _ => "Left" };
+        private static string NextTrackText(string cur) => cur switch { "L" => "R", "R" => "A", _ => "L" };
 
         private static CursorTrackMode TextToMode(string t) => t switch
         {
@@ -276,9 +219,9 @@ namespace AudioHexViewer
 
         private static string ModeToText(CursorTrackMode m) => m switch
         {
-            CursorTrackMode.Left => "Left",
-            CursorTrackMode.Right => "Right",
-            _ => "Auto"
+            CursorTrackMode.Left => "L",
+            CursorTrackMode.Right => "R",
+            _ => "A"
         };
         //
         // --------- Actions Pk / Set ---------
