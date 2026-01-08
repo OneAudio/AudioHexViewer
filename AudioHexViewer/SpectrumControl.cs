@@ -17,60 +17,60 @@ namespace AudioHexViewer
     public partial class SpectrumControl : UserControl
     {
 
-// --------------------------------------------------------------------
-// THD UI (checkbox + button in the Spectrum tab)
-// --------------------------------------------------------------------
-public event Action<bool>? ThdEnabledChanged;
-public event Action? ThdSettingsRequested;
+        // --------------------------------------------------------------------
+        // THD UI (checkbox + button in the Spectrum tab)
+        // --------------------------------------------------------------------
+        public event Action<bool>? ThdEnabledChanged;
+        public event Action? ThdSettingsRequested;
 
-private bool _suppressThdUiEvents = false;
+        private bool _suppressThdUiEvents = false;
 
-/// <summary>
-/// Sync the THD checkbox UI without re-triggering events.
-/// </summary>
-public void SetThdEnabledUi(bool enabled)
-{
-    if (chkEnableThd == null)
-        return;
+        /// <summary>
+        /// Sync the THD checkbox UI without re-triggering events.
+        /// </summary>
+        public void SetThdEnabledUi(bool enabled)
+        {
+            if (chkEnableThd == null)
+                return;
 
-    _suppressThdUiEvents = true;
-    try
-    {
-        chkEnableThd.Checked = enabled;
-    }
-    finally
-    {
-        _suppressThdUiEvents = false;
-    }
-}
+            _suppressThdUiEvents = true;
+            try
+            {
+                chkEnableThd.Checked = enabled;
+            }
+            finally
+            {
+                _suppressThdUiEvents = false;
+            }
+        }
 
-// --- Couleurs / thème du graphe (persistées via SessionSettings.Spectrum.Colors) ---
-private SpectrumColorSettings _colors = new SpectrumColorSettings();
+        // --- Couleurs / thème du graphe (persistées via SessionSettings.Spectrum.Colors) ---
+        private SpectrumColorSettings _colors = new SpectrumColorSettings();
 
-private Color FftLeftColor => Color.FromArgb(_colors.FftLeftArgb);
-private Color FftRightColor => Color.FromArgb(_colors.FftRightArgb);
-private Color PeakHoldLeftColor => Color.FromArgb(_colors.PeakHoldLeftArgb);
-private Color PeakHoldRightColor => Color.FromArgb(_colors.PeakHoldRightArgb);
+        private Color FftLeftColor => Color.FromArgb(_colors.FftLeftArgb);
+        private Color FftRightColor => Color.FromArgb(_colors.FftRightArgb);
+        private Color PeakHoldLeftColor => Color.FromArgb(_colors.PeakHoldLeftArgb);
+        private Color PeakHoldRightColor => Color.FromArgb(_colors.PeakHoldRightArgb);
 
-private Color GridMajorColor => Color.FromArgb(_colors.GridArgb);
-private Color GridMinorColor => Color.FromArgb(_colors.GridMinorArgb);
-private Color BackgroundColor => Color.FromArgb(_colors.BackgroundArgb);
+        private Color GridMajorColor => Color.FromArgb(_colors.GridArgb);
+        private Color GridMinorColor => Color.FromArgb(_colors.GridMinorArgb);
+        private Color BackgroundColor => Color.FromArgb(_colors.BackgroundArgb);
 
-private Color LabelMajorColor => Color.FromArgb(_colors.LabelMajorArgb);
-private Color LabelMinorColor => Color.FromArgb(_colors.LabelMinorArgb);
+        private Color LabelMajorColor => Color.FromArgb(_colors.LabelMajorArgb);
+        private Color LabelMinorColor => Color.FromArgb(_colors.LabelMinorArgb);
 
 
-private Color InfoTextColor => Color.FromArgb(_colors.InfoTextArgb);
+        private Color InfoTextColor => Color.FromArgb(_colors.InfoTextArgb);
 
-// Couleur d’un overlay selon son index de slot
-private Color GetOverlaySlotColor(int slotIndex)
-{
-    var arr = _colors.OverlaySlotArgb;
-    if (arr != null && slotIndex >= 0 && slotIndex < arr.Length)
-        return Color.FromArgb(arr[slotIndex]);
-    // fallback compat
-    return Color.FromArgb(_colors.OverlayArgb);
-}
+        // Couleur d’un overlay selon son index de slot
+        private Color GetOverlaySlotColor(int slotIndex)
+        {
+            var arr = _colors.OverlaySlotArgb;
+            if (arr != null && slotIndex >= 0 && slotIndex < arr.Length)
+                return Color.FromArgb(arr[slotIndex]);
+            // fallback compat
+            return Color.FromArgb(_colors.OverlayArgb);
+        }
         //
         private sealed class ExportRenderContext
         {
@@ -80,110 +80,122 @@ private Color GetOverlaySlotColor(int slotIndex)
 
         //
         public SpectrumColorSettings GetSpectrumColorSettingsSnapshot()
-    => _colors ?? new SpectrumColorSettings();
-
-public void ApplySpectrumColorSettings(SpectrumColorSettings? colors)
-{
-    _colors = colors ?? SpectrumColorSettings.Defaults();
-    _colors.Normalize();
-
-    // Appliquer au Chart (fond + grilles) + éléments UI (curseurs, stats, etc.)
-    ApplyChartTheme();
-    ApplyCursorTheme();
-    UpdateSpectrumChartAndStats();
-}
-
-private void ApplyChartTheme()
-{
-    if (chartSpectrum == null || chartSpectrum.ChartAreas.Count == 0)
-        return;
-
-    // Fond du contrôle Chart (marges / zones hors "plot") : garder la couleur du parent.
-    chartSpectrum.BackColor = chartSpectrum.Parent?.BackColor ?? SystemColors.Control;
-    var area = chartSpectrum.ChartAreas.FindByName("SpectrumArea") ?? chartSpectrum.ChartAreas[0];
-    area.BackColor = BackgroundColor;
-
-    // Grilles X/Y (major+minor). Les intervalles sont réglés ailleurs, ici on ne fait que les couleurs.
-    area.AxisX.MajorGrid.LineColor = GridMajorColor;
-    area.AxisY.MajorGrid.LineColor = GridMajorColor;
-    area.AxisX.MinorGrid.LineColor = GridMinorColor;
-    area.AxisY.MinorGrid.LineColor = GridMinorColor;
-
-    // Couleurs des labels. Note: le Chart WinForms n'a pas de "minor labels" texte distincts,
-    // donc LabelMinor s'applique aux ticks minor.
-    area.AxisX.LabelStyle.ForeColor = LabelMajorColor;
-    area.AxisY.LabelStyle.ForeColor = LabelMajorColor;
-    area.AxisX.TitleForeColor = LabelMajorColor;
-    area.AxisY.TitleForeColor = LabelMajorColor;
-
-    // Axis line + ticks = LabelMajor (minor ticks = LabelMinor)
-    area.AxisX.LineColor = LabelMajorColor;
-    area.AxisY.LineColor = LabelMajorColor;
-    area.AxisX.MajorTickMark.LineColor = LabelMajorColor;
-    area.AxisY.MajorTickMark.LineColor = LabelMajorColor;
-    area.AxisX.MinorTickMark.LineColor = LabelMinorColor;
-    area.AxisY.MinorTickMark.LineColor = LabelMinorColor;
-
-    // Activer les ticks "minor" pour que LabelMinor soit visible (sinon le Chart garde ses défauts).
-    area.AxisX.MinorTickMark.Enabled = false;
-    area.AxisY.MinorTickMark.Enabled = false;
-    area.AxisX.MinorTickMark.Size = 1f;
-    area.AxisY.MinorTickMark.Size = 1f;
+            => _colors ?? new SpectrumColorSettings();
 
 
-    // Axes secondaires (au cas où ils seraient activés)
-    area.AxisX2.MajorGrid.LineColor = GridMajorColor;
-    area.AxisY2.MajorGrid.LineColor = GridMajorColor;
-    area.AxisX2.MinorGrid.LineColor = GridMinorColor;
-    area.AxisY2.MinorGrid.LineColor = GridMinorColor;
-    area.AxisX2.LabelStyle.ForeColor = LabelMajorColor;
-    area.AxisY2.LabelStyle.ForeColor = LabelMajorColor;
-    area.AxisX2.LineColor = LabelMajorColor;
-    area.AxisY2.LineColor = LabelMajorColor;
-    area.AxisX2.MajorTickMark.LineColor = LabelMajorColor;
-    area.AxisY2.MajorTickMark.LineColor = LabelMajorColor;
-    area.AxisX2.MinorTickMark.LineColor = LabelMinorColor;
-    area.AxisY2.MinorTickMark.LineColor = LabelMinorColor;
+        // Source de vérité : le mode sélectionné dans le contrôle Channel
+        public string SelectedChannelMode => comboChannel.SelectedItem as string ?? "L+R";
 
-    chartSpectrum.Invalidate();
-}
+        public bool IsLeftChannelActive =>
+            SelectedChannelMode == "Left" || SelectedChannelMode == "L+R";
 
-private void ApplyLogXMinorGridStripLines(Axis axisX)
-{
-    // Pour un axe logarithmique, MinorGrid du Chart n'est pas exploitable pour avoir les lignes 2..9 par décade.
-    // On les simule avec des StripLines (1 par multiplicateur) en coordonnées log10.
-    axisX.StripLines.Clear();
+        public bool IsRightChannelActive =>
+            SelectedChannelMode == "Right" || SelectedChannelMode == "L+R";
 
-    for (int mult = 2; mult <= 9; mult++)
-    {
-        var sl = new StripLine
+
+        // Applique les couleurs du thème au contrôle Spectrum.
+        public void ApplySpectrumColorSettings(SpectrumColorSettings? colors)
         {
-            Interval = 1.0, // chaque décade
-            IntervalOffset = Math.Log10(mult), // position 2..9 dans la décade en unités log
-            StripWidth = 0.0,
-            BorderColor = GridMinorColor,
-            BorderDashStyle = ChartDashStyle.Dot,
-            BorderWidth = 1
-        };
-        axisX.StripLines.Add(sl);
-    }
-}
+            _colors = colors ?? SpectrumColorSettings.Defaults();
+            _colors.Normalize();
+
+            // Appliquer au Chart (fond + grilles) + éléments UI (curseurs, stats, etc.)
+            ApplyChartTheme();
+            ApplyCursorTheme();
+            UpdateSpectrumChartAndStats();
+        }
+
+        private void ApplyChartTheme()
+        {
+            if (chartSpectrum == null || chartSpectrum.ChartAreas.Count == 0)
+                return;
+
+            // Fond du contrôle Chart (marges / zones hors "plot") : garder la couleur du parent.
+            chartSpectrum.BackColor = chartSpectrum.Parent?.BackColor ?? SystemColors.Control;
+            var area = chartSpectrum.ChartAreas.FindByName("SpectrumArea") ?? chartSpectrum.ChartAreas[0];
+            area.BackColor = BackgroundColor;
+
+            // Grilles X/Y (major+minor). Les intervalles sont réglés ailleurs, ici on ne fait que les couleurs.
+            area.AxisX.MajorGrid.LineColor = GridMajorColor;
+            area.AxisY.MajorGrid.LineColor = GridMajorColor;
+            area.AxisX.MinorGrid.LineColor = GridMinorColor;
+            area.AxisY.MinorGrid.LineColor = GridMinorColor;
+
+            // Couleurs des labels. Note: le Chart WinForms n'a pas de "minor labels" texte distincts,
+            // donc LabelMinor s'applique aux ticks minor.
+            area.AxisX.LabelStyle.ForeColor = LabelMajorColor;
+            area.AxisY.LabelStyle.ForeColor = LabelMajorColor;
+            area.AxisX.TitleForeColor = LabelMajorColor;
+            area.AxisY.TitleForeColor = LabelMajorColor;
+
+            // Axis line + ticks = LabelMajor (minor ticks = LabelMinor)
+            area.AxisX.LineColor = LabelMajorColor;
+            area.AxisY.LineColor = LabelMajorColor;
+            area.AxisX.MajorTickMark.LineColor = LabelMajorColor;
+            area.AxisY.MajorTickMark.LineColor = LabelMajorColor;
+            area.AxisX.MinorTickMark.LineColor = LabelMinorColor;
+            area.AxisY.MinorTickMark.LineColor = LabelMinorColor;
+
+            // Activer les ticks "minor" pour que LabelMinor soit visible (sinon le Chart garde ses défauts).
+            area.AxisX.MinorTickMark.Enabled = false;
+            area.AxisY.MinorTickMark.Enabled = false;
+            area.AxisX.MinorTickMark.Size = 1f;
+            area.AxisY.MinorTickMark.Size = 1f;
 
 
-private void ApplyCursorTheme()
-{
-    // Labels d'info des curseurs
-    if (_lblCursorLInfo != null) _lblCursorLInfo.ForeColor = FftLeftColor;
-    if (_lblCursorRInfo != null) _lblCursorRInfo.ForeColor = FftRightColor;
+            // Axes secondaires (au cas où ils seraient activés)
+            area.AxisX2.MajorGrid.LineColor = GridMajorColor;
+            area.AxisY2.MajorGrid.LineColor = GridMajorColor;
+            area.AxisX2.MinorGrid.LineColor = GridMinorColor;
+            area.AxisY2.MinorGrid.LineColor = GridMinorColor;
+            area.AxisX2.LabelStyle.ForeColor = LabelMajorColor;
+            area.AxisY2.LabelStyle.ForeColor = LabelMajorColor;
+            area.AxisX2.LineColor = LabelMajorColor;
+            area.AxisY2.LineColor = LabelMajorColor;
+            area.AxisX2.MajorTickMark.LineColor = LabelMajorColor;
+            area.AxisY2.MajorTickMark.LineColor = LabelMajorColor;
+            area.AxisX2.MinorTickMark.LineColor = LabelMinorColor;
+            area.AxisY2.MinorTickMark.LineColor = LabelMinorColor;
 
-    // Couleurs des marqueurs (triangles) selon voie trackée (valeur par défaut = FFT)
-    _cursorMarkLColor = FftLeftColor;
-    _cursorMarkRColor = FftRightColor;
+            chartSpectrum.Invalidate();
+        }
 
-    // Couleurs des lignes de curseur
-    if (_cursorLineL != null) _cursorLineL.LineColor = Color.FromArgb(180, FftLeftColor);
-    if (_cursorLineR != null) _cursorLineR.LineColor = Color.FromArgb(180, FftRightColor);
-}
+        private void ApplyLogXMinorGridStripLines(Axis axisX)
+        {
+            // Pour un axe logarithmique, MinorGrid du Chart n'est pas exploitable pour avoir les lignes 2..9 par décade.
+            // On les simule avec des StripLines (1 par multiplicateur) en coordonnées log10.
+            axisX.StripLines.Clear();
+
+            for (int mult = 2; mult <= 9; mult++)
+            {
+                var sl = new StripLine
+                {
+                    Interval = 1.0, // chaque décade
+                    IntervalOffset = Math.Log10(mult), // position 2..9 dans la décade en unités log
+                    StripWidth = 0.0,
+                    BorderColor = GridMinorColor,
+                    BorderDashStyle = ChartDashStyle.Dot,
+                    BorderWidth = 1
+                };
+                axisX.StripLines.Add(sl);
+            }
+        }
+
+
+        private void ApplyCursorTheme()
+        {
+            // Labels d'info des curseurs
+            if (_lblCursorLInfo != null) _lblCursorLInfo.ForeColor = FftLeftColor;
+            if (_lblCursorRInfo != null) _lblCursorRInfo.ForeColor = FftRightColor;
+
+            // Couleurs des marqueurs (triangles) selon voie trackée (valeur par défaut = FFT)
+            _cursorMarkLColor = FftLeftColor;
+            _cursorMarkRColor = FftRightColor;
+
+            // Couleurs des lignes de curseur
+            if (_cursorLineL != null) _cursorLineL.LineColor = Color.FromArgb(180, FftLeftColor);
+            if (_cursorLineR != null) _cursorLineR.LineColor = Color.FromArgb(180, FftRightColor);
+        }
 
 
         public delegate (int[] Left, int[] Right) SampleProvider(int sampleCount);
@@ -274,14 +286,23 @@ private void ApplyCursorTheme()
             out double? vrmsLeft, out double? vpeakLeft, out double? vdcLeft,
             out double? vrmsRight, out double? vpeakRight, out double? vdcRight)
         {
-            vrmsLeft = _lastVrmsVoltsLeft;
-            vpeakLeft = _lastVpkVoltsLeft;
-            vdcLeft = _lastVdcVoltsLeft;
+            bool leftActive = IsLeftChannelActive;
+            bool rightActive = IsRightChannelActive;
 
-            vrmsRight = _lastVrmsVoltsRight;
-            vpeakRight = _lastVpkVoltsRight;
-            vdcRight = _lastVdcVoltsRight;
+            vrmsLeft = leftActive ? _lastVrmsVoltsLeft : null;
+            vpeakLeft = leftActive ? _lastVpkVoltsLeft : null;
+            vdcLeft = leftActive ? _lastVdcVoltsLeft : null;
+
+            vrmsRight = rightActive ? _lastVrmsVoltsRight : null;
+            vpeakRight = rightActive ? _lastVpkVoltsRight : null;
+            vdcRight = rightActive ? _lastVdcVoltsRight : null;
         }
+
+        // --- Indicateur "a déjà fonctionné au moins une fois" ---
+        private bool _hasEverRun = false;
+        public bool HasEverRun => _hasEverRun;
+
+
 
         // Layout original des labels "Meas" (pour pouvoir insérer des lignes Volts en mode dBV)
         private bool _voltLayoutInit = false;
@@ -2544,6 +2565,9 @@ private void ApplyCursorTheme()
             }
             else
             {
+                
+                _hasEverRun = true; // Détécte que le run a été lancé au moins une fois
+
                 if (liveTimer == null)
                 {
                     liveTimer = new System.Windows.Forms.Timer();

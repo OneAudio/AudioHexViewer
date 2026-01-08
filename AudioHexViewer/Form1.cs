@@ -2927,6 +2927,21 @@ namespace AudioHexViewer
                         calL = spectrumControl.VoltageCalibrationValidLeft;
                         calR = spectrumControl.VoltageCalibrationValidRight;
                         spectrumControl.GetLastVoltages(out vrmsL, out vpkL, out vdcL, out vrmsR, out vpkR, out vdcR);
+
+                        if (!spectrumControl.HasEverRun)
+                        {
+                            leftText = "---";
+                            rightText = "---";
+                            break;
+                        }
+
+                    }
+                    else
+                    {
+                        // optionnel : si spectrumControl est null, on affiche aussi ---
+                        leftText = "---";
+                        rightText = "---";
+                        break;
                     }
 
                     double? selL =
@@ -2939,11 +2954,31 @@ namespace AudioHexViewer
                         mode == "Voltage (Vpeak)" ? vpkR :
                         vdcR;
 
-                    leftText = (calL && selL.HasValue) ? FormatVoltageWithUnit(selL.Value) : "Uncalibrated";
-                    rightText = (calR && selR.HasValue) ? FormatVoltageWithUnit(selR.Value) : "Uncalibrated";
+                    bool leftActive = spectrumControl?.IsLeftChannelActive ?? true;
+                    bool rightActive = spectrumControl?.IsRightChannelActive ?? true;
+
+
+                    if (!leftActive)
+                        leftText = "---";
+                    else if (!calL)
+                        leftText = "Uncalibrated";
+                    else if (selL.HasValue)
+                        leftText = FormatVoltageWithUnit(selL.Value);
+                    else
+                        leftText = "---"; // pas encore de mesure exploitable
+
+                    if (!rightActive)
+                        rightText = "---";
+                    else if (!calR)
+                        rightText = "Uncalibrated";
+                    else if (selR.HasValue)
+                        rightText = FormatVoltageWithUnit(selR.Value);
+                    else
+                        rightText = "---";
+
                     break;
 
-                default:
+                    default:
                     leftText = "";
                     rightText = "";
                     break;
