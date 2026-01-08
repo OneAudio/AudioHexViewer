@@ -608,6 +608,7 @@ namespace AudioHexViewer
             ApplyThdSettings(_thdUi);
             UpdateRunButtonAppearance();
             InitOverlayAnnotation();
+            InitCursorBarUi(); // NEW: curseurs C1/C2 dans l’onglet Spectrum
 
             // Clic droit sur la zone du spectre -> ouverture de la boîte d'axes
             chartSpectrum.MouseUp += ChartSpectrum_MouseUp;

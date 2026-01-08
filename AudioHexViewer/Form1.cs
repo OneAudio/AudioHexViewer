@@ -789,7 +789,7 @@ namespace AudioHexViewer
         {
             InitializeComponent();
 
-            InitCursorsMenu();
+            //InitCursorsMenu();
 
             InitAnalysisUi();
 
@@ -2803,20 +2803,20 @@ namespace AudioHexViewer
                 spectrumControl.ApplyThdSettings(_session.Spectrum.Thd);
                 spectrumControl.SetThdMeasuresEnabled(_session.Spectrum.EnableThdMeasures);
                 spectrumControl.SetThdEnabledUi(_session.Spectrum.EnableThdMeasures);
-                if (menuC1Enabled != null) spectrumControl.CursorLeftEnabled = menuC1Enabled.Checked;
-                if (menuC2Enabled != null) spectrumControl.CursorRightEnabled = menuC2Enabled.Checked;
+                // if (menuC1Enabled != null) spectrumControl.CursorLeftEnabled = menuC1Enabled.Checked;
+                // if (menuC2Enabled != null) spectrumControl.CursorRightEnabled = menuC2Enabled.Checked;
 
-                // Track (état menu)
-                if (menuC1TrackLeft != null && menuC1TrackLeft.Checked) spectrumControl.C1TrackMode = SpectrumControl.CursorTrackMode.Left;
-                else if (menuC1TrackRight != null && menuC1TrackRight.Checked) spectrumControl.C1TrackMode = SpectrumControl.CursorTrackMode.Right;
-                else
+                // // Track (état menu)
+                // if (menuC1TrackLeft != null && menuC1TrackLeft.Checked) spectrumControl.C1TrackMode = SpectrumControl.CursorTrackMode.Left;
+                // else if (menuC1TrackRight != null && menuC1TrackRight.Checked) spectrumControl.C1TrackMode = SpectrumControl.CursorTrackMode.Right;
+                // else
 
-                    spectrumControl.C1TrackMode = SpectrumControl.CursorTrackMode.Auto;
+                //     spectrumControl.C1TrackMode = SpectrumControl.CursorTrackMode.Auto;
 
-                if (menuC2TrackLeft != null && menuC2TrackLeft.Checked) spectrumControl.C2TrackMode = SpectrumControl.CursorTrackMode.Left;
-                else if (menuC2TrackRight != null && menuC2TrackRight.Checked) spectrumControl.C2TrackMode = SpectrumControl.CursorTrackMode.Right;
-                else
-                    spectrumControl.C2TrackMode = SpectrumControl.CursorTrackMode.Auto;
+                // if (menuC2TrackLeft != null && menuC2TrackLeft.Checked) spectrumControl.C2TrackMode = SpectrumControl.CursorTrackMode.Left;
+                // else if (menuC2TrackRight != null && menuC2TrackRight.Checked) spectrumControl.C2TrackMode = SpectrumControl.CursorTrackMode.Right;
+                // else
+                //     spectrumControl.C2TrackMode = SpectrumControl.CursorTrackMode.Auto;
 
 
                 spectrumControl.RunRequested += EnsureReadRunning;
