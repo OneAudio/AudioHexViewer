@@ -1297,6 +1297,29 @@ namespace AudioHexViewer
 
         }
 
+        //
+        // Reset level calibration (FFT) for both channel
+        public void ResetLevelCalibration()
+        {
+            // Left
+            _levelCalValidLeft = false;
+            _levelCalOffsetDbLeft = 0.0;
+            _levelGainVrmsPerFsLeft = 0.0;
+
+            // Right
+            _levelCalValidRight = false;
+            _levelCalOffsetDbRight = 0.0;
+            _levelGainVrmsPerFsRight = 0.0;
+
+            // Remettre l’UI cohérente : dBV peut devenir indisponible
+            UpdateLevelUnitUi();
+
+            // Si tu es en mode "once" / non-live, forcer un refresh de l’affichage
+            if (!isLive)
+                UpdateSpectrumChartAndStats();
+        }
+
+
         // ============================================================
         //  Level calibration (FFT) : dBFS <-> dBV
         // ============================================================
@@ -1431,9 +1454,20 @@ namespace AudioHexViewer
             dlg.CalibrateLeft = (vrms) => CalibrateLevel(false, vrms);
             dlg.CalibrateRight = (vrms) => CalibrateLevel(true, vrms);
 
+            dlg.ResetCalibration = () =>
+            {
+                ResetLevelCalibration();
+                dlg.SetCurrentCalibration(
+                    _levelCalValidLeft, _levelCalOffsetDbLeft,
+                    _levelCalValidRight, _levelCalOffsetDbRight,
+                    _lastRmsDbfsLeft, _lastRmsDbfsRight);
+            };
+
             dlg.ShowDialog(this);
+
+            
         }
-        
+
         //
         private void UpdateCursorVisibility()
         {

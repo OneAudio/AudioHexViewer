@@ -18,6 +18,20 @@ namespace AudioHexViewer
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Func<double, (bool ok, string message)>? CalibrateRight { get; set; }
 
+        // Callback fourni par SpectrumControl
+        public Action? ResetCalibration { get; set; }
+
+        private void _ResetCalibration_Click(object sender, EventArgs e)
+        {
+            ResetCalibration?.Invoke();
+
+            // Optionnel : feedback utilisateur
+            MessageBox.Show(this, "Calibration cleared.", "ResetCAL", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+            // Rafraîchir l’affichage du dialog si tu affiches l'état (valid/offset/gain)
+            // (voir point 1.3)
+        }
+
         public LevelCalibrationDialog()
         {
             InitializeComponent();
@@ -111,5 +125,6 @@ namespace AudioHexViewer
         {
 
         }
+
     }
 }

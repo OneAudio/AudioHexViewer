@@ -42,6 +42,7 @@ namespace AudioHexViewer
             _btnCalRight = new Button();
             _lblRightStatus = new Label();
             _btnClose = new Button();
+            ResetCAL = new Button();
             SuspendLayout();
             // 
             // _lblInfo
@@ -63,14 +64,14 @@ namespace AudioHexViewer
             // 
             // _txtLeft
             // 
-            _txtLeft.Location = new Point(102, 172);
+            _txtLeft.Location = new Point(92, 172);
             _txtLeft.Name = "_txtLeft";
             _txtLeft.Size = new Size(110, 23);
             _txtLeft.TabIndex = 2;
             // 
             // _btnCalLeft
             // 
-            _btnCalLeft.Location = new Point(238, 172);
+            _btnCalLeft.Location = new Point(212, 172);
             _btnCalLeft.Name = "_btnCalLeft";
             _btnCalLeft.Size = new Size(90, 25);
             _btnCalLeft.TabIndex = 3;
@@ -88,7 +89,7 @@ namespace AudioHexViewer
             // _lblRightCaption
             // 
             _lblRightCaption.AutoSize = true;
-            _lblRightCaption.Location = new Point(12, 84);
+            _lblRightCaption.Location = new Point(10, 84);
             _lblRightCaption.Name = "_lblRightCaption";
             _lblRightCaption.Size = new Size(76, 15);
             _lblRightCaption.TabIndex = 5;
@@ -96,14 +97,14 @@ namespace AudioHexViewer
             // 
             // _txtRight
             // 
-            _txtRight.Location = new Point(102, 81);
+            _txtRight.Location = new Point(92, 81);
             _txtRight.Name = "_txtRight";
             _txtRight.Size = new Size(110, 23);
             _txtRight.TabIndex = 6;
             // 
             // _btnCalRight
             // 
-            _btnCalRight.Location = new Point(238, 81);
+            _btnCalRight.Location = new Point(212, 81);
             _btnCalRight.Name = "_btnCalRight";
             _btnCalRight.Size = new Size(90, 25);
             _btnCalRight.TabIndex = 7;
@@ -121,15 +122,26 @@ namespace AudioHexViewer
             // _btnClose
             // 
             _btnClose.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            _btnClose.Location = new Point(238, 269);
+            _btnClose.Location = new Point(210, 269);
             _btnClose.Name = "_btnClose";
             _btnClose.Size = new Size(90, 28);
             _btnClose.TabIndex = 9;
             _btnClose.Text = "Close";
             // 
+            // ResetCAL
+            // 
+            ResetCAL.Location = new Point(12, 269);
+            ResetCAL.Name = "ResetCAL";
+            ResetCAL.Size = new Size(74, 28);
+            ResetCAL.TabIndex = 10;
+            ResetCAL.Text = "RESET CAL";
+            ResetCAL.UseVisualStyleBackColor = true;
+            ResetCAL.Click += _ResetCalibration_Click;
+            // 
             // LevelCalibrationDialog
             // 
-            ClientSize = new Size(335, 309);
+            ClientSize = new Size(312, 309);
+            Controls.Add(ResetCAL);
             Controls.Add(_lblInfo);
             Controls.Add(_lblLeftCaption);
             Controls.Add(_txtLeft);
@@ -150,5 +162,7 @@ namespace AudioHexViewer
             ResumeLayout(false);
             PerformLayout();
         }
+
+        private Button ResetCAL;
     }
 }
