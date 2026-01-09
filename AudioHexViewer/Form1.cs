@@ -1550,7 +1550,7 @@ namespace AudioHexViewer
             dlg.StartPosition = FormStartPosition.CenterParent;
 
             // Taille par dfaut : un peu large pour faire deux colonnes
-            dlg.Size = new Size(700, 140); // Taille de la fentre pour 2 colonnes en popu^p
+            dlg.Size = new Size(700, 160); // Taille de la fentre pour 2 colonnes en popu^p
             dlg.MinimizeBox = false;
             dlg.MaximizeBox = true;
             dlg.ShowIcon = false;
@@ -1613,12 +1613,10 @@ namespace AudioHexViewer
         private void menuAbout_Click(object? sender, EventArgs e)
         {
             MessageBox.Show(
-                "AudioHexViewer V0.1 11/2025\n\n" +
-                "Digital audio data viewer\n" +
+                "AudioHexViewer V0.9 01/2026\n\n" +
+                "Digital audio data Anayzer\n" +
                 "OnE Audio Projects",
-                "About",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+                "About");
         }
         //
         private void comboDisplayMode_SelectedIndexChanged(object? sender, EventArgs e)

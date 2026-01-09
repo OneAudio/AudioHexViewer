@@ -1141,7 +1141,21 @@ namespace AudioHexViewer
             chartSpectrum.Invalidate();         // force un repaint pour voir la ligne mise à jour
 
         }
-
+        //
+        private void UpdateAcDcButtonText()
+        {
+            if (chkRemoveDC == null) return;
+            // Convention : Checked = AC (remove DC activé), Unchecked = DC
+            chkRemoveDC.Text = chkRemoveDC.Checked ? "AC" : "DC";
+        }
+        //
+        private void UpdateLogLinButtonText()
+        {
+            if (chkLogX == null) return;
+            // Convention : Checked = LOG, Unchecked = LIN
+            chkLogX.Text = chkLogX.Checked ? "LOG" : "LIN";
+        }
+        //
         //
         private void InitializeUiOptions()
         {
@@ -1179,14 +1193,19 @@ namespace AudioHexViewer
 
                 ResetAveragingState();
             };
-
-
+            //
             // Sélection AC/DC
             chkRemoveDC.CheckedChanged += (s, e) =>
             {
                 if (_isRestoringSettings)
                     return;
+                
+                UpdateAcDcButtonText();
             };
+
+            // Initial update
+            UpdateAcDcButtonText();
+            UpdateLogLinButtonText();
 
 
             // Peak-hold
@@ -1295,6 +1314,7 @@ namespace AudioHexViewer
                         return;
 
                     UpdateSpectrumChartAndStats();
+                    UpdateLogLinButtonText();
                 };
             }
 

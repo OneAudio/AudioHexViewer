@@ -16,6 +16,7 @@
         private void InitializeComponent()
         {
             panelTop = new Panel();
+            label2 = new Label();
             label1 = new Label();
             lblAvgProgress = new Label();
             chkRemoveDC = new CheckBox();
@@ -62,7 +63,6 @@
             chkCursorL = new CheckBox();
             chkCursorR = new CheckBox();
             panelStats = new Panel();
-            label2 = new Label();
             panelTop.SuspendLayout();
             tlpCursors.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)chartSpectrum).BeginInit();
@@ -73,6 +73,7 @@
             // 
             // panelTop
             // 
+            panelTop.BorderStyle = BorderStyle.FixedSingle;
             panelTop.Controls.Add(label2);
             panelTop.Controls.Add(label1);
             panelTop.Controls.Add(lblAvgProgress);
@@ -97,8 +98,18 @@
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 0);
             panelTop.Name = "panelTop";
-            panelTop.Size = new Size(1138, 65);
+            panelTop.Size = new Size(1138, 70);
             panelTop.TabIndex = 1;
+            // 
+            // label2
+            // 
+            label2.AutoSize = true;
+            label2.Location = new Point(678, 1);
+            label2.Name = "label2";
+            label2.Size = new Size(91, 15);
+            label2.TabIndex = 34;
+            label2.Text = "Cursors settings";
+            label2.Click += label2_Click;
             // 
             // label1
             // 
@@ -115,7 +126,7 @@
             lblAvgProgress.AutoSize = true;
             lblAvgProgress.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
             lblAvgProgress.ForeColor = SystemColors.HotTrack;
-            lblAvgProgress.Location = new Point(373, 7);
+            lblAvgProgress.Location = new Point(373, 16);
             lblAvgProgress.Name = "lblAvgProgress";
             lblAvgProgress.Size = new Size(51, 21);
             lblAvgProgress.TabIndex = 14;
@@ -123,60 +134,64 @@
             // 
             // chkRemoveDC
             // 
-            chkRemoveDC.AutoSize = true;
-            chkRemoveDC.Location = new Point(604, 12);
+            chkRemoveDC.Appearance = Appearance.Button;
+            chkRemoveDC.Location = new Point(839, 40);
             chkRemoveDC.Name = "chkRemoveDC";
-            chkRemoveDC.Size = new Size(42, 19);
+            chkRemoveDC.Size = new Size(34, 23);
             chkRemoveDC.TabIndex = 13;
             chkRemoveDC.Text = "AC";
+            chkRemoveDC.TextAlign = ContentAlignment.MiddleCenter;
             chkRemoveDC.UseVisualStyleBackColor = true;
             // 
             // chkPeakHold
             // 
-            chkPeakHold.AutoSize = true;
-            chkPeakHold.Location = new Point(453, 12);
+            chkPeakHold.Appearance = Appearance.Button;
+            chkPeakHold.Location = new Point(487, 16);
             chkPeakHold.Name = "chkPeakHold";
-            chkPeakHold.Size = new Size(77, 19);
+            chkPeakHold.Size = new Size(60, 23);
             chkPeakHold.TabIndex = 17;
-            chkPeakHold.Text = "PeakHold";
+            chkPeakHold.Text = "PEAK H";
+            chkPeakHold.TextAlign = ContentAlignment.MiddleCenter;
             chkPeakHold.UseVisualStyleBackColor = true;
             // 
             // btnResetPeakHold
             // 
-            btnResetPeakHold.Location = new Point(529, 8);
+            btnResetPeakHold.Location = new Point(487, 40);
             btnResetPeakHold.Name = "btnResetPeakHold";
-            btnResetPeakHold.Size = new Size(53, 23);
+            btnResetPeakHold.Size = new Size(60, 23);
             btnResetPeakHold.TabIndex = 18;
             btnResetPeakHold.TabStop = false;
-            btnResetPeakHold.Text = "CLEAR";
+            btnResetPeakHold.Text = "Reset";
             btnResetPeakHold.UseVisualStyleBackColor = true;
             btnResetPeakHold.Click += BtnResetPeakHold_Click;
             // 
             // chkEnableThd
             // 
-            chkEnableThd.AutoSize = true;
-            chkEnableThd.Location = new Point(453, 36);
+            chkEnableThd.Appearance = Appearance.Button;
+            chkEnableThd.Location = new Point(563, 17);
             chkEnableThd.Name = "chkEnableThd";
-            chkEnableThd.Size = new Size(49, 19);
+            chkEnableThd.Size = new Size(60, 23);
             chkEnableThd.TabIndex = 30;
             chkEnableThd.Text = "THD";
+            chkEnableThd.TextAlign = ContentAlignment.MiddleCenter;
             chkEnableThd.UseVisualStyleBackColor = true;
             chkEnableThd.CheckedChanged += ChkEnableThd_CheckedChanged;
             // 
             // btnThdSettings
             // 
-            btnThdSettings.Location = new Point(508, 35);
+            btnThdSettings.Location = new Point(563, 39);
             btnThdSettings.Name = "btnThdSettings";
-            btnThdSettings.Size = new Size(74, 23);
+            btnThdSettings.Size = new Size(60, 23);
             btnThdSettings.TabIndex = 31;
             btnThdSettings.TabStop = false;
-            btnThdSettings.Text = "THD SET";
+            btnThdSettings.Text = "Settings";
+            btnThdSettings.UseMnemonic = false;
             btnThdSettings.UseVisualStyleBackColor = true;
             btnThdSettings.Click += BtnThdSettings_Click;
             // 
             // btnResetAvg
             // 
-            btnResetAvg.Location = new Point(371, 33);
+            btnResetAvg.Location = new Point(371, 40);
             btnResetAvg.Name = "btnResetAvg";
             btnResetAvg.Size = new Size(53, 23);
             btnResetAvg.TabIndex = 12;
@@ -187,7 +202,7 @@
             // lblWindow
             // 
             lblWindow.AutoSize = true;
-            lblWindow.Location = new Point(126, 11);
+            lblWindow.Location = new Point(126, 21);
             lblWindow.Name = "lblWindow";
             lblWindow.Size = new Size(68, 15);
             lblWindow.TabIndex = 2;
@@ -196,7 +211,7 @@
             // comboWindow
             // 
             comboWindow.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboWindow.Location = new Point(126, 33);
+            comboWindow.Location = new Point(126, 39);
             comboWindow.Name = "comboWindow";
             comboWindow.Size = new Size(130, 23);
             comboWindow.TabIndex = 3;
@@ -204,7 +219,7 @@
             // lblAveraging
             // 
             lblAveraging.AutoSize = true;
-            lblAveraging.Location = new Point(280, 11);
+            lblAveraging.Location = new Point(280, 21);
             lblAveraging.Name = "lblAveraging";
             lblAveraging.Size = new Size(61, 15);
             lblAveraging.TabIndex = 4;
@@ -213,7 +228,7 @@
             // comboAveraging
             // 
             comboAveraging.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboAveraging.Location = new Point(280, 33);
+            comboAveraging.Location = new Point(280, 40);
             comboAveraging.Name = "comboAveraging";
             comboAveraging.Size = new Size(85, 23);
             comboAveraging.TabIndex = 5;
@@ -221,7 +236,7 @@
             // lblUnits
             // 
             lblUnits.AutoSize = true;
-            lblUnits.Location = new Point(850, 11);
+            lblUnits.Location = new Point(835, 11);
             lblUnits.Name = "lblUnits";
             lblUnits.Size = new Size(44, 15);
             lblUnits.TabIndex = 13;
@@ -230,7 +245,7 @@
             // comboLevelUnit
             // 
             comboLevelUnit.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboLevelUnit.Location = new Point(900, 7);
+            comboLevelUnit.Location = new Point(885, 8);
             comboLevelUnit.Name = "comboLevelUnit";
             comboLevelUnit.Size = new Size(74, 23);
             comboLevelUnit.TabIndex = 14;
@@ -238,7 +253,7 @@
             // lblChannel
             // 
             lblChannel.AutoSize = true;
-            lblChannel.Location = new Point(17, 11);
+            lblChannel.Location = new Point(16, 20);
             lblChannel.Name = "lblChannel";
             lblChannel.Size = new Size(85, 15);
             lblChannel.TabIndex = 6;
@@ -247,7 +262,7 @@
             // comboChannel
             // 
             comboChannel.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboChannel.Location = new Point(17, 33);
+            comboChannel.Location = new Point(17, 39);
             comboChannel.Name = "comboChannel";
             comboChannel.Size = new Size(85, 23);
             comboChannel.TabIndex = 7;
@@ -273,20 +288,21 @@
             // 
             // chkLogX
             // 
-            chkLogX.AutoSize = true;
-            chkLogX.Location = new Point(604, 36);
+            chkLogX.Appearance = Appearance.Button;
+            chkLogX.Location = new Point(914, 40);
             chkLogX.Name = "chkLogX";
-            chkLogX.Size = new Size(58, 19);
+            chkLogX.Size = new Size(45, 23);
             chkLogX.TabIndex = 11;
-            chkLogX.Text = "LOG F";
+            chkLogX.Text = "LOG";
+            chkLogX.TextAlign = ContentAlignment.MiddleCenter;
             // 
             // tlpCursors
             // 
             tlpCursors.ColumnCount = 4;
             tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34F));
-            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 42F));
-            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 32F));
-            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 32F));
+            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 45F));
+            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 40F));
+            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34F));
             tlpCursors.Controls.Add(btnC1, 0, 0);
             tlpCursors.Controls.Add(btnC1Track, 1, 0);
             tlpCursors.Controls.Add(btnC1Pk, 2, 0);
@@ -295,13 +311,13 @@
             tlpCursors.Controls.Add(btnC2Track, 1, 1);
             tlpCursors.Controls.Add(btnC2Pk, 2, 1);
             tlpCursors.Controls.Add(btnC2Set, 3, 1);
-            tlpCursors.Location = new Point(675, 16);
+            tlpCursors.Location = new Point(650, 16);
             tlpCursors.Margin = new Padding(0);
             tlpCursors.Name = "tlpCursors";
             tlpCursors.RowCount = 2;
             tlpCursors.RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
             tlpCursors.RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
-            tlpCursors.Size = new Size(140, 46);
+            tlpCursors.Size = new Size(153, 46);
             tlpCursors.TabIndex = 33;
             // 
             // btnC1
@@ -321,29 +337,29 @@
             btnC1Track.Location = new Point(34, 0);
             btnC1Track.Margin = new Padding(0);
             btnC1Track.Name = "btnC1Track";
-            btnC1Track.Size = new Size(42, 23);
+            btnC1Track.Size = new Size(45, 23);
             btnC1Track.TabIndex = 1;
-            btnC1Track.Text = "L";
+            btnC1Track.Text = "Left";
             btnC1Track.UseVisualStyleBackColor = true;
             // 
             // btnC1Pk
             // 
             btnC1Pk.Dock = DockStyle.Fill;
-            btnC1Pk.Location = new Point(76, 0);
+            btnC1Pk.Location = new Point(79, 0);
             btnC1Pk.Margin = new Padding(0);
             btnC1Pk.Name = "btnC1Pk";
-            btnC1Pk.Size = new Size(32, 23);
+            btnC1Pk.Size = new Size(40, 23);
             btnC1Pk.TabIndex = 2;
-            btnC1Pk.Text = "Pk";
+            btnC1Pk.Text = "Peak";
             btnC1Pk.UseVisualStyleBackColor = true;
             // 
             // btnC1Set
             // 
             btnC1Set.Dock = DockStyle.Fill;
-            btnC1Set.Location = new Point(108, 0);
+            btnC1Set.Location = new Point(119, 0);
             btnC1Set.Margin = new Padding(0);
             btnC1Set.Name = "btnC1Set";
-            btnC1Set.Size = new Size(32, 23);
+            btnC1Set.Size = new Size(34, 23);
             btnC1Set.TabIndex = 3;
             btnC1Set.Text = "Set";
             btnC1Set.UseVisualStyleBackColor = true;
@@ -365,29 +381,29 @@
             btnC2Track.Location = new Point(34, 23);
             btnC2Track.Margin = new Padding(0);
             btnC2Track.Name = "btnC2Track";
-            btnC2Track.Size = new Size(42, 23);
+            btnC2Track.Size = new Size(45, 23);
             btnC2Track.TabIndex = 5;
-            btnC2Track.Text = "R";
+            btnC2Track.Text = "Right";
             btnC2Track.UseVisualStyleBackColor = true;
             // 
             // btnC2Pk
             // 
             btnC2Pk.Dock = DockStyle.Fill;
-            btnC2Pk.Location = new Point(76, 23);
+            btnC2Pk.Location = new Point(79, 23);
             btnC2Pk.Margin = new Padding(0);
             btnC2Pk.Name = "btnC2Pk";
-            btnC2Pk.Size = new Size(32, 23);
+            btnC2Pk.Size = new Size(40, 23);
             btnC2Pk.TabIndex = 6;
-            btnC2Pk.Text = "Pk";
+            btnC2Pk.Text = "Peak";
             btnC2Pk.UseVisualStyleBackColor = true;
             // 
             // btnC2Set
             // 
             btnC2Set.Dock = DockStyle.Fill;
-            btnC2Set.Location = new Point(108, 23);
+            btnC2Set.Location = new Point(119, 23);
             btnC2Set.Margin = new Padding(0);
             btnC2Set.Name = "btnC2Set";
-            btnC2Set.Size = new Size(32, 23);
+            btnC2Set.Size = new Size(34, 23);
             btnC2Set.TabIndex = 7;
             btnC2Set.Text = "Set";
             btnC2Set.UseVisualStyleBackColor = true;
@@ -395,9 +411,9 @@
             // chartSpectrum
             // 
             chartSpectrum.Dock = DockStyle.Fill;
-            chartSpectrum.Location = new Point(0, 65);
+            chartSpectrum.Location = new Point(0, 70);
             chartSpectrum.Name = "chartSpectrum";
-            chartSpectrum.Size = new Size(1138, 435);
+            chartSpectrum.Size = new Size(1138, 430);
             chartSpectrum.TabIndex = 0;
             // 
             // grpRightStats
@@ -553,21 +569,11 @@
             panelStats.Controls.Add(grpLeftStats);
             panelStats.Controls.Add(grpRightStats);
             panelStats.Dock = DockStyle.Fill;
-            panelStats.Location = new Point(0, 65);
+            panelStats.Location = new Point(0, 70);
             panelStats.Name = "panelStats";
             panelStats.Padding = new Padding(8);
-            panelStats.Size = new Size(1138, 435);
+            panelStats.Size = new Size(1138, 430);
             panelStats.TabIndex = 0;
-            // 
-            // label2
-            // 
-            label2.AutoSize = true;
-            label2.Location = new Point(692, 0);
-            label2.Name = "label2";
-            label2.Size = new Size(91, 15);
-            label2.TabIndex = 34;
-            label2.Text = "Cursors settings";
-            label2.Click += label2_Click;
             // 
             // SpectrumControl
             // 

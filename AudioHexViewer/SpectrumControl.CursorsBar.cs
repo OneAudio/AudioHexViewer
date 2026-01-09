@@ -22,6 +22,9 @@ namespace AudioHexViewer
         private Font? _toggleFontRegular;
         private Font? _toggleFontBold;
 
+        private Color? _toggleBackColor;
+        private Color? _toggleForeColor;
+
         private const int CursorBarMarginRight = 10;   // marge depuis le coin droit
         private const int CursorBarMarginBottom = 10;  // marge depuis le bas
         private const int CursorBarOffsetLeft = 15 ;     // marge pour déplacer à gauche
@@ -60,6 +63,11 @@ namespace AudioHexViewer
                 || _c1Set == null || _c2Set == null)
                 return;
 
+            // Sauvegarde couleurs "OFF" (une seule fois)
+            _toggleBackColor ??= _c1Toggle.BackColor;
+            _toggleForeColor ??= _c1Toggle.ForeColor;
+
+
             // Fix “centrage” + look uniforme (sinon dépend du Designer)
             var all = new[] { _c1Toggle, _c1TrackBtn, _c1Peak, _c1Set, _c2Toggle, _c2TrackBtn, _c2Peak, _c2Set };
             foreach (var b in all)
@@ -74,9 +82,10 @@ namespace AudioHexViewer
             _toggleFontRegular ??= _c1Toggle.Font;
             _toggleFontBold ??= new Font(_c1Toggle.Font, FontStyle.Bold);
 
-            // Défauts demandés : C1=L, C2=R (si tu veux conserver des settings, on peut conditionner)
-            C1TrackMode = CursorTrackMode.Left;
-            C2TrackMode = CursorTrackMode.Right;
+            // Défaut : Auto pour les deux
+            C1TrackMode = CursorTrackMode.Auto;
+            C2TrackMode = CursorTrackMode.Auto;
+
 
             WireCursorBarEvents();
             SyncCursorUiFromModel();
@@ -189,10 +198,25 @@ namespace AudioHexViewer
 
         private void UpdateToggleVisual(Button b, bool enabled)
         {
-            // rendu "comme les autres" : même bouton Windows, juste en gras quand actif
-            if (_toggleFontRegular != null && _toggleFontBold != null)
-                b.Font = enabled ? _toggleFontBold : _toggleFontRegular;
+            // Désactive le gras (optionnel) : on garde une police constante
+            if (_toggleFontRegular != null)
+                b.Font = _toggleFontRegular;
+
+            // Vert quand actif, couleurs normales quand inactif
+            if (enabled)
+            {
+                b.UseVisualStyleBackColor = false; // important sinon Windows peut ignorer BackColor
+                b.BackColor = Color.LightGreen;
+                b.ForeColor = Color.Black;
+            }
+            else
+            {
+                b.UseVisualStyleBackColor = true; // restaure le rendu Windows
+                if (_toggleBackColor.HasValue) b.BackColor = _toggleBackColor.Value;
+                if (_toggleForeColor.HasValue) b.ForeColor = _toggleForeColor.Value;
+            }
         }
+
 
         // --------- Track cycle L->R->A->L ---------
 
@@ -208,20 +232,20 @@ namespace AudioHexViewer
             chartSpectrum?.Invalidate();
         }
 
-        private static string NextTrackText(string cur) => cur switch { "L" => "R", "R" => "A", _ => "L" };
+        private static string NextTrackText(string cur) => cur switch { "Left" => "Right", "Right" => "Auto", _ => "Left" };
 
         private static CursorTrackMode TextToMode(string t) => t switch
         {
-            "L" => CursorTrackMode.Left,
-            "R" => CursorTrackMode.Right,
+            "Left" => CursorTrackMode.Left,
+            "Right" => CursorTrackMode.Right,
             _ => CursorTrackMode.Auto
         };
 
         private static string ModeToText(CursorTrackMode m) => m switch
         {
-            CursorTrackMode.Left => "L",
-            CursorTrackMode.Right => "R",
-            _ => "A"
+            CursorTrackMode.Left => "Left",
+            CursorTrackMode.Right => "Right",
+            _ => "Auto"
         };
         //
         // --------- Actions Pk / Set ---------

@@ -1,15 +1,15 @@
 Chose à faire :
 --------------
-Le 04/01/2026
+Le 09/01/2026
 
-0 - Nouveau
+0 - Ajouter un option d'affichage pour masque PanelTOp (si chartSpectrum est actif).
+DAns le menu Data (qu'il faudrait renommer "View") en plus de "Show graph" on aurait
+"Show Graph & Hide PanelTop"
+Ou un menu :
+View -> Panel Top, Graphs, Both. 
 
-
-1 - Ajouter la possibilitée d'avoir la FFT en dBV en utilisant les paramètres
-de la calibration.
-
-2 - Faire que les différentes mesures soient en dBV également lorsque on choisi
-l'affichage de la FFT en dBV (Méthode de choix à définir ?)
+1- Uniformiser les différents boutons/commandes du panneaux Spectrum,
+pour ressembler à ceux des curseurs.
 
 4 - Améliorer les mesures de THD, TD+N, etc et les comparer avec
 le résultat de REW et Arta.
@@ -26,6 +26,11 @@ on utilise le mode L/R
 9 - Revoir le calcul de la moyenne, il semble y avoir un problème 
 (visible surtout lorsque elle est faible 2...4)
 
+10- Corriger le décalage verticales des overlay lorsque on est en dBV
+
+11 - Ajouter une calibration spécifique pour le mode DC,
+Offset + Gain ?
+
 10- ONGLET HISTOGRAMME :
 ------------------------
 a) Uniformiser l'onglet de mesure de l'histogramme pour qu'il soir semblable
@@ -36,8 +41,6 @@ c) Ajouter au dessus du graph une ligne avec les  paramètres de l'histogramme,
 comme pour le spectrum.
 d) Ajouter le dessin d'un loie normale sursposé à l'histogramme (option case à cocher)  
 
-11 -Déplacer les fonctions Measure(THD) et Cursors du menu principal
-vers l'onglet Spectrum avecd es boutons.
 
 Créer les icones suivantes pour les mettre dans la barre de menu :
 _Channels mode
