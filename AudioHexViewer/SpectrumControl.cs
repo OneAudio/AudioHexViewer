@@ -287,19 +287,16 @@ namespace AudioHexViewer
         /// Vrms = RMS AC (DC retiré), Vpeak = max(|sample|) sur la fenêtre (DC compris), Vdc = moyenne (DC).
         /// </summary>
         public void GetLastVoltages(
-            out double? vrmsLeft, out double? vpeakLeft, out double? vdcLeft,
-            out double? vrmsRight, out double? vpeakRight, out double? vdcRight)
+        out double? vrmsLeft, out double? vpeakLeft, out double? vdcLeft,
+        out double? vrmsRight, out double? vpeakRight, out double? vdcRight)
         {
-            bool leftActive = IsLeftChannelActive;
-            bool rightActive = IsRightChannelActive;
+            vrmsLeft = _lastVrmsVoltsLeft;
+            vpeakLeft = _lastVpkVoltsLeft;
+            vdcLeft = _lastVdcVoltsLeft;
 
-            vrmsLeft = leftActive ? _lastVrmsVoltsLeft : null;
-            vpeakLeft = leftActive ? _lastVpkVoltsLeft : null;
-            vdcLeft = leftActive ? _lastVdcVoltsLeft : null;
-
-            vrmsRight = rightActive ? _lastVrmsVoltsRight : null;
-            vpeakRight = rightActive ? _lastVpkVoltsRight : null;
-            vdcRight = rightActive ? _lastVdcVoltsRight : null;
+            vrmsRight = _lastVrmsVoltsRight;
+            vpeakRight = _lastVpkVoltsRight;
+            vdcRight = _lastVdcVoltsRight;
         }
 
         // --- Indicateur "a déjà fonctionné au moins une fois" ---
