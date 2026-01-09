@@ -3440,10 +3440,17 @@ namespace AudioHexViewer
             ChannelMetrics? mR = null;
 
             bool singleChannel = (showLeft && !showRight) || (showRight && !showLeft);
-            bool showHarmsInPanel = doThd && _thdUi.ShowHarmonicsValues && singleChannel;
+            bool isMaximized = (this.FindForm()?.WindowState == FormWindowState.Maximized);
+
+            // Les mesures THD (F0..SFDR + harmoniques) sont affichées seulement si
+            // - une seule voie est active
+            // - OU la fenêtre est maximisée
+            bool allowThdMeasurementsUi = singleChannel || isMaximized;
+
+            bool showHarmsInPanel = doThd && _thdUi.ShowHarmonicsValues && allowThdMeasurementsUi;
 
             // LEFT
-            if (lblLeftMeas != null && currentLeftSpectrum != null && _sampleRate > 0 && lastFftSize > 0)
+            if (allowThdMeasurementsUi && lblLeftMeas != null && currentLeftSpectrum != null && _sampleRate > 0 && lastFftSize > 0)
             {
                 if (doThd)
                 {
@@ -3468,12 +3475,8 @@ namespace AudioHexViewer
                             thdText = $"THD: {mL.ThdDb:F1} dB";
                             thdnText = $"THD+N: {mL.ThdNDb:F1} dB";
                         }
-                        string vdcPrefixL = (_levelUnit == "dBV" && _levelCalValidLeft && _lastVdcVoltsLeft.HasValue)
-                            ? $"Vdc: {FormatVoltage(_lastVdcVoltsLeft.Value)}\n"
-                            : "";
-
+                        
                         lblLeftMeas.Text =
-                        vdcPrefixL +
                             $"F0: {mL.FundamentalHz:F1} Hz\n" +
                             thdText + "\n" +
                             thdnText + "\n" +
@@ -3521,7 +3524,7 @@ namespace AudioHexViewer
             }
 
             // RIGHT
-            if (lblRightMeas != null && currentRightSpectrum != null && _sampleRate > 0 && lastFftSize > 0)
+            if (allowThdMeasurementsUi && lblRightMeas != null && currentRightSpectrum != null && _sampleRate > 0 && lastFftSize > 0)
             {
                 if (doThd)
                 {
@@ -3544,12 +3547,8 @@ namespace AudioHexViewer
                             thdText = $"THD: {mR.ThdDb:F1} dB";
                             thdnText = $"THD+N: {mR.ThdNDb:F1} dB";
                         }
-                        string vdcPrefixR = (_levelUnit == "dBV" && _levelCalValidRight && _lastVdcVoltsRight.HasValue)
-                            ? $"Vdc: {FormatVoltage(_lastVdcVoltsRight.Value)}\n"
-                            : "";
-
+                        
                         lblRightMeas.Text =
-                            vdcPrefixR +
                             $"F0: {mR.FundamentalHz:F1} Hz\n" +
                             thdText + "\n" +
                             thdnText + "\n" +
@@ -3597,6 +3596,16 @@ namespace AudioHexViewer
 
             RebuildStatsRowsFromLabels();
             RefreshCursorAfterRedraw();
+        }
+        //
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+
+            // On laisse le live tick faire le refresh quand live,
+            // sinon on peut rafraîchir directement.
+            if (!isLive)
+                UpdateSpectrumChartAndStats();
         }
 
         //

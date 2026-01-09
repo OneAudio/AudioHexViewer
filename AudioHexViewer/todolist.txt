@@ -2,12 +2,6 @@ Chose à faire :
 --------------
 Le 09/01/2026
 
-0 - Ajouter un option d'affichage pour masque PanelTOp (si chartSpectrum est actif).
-DAns le menu Data (qu'il faudrait renommer "View") en plus de "Show graph" on aurait
-"Show Graph & Hide PanelTop"
-Ou un menu :
-View -> Panel Top, Graphs, Both. 
-
 1- Uniformiser les différents boutons/commandes du panneaux Spectrum,
 pour ressembler à ceux des curseurs.
 
