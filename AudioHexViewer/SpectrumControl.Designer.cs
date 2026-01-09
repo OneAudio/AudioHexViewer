@@ -113,6 +113,7 @@
             // 
             // label1
             // 
+            label1.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             label1.AutoSize = true;
             label1.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
             label1.Location = new Point(990, 25);
@@ -269,6 +270,7 @@
             // 
             // lblWindowInfo
             // 
+            lblWindowInfo.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             lblWindowInfo.AutoSize = true;
             lblWindowInfo.ForeColor = SystemColors.HotTrack;
             lblWindowInfo.Location = new Point(990, 40);
@@ -279,8 +281,9 @@
             // 
             // btnRun
             // 
+            btnRun.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnRun.FlatStyle = FlatStyle.Flat;
-            btnRun.Location = new Point(1043, 10);
+            btnRun.Location = new Point(1043, 8);
             btnRun.Name = "btnRun";
             btnRun.Size = new Size(79, 51);
             btnRun.TabIndex = 9;

@@ -2238,6 +2238,61 @@ namespace AudioHexViewer
             return targetClientHeight + nonClientHeight;
         }
         //
+        private void ApplyViewState()
+        {
+            bool showGraphs = menuShowGraphs.Checked;
+            bool graphOnly = menuShowGraphOnly.Checked;
+
+            // "Graph only" n'a pas de sens si les graphs sont cachés
+            if (!showGraphs && graphOnly)
+            {
+                menuShowGraphOnly.Checked = false;
+                graphOnly = false;
+            }
+
+            // Affiche/masque la zone graphs (Panel2)
+            splitMain.Panel2Collapsed = !showGraphs;
+
+            // Affiche/masque le panneau haut (Panel1)
+            splitMain.Panel1Collapsed = graphOnly;
+
+            if (showGraphs)
+            {
+                // Mode graphs => fenêtre redimensionnable
+                this.FormBorderStyle = FormBorderStyle.Sizable;
+                this.MaximizeBox = true;
+                this.MinimizeBox = true;
+                this.MaximumSize = Size.Empty;
+
+                if (_minHeightWithGraphs <= 0)
+                    _minHeightWithGraphs = Math.Max(this.Height, _minHeightNoGraphs + 260);
+
+                this.MinimumSize = new Size(_minWidth, _minHeightWithGraphs);
+
+                // Si on est en "Graph only", on force l'onglet Spectrum (logique avec ta demande)
+                if (graphOnly && tabAnalysis != null && tabSpectrum != null)
+                    tabAnalysis.SelectedTab = tabSpectrum;
+            }
+            else
+            {
+                // Mode compact (pas de graphs) => fenêtre fixe
+                this.FormBorderStyle = FormBorderStyle.FixedSingle;
+                this.MaximizeBox = false;
+
+                this.MinimumSize = new Size(_minWidth, _minHeightNoGraphs);
+                this.MaximumSize = Size.Empty;
+
+                // si graphs cachés, on s'assure que le top est visible
+                splitMain.Panel1Collapsed = false;
+
+                if (this.WindowState == FormWindowState.Maximized)
+                    this.WindowState = FormWindowState.Normal;
+
+                this.Size = new Size(_minWidth, _minHeightNoGraphs);
+            }
+        }
+
+        //
         private void ApplyShowGraphsState()
         {
             bool show = menuShowGraphs.Checked;
@@ -2279,8 +2334,23 @@ namespace AudioHexViewer
         //
         private void menuShowGraphs_Click(object? sender, EventArgs e)
         {
-            ApplyShowGraphsState();
+            // Si l'utilisateur cache les graphs, on désactive aussi "Graph only"
+            if (!menuShowGraphs.Checked && menuShowGraphOnly.Checked)
+                menuShowGraphOnly.Checked = false;
+
+            ApplyViewState();
         }
+        //
+        private void menuShowGraphOnly_Click(object? sender, EventArgs e)
+        {
+            // Si on active "Graph only", on doit forcément afficher les graphs
+            if (menuShowGraphOnly.Checked && !menuShowGraphs.Checked)
+                menuShowGraphs.Checked = true;
+
+            ApplyViewState();
+        }
+
+
         //
         private void btnRecord_Click(object sender, EventArgs e)
         {
@@ -3184,7 +3254,8 @@ namespace AudioHexViewer
                 lbl.Top = bar.Top - lbl.Height + 10;      // juste au-dessus de la barre
                 lbl.Left = x - lbl.PreferredWidth / 2;   // centr sur la position
 
-                Controls.Add(lbl);
+                //Controls.Add(lbl);//
+                bar.Parent.Controls.Add(lbl); //
                 lbl.BringToFront();
             }
         }
@@ -3305,7 +3376,8 @@ namespace AudioHexViewer
                 ApplyAnalysisSettings(_loadedSessionSettings);
 
             ApplyLoadedSessionSettingsToExistingControls();
-            BeginInvoke(new Action(ApplyShowGraphsState));
+            BeginInvoke(new Action(ApplyViewState));
+
         }
 
         private void splitContainer1_Panel2_Paint(object sender, PaintEventArgs e)

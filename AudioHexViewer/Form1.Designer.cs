@@ -42,6 +42,7 @@ namespace AudioHexViewer
             menuData = new ToolStripMenuItem();
             menuShowAllFormats = new ToolStripMenuItem();
             menuShowGraphs = new ToolStripMenuItem();
+            menuShowGraphOnly = new ToolStripMenuItem();
             menuSampleSize = new ToolStripMenuItem();
             menuOverlap = new ToolStripMenuItem();
             menuBuffer = new ToolStripMenuItem();
@@ -153,10 +154,10 @@ namespace AudioHexViewer
             // menuData
             // 
             menuData.Alignment = ToolStripItemAlignment.Right;
-            menuData.DropDownItems.AddRange(new ToolStripItem[] { menuShowAllFormats, menuShowGraphs });
+            menuData.DropDownItems.AddRange(new ToolStripItem[] { menuShowAllFormats, menuShowGraphs, menuShowGraphOnly });
             menuData.Name = "menuData";
-            menuData.Size = new Size(43, 21);
-            menuData.Text = "Data";
+            menuData.Size = new Size(44, 21);
+            menuData.Text = "View";
             // 
             // menuShowAllFormats
             // 
@@ -174,6 +175,14 @@ namespace AudioHexViewer
             menuShowGraphs.Size = new Size(188, 22);
             menuShowGraphs.Text = "Show graphs";
             menuShowGraphs.Click += menuShowGraphs_Click;
+            // 
+            // menuShowGraphOnly
+            // 
+            menuShowGraphOnly.CheckOnClick = true;
+            menuShowGraphOnly.Name = "menuShowGraphOnly";
+            menuShowGraphOnly.Size = new Size(188, 22);
+            menuShowGraphOnly.Text = "Show Graph only";
+            menuShowGraphOnly.Click += menuShowGraphOnly_Click;
             // 
             // menuSampleSize
             // 
@@ -424,6 +433,7 @@ namespace AudioHexViewer
             // 
             // btnStart
             // 
+            btnStart.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnStart.BackColor = Color.SeaGreen;
             btnStart.FlatAppearance.BorderSize = 0;
             btnStart.FlatStyle = FlatStyle.Flat;
@@ -469,6 +479,7 @@ namespace AudioHexViewer
             // 
             // btnRecord
             // 
+            btnRecord.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnRecord.BackColor = Color.Firebrick;
             btnRecord.FlatAppearance.BorderSize = 0;
             btnRecord.FlatStyle = FlatStyle.Flat;
@@ -483,6 +494,7 @@ namespace AudioHexViewer
             // 
             // btnCalV
             // 
+            btnCalV.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnCalV.BackColor = Color.SteelBlue;
             btnCalV.FlatAppearance.BorderSize = 0;
             btnCalV.FlatStyle = FlatStyle.Flat;
@@ -632,5 +644,6 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuBuffer;
         private ToolStripMenuItem exportToolStripMenuItem;
         private ToolStripMenuItem menuExportPng;
+        private ToolStripMenuItem menuShowGraphOnly;
     }
 }
