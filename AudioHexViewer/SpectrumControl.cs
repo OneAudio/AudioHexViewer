@@ -37,6 +37,8 @@ namespace AudioHexViewer
             try
             {
                 chkEnableThd.Checked = enabled;
+                // Visuel
+                UpdateToggleButtonVisual(chkEnableThd);
             }
             finally
             {
@@ -1212,12 +1214,17 @@ namespace AudioHexViewer
             if (chkPeakHold != null)
             {
                 chkPeakHold.Checked = false;
+                // Initial update visuelle
+                UpdateToggleButtonVisual(chkPeakHold);
+
                 chkPeakHold.CheckedChanged += (s, e) =>
                 {
                     // Quand on active : repartir de zéro pour que le peak-hold soit cohérent
                     if (chkPeakHold.Checked)
                         _post.ResetPeakHoldState();
 
+                    // Update visuelle
+                    UpdateToggleButtonVisual(chkPeakHold);
                     UpdateSpectrumChartAndStats();
                 };
             }
@@ -3609,29 +3616,26 @@ namespace AudioHexViewer
         }
 
         //
-        private static double? EstimateFundamentalHz(double[] spectrum, int sampleRate, int fftSize)
+        private void UpdateToggleButtonVisual(CheckBox? b)
         {
-            if (spectrum == null || spectrum.Length < 3 || sampleRate <= 0 || fftSize <= 0)
-                return null;
+            if (b == null) return;
 
-            int startBin = 1; // ignore DC
-            int endBin = spectrum.Length - 1;
-
-            int maxIdx = startBin;
-            double maxVal = spectrum[startBin];
-
-            for (int i = startBin + 1; i <= endBin; i++)
+            if (b.Checked)
             {
-                double v = spectrum[i];
-                if (v > maxVal)
-                {
-                    maxVal = v;
-                    maxIdx = i;
-                }
+                // IMPORTANT sinon Windows peut ignorer BackColor
+                b.UseVisualStyleBackColor = false;
+                b.BackColor = Color.LightGreen;
+                b.ForeColor = Color.Black;
             }
-
-            return maxIdx * (double)sampleRate / fftSize;
+            else
+            {
+                // Revenir au rendu standard
+                b.UseVisualStyleBackColor = true;
+                b.BackColor = SystemColors.Control;
+                b.ForeColor = SystemColors.ControlText;
+            }
         }
+
 
         //
         private double GetFrequencyFromMouseX(int mouseX)
@@ -4527,6 +4531,9 @@ namespace AudioHexViewer
 
             // Apply immediately (affichage + calculs)
             SetThdMeasuresEnabled(enabled);
+
+            // Update visual (in case SetThdMeasuresEnabled modified something)
+            UpdateToggleButtonVisual(chkEnableThd);
 
             // Let Form1 persist it (SessionSettings)
             ThdEnabledChanged?.Invoke(enabled);
