@@ -82,6 +82,21 @@ namespace AudioHexViewer
         private StereoRingBuffer? _audioRing;
         private readonly object _audioRingLock = new object();
 
+        // =============================================================
+        // ROBUST FIX: Fenêtre d'analyse alimentée sur le thread audio
+        // (évite les discontinuités quand N est grand, ex: 1M pts)
+        // =============================================================
+        private readonly object _analysisWindowLock = new object();
+
+        // Fenêtre circulaire (taille = analysisSampleSize)
+        private int[] _analysisWinL = Array.Empty<int>();
+        private int[] _analysisWinR = Array.Empty<int>();
+        private int _analysisWinCap = 0;     // capacité = N
+        private int _analysisWinWrite = 0;   // index d'écriture circulaire
+        private int _analysisWinCount = 0;   // nb de samples valides (<= cap)
+        private long _analysisWinAbsWrite = 0; // compteur absolu d'écriture (monotone)
+
+
         // Index absolu de fin de la dernière fenêtre d’analyse produite (pour hop/overlap)
         private long _lastAnalysisAbsEnd = 0;
 
@@ -661,10 +676,9 @@ namespace AudioHexViewer
 
             int intervalMs = 100;
             if (currentFormat != null && currentFormat.SampleRate > 0)
-            {
-                intervalMs = (int)Math.Max(10, Math.Round((double)analysisHopSamples * 1000.0 / currentFormat.SampleRate));
-            }
-            analysisTimer.Interval = intervalMs;
+
+            // ROBUST FIX: timer UI = cadence d'affichage, pas cadence d'acquisition
+            analysisTimer.Interval = 20; // 50 Hz UI (ajuste si besoin: 10..50 ms)
 
             // Le timer ne tourne que quand la capture est active
             if (capture != null && capture.CaptureState == CaptureState.Capturing)
@@ -672,6 +686,70 @@ namespace AudioHexViewer
             else
                 analysisTimer.Stop();
         }
+        //
+        private void EnsureAnalysisWindowCapacity_NoLock(int requiredN)
+        {
+            if (requiredN <= 0) return;
+
+            if (_analysisWinCap == requiredN)
+                return;
+
+            _analysisWinL = new int[requiredN];
+            _analysisWinR = new int[requiredN];
+            _analysisWinCap = requiredN;
+            _analysisWinWrite = 0;
+            _analysisWinCount = 0;
+            _analysisWinAbsWrite = 0;
+
+            // On reset le hop pour forcer une première publication propre
+            _lastAnalysisAbsEnd = 0;
+        }
+
+        // Appelé sur le thread audio (à chaque sample)
+        private void FeedAnalysisWindowSample_NoLock(int L, int R)
+        {
+            if (_analysisWinCap <= 0) return;
+
+            _analysisWinL[_analysisWinWrite] = L;
+            _analysisWinR[_analysisWinWrite] = R;
+
+            _analysisWinWrite++;
+            if (_analysisWinWrite >= _analysisWinCap)
+                _analysisWinWrite = 0;
+
+            if (_analysisWinCount < _analysisWinCap)
+                _analysisWinCount++;
+
+            _analysisWinAbsWrite++;
+        }
+
+        // Snapshot des N derniers samples (thread UI)
+        private bool TrySnapshotAnalysisWindowLast_NoLock(int N, int[] dstL, int[] dstR, out long absEnd)
+        {
+            absEnd = _analysisWinAbsWrite;
+
+            if (_analysisWinCap < N) return false;
+            if (_analysisWinCount < N) return false;
+
+            int start = _analysisWinWrite - N;
+            if (start < 0) start += _analysisWinCap;
+
+            int firstPart = Math.Min(N, _analysisWinCap - start);
+
+            Array.Copy(_analysisWinL, start, dstL, 0, firstPart);
+            Array.Copy(_analysisWinR, start, dstR, 0, firstPart);
+
+            int remaining = N - firstPart;
+            if (remaining > 0)
+            {
+                Array.Copy(_analysisWinL, 0, dstL, firstPart, remaining);
+                Array.Copy(_analysisWinR, 0, dstR, firstPart, remaining);
+            }
+
+            return true;
+        }
+
+        //
 
         private void UpdateAnalysisFrame()
         {
@@ -685,103 +763,31 @@ namespace AudioHexViewer
             int[] left = new int[N];
             int[] right = new int[N];
 
-            lock (_audioRingLock)
+            long absEnd;
+
+            // ROBUST FIX: on lit directement la fenêtre d'analyse alimentée par ProcessBuffer
+            lock (_analysisWindowLock)
             {
-                if (_audioRing == null) return;
+                EnsureAnalysisWindowCapacity_NoLock(N);
 
-                long absEnd = _audioRing.AbsWrite;
-                if (absEnd < N) return; // pas encore assez de données pour une FFT
+                if (!TrySnapshotAnalysisWindowLast_NoLock(N, left, right, out absEnd))
+                    return;
 
-                // ---------- Cas 1 : N <= Buffer => on peut extraire directement les N derniers ----------
-                if (N <= _audioRing.Capacity)
-                {
-                    // Ne calcule une nouvelle fenêtre que si on a au moins hop nouveaux samples depuis la dernière
-                    if (_lastAnalysisAbsEnd != 0 && (absEnd - _lastAnalysisAbsEnd) < hop)
-                        return;
+                // Hop/overlap: ne publier que si on a assez de nouveaux samples
+                if (_lastAnalysisAbsEnd != 0 && (absEnd - _lastAnalysisAbsEnd) < hop)
+                    return;
 
-                    // Toujours "dernier bloc" (REW-like), donc start = absEnd - N
-                    if (!_audioRing.TryCopyLast(N, left, right))
-                        return;
-
-                    _lastAnalysisAbsEnd = absEnd;
-                }
-                // ---------- Cas 2 : N > Buffer => accumulation progressive ----------
-                else
-                {
-                    // Crée une fenêtre logique de taille N (c'est elle qui accumule)
-                    if (_fftWindow == null || _fftWindow.Capacity != N)
-                    {
-                        _fftWindow = new StereoRingBuffer(N);
-                        _fftWindow.Clear(resetAbsIndex: true);
-
-                        // On part du plus ancien sample disponible dans le ring pour remplir la fenêtre
-                        // (sinon on risquerait de demander une plage trop ancienne)
-                        long absOldest = absEnd - _audioRing.Count;
-                        _windowFeedAbsIndex = absOldest;
-                        _lastAnalysisAbsEnd = 0;
-                    }
-
-                    // Injecte dans _fftWindow tous les nouveaux samples arrivés depuis la dernière fois
-                    // Attention : on ne peut copier que ce qui est encore présent dans _audioRing
-                    long absOldestNow = absEnd - _audioRing.Count;
-                    if (_windowFeedAbsIndex < absOldestNow)
-                    {
-                        // On a "raté" des samples (UI trop lente) => on se recale sur ce qui reste
-                        _windowFeedAbsIndex = absOldestNow;
-                    }
-
-                    long toFeed = absEnd - _windowFeedAbsIndex;
-                    if (toFeed <= 0) return;
-
-                    // On alimente par chunks raisonnables (pour éviter des allocations énormes)
-                    const int CHUNK = 32768;
-                    int[] tmpL = new int[Math.Min(CHUNK, (int)Math.Min(toFeed, int.MaxValue))];
-                    int[] tmpR = new int[tmpL.Length];
-
-                    while (_windowFeedAbsIndex < absEnd)
-                    {
-                        long remaining = absEnd - _windowFeedAbsIndex;
-                        int take = (int)Math.Min(tmpL.Length, remaining);
-
-                        if (!_audioRing.TryCopyFromAbs(_windowFeedAbsIndex, take, tmpL, tmpR))
-                        {
-                            // Si ça échoue, c'est qu'on a demandé trop vieux => recaler
-                            long oldest = absEnd - _audioRing.Count;
-                            _windowFeedAbsIndex = oldest;
-                            return;
-                        }
-
-                        for (int i = 0; i < take; i++)
-                            _fftWindow.WriteSample(tmpL[i], tmpR[i]);
-
-                        _windowFeedAbsIndex += take;
-                    }
-
-                    // Tant que la fenêtre logique n'a pas N samples, on ne peut pas produire de FFT
-                    if (_fftWindow.Count < N) return;
-
-                    // Hop logic : on ne “publie” que si hop nouveaux samples se sont ajoutés depuis la dernière FFT publiée
-                    // Ici, absEnd représente l'instant de fin (one past last) courant.
-                    if (_lastAnalysisAbsEnd != 0 && (absEnd - _lastAnalysisAbsEnd) < hop)
-                        return;
-
-                    // La fenêtre logique contient les N derniers samples accumulés => extraire ces N derniers
-                    if (!_fftWindow.TryCopyLast(N, left, right))
-                        return;
-
-                    _lastAnalysisAbsEnd = absEnd;
-                }
+                _lastAnalysisAbsEnd = absEnd;
             }
 
-            // Publie la nouvelle frame d'analyse (pour SpectrumControl + éventuel histogramme)
+            // Publie la nouvelle frame d'analyse (pour SpectrumControl + histogramme)
             lock (analysisLock)
             {
                 lastAnalysisLeft = left;
                 lastAnalysisRight = right;
             }
-
-            // (Optionnel) si tu as un histogramme basé sur lastAnalysis*, il sera naturellement “temps réel” aussi.
         }
+
 
 
 
@@ -2545,6 +2551,16 @@ namespace AudioHexViewer
 
                     // 1) Ring buffer audio (toujours)
                     _audioRing.WriteSample(L, R);
+
+                    // ROBUST FIX: on alimente la fenêtre d'analyse sur le thread audio
+                    lock (_analysisWindowLock)
+                    {
+                        // S'assure que la fenêtre correspond à la taille FFT/histo en cours
+                        EnsureAnalysisWindowCapacity_NoLock(analysisSampleSize);
+
+                        // Push du sample dans la fenêtre circulaire
+                        FeedAnalysisWindowSample_NoLock(L, R);
+                    }
 
                     // 2) Enregistrement REC (si actif)
                     if (recordSnapshotToSave == null) // si déjà terminé dans ce callback, on n'ajoute plus
