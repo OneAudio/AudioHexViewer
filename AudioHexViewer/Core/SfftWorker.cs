@@ -150,6 +150,7 @@ namespace AudioHexViewer.Core
                     if (w >= _fftSize)
                     {
                         _nextHopEndAbs = w; // premier hop-end = "maintenant"
+                        _stats.SetAbsWrite(w);                        
                         _stats.SetNextEndAbs(_nextHopEndAbs);
                         _stats.SetProgress01(1.0);
                         break;
@@ -167,17 +168,20 @@ namespace AudioHexViewer.Core
                 while (!ct.IsCancellationRequested)
                 {
                     long w = _ring.AbsWrite;
+                    _stats.SetAbsWrite(w); // publié en continu pour l’UI/diagnostics
+
 
                     // Backfill: tant qu'on a de quoi calculer une fenêtre finissant à nextHopEndAbs
                     // Condition: w >= nextHopEndAbs
                     if (w < _nextHopEndAbs)
                     {
-                        // Publie où on en est dans la "course" vers la prochaine FFT.
-                        // lastEnd = end de la dernière FFT produite (ou end précédent logique)
+                        // Progression entre 2 FFT successives (sur le HOP)
                         long lastEnd = _nextHopEndAbs - _hop;
-
-                        // Progression 0..1 : combien de samples du hop ont été acquis depuis lastEnd
                         double p01 = (double)(w - lastEnd) / _hop;
+
+                        // clamp 0..1
+                        if (p01 < 0.0) p01 = 0.0;
+                        if (p01 > 1.0) p01 = 1.0;
 
                         _stats.SetNextEndAbs(_nextHopEndAbs);
                         _stats.SetProgress01(p01);
@@ -188,9 +192,14 @@ namespace AudioHexViewer.Core
                     }
 
 
+
+
                     _stats.SetWorkerState("RUN");
 
                     long absStart = _nextHopEndAbs - _fftSize;
+                    _stats.SetNextEndAbs(_nextHopEndAbs);
+                    _stats.SetProgress01(1.0); // on a atteint le point où la FFT est "due"
+
 
                     bool ok = _ring.TryReadWindow(absStart, _fftSize, _winL, _winR);
                     if (ok)
