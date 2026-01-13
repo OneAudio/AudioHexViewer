@@ -25,6 +25,24 @@ namespace AudioHexViewer
 
         private bool _suppressThdUiEvents = false;
 
+        internal int GetPlotPixelWidth()
+        {
+            // fallback simple : largeur du contrôle
+            // si tu as un panel/zone dédiée au plot, remplace par sa largeur
+            return Math.Max(100, this.Width);
+        }
+        //
+        internal (double fMin, double fMax) GetVisibleFreqRangeHz()
+        {
+            // Par défaut : toute la bande
+            // Si ton zoom existe déjà avec des variables internes (ex: _xMinHz/_xMaxHz),
+            // remplace ici UNIQUEMENT ces 2 valeurs par tes variables de zoom.
+            double fMin = 0.0;
+            double fMax = _sampleRate > 0 ? _sampleRate / 2.0 : 24000.0;
+            return (fMin, fMax);
+        }
+
+
         /// <summary>
         /// Sync the THD checkbox UI without re-triggering events.
         /// </summary>
@@ -200,9 +218,9 @@ namespace AudioHexViewer
         }
         //
         // 
-        private bool _cursorUiBindDone;
-        private Font? _cursorBtnRegular;
-        private Font? _cursorBtnBold;
+        //private bool _cursorUiBindDone;
+        //private Font? _cursorBtnRegular;
+        //private Font? _cursorBtnBold;
 
         public delegate (int[] Left, int[] Right) SampleProvider(int sampleCount);
 
@@ -2677,10 +2695,55 @@ namespace AudioHexViewer
             _post.ResetPeakHoldState();
             UpdateSpectrumChartAndStats();
         }
-        //        
+        //
+        // --------------------------------------------------------------------
+        // External Spectrum Feed (FFT calculée hors UI)
+        // --------------------------------------------------------------------
+        private bool _useExternalSpectrum = false;
+
+        internal void EnableExternalSpectrumMode(bool enabled)
+        {
+            _useExternalSpectrum = enabled;
+
+            // Si on passe en mode externe, on coupe le timer live interne pour éviter toute FFT UI.
+            if (enabled)
+                liveTimer?.Stop();
+        }
+
+        internal void FeedExternalSpectrum(AudioHexViewer.Core.SpectrumFrame frame)
+        {
+            if (frame == null) return;
+
+            // Important : cette méthode doit être appelée sur le thread UI
+            // (Form1 le fera via Timer/UI).
+            _useExternalSpectrum = true;
+
+            lastFftSize = frame.FftSize;
+            _sampleRate = frame.SampleRate;
+
+            // On injecte directement le résultat final (dBFS)
+            currentLeftSpectrum = frame.LeftDbFs;
+            currentRightSpectrum = frame.RightDbFs;
+            freqAxis = frame.FreqAxisHz;
+
+            // Pour le moment, on ne met pas à jour lastTimeLeft/Right (on les remettra plus tard si besoin)
+            lastTimeLeft = null;
+            lastTimeRight = null;
+
+            // Peak-hold / averaging : on peut choisir de les garder ou non.
+            // Pour l'instant : on garde peak-hold si activé, sans recalcul FFT.
+            bool peakEnabled = (chkPeakHold != null && chkPeakHold.Checked);
+            _post.UpdatePeakHold(currentLeftSpectrum, currentRightSpectrum, peakEnabled);
+
+            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
+        }
+
         //
         private void AcquireOnce()
         {
+            if (_useExternalSpectrum)
+                return;
+
             if (_provider == null || _sampleRate <= 0)
                 return;
 

@@ -6,6 +6,9 @@ using System.Text;
 using System.IO;// ...
 using System.Text.Json;
 using System.Linq;
+using AudioHexViewer.Core;
+using System.Collections.Concurrent;
+
 
 namespace AudioHexViewer
 {
@@ -16,6 +19,9 @@ namespace AudioHexViewer
         private WasapiCapture? capture;   // pour la capture audio
         private MMDevice? selectedDevice; // priphrique audio choisi
         private WaveFormat? currentFormat;
+
+        
+
 
 
         // Suivi de stabilit des bits (24 bits) sur 1 seconde
@@ -83,6 +89,28 @@ namespace AudioHexViewer
         private readonly object _audioRingLock = new object();
 
         // =============================================================
+        // NOUVEAU PIPELINE (étape 1) : Ring buffer float stéréo [-1..1]
+        // - En parallèle de l'ancien _audioRing (int24) pour l'instant
+        // - Vérité temporelle = AbsWrite (index absolu en samples par canal)
+        // =============================================================
+        private RingBufferStereoFloat? _floatRing;
+        private readonly SfftStats _sfftStats = new SfftStats();
+
+        private SfftWorker? _sfftWorker;
+
+        private readonly ConcurrentQueue<SpectrumFrame> _sfftFrames = new ConcurrentQueue<SpectrumFrame>();
+        private SpectrumFrame? _lastFrameUi; // dernier frame affiché
+
+        private long _uiFramesShown = 0;
+        private long _uiFramesDrained = 0;
+        private readonly System.Diagnostics.Stopwatch _uiSw = System.Diagnostics.Stopwatch.StartNew();
+        private double _uiLastRateT = 0;
+
+        // Throttle affichage UI (10 Hz => 0.10 s)
+        private double _uiLastDisplayT = 0.0;
+        private const double UiDisplayPeriodSec = 0.10; // 10 Hz
+
+        // =============================================================
         // ROBUST FIX: Fenêtre d'analyse alimentée sur le thread audio
         // (évite les discontinuités quand N est grand, ex: 1M pts)
         // =============================================================
@@ -113,6 +141,20 @@ namespace AudioHexViewer
         //private long analysisCursorStart = 0;     // index absolu de début de la dernière fenêtre utilisée
 
         private System.Windows.Forms.Timer? analysisTimer;
+
+        // --- UI -> paramètres SFFT (source unique de vérité) ---
+        private int GetUiFftSize()
+        {
+            // N affiché/choisi dans la GUI (sample size)
+            return analysisSampleSize;
+        }
+
+        private double GetUiOverlap()
+        {
+            // Ratio overlap (0..1) tel que géré par la GUI
+            return analysisOverlap;
+        }
+
 
         private int[] lastAnalysisLeft = Array.Empty<int>();
         private int[] lastAnalysisRight = Array.Empty<int>();
@@ -231,6 +273,46 @@ namespace AudioHexViewer
             if (db >= 0.0) return 100.0;
             return (db - DbMin) / (0.0 - DbMin) * 100.0;
         }
+        //
+        private void RestartSfftFromUi()
+        {
+            // Ne rien faire si on n'est pas en acquisition
+            if (currentFormat == null) return;
+
+            // 1) Lire les paramètres UI
+            int fs = currentFormat.SampleRate;
+            int fftSize = GetUiFftSize();        // doit renvoyer une puissance de 2 (8k..4M)
+            double overlap = GetUiOverlap();     // [0..1]
+
+            // clamps sécurité
+            if (fftSize < 8192) fftSize = 8192;
+            if (fftSize > 4194304) fftSize = 4194304;
+            if (overlap < 0.0) overlap = 0.0;
+            if (overlap > 0.99) overlap = 0.99; // évite hop=0
+
+            int hop = Math.Max(1, (int)Math.Round(fftSize * (1.0 - overlap)));
+
+            // 2) Stop worker existant
+            if (_sfftWorker != null)
+            {
+                _sfftWorker.Stop();
+                _sfftWorker = null;
+            }
+
+            // 3) Redimensionner / recréer le ring buffer (cohérent avec N)
+            // règle safe : max(2s, 2*N)
+            int ringCapacity = Math.Max(fs * 2, fftSize * 2);
+            _floatRing = new RingBufferStereoFloat(ringCapacity);
+
+            // 4) Vider la queue pour éviter mélange ancien/nouveau N
+            while (_sfftFrames.TryDequeue(out _)) { }
+            _lastFrameUi = null;
+
+            // 5) Redémarrer le worker avec les bons paramètres
+            _sfftWorker = new SfftWorker(_floatRing, _sfftStats, fftSize, hop, _sfftFrames);
+            _sfftWorker.Start();
+        }
+
         //
         // Formatage tension (évite la notation scientifique, garde une mantisse "stable")
         // - V si >= 1 V
@@ -432,13 +514,14 @@ namespace AudioHexViewer
 
             spectrumControl?.SetGlobalSampleSize(analysisSampleSize);
             spectrumControl?.UpdateHopSamples(analysisHopSamples);
+
         }
         //
 
         private void SetAnalysisSampleSize(int nSamples)
         {
-            if (nSamples < 2048) nSamples = 2048;
-            if (nSamples > 1048576) nSamples = 1048576;
+            if (nSamples < 8192) nSamples = 8192;
+            if (nSamples > 4194304) nSamples = 4194304;
 
             analysisSampleSize = nSamples;
             //analysisCursorStart = 0; // repart sur la fin du buffer
@@ -450,9 +533,16 @@ namespace AudioHexViewer
 
             spectrumControl?.SetGlobalSampleSize(analysisSampleSize);
             spectrumControl?.UpdateHopSamples(analysisHopSamples);
+
+            // (Étape 5) Restart immédiat du worker SFFT si la capture tourne
+            if (capture != null && capture.CaptureState == CaptureState.Capturing)
+            {
+                RestartSfftFromUi();
+            }
+
         }
         //
-        private readonly int[] _sampleSizeOptions = new[] { 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576 };
+        private readonly int[] _sampleSizeOptions = new[] { 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304 };
 
         // Options REW-style (en samples)
         private readonly int[] _bufferOptions = new[] { 16 * 1024, 32 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024 };
@@ -661,6 +751,13 @@ namespace AudioHexViewer
 
             histogramControl?.UpdateHopSamples(analysisHopSamples);
             spectrumControl?.UpdateHopSamples(analysisHopSamples);
+
+            // (Étape 5) Restart immédiat du worker SFFT si la capture tourne
+            if (capture != null && capture.CaptureState == CaptureState.Capturing)
+            {
+                RestartSfftFromUi();
+            }
+
         }
 
         private void RecomputeHopAndTimer()
@@ -754,6 +851,62 @@ namespace AudioHexViewer
         private void UpdateAnalysisFrame()
         {
             if (currentFormat == null) return;
+
+            // --- Étape 3 : afficher la FFT produite par le worker (pas de FFT UI) ---
+            int drained = 0;
+            SpectrumFrame? last = null;
+
+            while (_sfftFrames.TryDequeue(out var f))
+            {
+                last = f;
+                drained++;
+            }
+
+            if (drained > 0)
+                _uiFramesDrained += drained;
+
+            if (last != null && spectrumControl != null)
+            {
+                _lastFrameUi = last;
+
+                // Throttle: on draine toujours, mais on n'affiche qu'à 10 Hz max
+                double tNow = _uiSw.Elapsed.TotalSeconds;
+                bool canDisplay = (tNow - _uiLastDisplayT) >= UiDisplayPeriodSec;
+
+                if (canDisplay)
+                {
+                    spectrumControl.EnableExternalSpectrumMode(true);
+
+                    // Décimation adaptative (zoom-aware si SpectrumControl renvoie une vraie plage)
+                    var frameToShow = _lastFrameUi;
+
+                    var (fMin, fMax) = spectrumControl.GetVisibleFreqRangeHz();
+                    int px = spectrumControl.GetPlotPixelWidth();
+
+                    // budget points ~ 2 points/pixel (cap max pour éviter surcoût)
+                    int budget = Math.Min(200_000, Math.Max(2000, px * 2));
+
+                    frameToShow = DecimateFrameForDisplay(frameToShow, fMin, fMax, budget);
+
+
+                    spectrumControl.FeedExternalSpectrum(frameToShow);
+
+
+                    _uiFramesShown++;
+                    _uiLastDisplayT = tNow;
+                }
+
+
+                double t = _uiSw.Elapsed.TotalSeconds;
+                if (t - _uiLastRateT > 0.5)
+                {
+                    this.Text =
+                        $"AudioHexViewer | UI shown~{(_uiFramesShown / t):F1}/s drained~{(_uiFramesDrained / t):F1}/s (cap 10Hz) | " +
+                        $"AbsEnd={_lastFrameUi.AbsEnd} N={_lastFrameUi.FftSize} Fs={_lastFrameUi.SampleRate}";
+                    _uiLastRateT = t;
+                }
+            }
+
 
             int N = analysisSampleSize;
             if (N <= 0) return;
@@ -1761,6 +1914,35 @@ namespace AudioHexViewer
                     // ================================
 
                     currentFormat = capture.WaveFormat;
+                    
+                    // --- INIT nouveau ring buffer float (étape 1) ---
+                    if (currentFormat != null)
+                    {
+                        int fs = currentFormat.SampleRate;
+
+                        // Capacité = 2 secondes (simple et sûr pour debug/overlap)
+                        _floatRing = new RingBufferStereoFloat(fs * 8);
+
+                        // --- START worker hop/backfill (étape 2) ---
+                        // Paramètres temporaires fixes pour valider la cadence.
+                        // On rendra ça configurable via l'UI ensuite.
+                        //int fftSize = 8192;
+                        int fftSize = 262144;
+                        //int fftSize = 1048576;
+                        double overlap = 0.9375;
+                        //double overlap = 0 ;
+                        int hop = (int)(fftSize * (1.0 - overlap)); // 50% => hop = N/2
+
+                        _sfftWorker = new SfftWorker(_floatRing, _sfftStats, fftSize, hop, _sfftFrames);
+                        _sfftWorker.Start();
+
+                        _sfftStats.SetFormat(sampleRate: fs, fftSize: 0, hop: 0, overlapRequested: 0.0);
+                        _sfftStats.ResetCounters();
+                        _sfftStats.SetWorkerState("STOP");
+                        _sfftStats.SetLastError("");
+
+                    }
+
 
                     if (histogramControl != null && currentFormat != null)
                     {
@@ -1796,6 +1978,8 @@ namespace AudioHexViewer
                     // Rinitialisation de la pipeline d'analyse
                     ResetAnalysisPipeline();
 
+                    // (Étape 5) Démarre la pipeline SFFT (ring + worker) avec N/overlap UI courants
+                    RestartSfftFromUi();
 
                     // Démarre le générateur de fenêtres d'analyse (Histogram + Spectrum)
                     RecomputeHopAndTimer();
@@ -1839,6 +2023,16 @@ namespace AudioHexViewer
                     capture.RecordingStopped -= Capture_RecordingStopped;
                     capture.StopRecording();
                     analysisTimer?.Stop();
+
+                    // (Étape 5) Stop pipeline SFFT
+                    if (_sfftWorker != null)
+                    {
+                        _sfftWorker.Stop();
+                        _sfftWorker = null;
+                    }
+                    while (_sfftFrames.TryDequeue(out _)) { }
+                    _lastFrameUi = null;
+
                     lock (analysisLock)
                     {
                         lastAnalysisLeft = Array.Empty<int>();
@@ -1865,6 +2059,16 @@ namespace AudioHexViewer
                 capture.Dispose();
                 capture = null;
                 currentFormat = null;
+
+                // --- STOP nouveau ring float ---
+                _floatRing = null;
+                if (_sfftWorker != null)
+                {
+                    _sfftWorker.Stop();
+                    _sfftWorker = null;
+                }
+
+                _sfftStats.SetWorkerState("STOP");
 
                 UpdateStartButtonAppearance();       // remet READ vert
                 UpdateDeviceInfo();
@@ -2525,6 +2729,49 @@ namespace AudioHexViewer
             // Nombre de frames dans ce callback
             int bytesPerFrame = currentFormat.Channels * 4;
             int frameCount = bytesRecorded / bytesPerFrame;
+
+            // --- NOUVEAU: push du bloc float stéréo dans _floatRing (étape 1) ---
+            // Ici on lit 1 seule fois le buffer en float32 stéréo et on pousse dans le ring.
+            // Aucun impact sur l'ancien pipeline (int24), il reste en place.
+            if (_floatRing != null && frameCount > 0)
+            {
+                var tmpL = new float[frameCount];
+                var tmpR = new float[frameCount];
+
+                int p = 0;
+                for (int i = 0; i < frameCount; i++)
+                {
+                    // buffer = float32 interleaved: L,R,L,R...
+                    tmpL[i] = BitConverter.ToSingle(buffer, p); p += 4;
+                    tmpR[i] = BitConverter.ToSingle(buffer, p); p += 4;
+                }
+
+                _floatRing.PushBlock(tmpL, tmpR);
+                _sfftStats.SetAbsWrite(_floatRing.AbsWrite);
+
+                // --- DEBUG TEMPORAIRE (étape 2) : état worker + FFT/s estimé ---
+                var snap = _sfftStats.Snapshot();
+                if (snap.SampleRate > 0)
+                {
+                    double seconds = (double)snap.AbsWrite / snap.SampleRate;
+
+                    // LastError contient temporairement "FFT/s~..."
+                    string info = snap.LastError ?? "";
+
+                    if (this.IsHandleCreated)
+                    {
+                        this.BeginInvoke(new Action(() =>
+                        {
+                            //this.Text =
+                            //    $"AudioHexViewer | t={seconds:F2}s | AbsWrite={snap.AbsWrite} | " +
+                            //    $"Frames={snap.FramesComputed} Skip={snap.FramesSkipped} | {snap.WorkerState} | {info}";
+                        }));
+                    }
+                }
+
+
+
+            }
 
             // 1) Toujours alimenter le ring buffer REW-like
             List<RecordFrame>? recordSnapshotToSave = null;
@@ -3617,6 +3864,98 @@ namespace AudioHexViewer
 
 
         //
+        private SpectrumFrame DecimateFrameForDisplay(SpectrumFrame src, double fMin, double fMax, int maxPoints)
+        {
+            var fxIn = src.FreqAxisHz;
+            int nIn = fxIn.Length;
+
+            // clamp range
+            if (fMin < 0) fMin = 0;
+            double nyq = src.SampleRate > 0 ? src.SampleRate / 2.0 : fxIn[nIn - 1];
+            if (fMax <= 0 || fMax > nyq) fMax = nyq;
+            if (fMax <= fMin) { fMin = 0; fMax = nyq; }
+
+            // Trouver indices [i0..i1)
+            int i0 = LowerBound(fxIn, fMin);
+            int i1 = LowerBound(fxIn, fMax);
+            if (i1 <= i0 + 2)
+            {
+                // plage minuscule : pas de décimation
+                return SliceFrame(src, i0, Math.Min(nIn, i0 + maxPoints));
+            }
+
+            int span = i1 - i0;
+            if (span <= maxPoints)
+            {
+                // Pas besoin de décimer : on garde tous les bins visibles
+                return SliceFrame(src, i0, i1);
+            }
+
+            int nOut = maxPoints;
+            var fx = new double[nOut];
+            var l = src.LeftDbFs != null ? new double[nOut] : null;
+            var r = src.RightDbFs != null ? new double[nOut] : null;
+
+            for (int i = 0; i < nOut; i++)
+            {
+                int a = i0 + (int)((long)i * span / nOut);
+                int b = i0 + (int)((long)(i + 1) * span / nOut);
+                if (b <= a) b = a + 1;
+                if (b > i1) b = i1;
+
+                fx[i] = fxIn[(a + b - 1) / 2];
+
+                if (l != null)
+                {
+                    double m = -200.0;
+                    for (int k = a; k < b; k++) if (src.LeftDbFs[k] > m) m = src.LeftDbFs[k];
+                    l[i] = m;
+                }
+                if (r != null)
+                {
+                    double m = -200.0;
+                    for (int k = a; k < b; k++) if (src.RightDbFs[k] > m) m = src.RightDbFs[k];
+                    r[i] = m;
+                }
+            }
+
+            return new SpectrumFrame(src.SampleRate, src.FftSize, src.AbsEnd, l, r, fx);
+        }
+
+        private static int LowerBound(double[] a, double x)
+        {
+            int lo = 0, hi = a.Length;
+            while (lo < hi)
+            {
+                int mid = (lo + hi) >> 1;
+                if (a[mid] < x) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo;
+        }
+
+        private SpectrumFrame SliceFrame(SpectrumFrame src, int i0, int i1)
+        {
+            int n = i1 - i0;
+            var fx = new double[n];
+            Array.Copy(src.FreqAxisHz, i0, fx, 0, n);
+
+            double[]? l = null;
+            if (src.LeftDbFs != null)
+            {
+                l = new double[n];
+                Array.Copy(src.LeftDbFs, i0, l, 0, n);
+            }
+            double[]? r = null;
+            if (src.RightDbFs != null)
+            {
+                r = new double[n];
+                Array.Copy(src.RightDbFs, i0, r, 0, n);
+            }
+
+            return new SpectrumFrame(src.SampleRate, src.FftSize, src.AbsEnd, l, r, fx);
+        }
+
         //
 
     }
