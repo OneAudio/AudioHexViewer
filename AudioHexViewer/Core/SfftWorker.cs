@@ -13,6 +13,8 @@ namespace AudioHexViewer.Core
     {
         private readonly RingBufferStereoFloat _ring;
         private readonly SfftStats _stats;
+        private readonly int _sampleRate;
+
 
         private readonly int _fftSize;
         private readonly int _hop;
@@ -38,8 +40,9 @@ namespace AudioHexViewer.Core
         private long _framesAtLastRate;
         private double _lastRateTime;
 
-        public SfftWorker(RingBufferStereoFloat ring, SfftStats stats, int fftSize, int hop,
-                  ConcurrentQueue<SpectrumFrame> outQueue)
+        public SfftWorker(RingBufferStereoFloat ring, SfftStats stats, int sampleRate, int fftSize, int hop,
+          ConcurrentQueue<SpectrumFrame> outQueue)
+
 
         {
             if (fftSize <= 0) throw new ArgumentOutOfRangeException(nameof(fftSize));
@@ -48,6 +51,7 @@ namespace AudioHexViewer.Core
 
             _ring = ring ?? throw new ArgumentNullException(nameof(ring));
             _stats = stats ?? throw new ArgumentNullException(nameof(stats));
+            _sampleRate = sampleRate;
 
             _fftSize = fftSize;
             _hop = hop;
@@ -61,7 +65,7 @@ namespace AudioHexViewer.Core
             _window = BuildBlackmanHarris7(_fftSize, out _windowSum);
 
             // Axe fréquence
-            _freqAxis = AudioHexViewer.SpectrumAnalyzer.BuildFreqAxis(_stats.Snapshot().SampleRate, _fftSize);
+            _freqAxis = AudioHexViewer.SpectrumAnalyzer.BuildFreqAxis(_sampleRate, _fftSize);
 
         }
         //
@@ -132,7 +136,12 @@ namespace AudioHexViewer.Core
             {
                 _stats.SetWorkerState("RUN");
 
-                // Initialisation de l’index "nextHopEndAbs"
+                // Format/paramètres visibles côté UI
+                _stats.SetFormat(sampleRate: _sampleRate, fftSize: _fftSize, hop: _hop,
+                 overlapRequested01: 1.0 - ((double)_hop / _fftSize));
+
+
+                // Initialisation de l’index "nextHopEndAbs"    
                 // Règle simple : on attend d’avoir au moins N samples écrits,
                 // puis on positionne nextHopEndAbs = AbsWrite (arrondi sur un multiple de hop si besoin).
                 while (!ct.IsCancellationRequested)
@@ -141,6 +150,8 @@ namespace AudioHexViewer.Core
                     if (w >= _fftSize)
                     {
                         _nextHopEndAbs = w; // premier hop-end = "maintenant"
+                        _stats.SetNextEndAbs(_nextHopEndAbs);
+                        _stats.SetProgress01(1.0);
                         break;
                     }
                     _stats.SetWorkerState("WAIT");
@@ -148,8 +159,7 @@ namespace AudioHexViewer.Core
                 }
 
                 _stats.SetWorkerState("RUN");
-                _stats.SetFormat(sampleRate: _stats.Snapshot().SampleRate, fftSize: _fftSize, hop: _hop, overlapRequested: 1.0 - ((double)_hop / _fftSize));
-
+                
                 _sw.Restart();
                 _lastRateTime = 0;
                 _framesAtLastRate = 0;
@@ -162,10 +172,21 @@ namespace AudioHexViewer.Core
                     // Condition: w >= nextHopEndAbs
                     if (w < _nextHopEndAbs)
                     {
+                        // Publie où on en est dans la "course" vers la prochaine FFT.
+                        // lastEnd = end de la dernière FFT produite (ou end précédent logique)
+                        long lastEnd = _nextHopEndAbs - _hop;
+
+                        // Progression 0..1 : combien de samples du hop ont été acquis depuis lastEnd
+                        double p01 = (double)(w - lastEnd) / _hop;
+
+                        _stats.SetNextEndAbs(_nextHopEndAbs);
+                        _stats.SetProgress01(p01);
                         _stats.SetWorkerState("WAIT");
+
                         Thread.Sleep(1);
                         continue;
                     }
+
 
                     _stats.SetWorkerState("RUN");
 
@@ -233,6 +254,8 @@ namespace AudioHexViewer.Core
 
                     // Avance exactement d'un hop
                     _nextHopEndAbs += _hop;
+                    _stats.SetNextEndAbs(_nextHopEndAbs);
+                    _stats.SetProgress01(0.0); // on repart pour le hop suivant
 
                     // (Option) petit yield
                     Thread.Yield();

@@ -34,13 +34,34 @@ namespace AudioHexViewer
         //
         internal (double fMin, double fMax) GetVisibleFreqRangeHz()
         {
-            // Par défaut : toute la bande
-            // Si ton zoom existe déjà avec des variables internes (ex: _xMinHz/_xMaxHz),
-            // remplace ici UNIQUEMENT ces 2 valeurs par tes variables de zoom.
-            double fMin = 0.0;
-            double fMax = _sampleRate > 0 ? _sampleRate / 2.0 : 24000.0;
-            return (fMin, fMax);
+            // Si le chart n'est pas prêt, fallback bande entière
+            double nyq = _sampleRate > 0 ? _sampleRate / 2.0 : 24000.0;
+
+            if (chartSpectrum == null || chartSpectrum.ChartAreas.Count == 0)
+                return (0.0, nyq);
+
+            var area = chartSpectrum.ChartAreas[0];
+            var ax = area.AxisX;
+
+            // Cas zoom (ScaleView activé)
+            if (ax.ScaleView != null && ax.ScaleView.IsZoomed)
+            {
+                double vmin = ax.ScaleView.ViewMinimum;
+                double vmax = ax.ScaleView.ViewMaximum;
+                if (vmax > vmin)
+                    return (Math.Max(0.0, vmin), Math.Min(nyq, vmax));
+            }
+
+            // Sinon, la plage affichée courante (Minimum/Maximum)
+            double min = double.IsNaN(ax.Minimum) ? 0.0 : ax.Minimum;
+            double max = double.IsNaN(ax.Maximum) ? nyq : ax.Maximum;
+
+            if (max <= min)
+                return (0.0, nyq);
+
+            return (Math.Max(0.0, min), Math.Min(nyq, max));
         }
+
 
 
         /// <summary>

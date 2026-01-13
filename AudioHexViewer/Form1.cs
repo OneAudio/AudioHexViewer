@@ -309,7 +309,7 @@ namespace AudioHexViewer
             _lastFrameUi = null;
 
             // 5) Redémarrer le worker avec les bons paramètres
-            _sfftWorker = new SfftWorker(_floatRing, _sfftStats, fftSize, hop, _sfftFrames);
+            _sfftWorker = new SfftWorker(_floatRing, _sfftStats, fs, fftSize, hop, _sfftFrames);
             _sfftWorker.Start();
         }
 
@@ -900,9 +900,19 @@ namespace AudioHexViewer
                 double t = _uiSw.Elapsed.TotalSeconds;
                 if (t - _uiLastRateT > 0.5)
                 {
+                    var snap = _sfftStats.Snapshot();
+
+                    double expectedFps = (snap.Hop > 0 && snap.SampleRate > 0)
+                        ? (snap.SampleRate / (double)snap.Hop)
+                        : 0.0;
+
+                    double progPct = snap.Progress01 * 100.0;
+
                     this.Text =
                         $"AudioHexViewer | UI shown~{(_uiFramesShown / t):F1}/s drained~{(_uiFramesDrained / t):F1}/s (cap 10Hz) | " +
+                        $"FFT/s exp~{expectedFps:F1} hop={snap.Hop} | prog~{progPct:F0}% | " +
                         $"AbsEnd={_lastFrameUi.AbsEnd} N={_lastFrameUi.FftSize} Fs={_lastFrameUi.SampleRate}";
+
                     _uiLastRateT = t;
                 }
             }
@@ -1933,11 +1943,12 @@ namespace AudioHexViewer
                         //double overlap = 0 ;
                         int hop = (int)(fftSize * (1.0 - overlap)); // 50% => hop = N/2
 
-                        _sfftWorker = new SfftWorker(_floatRing, _sfftStats, fftSize, hop, _sfftFrames);
+                        _sfftWorker = new SfftWorker(_floatRing, _sfftStats, fs, fftSize, hop, _sfftFrames);
+
                         _sfftWorker.Start();
 
-                        _sfftStats.SetFormat(sampleRate: fs, fftSize: 0, hop: 0, overlapRequested: 0.0);
-                        _sfftStats.ResetCounters();
+                        _sfftStats.SetFormat(sampleRate: fs, fftSize: 0, hop: 0, overlapRequested01: 0.0);
+                        _sfftStats. ResetCounters();
                         _sfftStats.SetWorkerState("STOP");
                         _sfftStats.SetLastError("");
 
