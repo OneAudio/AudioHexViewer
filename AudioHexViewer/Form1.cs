@@ -106,6 +106,22 @@ namespace AudioHexViewer
         private readonly System.Diagnostics.Stopwatch _uiSw = System.Diagnostics.Stopwatch.StartNew();
         private double _uiLastRateT = 0;
 
+        // --- FFT Progress Ticker (UX) ---
+        // Reset à chaque affichage de courbe, animation autonome sur une durée = hop/Fs
+        private System.Windows.Forms.Label? _lblFftTicker;
+        private double _fftTickerPeriodSec = 0.0;
+        private double _fftTickerStartSec = 0.0;
+        private bool _fftTickerEnabled = false;
+
+        // --- Params "source de vérité" pour le ticker (mis à jour à chaque RestartSfftFromUi) ---
+        private int _tickerFs = 0;
+        private int _tickerN = 0;
+        private int _tickerHop = 0;
+        private double _tickerOverlap01 = 0.0;
+
+        // Phase : tant qu'on n'a pas affiché la 1ère FFT, on est en priming (période = N/Fs si overlap>0)
+        private bool _tickerPriming = true;
+
         // Throttle affichage UI (10 Hz => 0.10 s)
         private double _uiLastDisplayT = 0.0;
         private const double UiDisplayPeriodSec = 0.10; // 10 Hz
@@ -291,6 +307,9 @@ namespace AudioHexViewer
             if (overlap > 0.99) overlap = 0.99; // évite hop=0
 
             int hop = Math.Max(1, (int)Math.Round(fftSize * (1.0 - overlap)));
+            // Arme le compteur dès maintenant (priming), sans attendre la 1ère FFT
+            ArmFftTickerPriming(fs, fftSize, hop, overlap);
+
 
             // 2) Stop worker existant
             if (_sfftWorker != null)
@@ -311,6 +330,10 @@ namespace AudioHexViewer
             // 5) Redémarrer le worker avec les bons paramètres
             _sfftWorker = new SfftWorker(_floatRing, _sfftStats, fs, fftSize, hop, _sfftFrames);
             _sfftWorker.Start();
+            // Met à jour les stats visibles tout de suite (sans attendre la 1ère FFT)
+            _sfftStats.SetFormat(sampleRate: fs, fftSize: fftSize, hop: hop, overlapRequested01: overlap);
+
+
         }
 
         //
@@ -852,6 +875,9 @@ namespace AudioHexViewer
         {
             if (currentFormat == null) return;
 
+            // Le ticker doit bouger même si aucune nouvelle FFT n'arrive
+            TickFftTickerUi();
+
             // --- Étape 3 : afficher la FFT produite par le worker (pas de FFT UI) ---
             int drained = 0;
             SpectrumFrame? last = null;
@@ -863,7 +889,38 @@ namespace AudioHexViewer
             }
 
             if (drained > 0)
-                _uiFramesDrained += drained;
+            {
+                // --- Mise à jour du titre : DOIT tourner même sans nouvelle FFT ---
+                // (sinon prog% ne peut pas "compter" entre 2 FFT)
+                double t = _uiSw.Elapsed.TotalSeconds;
+            
+
+                if (t - _uiLastRateT > 0.2) // 5 Hz sur le titre (suffisant et stable)
+                {
+                    var snap = _sfftStats.Snapshot();
+
+                    double expectedFps = (snap.Hop > 0 && snap.SampleRate > 0)
+                        ? (snap.SampleRate / (double)snap.Hop)
+                        : 0.0;
+
+                    double progPct = snap.Progress01 * 100.0;
+
+                    // Option REW-like : n'affiche le prog que si c'est lent (sinon ça va trop vite)
+                    string progStr = (expectedFps < 1.0) ? $" prog~{progPct:F0}%" : "";
+
+                    string absStr = (_lastFrameUi != null)
+                        ? $" AbsEnd={_lastFrameUi.AbsEnd}"
+                        : $" AbsWrite={snap.AbsWrite}";
+
+                    this.Text =
+                        $"AudioHexViewer | UI shown~{(_uiFramesShown / Math.Max(0.001, t)):F1}/s drained~{(_uiFramesDrained / Math.Max(0.001, t)):F1}/s (cap 10Hz) | " +
+                        $"FFT/s exp~{expectedFps:F2} hop={snap.Hop}{progStr} |{absStr} N={snap.FftSize} Fs={snap.SampleRate}";
+
+                    _uiLastRateT = t;
+                }
+
+            _uiFramesDrained += drained;
+            }
 
             if (last != null && spectrumControl != null)
             {
@@ -891,30 +948,14 @@ namespace AudioHexViewer
 
                     spectrumControl.FeedExternalSpectrum(frameToShow);
 
-
                     _uiFramesShown++;
                     _uiLastDisplayT = tNow;
+
+                    // Reset du compteur 0..100% à chaque "affichage effectif" de la courbe
+                    ResetFftTickerFromCurrentStats();
+
                 }
 
-
-                double t = _uiSw.Elapsed.TotalSeconds;
-                if (t - _uiLastRateT > 0.5)
-                {
-                    var snap = _sfftStats.Snapshot();
-
-                    double expectedFps = (snap.Hop > 0 && snap.SampleRate > 0)
-                        ? (snap.SampleRate / (double)snap.Hop)
-                        : 0.0;
-
-                    double progPct = snap.Progress01 * 100.0;
-
-                    this.Text =
-                        $"AudioHexViewer | UI shown~{(_uiFramesShown / t):F1}/s drained~{(_uiFramesDrained / t):F1}/s (cap 10Hz) | " +
-                        $"FFT/s exp~{expectedFps:F1} hop={snap.Hop} | prog~{progPct:F0}% | " +
-                        $"AbsEnd={_lastFrameUi.AbsEnd} N={_lastFrameUi.FftSize} Fs={_lastFrameUi.SampleRate}";
-
-                    _uiLastRateT = t;
-                }
             }
 
 
@@ -1923,37 +1964,7 @@ namespace AudioHexViewer
                     }
                     // ================================
 
-                    currentFormat = capture.WaveFormat;
-                    
-                    // --- INIT nouveau ring buffer float (étape 1) ---
-                    if (currentFormat != null)
-                    {
-                        int fs = currentFormat.SampleRate;
-
-                        // Capacité = 2 secondes (simple et sûr pour debug/overlap)
-                        _floatRing = new RingBufferStereoFloat(fs * 8);
-
-                        // --- START worker hop/backfill (étape 2) ---
-                        // Paramètres temporaires fixes pour valider la cadence.
-                        // On rendra ça configurable via l'UI ensuite.
-                        //int fftSize = 8192;
-                        int fftSize = 262144;
-                        //int fftSize = 1048576;
-                        double overlap = 0.9375;
-                        //double overlap = 0 ;
-                        int hop = (int)(fftSize * (1.0 - overlap)); // 50% => hop = N/2
-
-                        _sfftWorker = new SfftWorker(_floatRing, _sfftStats, fs, fftSize, hop, _sfftFrames);
-
-                        _sfftWorker.Start();
-
-                        _sfftStats.SetFormat(sampleRate: fs, fftSize: 0, hop: 0, overlapRequested01: 0.0);
-                        _sfftStats. ResetCounters();
-                        _sfftStats.SetWorkerState("STOP");
-                        _sfftStats.SetLastError("");
-
-                    }
-
+                    currentFormat = capture.WaveFormat;                                  
 
                     if (histogramControl != null && currentFormat != null)
                     {
@@ -2043,6 +2054,7 @@ namespace AudioHexViewer
                     }
                     while (_sfftFrames.TryDequeue(out _)) { }
                     _lastFrameUi = null;
+                    StopFftTicker();
 
                     lock (analysisLock)
                     {
@@ -3138,6 +3150,8 @@ namespace AudioHexViewer
                 int sampleRate = currentFormat?.SampleRate ?? 48000;
 
                 spectrumControl = new SpectrumControl(GetAnalysisFrame, sampleRate);
+                _lblFftTicker = spectrumControl.FftTickerLabel;
+                _lblFftTicker.Visible = false; // optionnel
                 // THD : logique + persistance (UI lives in SpectrumControl) (button + checkbox in the Spectrum tab)
                 spectrumControl.ThdEnabledChanged += enabled => ApplyThdEnabled(enabled);
                 spectrumControl.ThdSettingsRequested += () => ShowThdSettings();
@@ -3965,6 +3979,148 @@ namespace AudioHexViewer
             }
 
             return new SpectrumFrame(src.SampleRate, src.FftSize, src.AbsEnd, l, r, fx);
+        }
+        //
+        private void ResetFftTickerFromCurrentStats()
+        {
+            if (_lblFftTicker == null) return;
+
+            // Si on n'a pas de paramètres valides, on masque (évite un "figé" trompeur)
+            if (_tickerFs <= 0 || _tickerN <= 0 || _tickerHop <= 0)
+            {
+                _fftTickerEnabled = false;
+                _lblFftTicker.Visible = false;
+                _lblFftTicker.Text = "";
+                return;
+            }
+
+            // Fin du priming : la 1ère FFT affichée marque le passage en steady
+            if (_tickerPriming)
+                _tickerPriming = false;
+
+            // À chaque FFT affichée, on repart à 0% pour l'intervalle SUIVANT
+            // Période en steady = hop/Fs
+            _fftTickerPeriodSec = _tickerHop / (double)_tickerFs;
+
+            // REW-like : si < 1 s, on cache
+            if (_fftTickerPeriodSec < 1.0)
+            {
+                _fftTickerEnabled = false;
+                _lblFftTicker.Visible = false;
+                _lblFftTicker.Text = "";
+                return;
+            }
+
+            _fftTickerEnabled = true;
+            _fftTickerStartSec = _uiSw.Elapsed.TotalSeconds;
+
+            _lblFftTicker.Visible = true;
+            _lblFftTicker.Text = "0%";
+        }
+        //
+        private void ArmFftTickerPriming(int fs, int fftSize, int hop, double overlap01)
+        {
+            if (_lblFftTicker == null) return;
+
+            _tickerFs = fs;
+            _tickerN = fftSize;
+            _tickerHop = hop;
+            _tickerOverlap01 = overlap01;
+
+            _tickerPriming = true;
+
+            // En priming, si overlap>0 : première FFT après N/Fs
+            // Si overlap==0 : hop==N donc N/Fs==hop/Fs, pas besoin d'une règle spéciale.
+            double periodSec = (overlap01 > 0.0) ? (fftSize / (double)fs)
+                                                 : (hop / (double)fs);
+
+            _fftTickerPeriodSec = periodSec;
+
+            // REW-like : si trop rapide, on cache dès le départ
+            if (_fftTickerPeriodSec < 1.0)
+            {
+                _fftTickerEnabled = false;
+                _lblFftTicker.Visible = false;
+                _lblFftTicker.Text = "";
+                return;
+            }
+
+            _fftTickerEnabled = true;
+            _fftTickerStartSec = _uiSw.Elapsed.TotalSeconds;
+            _lblFftTicker.Visible = true;
+            _lblFftTicker.Text = "0%";
+        }
+
+        //
+        private void ArmFftTicker(int sampleRate, int hop)
+        {
+            if (_lblFftTicker == null)
+                return;
+
+            double periodSec = (sampleRate > 0 && hop > 0) ? (hop / (double)sampleRate) : 0.0;
+
+            _fftTickerPeriodSec = periodSec;
+            _fftTickerStartSec = _uiSw.Elapsed.TotalSeconds;
+
+            // Règle : on n’affiche que si une FFT théorique prend >= 1 s
+            _fftTickerEnabled = (periodSec >= 1.0);
+
+            if (_fftTickerEnabled)
+            {
+                _lblFftTicker.Visible = true;
+                _lblFftTicker.Text = "0%";
+            }
+            else
+            {
+                _lblFftTicker.Visible = false;
+                _lblFftTicker.Text = "";
+            }
+        }
+
+        //
+        private void TickFftTickerUi()
+        {
+            if (_lblFftTicker == null) return;
+
+            if (!_fftTickerEnabled)
+            {
+                // évite une valeur figée résiduelle
+                _lblFftTicker.Text = "";
+                _lblFftTicker.Visible = false;
+                return;
+            }
+
+            double now = _uiSw.Elapsed.TotalSeconds;
+            double dt = now - _fftTickerStartSec;
+
+            if (_fftTickerPeriodSec <= 0.0) return;
+
+            double p01 = dt / _fftTickerPeriodSec;
+            if (p01 < 0.0) p01 = 0.0;
+            if (p01 > 1.0) p01 = 1.0;
+
+            int pct = (int)Math.Round(p01 * 100.0);
+
+            // Affiche 0..100%. Si la FFT tarde (dt > period), on reste à 100%.
+            _lblFftTicker.Text = pct.ToString() + "%";
+        }
+        //
+        private void StopFftTicker()
+        {
+            _fftTickerEnabled = false;
+            _fftTickerPeriodSec = 0.0;
+            _fftTickerStartSec = 0.0;
+            _tickerFs = 0;
+            _tickerN = 0;
+            _tickerHop = 0;
+            _tickerOverlap01 = 0.0;
+            _tickerPriming = true;
+
+            if (_lblFftTicker != null)
+            {
+                _lblFftTicker.Visible = false;
+                _lblFftTicker.Text = "";
+            }
         }
 
         //

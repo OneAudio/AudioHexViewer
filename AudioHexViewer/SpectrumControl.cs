@@ -100,6 +100,8 @@ namespace AudioHexViewer
         private Color LabelMajorColor => Color.FromArgb(_colors.LabelMajorArgb);
         private Color LabelMinorColor => Color.FromArgb(_colors.LabelMinorArgb);
 
+        public Label FftTickerLabel => lblFftTicker;
+
 
         private Color InfoTextColor => Color.FromArgb(_colors.InfoTextArgb);
 

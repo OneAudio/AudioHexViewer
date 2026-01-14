@@ -63,6 +63,7 @@
             chkCursorL = new CheckBox();
             chkCursorR = new CheckBox();
             panelStats = new Panel();
+            lblFftTicker = new Label();
             panelTop.SuspendLayout();
             tlpCursors.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)chartSpectrum).BeginInit();
@@ -74,6 +75,7 @@
             // panelTop
             // 
             panelTop.BorderStyle = BorderStyle.FixedSingle;
+            panelTop.Controls.Add(lblFftTicker);
             panelTop.Controls.Add(label2);
             panelTop.Controls.Add(label1);
             panelTop.Controls.Add(lblAvgProgress);
@@ -578,6 +580,14 @@
             panelStats.Size = new Size(1138, 430);
             panelStats.TabIndex = 0;
             // 
+            // lblFftTicker
+            // 
+            lblFftTicker.Location = new Point(991, 8);
+            lblFftTicker.Name = "lblFftTicker";
+            lblFftTicker.Size = new Size(37, 22);
+            lblFftTicker.TabIndex = 35;
+            lblFftTicker.Text = "\"\"";
+            // 
             // SpectrumControl
             // 
             BorderStyle = BorderStyle.FixedSingle;
@@ -653,5 +663,6 @@
         private Button btnC2Pk;
         private Button btnC2Set;
         private Label label2;
+        private Label lblFftTicker;
     }
 }
