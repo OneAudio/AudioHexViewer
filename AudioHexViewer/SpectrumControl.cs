@@ -2732,34 +2732,76 @@ namespace AudioHexViewer
             if (enabled)
                 liveTimer?.Stop();
         }
+        //
+        private static double[] ComplexBinsToDbFs(MathNet.Numerics.Complex32[] bins)
+        {
+            int n = bins.Length;
+            var db = new double[n];
 
+            for (int k = 0; k < n; k++)
+            {
+                // magnitude linéaire (amplitude)
+                double mag = bins[k].Magnitude;
+
+                // dBFS (0 dBFS = full-scale)
+                double v = (mag <= 0.0) ? -200.0 : 20.0 * Math.Log10(mag);
+
+                // clamp comme avant
+                if (v < -200.0) v = -200.0;
+                if (v > 0.0) v = 0.0;
+
+                db[k] = v;
+            }
+
+            return db;
+        }
+
+        //
         internal void FeedExternalSpectrum(AudioHexViewer.Core.SpectrumFrame frame)
         {
             if (frame == null) return;
 
             // Important : cette méthode doit être appelée sur le thread UI
-            // (Form1 le fera via Timer/UI).
             _useExternalSpectrum = true;
 
             lastFftSize = frame.FftSize;
             _sampleRate = frame.SampleRate;
 
-            // On injecte directement le résultat final (dBFS)
-            currentLeftSpectrum = frame.LeftDbFs;
-            currentRightSpectrum = frame.RightDbFs;
-            freqAxis = frame.FreqAxisHz;
+            double[]? specL = (frame.LeftBins != null) ? ComplexBinsToDbFs(frame.LeftBins) : null;
+            double[]? specR = (frame.RightBins != null) ? ComplexBinsToDbFs(frame.RightBins) : null;
 
-            // Pour le moment, on ne met pas à jour lastTimeLeft/Right (on les remettra plus tard si besoin)
-            lastTimeLeft = null;
-            lastTimeRight = null;
 
-            // Peak-hold / averaging : on peut choisir de les garder ou non.
-            // Pour l'instant : on garde peak-hold si activé, sans recalcul FFT.
+            if (specL == null && specR == null)
+            {
+                ClearSpectrum();
+                return;
+            }
+
+            // Averaging (piloté par comboAveraging -> avgTargetCount)
+            _post.ApplyAveraging(specL, specR, avgTargetCount,
+                out currentLeftSpectrum,
+                out currentRightSpectrum,
+                out int avgFill);
+
+            if (avgTargetCount <= 1)
+                UpdateAvgProgressUi(0, 0);
+            else
+                UpdateAvgProgressUi(avgFill, avgTargetCount);
+
+            // Peak-hold (sur la courbe déjà calculée et moyennée)
             bool peakEnabled = (chkPeakHold != null && chkPeakHold.Checked);
             _post.UpdatePeakHold(currentLeftSpectrum, currentRightSpectrum, peakEnabled);
 
+            // Axe fréquence
+            freqAxis = frame.FreqAxisHz;
+
+            // Temps non dispo en mode externe (pour l’instant)
+            lastTimeLeft = null;
+            lastTimeRight = null;
+
             UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
         }
+
 
         //
         private void AcquireOnce()

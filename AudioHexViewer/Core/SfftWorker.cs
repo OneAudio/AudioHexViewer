@@ -224,31 +224,25 @@ namespace AudioHexViewer.Core
                         Fourier.Forward(fftL, FourierOptions.Matlab);
                         Fourier.Forward(fftR, FourierOptions.Matlab);
 
-                        // Scale dBFS : full-scale = 1.0
-                        // Fenêtrage : on normalise comme SpectrumAnalyzer (2 / windowSum)
-                        double scale = 2.0 / (_windowSum > 0.0 ? _windowSum : N);
+                        // On publie uniquement les bins positifs [0..N/2] en complexe.
+                        // L'UI décidera ensuite : magnitude, dBFS, dBV, averaging, etc.
+                        int half = N / 2;
+                        var binsL = new MathNet.Numerics.Complex32[half + 1];
+                        var binsR = new MathNet.Numerics.Complex32[half + 1];
 
-                        var specDbL = new double[bins];
-                        var specDbR = new double[bins];
+                        // Normalisation amplitude : on garde la même logique que ton ancien dBFS
+                        // (équivalent à ton scale: 2 / windowSum)
+                        float scale = (float)(2.0 / _windowSum);
 
-                        for (int k = 0; k < bins; k++)
+                        for (int k = 0; k <= half; k++)
                         {
-                            double ampL = fftL[k].Magnitude * scale;
-                            double ampR = fftR[k].Magnitude * scale;
-
-                            double dbL = (ampL <= 0.0) ? -200.0 : 20.0 * System.Math.Log10(ampL);
-                            double dbR = (ampR <= 0.0) ? -200.0 : 20.0 * System.Math.Log10(ampR);
-
-                            if (dbL < -200.0) dbL = -200.0; if (dbL > 0.0) dbL = 0.0;
-                            if (dbR < -200.0) dbR = -200.0; if (dbR > 0.0) dbR = 0.0;
-
-                            specDbL[k] = dbL;
-                            specDbR[k] = dbR;
+                            binsL[k] = fftL[k] * scale;
+                            binsR[k] = fftR[k] * scale;
                         }
 
-                        // Publication : on envoie un frame "prêt à afficher"
+                        // Publication frame
                         int fs = _stats.Snapshot().SampleRate;
-                        var frame = new SpectrumFrame(fs, N, _nextHopEndAbs, specDbL, specDbR, _freqAxis);
+                        var frame = new SpectrumFrame(fs, N, _nextHopEndAbs, binsL, binsR, _freqAxis);
                         _outQueue.Enqueue(frame);
 
                         _stats.IncFramesComputed();

@@ -10,6 +10,7 @@ using AudioHexViewer.Core;
 using System.Collections.Concurrent;
 
 
+
 namespace AudioHexViewer
 {
     public partial class Form1 : Form
@@ -3886,67 +3887,122 @@ namespace AudioHexViewer
                 MessageBox.Show(this, ex.Message, "Export", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-
-
         //
-        private SpectrumFrame DecimateFrameForDisplay(SpectrumFrame src, double fMin, double fMax, int maxPoints)
+        private static SpectrumFrame DecimateFrameForDisplay(SpectrumFrame src, double fMin, double fMax, int maxPoints)
         {
             var fxIn = src.FreqAxisHz;
             int nIn = fxIn.Length;
+            if (nIn <= 0) return src;
 
-            // clamp range
-            if (fMin < 0) fMin = 0;
-            double nyq = src.SampleRate > 0 ? src.SampleRate / 2.0 : fxIn[nIn - 1];
-            if (fMax <= 0 || fMax > nyq) fMax = nyq;
-            if (fMax <= fMin) { fMin = 0; fMax = nyq; }
+            // bornes en indices (bins)
+            int i0 = Array.BinarySearch(fxIn, fMin);
+            if (i0 < 0) i0 = ~i0;
+            int i1 = Array.BinarySearch(fxIn, fMax);
+            if (i1 < 0) i1 = ~i1;
 
-            // Trouver indices [i0..i1)
-            int i0 = LowerBound(fxIn, fMin);
-            int i1 = LowerBound(fxIn, fMax);
-            if (i1 <= i0 + 2)
-            {
-                // plage minuscule : pas de décimation
-                return SliceFrame(src, i0, Math.Min(nIn, i0 + maxPoints));
-            }
+            i0 = Math.Max(0, Math.Min(nIn - 1, i0));
+            i1 = Math.Max(i0 + 1, Math.Min(nIn, i1));
 
-            int span = i1 - i0;
-            if (span <= maxPoints)
-            {
-                // Pas besoin de décimer : on garde tous les bins visibles
+            if (maxPoints <= 0) maxPoints = 2000;
+
+            // plage minuscule : pas de décimation
+            if (i1 - i0 <= maxPoints)
                 return SliceFrame(src, i0, i1);
-            }
 
             int nOut = maxPoints;
             var fx = new double[nOut];
-            var l = src.LeftDbFs != null ? new double[nOut] : null;
-            var r = src.RightDbFs != null ? new double[nOut] : null;
 
-            for (int i = 0; i < nOut; i++)
+            MathNet.Numerics.Complex32[]? l = (src.LeftBins != null) ? new MathNet.Numerics.Complex32[nOut] : null;
+            MathNet.Numerics.Complex32[]? r = (src.RightBins != null) ? new MathNet.Numerics.Complex32[nOut] : null;
+
+            double step = (double)(i1 - i0) / nOut;
+
+            for (int j = 0; j < nOut; j++)
             {
-                int a = i0 + (int)((long)i * span / nOut);
-                int b = i0 + (int)((long)(i + 1) * span / nOut);
+                int a = i0 + (int)Math.Floor(j * step);
+                int b = i0 + (int)Math.Floor((j + 1) * step);
+
+                if (a < i0) a = i0;
                 if (b <= a) b = a + 1;
                 if (b > i1) b = i1;
 
-                fx[i] = fxIn[(a + b - 1) / 2];
+                // fréquence représentative : centre du segment
+                int mid = (a + b) / 2;
+                if (mid >= i1) mid = i1 - 1;
+                fx[j] = fxIn[mid];
 
-                if (l != null)
+                // Gauche : on garde le bin de magnitude max dans le segment (préserve phase)
+                if (l != null && src.LeftBins != null)
                 {
-                    double m = -200.0;
-                    for (int k = a; k < b; k++) if (src.LeftDbFs[k] > m) m = src.LeftDbFs[k];
-                    l[i] = m;
+                    float maxMag = -1f;
+                    int kMax = a;
+
+                    for (int k = a; k < b; k++)
+                    {
+                        float mag = src.LeftBins[k].Magnitude;
+                        if (mag > maxMag)
+                        {
+                            maxMag = mag;
+                            kMax = k;
+                        }
+                    }
+                    l[j] = src.LeftBins[kMax];
                 }
-                if (r != null)
+
+                // Droite
+                if (r != null && src.RightBins != null)
                 {
-                    double m = -200.0;
-                    for (int k = a; k < b; k++) if (src.RightDbFs[k] > m) m = src.RightDbFs[k];
-                    r[i] = m;
+                    float maxMag = -1f;
+                    int kMax = a;
+
+                    for (int k = a; k < b; k++)
+                    {
+                        float mag = src.RightBins[k].Magnitude;
+                        if (mag > maxMag)
+                        {
+                            maxMag = mag;
+                            kMax = k;
+                        }
+                    }
+                    r[j] = src.RightBins[kMax];
                 }
             }
 
             return new SpectrumFrame(src.SampleRate, src.FftSize, src.AbsEnd, l, r, fx);
         }
 
+        private static SpectrumFrame SliceFrame(SpectrumFrame src, int i0, int i1)
+        {
+            var fxIn = src.FreqAxisHz;
+            int nIn = fxIn.Length;
+
+            i0 = Math.Max(0, Math.Min(nIn - 1, i0));
+            i1 = Math.Max(i0 + 1, Math.Min(nIn, i1));
+
+            int n = i1 - i0;
+
+            var fx = new double[n];
+            Array.Copy(fxIn, i0, fx, 0, n);
+
+            MathNet.Numerics.Complex32[]? l = null;
+            MathNet.Numerics.Complex32[]? r = null;
+
+            if (src.LeftBins != null)
+            {
+                l = new MathNet.Numerics.Complex32[n];
+                Array.Copy(src.LeftBins, i0, l, 0, n);
+            }
+
+            if (src.RightBins != null)
+            {
+                r = new MathNet.Numerics.Complex32[n];
+                Array.Copy(src.RightBins, i0, r, 0, n);
+            }
+
+            return new SpectrumFrame(src.SampleRate, src.FftSize, src.AbsEnd, l, r, fx);
+        }
+
+        //        
         private static int LowerBound(double[] a, double x)
         {
             int lo = 0, hi = a.Length;
@@ -3958,28 +4014,7 @@ namespace AudioHexViewer
             }
             return lo;
         }
-
-        private SpectrumFrame SliceFrame(SpectrumFrame src, int i0, int i1)
-        {
-            int n = i1 - i0;
-            var fx = new double[n];
-            Array.Copy(src.FreqAxisHz, i0, fx, 0, n);
-
-            double[]? l = null;
-            if (src.LeftDbFs != null)
-            {
-                l = new double[n];
-                Array.Copy(src.LeftDbFs, i0, l, 0, n);
-            }
-            double[]? r = null;
-            if (src.RightDbFs != null)
-            {
-                r = new double[n];
-                Array.Copy(src.RightDbFs, i0, r, 0, n);
-            }
-
-            return new SpectrumFrame(src.SampleRate, src.FftSize, src.AbsEnd, l, r, fx);
-        }
+        //
         //
         private void ResetFftTickerFromCurrentStats()
         {
