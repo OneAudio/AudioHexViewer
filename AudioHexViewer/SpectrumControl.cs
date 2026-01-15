@@ -677,8 +677,52 @@ namespace AudioHexViewer
             chartSpectrum.MouseDoubleClick += ChartSpectrum_MouseDoubleClick;
             chartSpectrum.MouseLeave += (s, e) => { /* optionnel : cacher texte */ };
 
+            // IMPORTANT : au démarrage, aucune frame n'a encore été injectée via FeedExternalSpectrum().
+            // Sans spectre initial, le chart reste "blanc" jusqu'à la première acquisition.
+            InitializeEmptySpectrumDisplay();
+
+            // Redessine une fois après le Load pour garantir un rendu même si la taille du contrôle
+            // n'était pas encore valide pendant le constructeur.
+            this.Load += (_, __) => UpdateSpectrumChartAndStats();
+
+
+        }
+        //
+        /// <summary>
+        /// Initialise un spectre "vide" (niveau plancher) pour forcer le rendu du graphe au démarrage.
+        /// UI only : ne touche pas au worker FFT.
+        /// </summary>
+        private void InitializeEmptySpectrumDisplay()
+        {
+            // Ne pas écraser un état déjà alimenté (cas rare : designer / reload)
+            if (freqAxis != null && (currentLeftSpectrum != null || currentRightSpectrum != null))
+                return;
+
+            // Valeurs "safe" pour permettre un premier rendu (axes/grille),
+            // remplacées dès la première FeedExternalSpectrum().
+            if (lastFftSize <= 0)
+                lastFftSize = 65536; // valeur présente dans FftSizeOptions
+            if (_sampleRate <= 0)
+                _sampleRate = 44100; // fallback, remplacé par le vrai sample rate ensuite
+
+            int bins = (lastFftSize / 2) + 1;
+
+            freqAxis = new double[bins];
+            currentLeftSpectrum = new double[bins];
+            currentRightSpectrum = null;
+
+            for (int i = 0; i < bins; i++)
+            {
+                freqAxis[i] = i * (double)_sampleRate / lastFftSize;
+                currentLeftSpectrum[i] = -200.0; // plancher d'affichage
+            }
+
+            UpdateWindowInfo();
+            UpdateOverlayInfo();
+            UpdateSpectrumChartAndStats();
         }
 
+        //
         private void EnsureVoltLayoutInit()
         {
             if (_voltLayoutInit) return;
@@ -1949,6 +1993,12 @@ namespace AudioHexViewer
                     int wIdx = comboWindow.Items.IndexOf(s.Window);
                     if (wIdx >= 0)
                         comboWindow.SelectedIndex = wIdx;
+                    // IMPORTANT : ApplySpectrumSettings() inhibe les events UI (SelectedIndexChanged)
+                    // via _isRestoringSettings. Donc on doit aussi synchroniser l'état interne
+                    // utilisé par le worker externe (SelectedWindowType).
+                    if (comboWindow.SelectedIndex >= 0)
+                        lastWindow = (WindowType)comboWindow.SelectedIndex;
+
                 }
 
                 // Log freq
@@ -1972,6 +2022,14 @@ namespace AudioHexViewer
                         if (aIdx >= 0)
                             comboAveraging.SelectedIndex = aIdx;
                     }
+                    // IMPORTANT : idem que pour la fenêtre.
+                    // Le handler SelectedIndexChanged n'est pas appelé pendant la restauration.
+                    // On met donc à jour l'état d'averaging réellement utilisé par FeedExternalSpectrum().
+                    _avgIsExponential = false;
+                    _avgExpAlpha = 0.0;
+                    avgTargetCount = (s.Averaging >= 2) ? s.Averaging : 1;
+                    ResetAveragingState();
+
                 }
 
                 // Niveau (FFT) : unité + calibration (dBFS -> dBV)
@@ -4650,5 +4708,6 @@ namespace AudioHexViewer
         {
 
         }
+
     }
 }
