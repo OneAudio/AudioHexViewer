@@ -245,13 +245,9 @@ namespace AudioHexViewer
         //private Font? _cursorBtnRegular;
         //private Font? _cursorBtnBold;
 
-        public delegate (int[] Left, int[] Right) SampleProvider(int sampleCount);
-
-        private readonly SampleProvider? _provider;
         private int _sampleRate;
         // Pas de rafraîchissement en samples (hop). 0 => pas de hop (mise à jour = taille fenêtre)
         private int _hopSamples = 0;
-        private System.Windows.Forms.Timer? liveTimer;
 
         private readonly SpectrumPostProcessor _post = new SpectrumPostProcessor();
 
@@ -800,14 +796,10 @@ namespace AudioHexViewer
             if (countExclFund > 19) countExclFund = 19;     // car on va ajouter +1 (fondamental) => max 20
             _metricsOpt.MaxHarmonics = countExclFund + 1;
 
-            // Rafraîchir selon contexte (pas de recalcul violent si pas prêt)
-            if (_provider != null && isLive)
-                AcquireOnce();
-            else
-            {
-                RebuildStatsRowsFromLabels();
-                chartSpectrum.Invalidate();
-            }
+            // Pas de recalcul FFT ici : le spectre vient du nouveau core (FeedExternalSpectrum).
+            RebuildStatsRowsFromLabels();
+            chartSpectrum.Invalidate();
+
         }
 
         //
@@ -986,14 +978,7 @@ namespace AudioHexViewer
         }
 
         //
-        public SpectrumControl(SampleProvider provider, int sampleRate)
-            : this()
-        {
-            _provider = provider;
-            UpdateSampleRate(sampleRate);
-            AcquireOnce();
-        }
-
+        
         public void UpdateSampleRate(int sampleRate)
         {
             if (sampleRate > 0)
@@ -1008,15 +993,8 @@ namespace AudioHexViewer
         {
             if (hopSamples < 0) hopSamples = 0;
             _hopSamples = hopSamples;
-
-            if (liveTimer != null && _sampleRate > 0 && lastFftSize > 0)
-            {
-                int step = _hopSamples > 0 ? _hopSamples : lastFftSize;
-                int intervalMs = (int)Math.Max(10, Math.Round((double)step * 1000.0 / _sampleRate));
-                liveTimer.Interval = intervalMs;
-            }
+                        
             UpdateOverlayInfo();
-
         }
 
         // Appelé par Form1 : force la taille FFT pour que Histogram + Spectrum utilisent la même fenêtre.
@@ -1054,9 +1032,10 @@ namespace AudioHexViewer
         {
             ResetAveragingState();
 
-            // Optionnel : forcer un nouveau calcul immédiat
-            AcquireOnce();
+            // Pas de recalcul immédiat ici : on attend la prochaine frame externe
+            chartSpectrum.Invalidate();
         }
+
 
         // 
         private void InitChartAppearance()
@@ -2720,49 +2699,19 @@ namespace AudioHexViewer
 
         public void StartFromRun(bool onceMode)
         {
-            liveTimer?.Stop();
-
-            if (onceMode)
-            {
-                isLive = false;
-                AcquireOnce();
-                UpdateRunButtonAppearance();
-            }
-            else
-            {
-
-                _hasEverRun = true; // Détécte que le run a été lancé au moins une fois
-
-                if (liveTimer == null)
-                {
-                    liveTimer = new System.Windows.Forms.Timer();
-                    liveTimer.Tick += (s, e) => AcquireOnce();
-                }
-
-                if (_sampleRate <= 0 || lastFftSize <= 0)
-                {
-                    liveTimer.Interval = 100;
-                }
-                else
-                {
-                    int step = _hopSamples > 0 ? _hopSamples : lastFftSize;
-                    int intervalMs = (int)Math.Max(10, Math.Round((double)step * 1000.0 / _sampleRate));
-                    liveTimer.Interval = intervalMs;
-                }
-
-                isLive = true;
-                AcquireOnce();
-                liveTimer.Start();
-                UpdateRunButtonAppearance();
-            }
+            // SpectrumControl ne démarre plus de calcul FFT.
+            // Il se contente d’afficher les frames externes reçues via FeedExternalSpectrum().
+            _hasEverRun = true;
+            isLive = true;
+            UpdateRunButtonAppearance();
         }
 
         public void StopFromRun()
         {
             isLive = false;
-            liveTimer?.Stop();
             UpdateRunButtonAppearance();
         }
+
         //
         private void ResetAveragingState()
         {
@@ -2796,11 +2745,9 @@ namespace AudioHexViewer
         internal void EnableExternalSpectrumMode(bool enabled)
         {
             _useExternalSpectrum = enabled;
-
-            // Si on passe en mode externe, on coupe le timer live interne pour éviter toute FFT UI.
-            if (enabled)
-                liveTimer?.Stop();
+            // Plus de timer FFT interne : rien à stopper ici.
         }
+
         //
         private static double[] ComplexBinsToDbFs(MathNet.Numerics.Complex32[] bins)
         {
@@ -2920,168 +2867,7 @@ namespace AudioHexViewer
         }
 
 
-        //
-        private void AcquireOnce()
-        {
-            if (_useExternalSpectrum)
-                return;
-
-            if (_provider == null || _sampleRate <= 0)
-                return;
-
-            // 1) Taille FFT
-            int N = (_forcedFftSize.HasValue && _forcedFftSize.Value > 0)
-                ? _forcedFftSize.Value
-                : (lastFftSize > 0 ? lastFftSize : 65536);
-
-            if (N < 512) N = 512;
-            lastFftSize = N;
-
-            UpdateOverlayInfo();
-
-            // 2) Durée correspondant à N échantillons
-            double msExact = (double)N * 1000.0 / _sampleRate;
-
-            // 3) Récupérer L/R
-            var (left, right) = _provider(N);
-            var leftSamples = left ?? Array.Empty<int>();
-            var rightSamples = right ?? Array.Empty<int>();
-
-            string mode = comboChannel.SelectedItem as string ?? "L+R";
-            bool wantLeft = (mode == "Left" || mode == "L+R");
-            bool wantRight = (mode == "Right" || mode == "L+R");
-
-            // On ne calcule que ce qui est affiché
-            var leftForFft = wantLeft ? leftSamples : Array.Empty<int>();
-            var rightForFft = wantRight ? rightSamples : Array.Empty<int>();
-
-
-            if (leftSamples.Length == 0 && rightSamples.Length == 0)
-            {
-                ClearSpectrum();
-                return;
-            }
-
-            // 4) Calcul complet d'une "frame" (buffers bruts + remove DC + fenêtre + FFT + axe freq)
-            bool removeDc = (chkRemoveDC != null && chkRemoveDC.Checked);
-
-            var options = new SpectrumOptions
-            {
-                WindowType = lastWindow,
-                RemoveDc = removeDc
-            };
-
-            SpectrumResult result = SpectrumAnalyzer.ComputeFrame(leftForFft, rightForFft, N, _sampleRate, options);
-
-            double[]? specL = result.LeftDbFs;
-            double[]? specR = result.RightDbFs;
-
-            if (specL == null && specR == null)
-            {
-                ClearSpectrum();
-                return;
-            }
-
-
-            // Averaging (count or exponential)
-            if (_avgIsExponential)
-            {
-                const double eps = 1e-30;
-
-                // init buffers
-                if (!_expAvgPrimed || _expAvgLinL == null || (specL != null && _expAvgLinL.Length != specL.Length))
-                {
-                    _expAvgPrimed = true;
-
-                    if (specL != null)
-                    {
-                        _expAvgLinL = new double[specL.Length];
-                        for (int i = 0; i < specL.Length; i++)
-                            _expAvgLinL[i] = Math.Pow(10.0, specL[i] / 20.0);
-                    }
-                    else _expAvgLinL = null;
-
-                    if (specR != null)
-                    {
-                        _expAvgLinR = new double[specR.Length];
-                        for (int i = 0; i < specR.Length; i++)
-                            _expAvgLinR[i] = Math.Pow(10.0, specR[i] / 20.0);
-                    }
-                    else _expAvgLinR = null;
-                }
-                else
-                {
-                    double a = _avgExpAlpha;
-                    double b = 1.0 - a;
-
-                    if (specL != null && _expAvgLinL != null)
-                    {
-                        for (int i = 0; i < specL.Length; i++)
-                        {
-                            double x = Math.Pow(10.0, specL[i] / 20.0);
-                            _expAvgLinL[i] = a * _expAvgLinL[i] + b * x;
-                        }
-                    }
-
-                    if (specR != null && _expAvgLinR != null)
-                    {
-                        for (int i = 0; i < specR.Length; i++)
-                        {
-                            double x = Math.Pow(10.0, specR[i] / 20.0);
-                            _expAvgLinR[i] = a * _expAvgLinR[i] + b * x;
-                        }
-                    }
-                }
-
-                // back to dBFS
-                if (_expAvgLinL != null)
-                {
-                    currentLeftSpectrum = new double[_expAvgLinL.Length];
-                    for (int i = 0; i < _expAvgLinL.Length; i++)
-                        currentLeftSpectrum[i] = 20.0 * Math.Log10(Math.Max(eps, _expAvgLinL[i]));
-                }
-                else currentLeftSpectrum = null;
-
-                if (_expAvgLinR != null)
-                {
-                    currentRightSpectrum = new double[_expAvgLinR.Length];
-                    for (int i = 0; i < _expAvgLinR.Length; i++)
-                        currentRightSpectrum[i] = 20.0 * Math.Log10(Math.Max(eps, _expAvgLinR[i]));
-                }
-                else currentRightSpectrum = null;
-
-                UpdateAvgProgressUi(0, 0);
-            }
-            else
-            {
-                _post.ApplyAveraging(specL, specR, avgTargetCount,
-                    out currentLeftSpectrum,
-                    out currentRightSpectrum,
-                    out int avgFill);
-
-                if (avgTargetCount <= 1)
-                    UpdateAvgProgressUi(0, 0);
-                else
-                    UpdateAvgProgressUi(avgFill, avgTargetCount);
-            }
-
-
-            // Peak-hold (sur la courbe déjà calculée et moyennée)
-            bool peakEnabled = (chkPeakHold != null && chkPeakHold.Checked);
-            _post.UpdatePeakHold(currentLeftSpectrum, currentRightSpectrum, peakEnabled);
-
-
-
-            // 8) Axe fréquence
-            freqAxis = result.FreqAxisHz;
-
-            // On garde une copie des derniers buffers temps pour les stats
-            lastTimeLeft = result.LeftTimeRaw;
-            lastTimeRight = result.RightTimeRaw;
-
-            // 9) Mise à jour graphe + stats temporelles
-            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
-        }
+        
         //
         //
         private void ChartSpectrum_MouseUp(object? sender, MouseEventArgs e)
@@ -4027,7 +3813,7 @@ namespace AudioHexViewer
             // On vide les séries
             chartSpectrum.Series.Clear();
 
-            // On remet les labels de stats
+                       // On remet les labels de stats
             lblLeftRms.Text = "RMS:";
             lblLeftPeak.Text = "Peak:";
             lblRightRms.Text = "";

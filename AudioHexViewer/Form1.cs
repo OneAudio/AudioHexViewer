@@ -3270,7 +3270,9 @@ namespace AudioHexViewer
             {
                 int sampleRate = currentFormat?.SampleRate ?? 48000;
 
-                spectrumControl = new SpectrumControl(GetAnalysisFrame, sampleRate);
+                spectrumControl = new SpectrumControl();
+                spectrumControl.UpdateSampleRate(sampleRate);
+
                 _lblFftTicker = spectrumControl.FftTickerLabel;
                 _lblFftTicker.Visible = false; // optionnel
                 // THD : logique + persistance (UI lives in SpectrumControl) (button + checkbox in the Spectrum tab)
