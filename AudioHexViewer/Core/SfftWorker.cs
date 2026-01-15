@@ -41,7 +41,8 @@ namespace AudioHexViewer.Core
         private double _lastRateTime;
 
         public SfftWorker(RingBufferStereoFloat ring, SfftStats stats, int sampleRate, int fftSize, int hop,
-          ConcurrentQueue<SpectrumFrame> outQueue)
+        object windowTypeObj, ConcurrentQueue<SpectrumFrame> outQueue)
+
 
 
         {
@@ -61,14 +62,14 @@ namespace AudioHexViewer.Core
 
             _outQueue = outQueue ?? throw new ArgumentNullException(nameof(outQueue));
 
-            // Fenêtre : pour l’instant BH7 (on connectera l’UI Windowing après)
-            _window = BuildBlackmanHarris7(_fftSize, out _windowSum);
+            // Fenêtre : dépend de la sélection UI (Windowing)
+            _window = BuildWindow(_fftSize, windowTypeObj, out _windowSum);
 
             // Axe fréquence
             _freqAxis = AudioHexViewer.SpectrumAnalyzer.BuildFreqAxis(_sampleRate, _fftSize);
 
         }
-        //
+        // 7-term Blackman-Harris window
         private static double[] BuildBlackmanHarris7(int N, out double sum)
         {
             sum = 0.0;
@@ -104,6 +105,118 @@ namespace AudioHexViewer.Core
                 sum += v;
             }
 
+            return win;
+        }
+        //
+        // 4-term Blackman-Harris window
+        private static double[] BuildBlackmanHarris4(int N, out double sum)
+        {
+            sum = 0.0;
+            var win = new double[N];
+            if (N <= 1)
+            {
+                if (N == 1) { win[0] = 1.0; sum = 1.0; }
+                return win;
+            }
+
+            // Coefficients BH4 (4-term Blackman-Harris, "classic" Nuttall / BH4)
+            // w[n] = a0 - a1 cos(w) + a2 cos(2w) - a3 cos(3w)
+            const double a0 = 0.35875;
+            const double a1 = 0.48829;
+            const double a2 = 0.14128;
+            const double a3 = 0.01168;
+
+            double denom = N - 1;
+            for (int n = 0; n < N; n++)
+            {
+                double w = 2.0 * System.Math.PI * n / denom;
+                double v = a0
+                         - a1 * System.Math.Cos(w)
+                         + a2 * System.Math.Cos(2.0 * w)
+                         - a3 * System.Math.Cos(3.0 * w);
+
+                win[n] = v;
+                sum += v;
+            }
+
+            return win;
+        }
+
+        //
+        private static double[] BuildWindow(int N, object windowTypeObj, out double sum)
+        {
+            string name = windowTypeObj?.ToString() ?? "BlackmanHarris7";
+
+            switch (name)
+            {
+                case "Rectangular":
+                    return BuildRectangular(N, out sum);
+
+                case "Hann":
+                    return BuildHann(N, out sum);
+
+                case "Hamming":
+                    return BuildHamming(N, out sum);
+
+                case "BlackmanHarris4":
+                    return BuildBlackmanHarris4(N, out sum);
+
+                case "BlackmanHarris7":
+                default:
+                    return BuildBlackmanHarris7(N, out sum);
+            }
+
+        }
+
+        private static double[] BuildRectangular(int N, out double sum)
+        {
+            sum = 0.0;
+            var win = new double[N];
+            for (int i = 0; i < N; i++)
+            {
+                win[i] = 1.0;
+                sum += 1.0;
+            }
+            return win;
+        }
+
+        private static double[] BuildHann(int N, out double sum)
+        {
+            sum = 0.0;
+            var win = new double[N];
+            if (N <= 1)
+            {
+                if (N == 1) { win[0] = 1.0; sum = 1.0; }
+                return win;
+            }
+
+            double denom = N - 1;
+            for (int n = 0; n < N; n++)
+            {
+                double v = 0.5 * (1.0 - System.Math.Cos(2.0 * System.Math.PI * n / denom));
+                win[n] = v;
+                sum += v;
+            }
+            return win;
+        }
+
+        private static double[] BuildHamming(int N, out double sum)
+        {
+            sum = 0.0;
+            var win = new double[N];
+            if (N <= 1)
+            {
+                if (N == 1) { win[0] = 1.0; sum = 1.0; }
+                return win;
+            }
+
+            double denom = N - 1;
+            for (int n = 0; n < N; n++)
+            {
+                double v = 0.54 - 0.46 * System.Math.Cos(2.0 * System.Math.PI * n / denom);
+                win[n] = v;
+                sum += v;
+            }
             return win;
         }
 

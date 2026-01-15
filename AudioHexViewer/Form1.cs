@@ -97,6 +97,12 @@ namespace AudioHexViewer
         private RingBufferStereoFloat? _floatRing;
         private readonly SfftStats _sfftStats = new SfftStats();
 
+        // --- Test source: sine 1 kHz -> écrit dans _floatRing à la place de la carte son ---
+        private bool _useSineTest = false;
+        private CancellationTokenSource? _sineCts;
+        private Task? _sineTask;
+
+
         private SfftWorker? _sfftWorker;
 
         private readonly ConcurrentQueue<SpectrumFrame> _sfftFrames = new ConcurrentQueue<SpectrumFrame>();
@@ -291,6 +297,90 @@ namespace AudioHexViewer
             return (db - DbMin) / (0.0 - DbMin) * 100.0;
         }
         //
+        private void StartSineTestSource(int sampleRate, double freqHz = 1000.0, double amp = 0.25)
+        {
+            if (_floatRing == null) return;
+            if (_sineTask != null) return;
+
+            _sineCts = new CancellationTokenSource();
+            var ct = _sineCts.Token;
+
+            _sineTask = Task.Run(() =>
+            {
+                // écrit par paquets pour réduire la charge
+                int chunk = 1024;
+                var l = new float[chunk];
+                var r = new float[chunk];
+
+                double phase = 0.0;
+                double dphi = 2.0 * Math.PI * freqHz / sampleRate;
+
+                var sw = Stopwatch.StartNew();
+                long total = 0;
+
+                while (!ct.IsCancellationRequested)
+                {
+                    for (int i = 0; i < chunk; i++)
+                    {
+                        float v = (float)(amp * Math.Sin(phase));
+                        phase += dphi;
+                        if (phase > 2.0 * Math.PI) phase -= 2.0 * Math.PI;
+
+                        l[i] = v;
+                        r[i] = v;
+                    }
+
+                    // Écrit dans le ring (remplace l'entrée carte son)
+                    _floatRing.PushBlock(l, r);
+
+                    total += chunk;
+
+                    // Throttle pour se caler sur le temps réel (~Fs)
+                    // Temps théorique écoulé pour total samples
+                    double targetSec = total / (double)sampleRate;
+                    double nowSec = sw.Elapsed.TotalSeconds;
+                    double sleepSec = targetSec - nowSec;
+
+                    if (sleepSec > 0.001)
+                        Thread.Sleep((int)(sleepSec * 1000.0));
+                    else
+                        Thread.Yield();
+                }
+            });
+        }
+        //
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == Keys.F9)
+            {
+                _useSineTest = !_useSineTest;
+                MessageBox.Show(_useSineTest
+                    ? "Sine test ON (1 kHz). Redémarre READ."
+                    : "Sine test OFF (carte son). Redémarre READ.");
+                return true;
+            }
+
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        //
+        private void StopSineTestSource()
+        {
+            try
+            {
+                _sineCts?.Cancel();
+                _sineTask?.Wait(500);
+            }
+            catch { /* ignore */ }
+            finally
+            {
+                _sineTask = null;
+                _sineCts?.Dispose();
+                _sineCts = null;
+            }
+        }
+        //
+        //
         private void RestartSfftFromUi()
         {
             // Ne rien faire si on n'est pas en acquisition
@@ -307,7 +397,13 @@ namespace AudioHexViewer
             if (overlap < 0.0) overlap = 0.0;
             if (overlap > 0.99) overlap = 0.99; // évite hop=0
 
+            // Calcul du hop
             int hop = Math.Max(1, (int)Math.Round(fftSize * (1.0 - overlap)));
+
+            //// Fenêtre sélectionnée dans la GUI (SpectrumControl)
+            //var winType = spectrumControl?.SelectedWindowType
+            //              ?? SpectrumControl.WindowType.BlackmanHarris7;
+
             // Arme le compteur dès maintenant (priming), sans attendre la 1ère FFT
             ArmFftTickerPriming(fs, fftSize, hop, overlap);
 
@@ -329,7 +425,10 @@ namespace AudioHexViewer
             _lastFrameUi = null;
 
             // 5) Redémarrer le worker avec les bons paramètres
-            _sfftWorker = new SfftWorker(_floatRing, _sfftStats, fs, fftSize, hop, _sfftFrames);
+            var windowTypeObj = spectrumControl?.SelectedWindowType ?? (object)"BlackmanHarris7";
+            _sfftWorker = new SfftWorker(_floatRing, _sfftStats, fs, fftSize, hop, windowTypeObj, _sfftFrames);
+
+
             _sfftWorker.Start();
             // Met à jour les stats visibles tout de suite (sans attendre la 1ère FFT)
             _sfftStats.SetFormat(sampleRate: fs, fftSize: fftSize, hop: hop, overlapRequested01: overlap);
@@ -999,6 +1098,18 @@ namespace AudioHexViewer
         public Form1()
         {
             InitializeComponent();
+
+            // Relance le SFFT quand l'utilisateur change la fenêtre
+            if (spectrumControl != null)
+            {
+                spectrumControl.WindowTypeChangedForExternalFft += (_, __) =>
+                {
+                    // Si le SFFT n'est pas démarré, ne rien faire.
+                    // Si tu as un bool de run, utilise-le, sinon on fait simple :
+                    if (_sfftWorker != null)
+                        RestartSfftFromUi();
+                };
+            }
 
             //InitCursorsMenu();
 
@@ -1999,10 +2110,17 @@ namespace AudioHexViewer
                     capture.StartRecording();
 
                     // Rinitialisation de la pipeline d'analyse
-                    ResetAnalysisPipeline();
+                    ResetAnalysisPipeline();                    
 
                     // (Étape 5) Démarre la pipeline SFFT (ring + worker) avec N/overlap UI courants
                     RestartSfftFromUi();
+
+                    // --- START sine test (après création de _floatRing dans RestartSfftFromUi) ---
+                    if (_useSineTest && currentFormat != null)
+                    {
+                        StartSineTestSource(currentFormat.SampleRate, 1000.0, 0.25);
+                    }
+
 
                     // Démarre le générateur de fenêtres d'analyse (Histogram + Spectrum)
                     RecomputeHopAndTimer();
@@ -2098,6 +2216,8 @@ namespace AudioHexViewer
                 UpdateDeviceInfo();
                 UpdateDeviceSummary();
                 UpdateOverlayMenuCaptions();
+                StopSineTestSource();
+
 
             }
         }
@@ -2757,7 +2877,7 @@ namespace AudioHexViewer
             // --- NOUVEAU: push du bloc float stéréo dans _floatRing (étape 1) ---
             // Ici on lit 1 seule fois le buffer en float32 stéréo et on pousse dans le ring.
             // Aucun impact sur l'ancien pipeline (int24), il reste en place.
-            if (_floatRing != null && frameCount > 0)
+            if (!_useSineTest && _floatRing != null && frameCount > 0) // et pas en test sinusoïdal
             {
                 var tmpL = new float[frameCount];
                 var tmpR = new float[frameCount];
@@ -3160,28 +3280,19 @@ namespace AudioHexViewer
                 spectrumControl.ApplyThdSettings(_session.Spectrum.Thd);
                 spectrumControl.SetThdMeasuresEnabled(_session.Spectrum.EnableThdMeasures);
                 spectrumControl.SetThdEnabledUi(_session.Spectrum.EnableThdMeasures);
-                // if (menuC1Enabled != null) spectrumControl.CursorLeftEnabled = menuC1Enabled.Checked;
-                // if (menuC2Enabled != null) spectrumControl.CursorRightEnabled = menuC2Enabled.Checked;
-
-                // // Track (état menu)
-                // if (menuC1TrackLeft != null && menuC1TrackLeft.Checked) spectrumControl.C1TrackMode = SpectrumControl.CursorTrackMode.Left;
-                // else if (menuC1TrackRight != null && menuC1TrackRight.Checked) spectrumControl.C1TrackMode = SpectrumControl.CursorTrackMode.Right;
-                // else
-
-                //     spectrumControl.C1TrackMode = SpectrumControl.CursorTrackMode.Auto;
-
-                // if (menuC2TrackLeft != null && menuC2TrackLeft.Checked) spectrumControl.C2TrackMode = SpectrumControl.CursorTrackMode.Left;
-                // else if (menuC2TrackRight != null && menuC2TrackRight.Checked) spectrumControl.C2TrackMode = SpectrumControl.CursorTrackMode.Right;
-                // else
-                //     spectrumControl.C2TrackMode = SpectrumControl.CursorTrackMode.Auto;
-
-
+   
                 spectrumControl.RunRequested += EnsureReadRunning;
                 spectrumControl.RunStateChanged += running =>
                 {
                     _spectrumRunning = running;
                     if (running) EnsureReadRunning();
                     else EnsureReadStoppedIfNoTabRunning();
+                };
+                // Window change -> recrée le worker SFFT pour appliquer immédiatement la nouvelle fenêtre
+                spectrumControl.WindowTypeChangedForExternalFft += (_, __) =>
+                {
+                    if (_sfftWorker != null)
+                        RestartSfftFromUi();
                 };
 
                 RestoreOverlayState();

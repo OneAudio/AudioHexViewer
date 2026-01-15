@@ -277,7 +277,10 @@ namespace AudioHexViewer
         private int lastFftSize;
         private int? _forcedFftSize = null;
         private WindowType lastWindow = WindowType.Rectangular;
-        //private ChannelMode lastChannel = ChannelMode.Both;
+
+        // Expose la fenêtre réellement sélectionnée (utile pour le worker externe SFFT)
+        public WindowType SelectedWindowType => lastWindow;
+
 
         // Averaging
         private int avgTargetCount = 1;
@@ -410,7 +413,7 @@ namespace AudioHexViewer
         private double _cursorTargetHzL = 1000.0; // valeur init au choix
         private double _cursorTargetHzR = 1000.0;
 
-
+        public event EventHandler? WindowTypeChangedForExternalFft;
 
         // État axe X logarithmique (pour redessin manuel des sous-divisions)
         private bool _xAxisIsLog = false;
@@ -1216,8 +1219,18 @@ namespace AudioHexViewer
             comboWindow.SelectedIndex = 0; // Fênêtre par défaut : 0= Rectangulaire
             comboWindow.SelectedIndexChanged += (s, e) =>
             {
-                lastWindow = (WindowType)comboWindow.SelectedIndex;
+                if (_isRestoringSettings)
+                    return;
+
+                var newWin = (WindowType)comboWindow.SelectedIndex;
+                if (newWin == lastWindow)
+                    return;
+
+                lastWindow = newWin;
+                WindowTypeChangedForExternalFft?.Invoke(this, EventArgs.Empty);
             };
+
+
 
             // Averaging
             comboAveraging.Items.Clear();
