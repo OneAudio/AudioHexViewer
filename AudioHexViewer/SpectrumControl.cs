@@ -285,6 +285,14 @@ namespace AudioHexViewer
         // Averaging
         private int avgTargetCount = 1;
 
+        // --- Exponential averaging (magnitude-domain) ---
+        private bool _avgIsExponential = false;
+        private double _avgExpAlpha = 0.0;             // ex: 0.94
+        private bool _expAvgPrimed = false;
+        private double[]? _expAvgLinL = null;
+        private double[]? _expAvgLinR = null;
+
+
         // Spectres courants & axe fréquence
         private double[]? currentLeftSpectrum;
         private double[]? currentRightSpectrum;
@@ -1232,23 +1240,62 @@ namespace AudioHexViewer
 
 
 
-            // Averaging
+            // Averaging options
             comboAveraging.Items.Clear();
             comboAveraging.Items.Add("None");
-            int[] av = { 2, 4, 8, 16, 32, 64, 128 };
-            foreach (int a in av)
-                comboAveraging.Items.Add(a.ToString());
+
+            int[] av = new[] { 2, 4, 8, 16, 32, 64, 128 };
+            foreach (var a in av) comboAveraging.Items.Add(a.ToString(CultureInfo.InvariantCulture));
+
+            // Exponential options (alpha)
+            comboAveraging.Items.Add("Exponential 0.5");
+            comboAveraging.Items.Add("Exponential 0.75");
+            comboAveraging.Items.Add("Exponential 0.88");
+            comboAveraging.Items.Add("Exponential 0.94");
+            comboAveraging.Items.Add("Exponential 0.97");
+
+            // Default
             comboAveraging.SelectedIndex = 0;
 
             comboAveraging.SelectedIndexChanged += (s, e) =>
             {
-                if (comboAveraging.SelectedIndex == 0)
+                if (_isRestoringSettings) return;
+
+                string txt = comboAveraging.SelectedItem as string ?? "None";
+
+                _avgIsExponential = false;
+                _avgExpAlpha = 0.0;
+
+                if (txt.StartsWith("Exponential", StringComparison.OrdinalIgnoreCase))
+                {
+                    // format: "Exponential 0.94"
+                    var parts = txt.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length >= 2 &&
+                        double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double a))
+                    {
+                        _avgIsExponential = true;
+                        _avgExpAlpha = a;
+                    }
+
+                    // on garde avgTargetCount à 1 (pas utilisé en mode exp)
                     avgTargetCount = 1;
+                }
+                else if (txt.Equals("None", StringComparison.OrdinalIgnoreCase))
+                {
+                    avgTargetCount = 1;
+                }
+                else if (int.TryParse(txt, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) && n >= 2)
+                {
+                    avgTargetCount = n;
+                }
                 else
-                    avgTargetCount = av[comboAveraging.SelectedIndex - 1];
+                {
+                    avgTargetCount = 1;
+                }
 
                 ResetAveragingState();
             };
+
             //
             // Sélection AC/DC
             chkRemoveDC.CheckedChanged += (s, e) =>
@@ -2720,8 +2767,17 @@ namespace AudioHexViewer
         private void ResetAveragingState()
         {
             _post.ResetAveragingState();
-            UpdateAvgProgressUi(0, avgTargetCount);
+
+            _expAvgPrimed = false;
+            _expAvgLinL = null;
+            _expAvgLinR = null;
+
+            if (_avgIsExponential)
+                UpdateAvgProgressUi(0, 0);
+            else
+                UpdateAvgProgressUi(0, avgTargetCount);
         }
+
 
         //
         // ---------------- PEAK HOLD ----------------
@@ -2768,8 +2824,41 @@ namespace AudioHexViewer
 
             return db;
         }
-
         //
+        private static double[] ComplexBinsToPower(MathNet.Numerics.Complex32[] bins)
+        {
+            int n = bins.Length;
+            var p = new double[n];
+            for (int k = 0; k < n; k++)
+            {
+                // |bin|^2 = re^2 + im^2  (POWER linéaire)
+                float re = bins[k].Real;
+                float im = bins[k].Imaginary;
+                p[k] = (double)re * re + (double)im * im;
+            }
+            return p;
+        }
+
+        private static double[] PowerToDbFs(double[] power)
+        {
+            int n = power.Length;
+            var db = new double[n];
+
+            for (int k = 0; k < n; k++)
+            {
+                double p = power[k];
+                double v = (p <= 0.0) ? -200.0 : 10.0 * Math.Log10(p); // 10log10(power)
+
+                if (v < -200.0) v = -200.0;
+                if (v > 0.0) v = 0.0;
+
+                db[k] = v;
+            }
+
+            return db;
+        }
+
+        // Alimente une frame de spectre externe (calculée hors UI)
         internal void FeedExternalSpectrum(AudioHexViewer.Core.SpectrumFrame frame)
         {
             if (frame == null) return;
@@ -2780,26 +2869,41 @@ namespace AudioHexViewer
             lastFftSize = frame.FftSize;
             _sampleRate = frame.SampleRate;
 
-            double[]? specL = (frame.LeftBins != null) ? ComplexBinsToDbFs(frame.LeftBins) : null;
-            double[]? specR = (frame.RightBins != null) ? ComplexBinsToDbFs(frame.RightBins) : null;
+            double[]? powL = (frame.LeftBins != null) ? ComplexBinsToPower(frame.LeftBins) : null;
+            double[]? powR = (frame.RightBins != null) ? ComplexBinsToPower(frame.RightBins) : null;
 
 
-            if (specL == null && specR == null)
+            if (powL == null && powR == null)
             {
                 ClearSpectrum();
                 return;
             }
 
-            // Averaging (piloté par comboAveraging -> avgTargetCount)
-            _post.ApplyAveraging(specL, specR, avgTargetCount,
-                out currentLeftSpectrum,
-                out currentRightSpectrum,
+            // Averaging (POWER) : Count / Exponential / None
+            SpectrumPostProcessor.AveragingMode mode;
+            if (_avgIsExponential)
+                mode = SpectrumPostProcessor.AveragingMode.Exponential;
+            else if (avgTargetCount <= 1)
+                mode = SpectrumPostProcessor.AveragingMode.None;
+            else
+                mode = SpectrumPostProcessor.AveragingMode.Count;
+
+            _post.ApplyAveragingPower(powL, powR, mode, avgTargetCount, _avgExpAlpha,
+                out double[]? outPowL,
+                out double[]? outPowR,
                 out int avgFill);
 
-            if (avgTargetCount <= 1)
+            // Conversion POWER -> dBFS pour l’affichage/peak-hold
+            currentLeftSpectrum = (outPowL != null) ? PowerToDbFs(outPowL) : null;
+            currentRightSpectrum = (outPowR != null) ? PowerToDbFs(outPowR) : null;
+
+            // Progression UI : uniquement en mode Count
+            if (mode != SpectrumPostProcessor.AveragingMode.Count || avgTargetCount <= 1)
                 UpdateAvgProgressUi(0, 0);
             else
                 UpdateAvgProgressUi(avgFill, avgTargetCount);
+
+
 
             // Peak-hold (sur la courbe déjà calculée et moyennée)
             bool peakEnabled = (chkPeakHold != null && chkPeakHold.Checked);
@@ -2879,17 +2983,88 @@ namespace AudioHexViewer
             }
 
 
-            // Averaging (piloté par comboAveraging -> avgTargetCount)
-            _post.ApplyAveraging(specL, specR, avgTargetCount,
-                out currentLeftSpectrum,
-                out currentRightSpectrum,
-                out int avgFill);
+            // Averaging (count or exponential)
+            if (_avgIsExponential)
+            {
+                const double eps = 1e-30;
 
+                // init buffers
+                if (!_expAvgPrimed || _expAvgLinL == null || (specL != null && _expAvgLinL.Length != specL.Length))
+                {
+                    _expAvgPrimed = true;
 
-            if (avgTargetCount <= 1)
+                    if (specL != null)
+                    {
+                        _expAvgLinL = new double[specL.Length];
+                        for (int i = 0; i < specL.Length; i++)
+                            _expAvgLinL[i] = Math.Pow(10.0, specL[i] / 20.0);
+                    }
+                    else _expAvgLinL = null;
+
+                    if (specR != null)
+                    {
+                        _expAvgLinR = new double[specR.Length];
+                        for (int i = 0; i < specR.Length; i++)
+                            _expAvgLinR[i] = Math.Pow(10.0, specR[i] / 20.0);
+                    }
+                    else _expAvgLinR = null;
+                }
+                else
+                {
+                    double a = _avgExpAlpha;
+                    double b = 1.0 - a;
+
+                    if (specL != null && _expAvgLinL != null)
+                    {
+                        for (int i = 0; i < specL.Length; i++)
+                        {
+                            double x = Math.Pow(10.0, specL[i] / 20.0);
+                            _expAvgLinL[i] = a * _expAvgLinL[i] + b * x;
+                        }
+                    }
+
+                    if (specR != null && _expAvgLinR != null)
+                    {
+                        for (int i = 0; i < specR.Length; i++)
+                        {
+                            double x = Math.Pow(10.0, specR[i] / 20.0);
+                            _expAvgLinR[i] = a * _expAvgLinR[i] + b * x;
+                        }
+                    }
+                }
+
+                // back to dBFS
+                if (_expAvgLinL != null)
+                {
+                    currentLeftSpectrum = new double[_expAvgLinL.Length];
+                    for (int i = 0; i < _expAvgLinL.Length; i++)
+                        currentLeftSpectrum[i] = 20.0 * Math.Log10(Math.Max(eps, _expAvgLinL[i]));
+                }
+                else currentLeftSpectrum = null;
+
+                if (_expAvgLinR != null)
+                {
+                    currentRightSpectrum = new double[_expAvgLinR.Length];
+                    for (int i = 0; i < _expAvgLinR.Length; i++)
+                        currentRightSpectrum[i] = 20.0 * Math.Log10(Math.Max(eps, _expAvgLinR[i]));
+                }
+                else currentRightSpectrum = null;
+
                 UpdateAvgProgressUi(0, 0);
+            }
             else
-                UpdateAvgProgressUi(avgFill, avgTargetCount);
+            {
+                _post.ApplyAveraging(specL, specR, avgTargetCount,
+                    out currentLeftSpectrum,
+                    out currentRightSpectrum,
+                    out int avgFill);
+
+                if (avgTargetCount <= 1)
+                    UpdateAvgProgressUi(0, 0);
+                else
+                    UpdateAvgProgressUi(avgFill, avgTargetCount);
+            }
+
 
             // Peak-hold (sur la courbe déjà calculée et moyennée)
             bool peakEnabled = (chkPeakHold != null && chkPeakHold.Checked);

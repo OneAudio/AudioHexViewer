@@ -16,6 +16,7 @@
         private void InitializeComponent()
         {
             panelTop = new Panel();
+            lblFftTicker = new Label();
             label2 = new Label();
             label1 = new Label();
             lblAvgProgress = new Label();
@@ -63,7 +64,6 @@
             chkCursorL = new CheckBox();
             chkCursorR = new CheckBox();
             panelStats = new Panel();
-            lblFftTicker = new Label();
             panelTop.SuspendLayout();
             tlpCursors.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)chartSpectrum).BeginInit();
@@ -103,6 +103,14 @@
             panelTop.Size = new Size(1138, 70);
             panelTop.TabIndex = 1;
             // 
+            // lblFftTicker
+            // 
+            lblFftTicker.Location = new Point(991, 8);
+            lblFftTicker.Name = "lblFftTicker";
+            lblFftTicker.Size = new Size(37, 22);
+            lblFftTicker.TabIndex = 35;
+            lblFftTicker.Text = "\"\"";
+            // 
             // label2
             // 
             label2.AutoSize = true;
@@ -129,7 +137,7 @@
             lblAvgProgress.AutoSize = true;
             lblAvgProgress.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
             lblAvgProgress.ForeColor = SystemColors.HotTrack;
-            lblAvgProgress.Location = new Point(373, 16);
+            lblAvgProgress.Location = new Point(391, 14);
             lblAvgProgress.Name = "lblAvgProgress";
             lblAvgProgress.Size = new Size(51, 21);
             lblAvgProgress.TabIndex = 14;
@@ -194,7 +202,7 @@
             // 
             // btnResetAvg
             // 
-            btnResetAvg.Location = new Point(371, 40);
+            btnResetAvg.Location = new Point(391, 40);
             btnResetAvg.Name = "btnResetAvg";
             btnResetAvg.Size = new Size(53, 23);
             btnResetAvg.TabIndex = 12;
@@ -233,7 +241,7 @@
             comboAveraging.DropDownStyle = ComboBoxStyle.DropDownList;
             comboAveraging.Location = new Point(280, 40);
             comboAveraging.Name = "comboAveraging";
-            comboAveraging.Size = new Size(85, 23);
+            comboAveraging.Size = new Size(105, 23);
             comboAveraging.TabIndex = 5;
             // 
             // lblUnits
@@ -579,14 +587,6 @@
             panelStats.Padding = new Padding(8);
             panelStats.Size = new Size(1138, 430);
             panelStats.TabIndex = 0;
-            // 
-            // lblFftTicker
-            // 
-            lblFftTicker.Location = new Point(991, 8);
-            lblFftTicker.Name = "lblFftTicker";
-            lblFftTicker.Size = new Size(37, 22);
-            lblFftTicker.TabIndex = 35;
-            lblFftTicker.Text = "\"\"";
             // 
             // SpectrumControl
             // 
