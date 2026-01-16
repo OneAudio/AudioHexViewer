@@ -3714,14 +3714,41 @@ namespace AudioHexViewer
                             thdText = $"THD: {mL.ThdDb:F1} dB";
                             thdnText = $"THD+N: {mL.ThdNDb:F1} dB";
                         }
-                        
-                        lblLeftMeas.Text =
-                            $"F0: {mL.FundamentalHz:F1} Hz\n" +
-                            thdText + "\n" +
-                            thdnText + "\n" +
-                            $"SINAD: {mL.SinadDb:F1} dB\n" +
-                            $"SNR: {mL.SnrDb:F1} dB\n" +
-                            $"SFDR: {mL.SfdrDb:F1} dB";
+
+                        // --- F0 + niveaux (toujours affichés, même en mode THD) ---
+                        // Bande d’analyse = bande affichée (cohérente avec LIN/LOG)
+                        double f0Min = Math.Max(useLog ? 1.0 : 0.0, fMin);
+                        double f0Max = fMax;
+                        var f0 = EstimateFundamentalHz(currentLeftSpectrum, freqAxis!, f0Min, f0Max, useLog);
+
+                        // Niveaux dBFS (issus des stats temporelles)
+                        double? pkFs = _lastPeakFsLeft;
+                        double? rmsDbfs = _lastRmsDbfsLeft;
+                        double? pkDbfs = (pkFs.HasValue && pkFs.Value > 0.0)
+                            ? Math.Max(-200.0, 20.0 * Math.Log10(pkFs.Value))
+                            : null;
+
+                        string s = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
+                        s += "\n" + (pkDbfs.HasValue ? $"dBFS peak: {pkDbfs.Value:F2} dBFS" : "dBFS peak: —");
+                        s += "\n" + (rmsDbfs.HasValue ? $"dBFS rms:  {rmsDbfs.Value:F2} dBFS" : "dBFS rms:  —");
+
+                        if (_levelCalValidLeft)
+                        {
+                            double off = _levelCalOffsetDbLeft;
+                            s += "\n" + (pkDbfs.HasValue ? $"dBV peak:  {(pkDbfs.Value + off):F2} dBV" : "dBV peak:  —");
+                            s += "\n" + (rmsDbfs.HasValue ? $"dBV rms:   {(rmsDbfs.Value + off):F2} dBV" : "dBV rms:   —");
+                        }
+
+                        // --- Puis les mesures THD ---
+                        s += "\n----";
+                        s += "\n" + thdText;
+                        s += "\n" + thdnText;
+                        s += "\n" + $"SINAD: {mL.SinadDb:F1} dB";
+                        s += "\n" + $"SNR: {mL.SnrDb:F1} dB";
+                        s += "\n" + $"SFDR: {mL.SfdrDb:F1} dB";
+
+                        lblLeftMeas.Text = s;
+
 
                         if (showHarmsInPanel && showLeft)
                         {
@@ -3818,14 +3845,39 @@ namespace AudioHexViewer
                             thdText = $"THD: {mR.ThdDb:F1} dB";
                             thdnText = $"THD+N: {mR.ThdNDb:F1} dB";
                         }
-                        
-                        lblRightMeas.Text =
-                            $"F0: {mR.FundamentalHz:F1} Hz\n" +
-                            thdText + "\n" +
-                            thdnText + "\n" +
-                            $"SINAD: {mR.SinadDb:F1} dB\n" +
-                            $"SNR: {mR.SnrDb:F1} dB\n" +
-                            $"SFDR: {mR.SfdrDb:F1} dB";
+
+                        // --- F0 + niveaux (toujours affichés, même en mode THD) ---
+                        double f0Min = Math.Max(useLog ? 1.0 : 0.0, fMin);
+                        double f0Max = fMax;
+                        var f0 = EstimateFundamentalHz(currentRightSpectrum, freqAxis!, f0Min, f0Max, useLog);
+
+                        double? pkFs = _lastPeakFsRight;
+                        double? rmsDbfs = _lastRmsDbfsRight;
+                        double? pkDbfs = (pkFs.HasValue && pkFs.Value > 0.0)
+                            ? Math.Max(-200.0, 20.0 * Math.Log10(pkFs.Value))
+                            : null;
+
+                        string s = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
+                        s += "\n" + (pkDbfs.HasValue ? $"dBFS peak: {pkDbfs.Value:F2} dBFS" : "dBFS peak: —");
+                        s += "\n" + (rmsDbfs.HasValue ? $"dBFS rms:  {rmsDbfs.Value:F2} dBFS" : "dBFS rms:  —");
+
+                        if (_levelCalValidRight)
+                        {
+                            double off = _levelCalOffsetDbRight;
+                            s += "\n" + (pkDbfs.HasValue ? $"dBV peak:  {(pkDbfs.Value + off):F2} dBV" : "dBV peak:  —");
+                            s += "\n" + (rmsDbfs.HasValue ? $"dBV rms:   {(rmsDbfs.Value + off):F2} dBV" : "dBV rms:   —");
+                        }
+
+                        // --- Puis les mesures THD ---
+                        s += "\n----";
+                        s += "\n" + thdText;
+                        s += "\n" + thdnText;
+                        s += "\n" + $"SINAD: {mR.SinadDb:F1} dB";
+                        s += "\n" + $"SNR: {mR.SnrDb:F1} dB";
+                        s += "\n" + $"SFDR: {mR.SfdrDb:F1} dB";
+
+                        lblRightMeas.Text = s;
+
 
                         if (showHarmsInPanel && showRight)
                         {
