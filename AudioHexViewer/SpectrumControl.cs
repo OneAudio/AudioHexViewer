@@ -709,14 +709,20 @@ namespace AudioHexViewer
             int bins = (lastFftSize / 2) + 1;
 
             freqAxis = new double[bins];
+
             currentLeftSpectrum = new double[bins];
-            currentRightSpectrum = null;
+            currentRightSpectrum = new double[bins];
 
             for (int i = 0; i < bins; i++)
             {
                 freqAxis[i] = i * (double)_sampleRate / lastFftSize;
-                currentLeftSpectrum[i] = -200.0; // plancher d'affichage
+
+                // Plancher d'affichage (les deux voies) pour éviter une zone blanche
+                // si l'utilisateur démarre sur "Right" ou "L+R" avant la 1ère acquisition.
+                currentLeftSpectrum[i] = -200.0;
+                currentRightSpectrum[i] = -200.0;
             }
+
 
             UpdateWindowInfo();
             UpdateOverlayInfo();
@@ -3009,18 +3015,31 @@ namespace AudioHexViewer
                 return;
 
             // Helper local : estimation rapide de F0 (pas de THD => pas de ComputeChannel)
-            static double? EstimateFundamentalHz(double[] spectrum, int sampleRate, int fftSize)
+            static double? EstimateFundamentalHz(double[] spectrum, double[] fx, double fMinHz, double fMaxHz, bool useLog)
             {
-                if (spectrum == null || spectrum.Length < 3 || sampleRate <= 0 || fftSize <= 0)
-                    return null;
+                if (spectrum == null || fx == null) return null;
+                if (spectrum.Length != fx.Length || spectrum.Length < 3) return null;
 
-                int startBin = 1; // ignore DC
-                int endBin = spectrum.Length - 1;
+                // bornes utiles
+                double minPhys = useLog ? 1.0 : 0.0;
+                if (fMinHz < minPhys) fMinHz = minPhys;
+                if (fMaxHz <= fMinHz) return null;
 
-                int maxIdx = startBin;
-                double maxVal = spectrum[startBin];
+                // trouver l’index de départ/fin dans fx[]
+                int i0 = 0;
+                while (i0 < fx.Length && fx[i0] < fMinHz) i0++;
 
-                for (int i = startBin + 1; i <= endBin; i++)
+                int i1 = fx.Length - 1;
+                while (i1 > i0 && fx[i1] > fMaxHz) i1--;
+
+                // éviter DC/0Hz si besoin
+                if (useLog && i0 < 1) i0 = 1;
+                if (i1 <= i0) return null;
+
+                int maxIdx = i0;
+                double maxVal = spectrum[i0];
+
+                for (int i = i0 + 1; i <= i1; i++)
                 {
                     double v = spectrum[i];
                     if (v > maxVal)
@@ -3030,8 +3049,11 @@ namespace AudioHexViewer
                     }
                 }
 
-                return maxIdx * (double)sampleRate / fftSize;
+                // La fréquence correcte du point sélectionné, même après décimation :
+                return fx[maxIdx];
             }
+
+
 
             chartSpectrum.Series.Clear();
 
@@ -3678,7 +3700,17 @@ namespace AudioHexViewer
                 else
                 {
                     // THD OFF => F0 uniquement (rapide)
-                    var f0 = EstimateFundamentalHz(currentLeftSpectrum, _sampleRate, lastFftSize);
+                    // Bande d'analyse F0 : on respecte l'axe courant (custom ou auto)
+                    // + on évite de descendre trop bas par défaut (rumble/offset)
+                    
+
+                    // Bande d’analyse = bande affichée (cohérente avec LIN/LOG + limites custom)
+                    double f0Min = Math.Max(useLog ? 1.0 : 0.0, fMin);
+                    double f0Max = fMax;
+
+                    var f0 = EstimateFundamentalHz(currentLeftSpectrum, freqAxis!, f0Min, f0Max, useLog);
+
+
                     string vdcPrefixL = (_levelUnit == "dBV" && _levelCalValidLeft && _lastVdcVoltsLeft.HasValue)
                         ? $"Vdc: {FormatVoltage(_lastVdcVoltsLeft.Value)}\n"
                         : "";
@@ -3749,7 +3781,16 @@ namespace AudioHexViewer
                 else
                 {
                     // THD OFF => F0 uniquement (rapide)
-                    var f0 = EstimateFundamentalHz(currentRightSpectrum, _sampleRate, lastFftSize);
+                    // Bande d'analyse F0 : on respecte l'axe courant (custom ou auto)
+                    // + on évite de descendre trop bas par défaut (rumble/offset)
+                    
+                    // Bande d’analyse = bande affichée (cohérente avec LIN/LOG + limites custom)
+                    double f0Min = Math.Max(useLog ? 1.0 : 0.0, fMin);
+                    double f0Max = fMax;
+
+                    var f0 = EstimateFundamentalHz(currentLeftSpectrum, freqAxis!, f0Min, f0Max, useLog);
+
+
                     string vdcPrefixR = (_levelUnit == "dBV" && _levelCalValidRight && _lastVdcVoltsRight.HasValue)
                         ? $"Vdc: {FormatVoltage(_lastVdcVoltsRight.Value)}\n"
                         : "";
