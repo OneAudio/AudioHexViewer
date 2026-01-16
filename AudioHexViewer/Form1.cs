@@ -1043,8 +1043,8 @@ namespace AudioHexViewer
                     // budget points ~ 2 points/pixel (cap max pour éviter surcoût)
                     int budget = Math.Min(200_000, Math.Max(2000, px * 2));
 
-                    frameToShow = DecimateFrameForDisplay(frameToShow, fMin, fMax, budget);
-
+                    bool useLogX = spectrumControl.IsXAxisLog();
+                    frameToShow = DecimateFrameForDisplay(frameToShow, fMin, fMax, budget, useLogX);
 
                     spectrumControl.FeedExternalSpectrum(frameToShow);
 
@@ -4001,7 +4001,7 @@ namespace AudioHexViewer
             }
         }
         //
-        private static SpectrumFrame DecimateFrameForDisplay(SpectrumFrame src, double fMin, double fMax, int maxPoints)
+        private static SpectrumFrame DecimateFrameForDisplay(SpectrumFrame src, double fMin, double fMax, int maxPoints, bool useLogX)
         {
             var fxIn = src.FreqAxisHz;
             int nIn = fxIn.Length;
@@ -4021,6 +4021,78 @@ namespace AudioHexViewer
             // plage minuscule : pas de décimation
             if (i1 - i0 <= maxPoints)
                 return SliceFrame(src, i0, i1);
+
+            // -----------------------------------------------------------------
+            // MODE LOG X : décimation uniforme en log10(f) (meilleur rendu basses fréquences)
+            // -----------------------------------------------------------------
+            if (useLogX)
+            {
+                // Sécurité : log nécessite f>0
+                if (fMin <= 0) fMin = 1.0;
+                if (fMax <= fMin) fMax = fMin * 10.0;
+
+                int nOutLog = maxPoints;
+                var fxLog = new double[nOutLog];
+                MathNet.Numerics.Complex32[]? lLog = (src.LeftBins != null) ? new MathNet.Numerics.Complex32[nOutLog] : null;
+                MathNet.Numerics.Complex32[]? rLog = (src.RightBins != null) ? new MathNet.Numerics.Complex32[nOutLog] : null;
+
+
+                double logMin = Math.Log10(fMin);
+                double logMax = Math.Log10(fMax);
+                double logStep = (logMax - logMin) / nOutLog;
+
+                for (int j = 0; j < nOutLog; j++)
+                {
+                    double fa = Math.Pow(10.0, logMin + j * logStep);
+                    double fb = Math.Pow(10.0, logMin + (j + 1) * logStep);
+
+                    int a = Array.BinarySearch(fxIn, fa);
+                    if (a < 0) a = ~a;
+                    int b = Array.BinarySearch(fxIn, fb);
+                    if (b < 0) b = ~b;
+
+                    // Clamp à la zone [i0..i1)
+                    if (a < i0) a = i0;
+                    if (b > i1) b = i1;
+
+                    if (b <= a) b = Math.Min(i1, a + 1);
+                    if (a >= i1) a = i1 - 1;
+                    if (b <= a) b = a + 1; // ultime sécurité
+
+                    int mid = (a + b) / 2;
+                    if (mid >= i1) mid = i1 - 1;
+                    fxLog[j] = fxIn[mid];
+
+                    // Gauche : bin de magnitude max dans le segment (préserve phase)
+                    if (lLog != null && src.LeftBins != null)
+                    {
+                        float maxMag = -1f;
+                        int kMax = a;
+                        for (int k = a; k < b; k++)
+                        {
+                            float mag = src.LeftBins[k].Magnitude;
+                            if (mag > maxMag) { maxMag = mag; kMax = k; }
+                        }
+                        lLog[j] = src.LeftBins[kMax];
+                    }
+
+                    // Droite
+                    if (rLog != null && src.RightBins != null)
+                    {
+                        float maxMag = -1f;
+                        int kMax = a;
+                        for (int k = a; k < b; k++)
+                        {
+                            float mag = src.RightBins[k].Magnitude;
+                            if (mag > maxMag) { maxMag = mag; kMax = k; }
+                        }
+                        rLog[j] = src.RightBins[kMax];
+                    }
+                }
+
+                return new SpectrumFrame(src.SampleRate, src.FftSize, src.AbsEnd, lLog, rLog, fxLog);
+            }
+
 
             int nOut = maxPoints;
             var fx = new double[nOut];

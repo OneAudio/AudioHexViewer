@@ -24,6 +24,7 @@ namespace AudioHexViewer
         public event Action? ThdSettingsRequested;
 
         private bool _suppressThdUiEvents = false;
+        internal bool IsXAxisLog() => _xAxisIsLog;
 
         internal int GetPlotPixelWidth()
         {
