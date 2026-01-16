@@ -314,6 +314,10 @@ namespace AudioHexViewer
         private double? _lastRmsFsLeft = null;
         private double? _lastRmsFsRight = null;
 
+        // Dernières mesures Peak en FS (DC compris)
+        private double? _lastPeakFsLeft = null;
+        private double? _lastPeakFsRight = null;
+
         // Gain linéaire Vrms / FS_rms (AC) — dérivé de la calibration
         private double _levelGainVrmsPerFsLeft = 0.0;
         private double _levelGainVrmsPerFsRight = 0.0;
@@ -2924,15 +2928,64 @@ namespace AudioHexViewer
             // Axe fréquence
             freqAxis = frame.FreqAxisHz;
 
-            // Temps non dispo en mode externe (pour l’instant)
-            lastTimeLeft = null;
-            lastTimeRight = null;
-
             UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
         }
+        //
+        /// Alimente SpectrumControl avec des stats temporelles (issues du core acquisition/analysis),
+        /// pour calibration et affichage. Format attendu : int 24b signé (même que tes buffers d'analyse).
+        /// Cette méthode est UI-only et doit être appelée sur le thread UI.
+        internal void FeedExternalTimeStats24(int[] left24, int[] right24)
+        {
+            const double fullScale = SpectrumAnalyzer.Max24Pos; // 0x7FFFFF
 
+            void ComputeOne(int[] x24, out double? rmsFsAc, out double? peakFs)
+            {
+                rmsFsAc = null;
+                peakFs = null;
+                if (x24 == null || x24.Length == 0) return;
 
-        
+                // Peak (FS)
+                int pk = 0;
+                long sum = 0;
+                for (int i = 0; i < x24.Length; i++)
+                {
+                    int v = x24[i];
+                    int a = Math.Abs(v);
+                    if (a > pk) pk = a;
+                    sum += v;
+                }
+
+                double mean = sum / (double)x24.Length;
+
+                // RMS AC (FS) = RMS(sample - mean) / fullScale
+                double sumSq = 0.0;
+                for (int i = 0; i < x24.Length; i++)
+                {
+                    double d = (x24[i] - mean) / fullScale;
+                    sumSq += d * d;
+                }
+
+                double rms = Math.Sqrt(sumSq / x24.Length);
+                double pkFs = pk / fullScale;
+
+                rmsFsAc = (rms > 0.0) ? rms : null;
+                peakFs = (pkFs > 0.0) ? pkFs : null;
+            }
+
+            ComputeOne(left24, out var rmsL, out var pkL);
+            ComputeOne(right24, out var rmsR, out var pkR);
+
+            _lastRmsFsLeft = rmsL;
+            _lastRmsFsRight = rmsR;
+            _lastPeakFsLeft = pkL;
+            _lastPeakFsRight = pkR;
+
+            // Mets aussi à jour les versions dBFS RMS (format "dBFS rms" déjà utilisé dans Cal dialog)
+            // Convention : dBFS_rms = 20log10(rmsFS * sqrt(2)) (sinus 0 dBFS => 0 dBFS_rms)
+            _lastRmsDbfsLeft = (rmsL.HasValue) ? Math.Max(-200.0, 20.0 * Math.Log10(rmsL.Value * Math.Sqrt(2.0))) : null;
+            _lastRmsDbfsRight = (rmsR.HasValue) ? Math.Max(-200.0, 20.0 * Math.Log10(rmsR.Value * Math.Sqrt(2.0))) : null;
+        }
+
         //
         //
         private void ChartSpectrum_MouseUp(object? sender, MouseEventArgs e)
@@ -3520,14 +3573,11 @@ namespace AudioHexViewer
             }
             else
             {
-                lblLeftRms.Text = "RMS:";
-                _lastRmsDbfsLeft = null;
+                lblLeftRms.Text = "RMS:";               
                 lblLeftPeak.Text = "Peak:";
                 if (lblLeftRmsV != null) lblLeftRmsV.Text = "";
                 if (lblLeftPeakV != null) lblLeftPeakV.Text = "";
-                _lastVdcVoltsLeft = null;
-                _lastVrmsVoltsLeft = null;
-                _lastVpkVoltsLeft = null;
+                
             }
 
             // --- Stats temporelles : RIGHT ---
@@ -3613,9 +3663,8 @@ namespace AudioHexViewer
             }
             else
             {
-                lblRightRms.Text = "";
-                _lastRmsDbfsRight = null;
-                lblRightPeak.Text = "";
+                lblRightRms.Text = "RMS:";
+                lblRightPeak.Text = "Peak:";
             }
 
             // Ajuste l'UI des valeurs en Volts (visible uniquement en dBV calibré)
@@ -3640,9 +3689,9 @@ namespace AudioHexViewer
             bool showHarmsInPanel = doThd && _thdUi.ShowHarmonicsValues && allowThdMeasurementsUi;
 
             // LEFT
-            if (allowThdMeasurementsUi && lblLeftMeas != null && currentLeftSpectrum != null && _sampleRate > 0 && lastFftSize > 0)
+            if (lblLeftMeas != null && currentLeftSpectrum != null && _sampleRate > 0 && lastFftSize > 0)
             {
-                if (doThd)
+                if (doThd && allowThdMeasurementsUi)
                 {
                     mL = SpectrumMetrics.ComputeChannel(currentLeftSpectrum, _sampleRate, lastFftSize, _metricsOpt);
 
@@ -3715,7 +3764,29 @@ namespace AudioHexViewer
                         ? $"Vdc: {FormatVoltage(_lastVdcVoltsLeft.Value)}\n"
                         : "";
 
-                    lblLeftMeas.Text = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "—");
+                    // On affiche aussi les mesures de niveau (peak/rms) en dBFS et dBV si calibré
+                    double? pkFs = _lastPeakFsLeft;
+                    double? rmsDbfs = _lastRmsDbfsLeft;
+
+                    double? pkDbfs = (pkFs.HasValue && pkFs.Value > 0.0) ? Math.Max(-200.0, 20.0 * Math.Log10(pkFs.Value)) : null;
+
+                    string s = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
+
+                    s += "\n" + (pkDbfs.HasValue ? $"dBFS peak: {pkDbfs.Value:F2} dBFS" : "dBFS peak: —");
+                    s += "\n" + (rmsDbfs.HasValue ? $"dBFS rms:  {rmsDbfs.Value:F2} dBFS" : "dBFS rms:  —");
+
+                    if (_levelCalValidLeft)
+                    {
+                        double off = _levelCalOffsetDbLeft;
+                        if (pkDbfs.HasValue) s += "\n" + $"dBV peak:  {(pkDbfs.Value + off):F2} dBV";
+                        else s += "\n" + "dBV peak:  —";
+
+                        if (rmsDbfs.HasValue) s += "\n" + $"dBV rms:   {(rmsDbfs.Value + off):F2} dBV";
+                        else s += "\n" + "dBV rms:   —";
+                    }
+
+                    lblLeftMeas.Text = s;
+
                 }
             }
             else if (lblLeftMeas != null)
@@ -3724,9 +3795,9 @@ namespace AudioHexViewer
             }
 
             // RIGHT
-            if (allowThdMeasurementsUi && lblRightMeas != null && currentRightSpectrum != null && _sampleRate > 0 && lastFftSize > 0)
+            if (lblRightMeas != null && currentRightSpectrum != null && _sampleRate > 0 && lastFftSize > 0)
             {
-                if (doThd)
+                if (doThd && allowThdMeasurementsUi)
                 {
                     mR = SpectrumMetrics.ComputeChannel(currentRightSpectrum, _sampleRate, lastFftSize, _metricsOpt);
 
@@ -3788,14 +3859,36 @@ namespace AudioHexViewer
                     double f0Min = Math.Max(useLog ? 1.0 : 0.0, fMin);
                     double f0Max = fMax;
 
-                    var f0 = EstimateFundamentalHz(currentLeftSpectrum, freqAxis!, f0Min, f0Max, useLog);
+                    var f0 = EstimateFundamentalHz(currentRightSpectrum, freqAxis!, f0Min, f0Max, useLog);
 
 
                     string vdcPrefixR = (_levelUnit == "dBV" && _levelCalValidRight && _lastVdcVoltsRight.HasValue)
                         ? $"Vdc: {FormatVoltage(_lastVdcVoltsRight.Value)}\n"
                         : "";
 
-                    lblRightMeas.Text = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "—");
+                    // On affiche aussi les mesures de niveau (peak/rms) en dBFS et dBV si calibré
+                    double? pkFs = _lastPeakFsRight;
+                    double? rmsDbfs = _lastRmsDbfsRight;
+
+                    double? pkDbfs = (pkFs.HasValue && pkFs.Value > 0.0) ? Math.Max(-200.0, 20.0 * Math.Log10(pkFs.Value)) : null;
+
+                    string s = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
+
+                    s += "\n" + (pkDbfs.HasValue ? $"dBFS peak: {pkDbfs.Value:F2} dBFS" : "dBFS peak: —");
+                    s += "\n" + (rmsDbfs.HasValue ? $"dBFS rms:  {rmsDbfs.Value:F2} dBFS" : "dBFS rms:  —");
+
+                    if (_levelCalValidRight)
+                    {
+                        double off = _levelCalOffsetDbRight;
+                        if (pkDbfs.HasValue) s += "\n" + $"dBV peak:  {(pkDbfs.Value + off):F2} dBV";
+                        else s += "\n" + "dBV peak:  —";
+
+                        if (rmsDbfs.HasValue) s += "\n" + $"dBV rms:   {(rmsDbfs.Value + off):F2} dBV";
+                        else s += "\n" + "dBV rms:   —";
+                    }
+
+                    lblRightMeas.Text = s;
+
                 }
             }
             else if (lblRightMeas != null)

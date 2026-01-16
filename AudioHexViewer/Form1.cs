@@ -333,6 +333,30 @@ namespace AudioHexViewer
                     // Écrit dans le ring (remplace l'entrée carte son)
                     _floatRing.PushBlock(l, r);
 
+                    // En mode F9, on doit aussi alimenter la fenêtre d'analyse "temps" (int24)
+                    // sinon RMS/Peak/Calibration ne voient rien.
+                    lock (_analysisWindowLock)
+                    {
+                        EnsureAnalysisWindowCapacity_NoLock(analysisSampleSize);
+
+                        const int Max24 = 1 << 23;        // 8388608
+                        const int Max24Pos = Max24 - 1;   // 8388607
+                        const int Min24Neg = -Max24;      // -8388608
+
+                        for (int i = 0; i < chunk; i++)
+                        {
+                            int Li = (int)Math.Round(l[i] * Max24Pos);
+                            int Ri = (int)Math.Round(r[i] * Max24Pos);
+
+                            if (Li > Max24Pos) Li = Max24Pos;
+                            if (Li < Min24Neg) Li = Min24Neg;
+                            if (Ri > Max24Pos) Ri = Max24Pos;
+                            if (Ri < Min24Neg) Ri = Min24Neg;
+
+                            FeedAnalysisWindowSample_NoLock(Li, Ri);
+                        }
+                    }
+
                     total += chunk;
 
                     // Throttle pour se caler sur le temps réel (~Fs)
@@ -1082,6 +1106,12 @@ namespace AudioHexViewer
                     return;
 
                 _lastAnalysisAbsEnd = absEnd;
+
+                // Alimente SpectrumControl avec des stats temporelles (RMS/Peak FS) pour CAL V + mesures.
+                // IMPORTANT: on le fait même si on n'affiche pas la FFT à ce tick (throttle UI).
+                if (spectrumControl != null)
+                    spectrumControl.FeedExternalTimeStats24(left, right);
+
             }
 
             // Publie la nouvelle frame d'analyse (pour SpectrumControl + histogramme)
