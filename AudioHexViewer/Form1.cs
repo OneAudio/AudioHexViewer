@@ -3427,14 +3427,7 @@ namespace AudioHexViewer
                         calL = spectrumControl.VoltageCalibrationValidLeft;
                         calR = spectrumControl.VoltageCalibrationValidRight;
                         spectrumControl.GetLastVoltages(out vrmsL, out vpkL, out vdcL, out vrmsR, out vpkR, out vdcR);
-
-                        if (!spectrumControl.HasEverRun)
-                        {
-                            leftText = "---";
-                            rightText = "---";
-                            break;
-                        }
-
+                                               
                     }
                     else
                     {

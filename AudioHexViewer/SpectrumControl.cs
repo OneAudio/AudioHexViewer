@@ -483,7 +483,7 @@ namespace AudioHexViewer
         private bool _thdMeasuresEnabled = false;
 
         // --- Étape 2 : panneau stats dans le chart (zone dédiée à droite) ---
-        private const int ChartStatsWidthPx = 170;      // largeur du panneau stats
+        private const int ChartStatsWidthPx = 200;      // largeur du panneau stats
         private const int ChartStatsMinPlotWidthPx = 420; // largeur mini du graphe (évite d’écraser le plot)
 
         //
@@ -2976,13 +2976,14 @@ namespace AudioHexViewer
         {
             const double fullScale = SpectrumAnalyzer.Max24Pos; // 0x7FFFFF
 
-            void ComputeOne(int[] x24, out double? rmsFsAc, out double? peakFs)
+            void ComputeOne(int[] x24, out double? rmsFsAc, out double? peakFs, out double? meanFs)
             {
                 rmsFsAc = null;
                 peakFs = null;
+                meanFs = null;
                 if (x24 == null || x24.Length == 0) return;
 
-                // Peak (FS)
+                // Peak (FS) + moyenne (DC)
                 int pk = 0;
                 long sum = 0;
                 for (int i = 0; i < x24.Length; i++)
@@ -2993,13 +2994,15 @@ namespace AudioHexViewer
                     sum += v;
                 }
 
-                double mean = sum / (double)x24.Length;
+                double mean24 = sum / (double)x24.Length;     // DC en unités 24b
+                double mFs = mean24 / fullScale;              // DC en FS [-1..1] typiquement
+                meanFs = mFs;
 
                 // RMS AC (FS) = RMS(sample - mean) / fullScale
                 double sumSq = 0.0;
                 for (int i = 0; i < x24.Length; i++)
                 {
-                    double d = (x24[i] - mean) / fullScale;
+                    double d = (x24[i] - mean24) / fullScale;
                     sumSq += d * d;
                 }
 
@@ -3010,19 +3013,49 @@ namespace AudioHexViewer
                 peakFs = (pkFs > 0.0) ? pkFs : null;
             }
 
-            ComputeOne(left24, out var rmsL, out var pkL);
-            ComputeOne(right24, out var rmsR, out var pkR);
+            ComputeOne(left24, out var rmsL, out var pkL, out var meanL);
+            ComputeOne(right24, out var rmsR, out var pkR, out var meanR);
 
             _lastRmsFsLeft = rmsL;
             _lastRmsFsRight = rmsR;
             _lastPeakFsLeft = pkL;
             _lastPeakFsRight = pkR;
 
-            // Mets aussi à jour les versions dBFS RMS (format "dBFS rms" déjà utilisé dans Cal dialog)
-            // Convention : dBFS_rms = 20log10(rmsFS * sqrt(2)) (sinus 0 dBFS => 0 dBFS_rms)
+            // dBFS RMS (déjà utilisé dans le dialogue CAL V)
             _lastRmsDbfsLeft = (rmsL.HasValue) ? Math.Max(-200.0, 20.0 * Math.Log10(rmsL.Value * Math.Sqrt(2.0))) : null;
             _lastRmsDbfsRight = (rmsR.HasValue) ? Math.Max(-200.0, 20.0 * Math.Log10(rmsR.Value * Math.Sqrt(2.0))) : null;
+
+            // --- VOLTS (si calibré) ---
+            // Vrms = RMS AC (DC retiré) * gain
+            // Vpeak = peak FS (DC compris) * gain
+            // Vdc = mean FS * gain
+            if (_levelCalValidLeft && _levelGainVrmsPerFsLeft > 0.0)
+            {
+                _lastVrmsVoltsLeft = rmsL.HasValue ? rmsL.Value * _levelGainVrmsPerFsLeft : null;
+                _lastVpkVoltsLeft = pkL.HasValue ? pkL.Value * _levelGainVrmsPerFsLeft : null;
+                _lastVdcVoltsLeft = meanL.HasValue ? meanL.Value * _levelGainVrmsPerFsLeft : null;
+            }
+            else
+            {
+                _lastVrmsVoltsLeft = null;
+                _lastVpkVoltsLeft = null;
+                _lastVdcVoltsLeft = null;
+            }
+
+            if (_levelCalValidRight && _levelGainVrmsPerFsRight > 0.0)
+            {
+                _lastVrmsVoltsRight = rmsR.HasValue ? rmsR.Value * _levelGainVrmsPerFsRight : null;
+                _lastVpkVoltsRight = pkR.HasValue ? pkR.Value * _levelGainVrmsPerFsRight : null;
+                _lastVdcVoltsRight = meanR.HasValue ? meanR.Value * _levelGainVrmsPerFsRight : null;
+            }
+            else
+            {
+                _lastVrmsVoltsRight = null;
+                _lastVpkVoltsRight = null;
+                _lastVdcVoltsRight = null;
+            }
         }
+
 
         //
         //
