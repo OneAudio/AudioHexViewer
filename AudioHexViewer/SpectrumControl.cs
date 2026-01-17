@@ -1058,9 +1058,13 @@ namespace AudioHexViewer
             if (samples <= 0) return;
             _forcedFftSize = samples;
             lastFftSize = samples;
+
+            // IMPORTANT (anti-artifacts)
+            // Changer N change la resolution (deltaF) et la correspondance des bins (frequence <-> index).
+            // On repart donc d'une moyenne vide pour eviter des artefacts visuels lors du prochain affichage.
+            ResetAveragingState();
             UpdateWindowInfo();
             UpdateOverlayInfo();
-
         }
         //
         private void UpdateAvgProgressUi(int k, int n)
@@ -1198,9 +1202,22 @@ namespace AudioHexViewer
             };
 
             // --- Averaging ---
-            string avgText = avgTargetCount <= 1
-                ? "Avg: No"
-                : $"Avg:{avgTargetCount}";
+            // IMPORTANT:
+            // - avgTargetCount = moyenne par comptage (2..128)
+            // - _avgIsExponential/_avgExpAlpha = moyenne exponentielle
+            // Le texte d'info doit refléter le mode réellement actif.
+            string avgText;
+            if (_avgIsExponential)
+            {
+                // Format UI : "Avg: Exp 0.94" (alpha en invariant pour rester stable)
+                avgText = $"Avg: Exp {_avgExpAlpha.ToString("0.##", CultureInfo.InvariantCulture)}";
+            }
+            else
+            {
+                avgText = avgTargetCount <= 1
+                    ? "Avg: No"
+                    : $"Avg:{avgTargetCount}";
+            }
 
             // --- AC / DC ---
             string acdcText = (chkRemoveDC != null && chkRemoveDC.Checked)
@@ -1270,6 +1287,12 @@ namespace AudioHexViewer
 
                 lastWindow = newWin;
                 WindowTypeChangedForExternalFft?.Invoke(this, EventArgs.Empty);
+                // IMPORTANT (anti-artifacts)
+                // Changer de fenetre modifie la ponderation des bins.
+                // On reinitialise la moyenne pour eviter des traces visuelles.
+                ResetAveragingState();
+                UpdateOverlayInfo();
+
             };
 
 
@@ -1328,6 +1351,8 @@ namespace AudioHexViewer
                 }
 
                 ResetAveragingState();
+                UpdateOverlayInfo();
+
             };
 
             //
@@ -1338,6 +1363,7 @@ namespace AudioHexViewer
                     return;
                 
                 UpdateAcDcButtonText();
+                UpdateOverlayInfo();
             };
 
             // Initial update
@@ -1454,6 +1480,11 @@ namespace AudioHexViewer
                 {
                     if (_isRestoringSettings)
                         return;
+
+                    // IMPORTANT (anti-artifacts)
+                    // Le passage LOG <-> LIN change l'echantillonnage visuel de l'axe X
+                    // et peut faire apparaitre un 'ghost' d'une moyenne precedente.
+                    ResetAveragingState();
 
                     UpdateSpectrumChartAndStats();
                     UpdateLogLinButtonText();
@@ -2064,7 +2095,14 @@ namespace AudioHexViewer
 
             // Couleurs
             ApplySpectrumColorSettings(s.Colors);
-            // ApplySpectrumColorSettings appelle déjà UpdateSpectrumChartAndStats()
+            // IMPORTANT (bugfix UI)
+            // Au démarrage, la ligne d'info (SR/N/ΔF/Overlap/Win/Avg/ACDC) a déjà pu être
+            // initialisée par InitializeEmptySpectrumDisplay() avec des valeurs par défaut.
+            // Comme ApplySpectrumSettings() inhibe les events UI pendant la restauration,
+            // il faut forcer ici la mise à jour du texte affiché pour refléter la sélection réelle.
+            UpdateWindowInfo();
+            UpdateOverlayInfo();
+
         }
 
         //

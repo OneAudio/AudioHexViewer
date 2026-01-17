@@ -1,7 +1,35 @@
 Chose à faire :
 --------------
-Le 09/01/2026
+Le 17/01/2026
+-------------
+Refactoring complet de l'acquisition, reste à régler avec de passer aux point de dessous:
+-----------------------------------------------------------------------------------------
 
+_ Rétablir les mesures en Volts dans la panneau du haut "Main data format"
+
+_ Corriger l'élargissement de la fenêtre lors du passage en mode log qui réduit la fenêtre
+des mesures et les cahes partiellement.
+
+_Le mode AC/DC ne semble pas fonctionner.
+
+_Améliorer la mesure de fréquence (pas en précise en échelle linéaire).
+
+
+_En mode axe Y en dBFS, les mesures sont affichées uniquement en dBFS,
+et en axe Y en dBV (calibré),
+ les mesures sont affichées uniquement en dBV.
+Dans les 2 cas, si la calibration est faite on affiche aussi les valeurs en Vrms, Vpeak et Vdc.
+Si pas calibré on affiche "Uncal" à la place des valeurs 
+
+
+
+
+
+
+
+
+-----------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------
 1- Uniformiser les différents boutons/commandes du panneaux Spectrum,
 pour ressembler à ceux des curseurs.
 
