@@ -63,6 +63,17 @@ namespace AudioHexViewer
             return (Math.Max(0.0, min), Math.Min(nyq, max));
         }
 
+        // --- Unités volts pour l’affichage RMS/Peak ---
+        private enum VoltUnit { V, mV, uV }
+        private VoltUnit _vrmsUnitLeft = VoltUnit.mV;
+        private VoltUnit _vrmsUnitRight = VoltUnit.mV;
+
+        // Dernières unités utilisées (pour éviter de rafraîchir inutilement l’UI) 
+        private VoltUnit _vpkUnitLeft = VoltUnit.mV;
+        private VoltUnit _vpkUnitRight = VoltUnit.mV;
+        private VoltUnit _vdcUnitLeft = VoltUnit.mV;
+        private VoltUnit _vdcUnitRight = VoltUnit.mV;
+
 
 
         /// <summary>
@@ -798,7 +809,21 @@ namespace AudioHexViewer
 
         // Affichage tension : V si >=1V, mV si [1mV..1V), µV si <1mV.
         // 4 chiffres significatifs (zéros conservés), sans notation scientifique.
+        // Point d'entrée "simple" : choix d'unité sans hysteresis (stateless)
         private static string FormatVoltage(double volts)
+        {
+            VoltUnit dummy = VoltUnit.mV; // valeur initiale arbitraire
+            return FormatVoltageCore(volts, ref dummy, useHysteresis: false);
+        }
+
+        // Point d'entrée "stable" : utilise l'état (unité précédente) pour hysteresis
+        private static string FormatVoltage(double volts, ref VoltUnit unitState)
+        {
+            return FormatVoltageCore(volts, ref unitState, useHysteresis: true);
+        }
+
+        // Coeur unique : tout le formatage est ici (pas de duplication)
+        private static string FormatVoltageCore(double volts, ref VoltUnit unitState, bool useHysteresis)
         {
             if (double.IsNaN(volts) || double.IsInfinity(volts)) return "—";
 
@@ -806,12 +831,48 @@ namespace AudioHexViewer
             if (volts == 0.0) return "0.000 V";
 
             double abs = Math.Abs(volts);
+
+            // --- Choix unité ---
+            if (useHysteresis)
+            {
+                // Hystérésis autour de 1.0 V et 1 mV
+                const double MV_TO_V_UP = 1.00;
+                const double V_TO_MV_DN = 0.90;
+
+                const double UV_TO_MV_UP = 1.00e-3;
+                const double MV_TO_UV_DN = 0.90e-3;
+
+                switch (unitState)
+                {
+                    case VoltUnit.V:
+                        if (abs < V_TO_MV_DN) unitState = VoltUnit.mV;
+                        break;
+
+                    case VoltUnit.mV:
+                        if (abs >= MV_TO_V_UP) unitState = VoltUnit.V;
+                        else if (abs < MV_TO_UV_DN) unitState = VoltUnit.uV;
+                        break;
+
+                    case VoltUnit.uV:
+                        if (abs >= UV_TO_MV_UP) unitState = VoltUnit.mV;
+                        break;
+                }
+            }
+            else
+            {
+                // Stateless : ancien comportement (seuils directs)
+                if (abs >= 1.0) unitState = VoltUnit.V;
+                else if (abs >= 1e-3) unitState = VoltUnit.mV;
+                else unitState = VoltUnit.uV;
+            }
+
             double scale;
             string unit;
-            if (abs >= 1.0) { scale = 1.0; unit = "V"; }
-            else if (abs >= 1e-3) { scale = 1e3; unit = "mV"; }
+            if (unitState == VoltUnit.V) { scale = 1.0; unit = "V"; }
+            else if (unitState == VoltUnit.mV) { scale = 1e3; unit = "mV"; }
             else { scale = 1e6; unit = "µV"; }
 
+            // --- Format "4 chiffres significatifs" (ton algo actuel) ---
             double v = volts * scale;
             double a = Math.Abs(v);
 
@@ -4715,18 +4776,26 @@ namespace AudioHexViewer
             _rowsRight.Clear();
 
             string leftMeas = InjectVoltsLines(
-                lblLeftMeas?.Text ?? string.Empty,
+                lblLeftMeas?.Text,
                 _levelCalValidLeft,
                 _lastVrmsVoltsLeft,
                 _lastVpkVoltsLeft,
-                _lastVdcVoltsLeft);
+                _lastVdcVoltsLeft,
+                ref _vrmsUnitLeft,
+                ref _vpkUnitLeft,
+                ref _vdcUnitLeft);
+
 
             string rightMeas = InjectVoltsLines(
-                lblRightMeas?.Text ?? string.Empty,
+                lblRightMeas?.Text,
                 _levelCalValidRight,
                 _lastVrmsVoltsRight,
                 _lastVpkVoltsRight,
-                _lastVdcVoltsRight);
+                _lastVdcVoltsRight,
+                ref _vrmsUnitRight,
+                ref _vpkUnitRight,
+                ref _vdcUnitRight);
+
 
 
             BuildRowsForChannel(_rowsLeft,
@@ -4740,7 +4809,10 @@ namespace AudioHexViewer
                 rightMeas);
         }
 
-        private string InjectVoltsLines(string baseMeas, bool calValid, double? vrms, double? vpk, double? vdc)
+        // Injecte les lignes Vrms/Vpeak/Vdc au début des mesures existantes
+        private string InjectVoltsLines(string baseMeas, bool calValid, double? vrms, double? vpk, double? vdc,
+        ref VoltUnit vrmsState, ref VoltUnit vpkState, ref VoltUnit vdcState)
+
         {
             if (baseMeas == null) baseMeas = string.Empty;
 
@@ -4757,16 +4829,16 @@ namespace AudioHexViewer
 
             // Les 3 lignes doivent TOUJOURS être présentes.
             if (!calValid)
-            {
+            {   // Non calibré : indiquer "uncalibrated"
                 sb.AppendLine("Vrms:  uncalibrated");
                 sb.AppendLine("Vpeak: uncalibrated");
                 sb.AppendLine("Vdc:   uncalibrated");
             }
             else
-            {
-                sb.AppendLine("Vrms:  " + (vrms.HasValue ? FormatV(vrms.Value) : "---"));
-                sb.AppendLine("Vpeak: " + (vpk.HasValue ? FormatV(vpk.Value) : "---"));
-                sb.AppendLine("Vdc:   " + (vdc.HasValue ? FormatV(vdc.Value) : "---"));
+            {   // Calibré : afficher les valeurs
+                sb.AppendLine("Vrms:  " + (vrms.HasValue ? FormatVoltage(vrms.Value, ref vrmsState) : "---"));
+                sb.AppendLine("Vpeak: " + (vpk.HasValue ? FormatVoltage(vpk.Value, ref vpkState) : "---"));
+                sb.AppendLine("Vdc:   " + (vdc.HasValue ? FormatVoltage(vdc.Value, ref vdcState) : "---"));
             }
 
             // Séparateur + ajout des mesures existantes
