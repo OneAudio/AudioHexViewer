@@ -4715,18 +4715,19 @@ namespace AudioHexViewer
             _rowsRight.Clear();
 
             string leftMeas = InjectVoltsLines(
-                baseMeas: lblLeftMeas?.Text,
-                showVolts: (_levelUnit == "dBV") && _levelCalValidLeft,
-                vrms: _lastVrmsVoltsLeft,
-                vpk: _lastVpkVoltsLeft,
-                vdc: _lastVdcVoltsLeft);
+                lblLeftMeas?.Text ?? string.Empty,
+                _levelCalValidLeft,
+                _lastVrmsVoltsLeft,
+                _lastVpkVoltsLeft,
+                _lastVdcVoltsLeft);
 
             string rightMeas = InjectVoltsLines(
-                baseMeas: lblRightMeas?.Text,
-                showVolts: (_levelUnit == "dBV") && _levelCalValidRight,
-                vrms: _lastVrmsVoltsRight,
-                vpk: _lastVpkVoltsRight,
-                vdc: _lastVdcVoltsRight);
+                lblRightMeas?.Text ?? string.Empty,
+                _levelCalValidRight,
+                _lastVrmsVoltsRight,
+                _lastVpkVoltsRight,
+                _lastVdcVoltsRight);
+
 
             BuildRowsForChannel(_rowsLeft,
                 lblLeftRms?.Text,
@@ -4739,29 +4740,45 @@ namespace AudioHexViewer
                 rightMeas);
         }
 
-        private string InjectVoltsLines(string? baseMeas, bool showVolts, double? vrms, double? vpk, double? vdc)
+        private string InjectVoltsLines(string baseMeas, bool calValid, double? vrms, double? vpk, double? vdc)
         {
-            string meas = baseMeas ?? string.Empty;
-            if (!showVolts)
-                return meas;
+            if (baseMeas == null) baseMeas = string.Empty;
 
-            // If we don't have valid values yet, don't show the volts block.
-            if (vrms == null || vpk == null)
-                return meas;
+            // Format simple et robuste : mV sous 1V, sinon V.
+            static string FormatV(double v)
+            {
+                double av = Math.Abs(v);
+                if (av < 1.0)
+                    return (v * 1000.0).ToString("0.###") + " mV";
+                return v.ToString("0.###") + " V";
+            }
 
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"Vrms:  {FormatVoltage(vrms.Value)}");
-            sb.AppendLine($"Vpeak: {FormatVoltage(vpk.Value)}");
-            if (vdc != null)
-                sb.AppendLine($"Vdc:   {FormatVoltage(vdc.Value)}");
 
-            // Separator between volts and the rest of the measures panel (if any)
-            if (!string.IsNullOrWhiteSpace(meas))
+            // Les 3 lignes doivent TOUJOURS être présentes.
+            if (!calValid)
+            {
+                sb.AppendLine("Vrms:  uncalibrated");
+                sb.AppendLine("Vpeak: uncalibrated");
+                sb.AppendLine("Vdc:   uncalibrated");
+            }
+            else
+            {
+                sb.AppendLine("Vrms:  " + (vrms.HasValue ? FormatV(vrms.Value) : "---"));
+                sb.AppendLine("Vpeak: " + (vpk.HasValue ? FormatV(vpk.Value) : "---"));
+                sb.AppendLine("Vdc:   " + (vdc.HasValue ? FormatV(vdc.Value) : "---"));
+            }
+
+            // Séparateur + ajout des mesures existantes
+            if (!string.IsNullOrWhiteSpace(baseMeas))
+            {
                 sb.AppendLine("----");
+                sb.Append(baseMeas);
+            }
 
-            sb.Append(meas);
             return sb.ToString();
         }
+
 
         private static void BuildRowsForChannel(List<StatRow> dst, string? rms, string? peak, string? meas)
         {
@@ -4793,6 +4810,14 @@ namespace AudioHexViewer
                     return;
 
                 var emph = StatEmphasis.Normal;
+
+                if (label.Equals("F0", StringComparison.OrdinalIgnoreCase) ||
+                    label.Equals("Vrms", StringComparison.OrdinalIgnoreCase) ||
+                    label.Equals("dBFS peak", StringComparison.OrdinalIgnoreCase))
+                {
+                    emph = StatEmphasis.Strong;
+                }
+
                 if (label.Equals("RMS", StringComparison.OrdinalIgnoreCase) ||
                     label.Equals("F0", StringComparison.OrdinalIgnoreCase))
                     emph = StatEmphasis.Strong;
