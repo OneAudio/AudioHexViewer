@@ -3173,6 +3173,7 @@ namespace AudioHexViewer
                     if (customFMax <= customFMin)
                         customFMax = customFMin + 10.0;
 
+                    ResetAveragingState();
                     UpdateSpectrumChartAndStats();
                 }
             }
