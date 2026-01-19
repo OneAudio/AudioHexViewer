@@ -1058,25 +1058,10 @@ namespace AudioHexViewer
                 {
                     spectrumControl.EnableExternalSpectrumMode(true);
 
-                    // Décimation adaptative (zoom-aware si SpectrumControl renvoie une vraie plage)
-                    var frameToShow = _lastFrameUi;
+                    // IMPORTANT : on envoie TOUJOURS la frame complète pour que les métriques soient justes.
+                    // La décimation sera faite dans SpectrumControl uniquement pour le tracé.
+                    spectrumControl.FeedExternalSpectrum(_lastFrameUi);
 
-                    var (fMin, fMax) = spectrumControl.GetVisibleFreqRangeHz();
-                    int px = spectrumControl.GetPlotPixelWidth();
-
-                    // budget points ~ 2 points/pixel (cap max pour éviter surcoût)
-                    int budget = Math.Min(200_000, Math.Max(2000, px * 2));
-
-                    bool useLogX = spectrumControl.IsXAxisLog();
-                    frameToShow = DecimateFrameForDisplay(frameToShow, fMin, fMax, budget, useLogX);
-
-                    spectrumControl.FeedExternalSpectrum(frameToShow);
-
-                    _uiFramesShown++;
-                    _uiLastDisplayT = tNow;
-
-                    // Reset du compteur 0..100% à chaque "affichage effectif" de la courbe
-                    ResetFftTickerFromCurrentStats();
 
                 }
 

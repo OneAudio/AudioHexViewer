@@ -306,6 +306,19 @@ namespace AudioHexViewer
         private double[]? currentRightSpectrum;
         private double[]? freqAxis;
 
+        // --- Données FULL (résolution complète) : utilisées pour métriques / curseurs / estimations ---
+        //private double[]? freqAxis;                 // déjà présent plus bas dans ton fichier, garde-le tel quel
+        //private double[]? currentLeftSpectrum;
+        //private double[]? currentRightSpectrum;
+
+        // --- Données PLOT (décimées) : utilisées UNIQUEMENT pour le tracé (chart) ---
+        private double[]? _plotFreqAxis;
+        private double[]? _plotLeftSpectrum;
+        private double[]? _plotRightSpectrum;
+        private double[]? _plotPeakLeft;
+        private double[]? _plotPeakRight;
+
+
         // --- Calibration niveau FFT (dBFS -> dBV) ---
         // Convention utilisée dans le projet :
         // - Les courbes FFT sont en "dBFS" avec 0 dBFS pour une sinusoïde full-scale (peak FS).
@@ -3024,11 +3037,195 @@ namespace AudioHexViewer
             bool peakEnabled = (chkPeakHold != null && chkPeakHold.Checked);
             _post.UpdatePeakHold(currentLeftSpectrum, currentRightSpectrum, peakEnabled);
 
-            // Axe fréquence
+            // Axe fréquence FULL (servira aux métriques)
             freqAxis = frame.FreqAxisHz;
 
+            // Construit la version "PLOT" décimée (tracé only), à partir des tableaux dB et peak-hold.
+            BuildPlotDataFromFull();
+
+            // Puis UI update (stats + chart)
             UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
+
         }
+        //
+        // Construit les tableaux décimés uniquement pour le tracé (chart).
+// IMPORTANT : les métriques restent calculées sur currentLeftSpectrum/currentRightSpectrum + freqAxis (FULL).
+private void BuildPlotDataFromFull()
+{
+    _plotFreqAxis = null;
+    _plotLeftSpectrum = null;
+    _plotRightSpectrum = null;
+    _plotPeakLeft = null;
+    _plotPeakRight = null;
+
+    if (freqAxis == null) return;
+
+    // Budget points ~ 2 points/pixel, cap pour éviter un surcoût UI
+    var (fMin, fMax) = GetVisibleFreqRangeHz();
+    int px = GetPlotPixelWidth();
+    int budget = Math.Min(200_000, Math.Max(2000, px * 2));
+    bool useLogX = IsXAxisLog();
+
+    // Courbe principale
+    if (currentLeftSpectrum != null)
+        DecimateForPlot(freqAxis, currentLeftSpectrum, fMin, fMax, budget, useLogX, out _plotFreqAxis, out _plotLeftSpectrum);
+
+    // Si left absent mais right présent, on doit quand même sortir un freq axis plot
+    if (_plotFreqAxis == null && currentRightSpectrum != null)
+        DecimateForPlot(freqAxis, currentRightSpectrum, fMin, fMax, budget, useLogX, out _plotFreqAxis, out _plotRightSpectrum);
+
+    // Droite (réutilise le même freq axis si déjà construit)
+    if (currentRightSpectrum != null)
+    {
+        if (_plotFreqAxis == null)
+            DecimateForPlot(freqAxis, currentRightSpectrum, fMin, fMax, budget, useLogX, out _plotFreqAxis, out _plotRightSpectrum);
+        else
+            DecimateForPlotWithGivenFreqAxis(freqAxis, currentRightSpectrum, _plotFreqAxis, out _plotRightSpectrum);
+    }
+
+    // Peak-hold : on décime aussi, sinon tailles incompatibles avec la courbe affichée
+    var peakL = _post.GetPeakLeft();
+    var peakR = _post.GetPeakRight();
+
+    if (peakL != null && _plotFreqAxis != null)
+        DecimateForPlotWithGivenFreqAxis(freqAxis, peakL, _plotFreqAxis, out _plotPeakLeft);
+
+    if (peakR != null && _plotFreqAxis != null)
+        DecimateForPlotWithGivenFreqAxis(freqAxis, peakR, _plotFreqAxis, out _plotPeakRight);
+}
+
+// Décimation "tracé only" : conserve le max dans chaque bucket.
+// Entrées : freqFull (monotone), yFull (dBFS), plage visible, budget points, mode log/lin.
+// Sorties : freqOut/yOut de taille <= budget.
+private static void DecimateForPlot(
+    double[] freqFull, double[] yFull,
+    double fMin, double fMax,
+    int maxPoints,
+    bool useLogX,
+    out double[] freqOut,
+    out double[] yOut)
+{
+    int nIn = Math.Min(freqFull.Length, yFull.Length);
+    if (nIn <= 0) { freqOut = Array.Empty<double>(); yOut = Array.Empty<double>(); return; }
+
+    // bornes indices
+    int i0 = Array.BinarySearch(freqFull, fMin);
+    if (i0 < 0) i0 = ~i0;
+    int i1 = Array.BinarySearch(freqFull, fMax);
+    if (i1 < 0) i1 = ~i1;
+
+    i0 = Math.Max(0, Math.Min(nIn - 1, i0));
+    i1 = Math.Max(i0 + 1, Math.Min(nIn, i1));
+
+    if (maxPoints <= 0) maxPoints = 2000;
+
+    // Pas de décimation si déjà petit : slice
+    int span = i1 - i0;
+    if (span <= maxPoints)
+    {
+        int n = span;
+        freqOut = new double[n];
+        yOut = new double[n];
+        Array.Copy(freqFull, i0, freqOut, 0, n);
+        Array.Copy(yFull, i0, yOut, 0, n);
+        return;
+    }
+
+    // LOG X : buckets uniformes en log10(f)
+    if (useLogX)
+    {
+        if (fMin <= 0) fMin = 1.0;
+        if (fMax <= fMin) fMax = fMin * 10.0;
+
+        int nOut = maxPoints;
+        freqOut = new double[nOut];
+        yOut = new double[nOut];
+
+        double logMin = Math.Log10(fMin);
+        double logMax = Math.Log10(fMax);
+        double logStep = (logMax - logMin) / nOut;
+
+        for (int j = 0; j < nOut; j++)
+        {
+            double fa = Math.Pow(10.0, logMin + j * logStep);
+            double fb = Math.Pow(10.0, logMin + (j + 1) * logStep);
+
+            int a = Array.BinarySearch(freqFull, fa);
+            if (a < 0) a = ~a;
+            int b = Array.BinarySearch(freqFull, fb);
+            if (b < 0) b = ~b;
+
+            if (a < i0) a = i0;
+            if (b > i1) b = i1;
+            if (b <= a) b = Math.Min(i1, a + 1);
+
+            // max dB dans le segment
+            int kMax = a;
+            double yMax = yFull[a];
+            for (int k = a; k < b; k++)
+            {
+                double y = yFull[k];
+                if (y > yMax) { yMax = y; kMax = k; }
+            }
+
+            freqOut[j] = freqFull[kMax];
+            yOut[j] = yMax;
+        }
+
+        return;
+    }
+
+    // LIN X : buckets uniformes en index
+    {
+        int nOut = maxPoints;
+        freqOut = new double[nOut];
+        yOut = new double[nOut];
+
+        double step = (double)span / nOut;
+
+        for (int j = 0; j < nOut; j++)
+        {
+            int a = i0 + (int)Math.Floor(j * step);
+            int b = i0 + (int)Math.Floor((j + 1) * step);
+
+            if (a < i0) a = i0;
+            if (b <= a) b = a + 1;
+            if (b > i1) b = i1;
+
+            int kMax = a;
+            double yMax = yFull[a];
+            for (int k = a; k < b; k++)
+            {
+                double y = yFull[k];
+                if (y > yMax) { yMax = y; kMax = k; }
+            }
+
+            freqOut[j] = freqFull[kMax];
+            yOut[j] = yMax;
+        }
+    }
+}
+
+// Variante : on a déjà un freqAxis plot (fréquences choisies), on interpole par "nearest bin" dans yFull.
+private static void DecimateForPlotWithGivenFreqAxis(
+    double[] freqFull,
+    double[] yFull,
+    double[] freqPlot,
+    out double[] yPlot)
+{
+    int nIn = Math.Min(freqFull.Length, yFull.Length);
+    yPlot = new double[freqPlot.Length];
+
+    for (int j = 0; j < freqPlot.Length; j++)
+    {
+        double f = freqPlot[j];
+        int k = Array.BinarySearch(freqFull, f);
+        if (k < 0) k = ~k;
+        if (k >= nIn) k = nIn - 1;
+        yPlot[j] = yFull[k];
+    }
+}
+
         //
         /// Alimente SpectrumControl avec des stats temporelles (issues du core acquisition/analysis),
         /// pour calibration et affichage. Format attendu : int 24b signé (même que tes buffers d'analyse).
@@ -3488,18 +3685,33 @@ namespace AudioHexViewer
 
             // --- Ce qu'on affiche en fonction du combo Channel ---
             string mode = comboChannel.SelectedItem as string ?? "L+R";
+
+            // IMPORTANT :
+            // - showLeft/showRight restent basés sur les tableaux FULL (pour les métriques et la logique UI globale).
+            // - MAIS le tracé doit utiliser les tableaux PLOT (_plot*) pour limiter le nombre de points.
             bool showLeft = (mode == "Left" || mode == "L+R") && (currentLeftSpectrum != null);
             bool showRight = (mode == "Right" || mode == "L+R") && (currentRightSpectrum != null);
+
             bool peakHoldOn = (chkPeakHold != null && chkPeakHold.Checked);
             bool useDbvPlot = UseDbvForMode(mode);
-
 
             _statsShowLeft = showLeft;
             _statsShowRight = showRight;
 
-            // >>> MODIF COMMIT 3 : peak-hold vient du post-processor
-            double[]? peakL = peakHoldOn ? _post.GetPeakLeft() : null;
-            double[]? peakR = peakHoldOn ? _post.GetPeakRight() : null;
+            // >>> PLOT : peak-hold et spectres décimés (tracé uniquement)
+            double[]? plotFx = _plotFreqAxis;
+            double[]? plotL = _plotLeftSpectrum;
+            double[]? plotR = _plotRightSpectrum;
+            double[]? peakL = peakHoldOn ? _plotPeakLeft : null;
+            double[]? peakR = peakHoldOn ? _plotPeakRight : null;
+
+            // Si on n'a pas de données PLOT (cas transitoire), on ne trace rien (mais les métriques restent OK).
+            if (plotFx == null || plotFx.Length == 0)
+            {
+                // On laisse la suite (stats, THD, etc.) travailler sur FULL, mais pas de courbe à afficher.
+                // (Alternative possible : fallback sur FULL, mais ça peut saturer l'UI en points.)
+            }
+
 
             // --- Overlays ---
             foreach (var slot in _overlays.Slots)
@@ -3554,7 +3766,7 @@ namespace AudioHexViewer
             }
 
             // Courbe gauche
-            if (showLeft)
+            if (showLeft && plotFx != null && plotL != null)
             {
                 var seriesL = new System.Windows.Forms.DataVisualization.Charting.Series("Left");
                 seriesL.ChartType = SeriesChartType.Line;
@@ -3562,8 +3774,10 @@ namespace AudioHexViewer
                 seriesL.ChartArea = "SpectrumArea";
                 seriesL.Color = FftLeftColor;
 
-                for (int i = startIndex; i < freqAxis.Length && i < currentLeftSpectrum.Length; i++)
-                    seriesL.Points.AddXY(freqAxis[i], useDbvPlot ? (currentLeftSpectrum[i] + _levelCalOffsetDbLeft) : currentLeftSpectrum[i]);
+                // startIndex : en log on saute 0 Hz.
+                // ATTENTION : plotFx est déjà construit sur la plage visible, donc startIndex peut rester 0/1 sans problème.
+                for (int i = startIndex; i < plotFx.Length && i < plotL.Length; i++)
+                    seriesL.Points.AddXY(plotFx[i], useDbvPlot ? (plotL[i] + _levelCalOffsetDbLeft) : plotL[i]);
 
                 chartSpectrum.Series.Add(seriesL);
 
@@ -3576,15 +3790,16 @@ namespace AudioHexViewer
                     seriesLph.BorderDashStyle = ChartDashStyle.Dash;
                     seriesLph.BorderWidth = _colors.PeakHoldWidth;
 
-                    for (int i = startIndex; i < freqAxis.Length && i < peakL.Length; i++)
-                        seriesLph.Points.AddXY(freqAxis[i], useDbvPlot ? (peakL[i] + _levelCalOffsetDbLeft) : peakL[i]);
+                    for (int i = startIndex; i < plotFx.Length && i < peakL.Length; i++)
+                        seriesLph.Points.AddXY(plotFx[i], useDbvPlot ? (peakL[i] + _levelCalOffsetDbLeft) : peakL[i]);
 
                     chartSpectrum.Series.Add(seriesLph);
                 }
             }
 
+
             // Courbe droite
-            if (showRight && currentRightSpectrum != null)
+            if (showRight && plotFx != null && plotR != null)
             {
                 var seriesR = new System.Windows.Forms.DataVisualization.Charting.Series("Right");
                 seriesR.ChartType = SeriesChartType.Line;
@@ -3592,8 +3807,8 @@ namespace AudioHexViewer
                 seriesR.ChartArea = "SpectrumArea";
                 seriesR.Color = FftRightColor;
 
-                for (int i = startIndex; i < freqAxis.Length && i < currentRightSpectrum.Length; i++)
-                    seriesR.Points.AddXY(freqAxis[i], useDbvPlot ? (currentRightSpectrum[i] + _levelCalOffsetDbRight) : currentRightSpectrum[i]);
+                for (int i = startIndex; i < plotFx.Length && i < plotR.Length; i++)
+                    seriesR.Points.AddXY(plotFx[i], useDbvPlot ? (plotR[i] + _levelCalOffsetDbRight) : plotR[i]);
 
                 chartSpectrum.Series.Add(seriesR);
 
@@ -3606,12 +3821,13 @@ namespace AudioHexViewer
                     seriesRph.BorderDashStyle = ChartDashStyle.Dash;
                     seriesRph.BorderWidth = _colors.PeakHoldWidth;
 
-                    for (int i = startIndex; i < freqAxis.Length && i < peakR.Length; i++)
-                        seriesRph.Points.AddXY(freqAxis[i], useDbvPlot ? (peakR[i] + _levelCalOffsetDbRight) : peakR[i]);
+                    for (int i = startIndex; i < plotFx.Length && i < peakR.Length; i++)
+                        seriesRph.Points.AddXY(plotFx[i], useDbvPlot ? (peakR[i] + _levelCalOffsetDbRight) : peakR[i]);
 
                     chartSpectrum.Series.Add(seriesRph);
                 }
             }
+
 
             // --- Stats temporelles : LEFT ---
             bool showLeftVolts = false;
