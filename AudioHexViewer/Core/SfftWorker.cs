@@ -26,6 +26,31 @@ namespace AudioHexViewer.Core
         private readonly float[] _winL;
         private readonly float[] _winR;
 
+        // Buffers FFT (réutilisés) : évite 2 allocations de taille N à chaque hop
+        private readonly MathNet.Numerics.Complex32[] _fftL;
+        private readonly MathNet.Numerics.Complex32[] _fftR;
+
+        // =============================================================
+        // Pool local (taille exacte = N/2+1) pour éviter new Complex32[] à chaque hop.
+        // IMPORTANT: taille fixe car fftSize fixe pour cette instance.
+        // =============================================================
+        private readonly ConcurrentBag<MathNet.Numerics.Complex32[]> _binsPool
+            = new ConcurrentBag<MathNet.Numerics.Complex32[]>();
+
+        private readonly int _binsLen; // = (fftSize/2)+1
+
+        private MathNet.Numerics.Complex32[] RentBins()
+        {
+            return _binsPool.TryTake(out var a) ? a : new MathNet.Numerics.Complex32[_binsLen];
+        }
+
+        private void ReturnBins(MathNet.Numerics.Complex32[] a)
+        {
+            // Ici pas de Clear(): on réécrit toujours [0..half], donc inutile.
+            _binsPool.Add(a);
+        }
+
+
         private readonly ConcurrentQueue<SpectrumFrame> _outQueue;
 
         private readonly double[] _window;   // fenêtre pré-calculée
@@ -40,6 +65,7 @@ namespace AudioHexViewer.Core
         private long _framesAtLastRate;
         private double _lastRateTime;
 
+        
         public SfftWorker(RingBufferStereoFloat ring, SfftStats stats, int sampleRate, int fftSize, int hop,
         object windowTypeObj, ConcurrentQueue<SpectrumFrame> outQueue)
 
@@ -57,8 +83,13 @@ namespace AudioHexViewer.Core
             _fftSize = fftSize;
             _hop = hop;
 
+            _binsLen = (_fftSize / 2) + 1;
+
             _winL = new float[_fftSize];
             _winR = new float[_fftSize];
+
+            _fftL = new MathNet.Numerics.Complex32[_fftSize];
+            _fftR = new MathNet.Numerics.Complex32[_fftSize];
 
             _outQueue = outQueue ?? throw new ArgumentNullException(nameof(outQueue));
 
@@ -323,42 +354,60 @@ namespace AudioHexViewer.Core
                         int N = _fftSize;
                         int bins = N / 2 + 1;
 
-                        var fftL = new MathNet.Numerics.Complex32[N];
-                        var fftR = new MathNet.Numerics.Complex32[N];
-
+                        // Remplissage des buffers FFT réutilisés
                         for (int i = 0; i < N; i++)
                         {
                             double wl = _winL[i] * _window[i];
                             double wr = _winR[i] * _window[i];
-                            fftL[i] = new MathNet.Numerics.Complex32((float)wl, 0f);
-                            fftR[i] = new MathNet.Numerics.Complex32((float)wr, 0f);
+                            _fftL[i] = new MathNet.Numerics.Complex32((float)wl, 0f);
+                            _fftR[i] = new MathNet.Numerics.Complex32((float)wr, 0f);
                         }
 
-                        Fourier.Forward(fftL, FourierOptions.Matlab);
-                        Fourier.Forward(fftR, FourierOptions.Matlab);
+                        Fourier.Forward(_fftL, FourierOptions.Matlab);
+                        Fourier.Forward(_fftR, FourierOptions.Matlab);
+
 
                         // On publie uniquement les bins positifs [0..N/2] en complexe.
                         // L'UI décidera ensuite : magnitude, dBFS, dBV, averaging, etc.
                         int half = N / 2;
-                        var binsL = new MathNet.Numerics.Complex32[half + 1];
-                        var binsR = new MathNet.Numerics.Complex32[half + 1];
 
-                        // Normalisation amplitude : on garde la même logique que ton ancien dBFS
-                        // (équivalent à ton scale: 2 / windowSum)
-                        float scale = (float)(2.0 / _windowSum);
+                        // Bins complexes poolés (taille exacte = N/2+1)
+                        var binsL = RentBins();
+                        var binsR = RentBins();
 
-                        for (int k = 0; k <= half; k++)
+                        try
                         {
-                            binsL[k] = fftL[k] * scale;
-                            binsR[k] = fftR[k] * scale;
+                            // Normalisation amplitude : on garde la même logique que ton ancien dBFS
+                            // (équivalent à ton scale: 2 / windowSum)
+                            float scale = (float)(2.0 / _windowSum);
+
+                            for (int k = 0; k <= half; k++)
+                            {
+                                binsL[k] = _fftL[k] * scale;
+                                binsR[k] = _fftR[k] * scale;
+                            }
+
+                            // Publication frame
+                            int fs = _stats.Snapshot().SampleRate;
+
+                            // IMPORTANT : SpectrumFrame doit désormais porter le callback ReturnBins (Étape A)
+                            var frame = new SpectrumFrame(fs, N, _nextHopEndAbs, binsL, binsR, _freqAxis, ReturnBins);
+                            _outQueue.Enqueue(frame);
+
+                            _stats.IncFramesComputed();
+
+                            // On a transféré l'ownership des buffers à la frame => ne pas les rendre ici
+                            binsL = null!;
+                            binsR = null!;
+                        }
+                        finally
+                        {
+                            // Si une exception arrive avant l'enqueue, on rend au pool
+                            if (binsL != null) ReturnBins(binsL);
+                            if (binsR != null) ReturnBins(binsR);
                         }
 
-                        // Publication frame
-                        int fs = _stats.Snapshot().SampleRate;
-                        var frame = new SpectrumFrame(fs, N, _nextHopEndAbs, binsL, binsR, _freqAxis);
-                        _outQueue.Enqueue(frame);
 
-                        _stats.IncFramesComputed();
                     }
 
                     else

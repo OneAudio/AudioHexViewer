@@ -445,8 +445,15 @@ namespace AudioHexViewer
             _floatRing = new RingBufferStereoFloat(ringCapacity);
 
             // 4) Vider la queue pour éviter mélange ancien/nouveau N
-            while (_sfftFrames.TryDequeue(out _)) { }
+            while (_sfftFrames.TryDequeue(out var old))
+            {
+                old.Dispose(); // IMPORTANT: rend les bins au pool
+            }
+
+            // IMPORTANT: rendre aussi la dernière frame UI (si elle existait)
+            _lastFrameUi?.Dispose();
             _lastFrameUi = null;
+
 
             // 5) Redémarrer le worker avec les bons paramètres
             var windowTypeObj = spectrumControl?.SelectedWindowType ?? (object)"BlackmanHarris7";
@@ -1008,9 +1015,14 @@ namespace AudioHexViewer
 
             while (_sfftFrames.TryDequeue(out var f))
             {
+                // On conserve uniquement la dernière frame
+                if (last != null)
+                    last.Dispose(); // rend au pool celle qu'on s'apprêtait à remplacer
+
                 last = f;
                 drained++;
             }
+
 
             if (drained > 0)
             {
@@ -1048,7 +1060,10 @@ namespace AudioHexViewer
 
             if (last != null && spectrumControl != null)
             {
+                // On remplace la frame UI précédente => il faut la rendre au pool
+                _lastFrameUi?.Dispose();
                 _lastFrameUi = last;
+
 
                 // Throttle: on draine toujours, mais on n'affiche qu'à 10 Hz max
                 double tNow = _uiSw.Elapsed.TotalSeconds;
