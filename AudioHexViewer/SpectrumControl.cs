@@ -751,6 +751,12 @@ namespace AudioHexViewer
                 currentRightSpectrum[i] = -200.0;
             }
 
+            // IMPORTANT : le tracé (Chart) utilise désormais les tableaux "PLOT" (_plot*)
+            // construits par BuildPlotDataFromFull(). Au démarrage, sans première frame FFT,
+            // ces tableaux n'existent pas encore => graphe vide.
+            // On construit donc aussi la version décimée ici, uniquement pour forcer un rendu
+            // initial (axes/grille + courbes au plancher), sans toucher au worker FFT.
+            BuildPlotDataFromFull();
 
             UpdateWindowInfo();
             UpdateOverlayInfo();
@@ -3483,6 +3489,16 @@ private static void DecimateForPlotWithGivenFreqAxis(
             if (fMax > uiMax)
                 fMax = uiMax;
 
+            // Guard "log" : évite l'exception Chart
+            // "A logarithmic scale cannot be used for this axis".
+            if (useLog)
+            {
+                if (double.IsNaN(fMin) || fMin <= 0.0)
+                    fMin = 1.0;
+                if (double.IsNaN(fMax) || fMax <= fMin)
+                    fMax = fMin * 10.0;
+            }
+
             // --- Axe Y (dBFS / dBV) avec limites custom éventuelles ---
             string modeForUnit = (comboChannel?.SelectedItem as string) ?? "L+R";
             bool useDbvAxis = UseDbvForMode(modeForUnit);
@@ -4387,9 +4403,6 @@ private static void DecimateForPlotWithGivenFreqAxis(
             if (chartSpectrum.ChartAreas.Count > 0)
             {
                 var area = chartSpectrum.ChartAreas[0]; // ou "SpectrumArea" si tu préfères
-
-                // On repasse en linéaire pour éviter les problèmes
-                area.AxisX.IsLogarithmic = false;
 
                 area.AxisX.StripLines.Clear();
 
