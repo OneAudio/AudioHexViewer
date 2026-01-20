@@ -99,6 +99,8 @@ namespace AudioHexViewer
 
         // --- Test source: sine 1 kHz -> écrit dans _floatRing à la place de la carte son ---
         private bool _useSineTest = false;
+        // --- Test source: signal de référence "mesures" (THD/SINAD/SNR/SFDR) ---
+        private bool _useMetricsRefTest = false;
         private CancellationTokenSource? _sineCts;
         private Task? _sineTask;
 
@@ -320,15 +322,7 @@ namespace AudioHexViewer
 
                 while (!ct.IsCancellationRequested)
                 {
-                    for (int i = 0; i < chunk; i++)
-                    {
-                        float v = (float)(amp * Math.Sin(phase));
-                        phase += dphi;
-                        if (phase > 2.0 * Math.PI) phase -= 2.0 * Math.PI;
-
-                        l[i] = v;
-                        r[i] = v;
-                    }
+                    TestWaves.FillStereoSine(l, r, chunk, amp, dphi, ref phase);
 
                     // Écrit dans le ring (remplace l'entrée carte son)
                     _floatRing.PushBlock(l, r);
@@ -375,6 +369,7 @@ namespace AudioHexViewer
         //
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            // F9 : mode sine test
             if (keyData == Keys.F9)
             {
                 _useSineTest = !_useSineTest;
@@ -383,8 +378,29 @@ namespace AudioHexViewer
                     : "Sine test OFF (carte son). Redémarre READ.");
                 return true;
             }
+            // F10 : mode référence mesures
+            if (keyData == Keys.F10)
+            {
+                _useMetricsRefTest = !_useMetricsRefTest;
+
+                // évite d'avoir 2 modes en même temps
+                if (_useMetricsRefTest) _useSineTest = false;
+
+                MessageBox.Show(_useMetricsRefTest
+                    ? "Ref mesures ON (signal cohérent FFT). Redémarre READ."
+                    : "Ref mesures OFF. Redémarre READ.");
+
+                return true;
+            }
 
             return base.ProcessCmdKey(ref msg, keyData);
+        }
+        //
+        private void StartMetricsReferenceTestSource(int sampleRate)
+        {
+            // Étape suivante : on fera pointer ça vers TestWaves (signal cohérent FFT + harmoniques + bruit + spur).
+            // Pour l’instant, on peut démarrer une sinusoïde “placeholder” pour valider le wiring :
+            StartSineTestSource(sampleRate, 1000.0, 0.25);
         }
 
         //
@@ -2146,10 +2162,20 @@ namespace AudioHexViewer
                     // (Étape 5) Démarre la pipeline SFFT (ring + worker) avec N/overlap UI courants
                     RestartSfftFromUi();
 
-                    // --- START sine test (après création de _floatRing dans RestartSfftFromUi) ---
-                    if (_useSineTest && currentFormat != null)
+                    // --- START test source (après création de _floatRing dans RestartSfftFromUi) ---
+                    if (currentFormat != null)
                     {
-                        StartSineTestSource(currentFormat.SampleRate, 1000.0, 0.25);
+                        if (_useMetricsRefTest)
+                        {
+                            // Point 2.2 : démarre le signal de référence mesures
+                            // (la méthode exacte sera ajoutée dans TestWaves.cs à l'étape suivante)
+                            StartMetricsReferenceTestSource(currentFormat.SampleRate);
+                        }
+                        else if (_useSineTest)
+                        {
+                            // F9 : sinusoïde simple (comportement actuel)
+                            StartSineTestSource(currentFormat.SampleRate, 1000.0, 0.25);
+                        }
                     }
 
 

@@ -379,13 +379,17 @@ namespace AudioHexViewer.Core
                         {
                             // Normalisation amplitude : on garde la même logique que ton ancien dBFS
                             // (équivalent à ton scale: 2 / windowSum)
-                            float scale = (float)(2.0 / _windowSum);
+                            float scale2 = (float)(2.0 / _windowSum);
+                            float scale1 = (float)(1.0 / _windowSum);
 
                             for (int k = 0; k <= half; k++)
                             {
-                                binsL[k] = _fftL[k] * scale;
-                                binsR[k] = _fftR[k] * scale;
+                                float s = (k == 0 || k == half) ? scale1 : scale2;
+
+                                binsL[k] = _fftL[k] * s;
+                                binsR[k] = _fftR[k] * s;
                             }
+
 
                             // Publication frame
                             int fs = _stats.Snapshot().SampleRate;
