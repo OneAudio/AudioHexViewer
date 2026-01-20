@@ -1,14 +1,14 @@
-﻿using NAudio.CoreAudioApi;
+﻿using AudioHexViewer.Core;
+using NAudio.CoreAudioApi;
 using NAudio.Wave;
+using System.Buffers;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
-using System.Text;
 using System.IO;// ...
-using System.Text.Json;
 using System.Linq;
-using AudioHexViewer.Core;
-using System.Collections.Concurrent;
-
+using System.Text;
+using System.Text.Json;
 
 
 namespace AudioHexViewer
@@ -2909,18 +2909,34 @@ namespace AudioHexViewer
             // Aucun impact sur l'ancien pipeline (int24), il reste en place.
             if (!_useSineTest && _floatRing != null && frameCount > 0) // et pas en test sinusoïdal
             {
-                var tmpL = new float[frameCount];
-                var tmpR = new float[frameCount];
+                float[]? tmpL = null;
+                float[]? tmpR = null;
 
-                int p = 0;
-                for (int i = 0; i < frameCount; i++)
+                try
                 {
-                    // buffer = float32 interleaved: L,R,L,R...
-                    tmpL[i] = BitConverter.ToSingle(buffer, p); p += 4;
-                    tmpR[i] = BitConverter.ToSingle(buffer, p); p += 4;
+                    tmpL = ArrayPool<float>.Shared.Rent(frameCount);
+                    tmpR = ArrayPool<float>.Shared.Rent(frameCount);
+
+                    int p = 0;
+                    for (int i = 0; i < frameCount; i++)
+                    {
+                        // buffer = float32 interleaved: L,R,L,R...
+                        tmpL[i] = BitConverter.ToSingle(buffer, p); p += 4;
+                        tmpR[i] = BitConverter.ToSingle(buffer, p); p += 4;
+                    }
+
+                    // Push uniquement la partie utile [0..frameCount)
+                    _floatRing.PushBlock(tmpL.AsSpan(0, frameCount), tmpR.AsSpan(0, frameCount));
+
+                    _sfftStats.SetAbsWrite(_floatRing.AbsWrite);
+                }
+                finally
+                {
+                    if (tmpL != null) ArrayPool<float>.Shared.Return(tmpL);
+                    if (tmpR != null) ArrayPool<float>.Shared.Return(tmpR);
                 }
 
-                _floatRing.PushBlock(tmpL, tmpR);
+
                 _sfftStats.SetAbsWrite(_floatRing.AbsWrite);
 
                 // --- DEBUG TEMPORAIRE (étape 2) : état worker + FFT/s estimé ---
