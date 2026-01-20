@@ -1026,6 +1026,7 @@ namespace AudioHexViewer
 
             if (drained > 0)
             {
+                ResetFftTickerFromCurrentStats(); // réarme à chaque nouvelle FFT (après la 1ère, passe en hop/Fs)
                 // --- Mise à jour du titre : DOIT tourner même sans nouvelle FFT ---
                 // (sinon prog% ne peut pas "compter" entre 2 FFT)
                 double t = _uiSw.Elapsed.TotalSeconds;
