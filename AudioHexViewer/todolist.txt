@@ -1,20 +1,31 @@
 Chose à faire :
 --------------
-Le 17/01/2026
+Le 21/01/2026
 -------------
-Refactoring complet de l'acquisition, reste à régler avec de passer aux point de dessous:
------------------------------------------------------------------------------------------
 
-_Le mode AC/DC ne semble pas fonctionner.
+1 - En mode test F9/F10, les mesures en dBV, Volts et fréquence ne suivent pas que le signal
+sous test mais aussi ce qui vient de la carte son ! A corriger.
 
-_Améliorer la mesure de fréquence (pas en précise en échelle linéaire).
+2 - Le mode test avec F10 doit être déplacer dans le fichier TestWaves.cs
+
+3 - Ajouter dans le texte au dessus du graph, à gauche , le channel mode choisi.
+
+4 - Revoir le mode de fonctionnement des overlay.( bouton comme  les curseurs à voir..)
+
+5 -  Réorganier la partie haute de l'interface GUI.
+
+
+
+
+
+_Faut il supprimer Le mode AC/DC ? (ne fonctionne pas pour l'instant)
 
 -----------------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------
 1- Uniformiser les différents boutons/commandes du panneaux Spectrum,
 pour ressembler à ceux des curseurs.
 
-4 - Améliorer les mesures de THD, TD+N, etc et les comparer avec
+4 - Améliorer les mesures de THD, TD+N, etc et les comparer avec        ---> En cours.
 le résultat de REW et Arta.
 
 5 - Ajout du module qui permet de prendre le contre du SR.
@@ -26,7 +37,7 @@ Necessite d'avoir le module et la phase dans le calcul de la FFT.
 Et donc ajouter aussi la possibilité de tracer la phase lorsque
 on utilise le mode L/R
 
-    10- Corriger le décalage verticales des overlay lorsque on est en dBV
+10- Corriger le décalage verticales des overlay lorsque on est en dBV
 
 11 - Ajouter une calibration spécifique pour le mode DC,
 Offset + Gain ?
