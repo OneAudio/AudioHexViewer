@@ -9,9 +9,16 @@ namespace AudioHexViewer
         public double MinFreqHz { get; set; } = 20.0;
         public double MaxFreqHz { get; set; } = 24000.0; // 0 => Nyquist
 
+        // Largeur demi-lobe principale pour SFDR
+        public int SfdrFundHalfWidthBins { get; set; } = 16;
+
+
         // Détection / intégration
         public bool ExcludeDc { get; set; } = true;
-        public int ToneHalfWidthBins { get; set; } = 1; // intégration ±W bins autour d'un pic - THD BIN WIDTH FOR CALC
+
+        // Largeur demi-lobe principale pour intégration fondamentale et harmoniques
+        public int ToneHalfWidthBins { get; set; } = 8; // BH7 mainlobe large: ±8 bins typiquement
+
         public int MaxHarmonics { get; set; } = 7;      // 2..N
 
         // Optionnel: ignorer les harmoniques sous une fréquence minimale
@@ -186,7 +193,8 @@ namespace AudioHexViewer
 
             // Pour SFDR, on exclut uniquement la zone fondamentale
             var excludedFundOnly = new bool[bins];
-            MarkBins(excludedFundOnly, kFund, opt.ToneHalfWidthBins, kMin, kMax);
+            MarkBins(excludedFundOnly, kFund, opt.SfdrFundHalfWidthBins, kMin, kMax);
+
 
             int kSpur = -1;
             double pSpur = 0.0;

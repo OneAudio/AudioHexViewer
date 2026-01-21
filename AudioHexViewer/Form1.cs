@@ -11,6 +11,7 @@ using System.Text;
 using System.Text.Json;
 
 
+
 namespace AudioHexViewer
 {
     public partial class Form1 : Form
@@ -369,39 +370,126 @@ namespace AudioHexViewer
         //
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
-            // F9 : mode sine test
             if (keyData == Keys.F9)
             {
                 _useSineTest = !_useSineTest;
+
+                // évite d’avoir 2 modes en même temps
+                if (_useSineTest) _useMetricsRefTest = false;
+
                 MessageBox.Show(_useSineTest
                     ? "Sine test ON (1 kHz). Redémarre READ."
                     : "Sine test OFF (carte son). Redémarre READ.");
                 return true;
             }
-            // F10 : mode référence mesures
+
             if (keyData == Keys.F10)
             {
                 _useMetricsRefTest = !_useMetricsRefTest;
 
-                // évite d'avoir 2 modes en même temps
+                // évite d’avoir 2 modes en même temps
                 if (_useMetricsRefTest) _useSineTest = false;
 
                 MessageBox.Show(_useMetricsRefTest
-                    ? "Ref mesures ON (signal cohérent FFT). Redémarre READ."
-                    : "Ref mesures OFF. Redémarre READ.");
-
+                    ? "Ref mesures ON (coherent FFT + harmoniques + spur + bruit). Redémarre READ."
+                    : "Ref mesures OFF (carte son). Redémarre READ.");
                 return true;
             }
 
             return base.ProcessCmdKey(ref msg, keyData);
         }
+
         //
         private void StartMetricsReferenceTestSource(int sampleRate)
         {
-            // Étape suivante : on fera pointer ça vers TestWaves (signal cohérent FFT + harmoniques + bruit + spur).
-            // Pour l’instant, on peut démarrer une sinusoïde “placeholder” pour valider le wiring :
-            StartSineTestSource(sampleRate, 1000.0, 0.25);
+            if (_floatRing == null) return;
+            if (_sineTask != null) return; // on réutilise la même task/cts que le mode F9 (un seul générateur)
+
+            // FFT size utilisée par ton pipeline (celle choisie dans l'UI)
+            // -> cohérent avec RestartSfftFromUi() qui redémarre _floatRing/_sfftWorker sur analysisSampleSize
+            int fftSize = analysisSampleSize;
+
+            _sineCts = new CancellationTokenSource();
+            var ct = _sineCts.Token;
+
+            _sineTask = Task.Run(() =>
+            {
+                int chunk = 1024;
+                var l = new float[chunk];
+                var r = new float[chunk];
+
+                // Spéc du signal de référence (coherent FFT)
+                var spec = TestWaves.CreateReferenceSpec(
+                    fs: sampleRate,
+                    fftSize: fftSize,
+                    targetFundamentalHz: 1000.0,
+                    fundamentalDbfs: -12.0,
+                    h2Dbc: -60.0,
+                    h3Dbc: -70.0,
+                    spurDbc: -80.0,
+                    noiseRmsDbfs: -90.0
+                );
+
+                double phaseFund = 0.0;
+                double phaseSpur = 0.0;
+                uint rngState = 0x12345678;
+
+                var sw = Stopwatch.StartNew();
+                long total = 0;
+
+                while (!ct.IsCancellationRequested)
+                {
+                    // Génère le chunk (L/R identiques) via ton vrai générateur
+                    TestWaves.FillStereoReferenceSignal(
+                        l, r, chunk,
+                        spec,
+                        ref phaseFund,
+                        ref phaseSpur,
+                        ref rngState
+                    );
+
+                    // Écrit dans le ring (remplace l'entrée carte son)
+                    _floatRing.PushBlock(l, r);
+
+                    // Alimente aussi la fenêtre d'analyse "temps" (int24)
+                    // pour que RMS/Peak/Calibration fonctionnent comme en mode carte son.
+                    lock (_analysisWindowLock)
+                    {
+                        EnsureAnalysisWindowCapacity_NoLock(analysisSampleSize);
+
+                        const int Max24 = 1 << 23;        // 8388608
+                        const int Max24Pos = Max24 - 1;   // 8388607
+                        const int Min24Neg = -Max24;      // -8388608
+
+                        for (int i = 0; i < chunk; i++)
+                        {
+                            int Li = (int)Math.Round(l[i] * Max24Pos);
+                            int Ri = (int)Math.Round(r[i] * Max24Pos);
+
+                            if (Li > Max24Pos) Li = Max24Pos;
+                            if (Li < Min24Neg) Li = Min24Neg;
+                            if (Ri > Max24Pos) Ri = Max24Pos;
+                            if (Ri < Min24Neg) Ri = Min24Neg;
+
+                            FeedAnalysisWindowSample_NoLock(Li, Ri);
+                        }
+                    }
+
+                    total += chunk;
+
+                    // Throttle pour se caler sur le temps réel (~Fs)
+                    double targetSec = total / (double)sampleRate;
+                    double nowSec = sw.Elapsed.TotalSeconds;
+                    double sleepSec = targetSec - nowSec;
+
+                    if (sleepSec > 0.001)
+                        Thread.Sleep((int)(sleepSec * 1000.0));
+                    else
+                        Thread.Yield();
+                }
+            });
         }
+
 
         //
         private void StopSineTestSource()
@@ -2934,7 +3022,7 @@ namespace AudioHexViewer
             // --- NOUVEAU: push du bloc float stéréo dans _floatRing (étape 1) ---
             // Ici on lit 1 seule fois le buffer en float32 stéréo et on pousse dans le ring.
             // Aucun impact sur l'ancien pipeline (int24), il reste en place.
-            if (!_useSineTest && _floatRing != null && frameCount > 0) // et pas en test sinusoïdal
+            if (!(_useSineTest || _useMetricsRefTest) && _floatRing != null && frameCount > 0) // pas de carte son si test actif
             {
                 float[]? tmpL = null;
                 float[]? tmpR = null;
