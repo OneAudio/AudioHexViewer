@@ -1299,10 +1299,10 @@ namespace AudioHexViewer
                     : $"Avg:{avgTargetCount}";
             }
 
-            // --- AC / DC ---
-            string acdcText = (chkRemoveDC != null && chkRemoveDC.Checked)
-                ? "AC mode"
-                : "DC mode";
+            //// --- AC / DC ---
+            //string acdcText = (chkRemoveDC != null && chkRemoveDC.Checked)
+            //    ? "AC mode"
+            //    : "DC mode";
 
             // --- Ligne finale ---
             // --- Résolution FFT : ΔF = SR / N ---
@@ -1319,20 +1319,20 @@ namespace AudioHexViewer
                 $"ΔF={dfText}    " +
                 $"Overlap:{overlapPct:F1}%     " +
                 $"Win:{winText}    " +
-                $"{avgText}    " +
-                $"{acdcText}";
+                $"{avgText}    ";
+                //$"{acdcText}";
 
             _overlayInfoAnno.Visible = false;   // on ne l’utilise plus
             chartSpectrum.Invalidate();         // force un repaint pour voir la ligne mise à jour
 
         }
         //
-        private void UpdateAcDcButtonText()
-        {
-            if (chkRemoveDC == null) return;
-            // Convention : Checked = AC (remove DC activé), Unchecked = DC
-            chkRemoveDC.Text = chkRemoveDC.Checked ? "AC" : "DC";
-        }
+        //private void UpdateAcDcButtonText()
+        //{
+        //    if (chkRemoveDC == null) return;
+        //    // Convention : Checked = AC (remove DC activé), Unchecked = DC
+        //    chkRemoveDC.Text = chkRemoveDC.Checked ? "AC" : "DC";
+        //}
         //
         private void UpdateLogLinButtonText()
         {
@@ -1435,20 +1435,20 @@ namespace AudioHexViewer
 
             };
 
-            //
-            // Sélection AC/DC
-            chkRemoveDC.CheckedChanged += (s, e) =>
-            {
-                if (_isRestoringSettings)
-                    return;
+            ////
+            //// Sélection AC/DC
+            //chkRemoveDC.CheckedChanged += (s, e) =>
+            //{
+            //    if (_isRestoringSettings)
+            //        return;
                 
-                UpdateAcDcButtonText();
-                UpdateOverlayInfo();
-            };
+            //    UpdateAcDcButtonText();
+            //    UpdateOverlayInfo();
+            //};
 
-            // Initial update
-            UpdateAcDcButtonText();
-            UpdateLogLinButtonText();
+            //// Initial update
+            //UpdateAcDcButtonText();
+            //UpdateLogLinButtonText();
 
 
             // Peak-hold
@@ -2041,11 +2041,11 @@ namespace AudioHexViewer
             else
                 s.Channel = "L+R";
 
-            // DC
-            if (chkRemoveDC != null)
-            {
-                s.RemoveDC = chkRemoveDC.Checked;
-            }
+            //// DC
+            //if (chkRemoveDC != null)
+            //{
+            //    s.RemoveDC = chkRemoveDC.Checked;
+            //}
 
             // Window
             if (comboWindow != null && comboWindow.SelectedItem is string w)
@@ -2103,11 +2103,11 @@ namespace AudioHexViewer
                         comboChannel.SelectedIndex = idx;
                 }
 
-                // DC
-                if (chkRemoveDC != null)
-                {
-                    chkRemoveDC.Checked = s.RemoveDC;
-                }
+                //// DC
+                //if (chkRemoveDC != null)
+                //{
+                //    chkRemoveDC.Checked = s.RemoveDC;
+                //}
 
                 // Window
                 if (comboWindow != null)
@@ -4477,7 +4477,7 @@ private static void DecimateForPlotWithGivenFreqAxis(
             var options = new SpectrumOptions
             {
                 WindowType = lastWindow,
-                RemoveDc = (chkRemoveDC != null && chkRemoveDC.Checked),
+                //RemoveDc = (chkRemoveDC != null && chkRemoveDC.Checked),
                 NeedComplexFft = false
             };
 

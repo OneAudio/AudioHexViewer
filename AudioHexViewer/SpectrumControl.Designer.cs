@@ -20,7 +20,6 @@
             label2 = new Label();
             label1 = new Label();
             lblAvgProgress = new Label();
-            chkRemoveDC = new CheckBox();
             chkPeakHold = new CheckBox();
             btnResetPeakHold = new Button();
             chkEnableThd = new CheckBox();
@@ -79,7 +78,6 @@
             panelTop.Controls.Add(label2);
             panelTop.Controls.Add(label1);
             panelTop.Controls.Add(lblAvgProgress);
-            panelTop.Controls.Add(chkRemoveDC);
             panelTop.Controls.Add(chkPeakHold);
             panelTop.Controls.Add(btnResetPeakHold);
             panelTop.Controls.Add(chkEnableThd);
@@ -142,17 +140,6 @@
             lblAvgProgress.Size = new Size(51, 21);
             lblAvgProgress.TabIndex = 14;
             lblAvgProgress.Text = "label1";
-            // 
-            // chkRemoveDC
-            // 
-            chkRemoveDC.Appearance = Appearance.Button;
-            chkRemoveDC.Location = new Point(839, 40);
-            chkRemoveDC.Name = "chkRemoveDC";
-            chkRemoveDC.Size = new Size(34, 23);
-            chkRemoveDC.TabIndex = 13;
-            chkRemoveDC.Text = "AC";
-            chkRemoveDC.TextAlign = ContentAlignment.MiddleCenter;
-            chkRemoveDC.UseVisualStyleBackColor = true;
             // 
             // chkPeakHold
             // 
@@ -628,7 +615,6 @@
         private CheckBox chkEnableThd;
         private Button btnThdSettings;
         private Button btnResetAvg;
-        private CheckBox chkRemoveDC;
         private Label lblAvgProgress;
         private CheckBox chkPeakHold;
         private Button btnResetPeakHold;

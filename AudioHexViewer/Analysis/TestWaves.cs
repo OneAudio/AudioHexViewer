@@ -7,19 +7,27 @@ namespace AudioHexViewer.Core
         // Remplit un chunk stéréo avec une sinusoïde.
         // phase est en radians, conservée entre appels pour continuité.
         public static void FillStereoSine(float[] l, float[] r, int count,
-                                          double amp, double dphi,
-                                          ref double phase)
+                                  double amp, double offset, double dphi,
+                                  ref double phase)
         {
+            // offset = composante DC ajoutée (en full-scale, comme amp)
             for (int i = 0; i < count; i++)
             {
-                float v = (float)(amp * Math.Sin(phase));
+                double x = offset + amp * Math.Sin(phase);
+
                 phase += dphi;
                 if (phase > 2.0 * Math.PI) phase -= 2.0 * Math.PI;
 
+                // Clamp de sécurité pour rester dans [-1..1]
+                if (x > 1.0) x = 1.0;
+                else if (x < -1.0) x = -1.0;
+
+                float v = (float)x;
                 l[i] = v;
                 r[i] = v;
             }
         }
+
         //
         //
         public readonly struct RefSignalSpec

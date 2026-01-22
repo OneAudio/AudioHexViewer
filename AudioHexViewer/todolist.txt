@@ -6,7 +6,7 @@ Le 21/01/2026
 1 - En mode test F9/F10, les mesures en dBV, Volts et fréquence ne suivent pas que le signal    --> résolu le 22/01 OK
 sous test mais aussi ce qui vient de la carte son ! A corriger.
 
-2 - Le mode test avec F10 doit être déplacer dans le fichier TestWaves.cs
+2 - Le mode test avec F10 doit être déplacer dans le fichier TestWaves.cs                       -> déjà fait
 
 3 - Ajouter dans le texte au dessus du graph, à gauche , le channel mode choisi.
 
@@ -15,18 +15,19 @@ sous test mais aussi ce qui vient de la carte son ! A corriger.
 5 -  Réorganier la partie haute de l'interface GUI.
 
 
-
-
-
 _Faut il supprimer Le mode AC/DC ? (ne fonctionne pas pour l'instant)
+Réponse :
+
+Note ON 20/01 : Le WidthBin pour le calcul du SFDR doit être le même que pour les harmoniques de THD. --> résolu le 22/01 OK
+Il aussi ne  prendre en compte que les spurs qui ne sont pas des harmoniques !
+
+
 
 -----------------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------
 1- Uniformiser les différents boutons/commandes du panneaux Spectrum,
 pour ressembler à ceux des curseurs.
 
-4 - Améliorer les mesures de THD, TD+N, etc et les comparer avec        ---> En cours.
-le résultat de REW et Arta.
 
 5 - Ajout du module qui permet de prendre le contre du SR.
 (Besoin d'ajouter une combobox pour la selection du SR).

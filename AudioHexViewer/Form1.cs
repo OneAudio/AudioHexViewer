@@ -323,7 +323,7 @@ namespace AudioHexViewer
 
                 while (!ct.IsCancellationRequested)
                 {
-                    TestWaves.FillStereoSine(l, r, chunk, amp, dphi, ref phase);
+                    TestWaves.FillStereoSine(l, r, chunk, amp,0.05, dphi, ref phase); // ajoute offset DC 0.05 pour test mesures DC
 
                     // Écrit dans le ring (remplace l'entrée carte son)
                     _floatRing.PushBlock(l, r);

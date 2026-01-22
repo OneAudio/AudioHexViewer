@@ -21,8 +21,12 @@ namespace AudioHexViewer
         // Doit dépendre de la fenêtre (BH7 > Hann > Rect)
         public int FundamentalHalfWidthBins { get; set; } = 8;
 
+        // Largeur utilisée pour mesurer un spur pour SFDR (sinon on "mesure le bruit")
+        public int ToneHalfWidthBins { get; set; } = 8;
+
+
         // Largeur utilisée pour mesurer une harmonique (sinon on "mesure le bruit")
-        public int HarmonicHalfWidthBins { get; set; } = 1;
+        public int HarmonicHalfWidthBins { get; set; } = 3;
 
         public int MaxHarmonics { get; set; } = 7;      // 2..N
 
@@ -191,28 +195,50 @@ namespace AudioHexViewer
             // 6) Bruit = total - (fund + harm)
             double pNoise = Math.Max(0.0, pTotal - pFund - pHarm);
 
-            // 7) SFDR : plus gros spur hors bande fondamentale (on exclut seulement les bins de la fondamentale)
-            // On fait simple et robuste : on ne bloque pas les harmoniques (elles comptent comme spurs possibles).
+            // 7) SFDR "spur-only" : on exclut fondamentale + harmoniques (THD) puis on cherche le plus gros spur restant.
+            // Important : pour être stable, on centre les harmoniques en BINS (kFund*h) plutôt qu'en Hz interpolé.
             double spurDb = -200.0;
             double spurHz = 0.0;
 
-            // Pour SFDR, on exclut uniquement la zone fondamentale
-            var excludedFundOnly = new bool[bins];
-            MarkBins(excludedFundOnly, kFund, opt.SfdrFundHalfWidthBins, kMin, kMax);
+            // Masque d'exclusion SFDR
+            var excludedSfdr = new bool[bins];
 
+            // Exclure fondamentale (largeur dédiée SFDR)
+            MarkBins(excludedSfdr, kFund, opt.SfdrFundHalfWidthBins, kMin, kMax);
+
+            // Exclure harmoniques H2..Hmax (même largeur que l'intégration tonalité, ou une largeur dédiée si tu ajoutes une option)
+            for (int h = 2; h <= maxH; h++)
+            {
+                int kH = kFund * h;
+                if (kH > kMax) break;
+
+                // Respecter MinHarmonicFreqHz
+                double fh = BinToFreq(kH, sampleRate, fftSize);
+                if (fh < opt.MinHarmonicFreqHz) continue;
+                if (fh >= nyquist) break;
+
+                MarkBins(excludedSfdr, kH, opt.ToneHalfWidthBins, kMin, kMax);
+            }
 
             int kSpur = -1;
-            double pSpur = 0.0;
+            double pSpurPeak = 0.0;
 
+            // 1er passage : trouver le bin max hors exclusions
             for (int k = kMin; k <= kMax; k++)
             {
-                if (excludedFundOnly[k]) continue;
-                if (p[k] > pSpur)
-                {
-                    pSpur = p[k];
-                    kSpur = k;
-                }
+                if (excludedSfdr[k]) continue;
+                if (p[k] > pSpurPeak) { pSpurPeak = p[k]; kSpur = k; }
             }
+
+            // 2e passage : intégrer autour du spur trouvé (plus robuste qu'un seul bin, surtout avec fenêtrage)
+            double pSpur = 0.0;
+            if (kSpur >= 0 && pSpurPeak > 0.0)
+            {
+                pSpur = IntegrateTonePowerAndMark(new bool[bins], p, kSpur, opt.ToneHalfWidthBins, kMin, kMax);
+                spurDb = 10.0 * Math.Log10(pSpur);
+                spurHz = BinToFreq(kSpur, sampleRate, fftSize);
+            }
+
 
             if (kSpur >= 0 && pSpur > 0.0)
             {
