@@ -3,7 +3,7 @@ Chose à faire :
 Le 21/01/2026
 -------------
 
-1 - En mode test F9/F10, les mesures en dBV, Volts et fréquence ne suivent pas que le signal
+1 - En mode test F9/F10, les mesures en dBV, Volts et fréquence ne suivent pas que le signal    --> résolu le 22/01 OK
 sous test mais aussi ce qui vient de la carte son ! A corriger.
 
 2 - Le mode test avec F10 doit être déplacer dans le fichier TestWaves.cs

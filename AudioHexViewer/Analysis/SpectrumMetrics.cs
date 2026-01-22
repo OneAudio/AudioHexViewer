@@ -17,7 +17,12 @@ namespace AudioHexViewer
         public bool ExcludeDc { get; set; } = true;
 
         // Largeur demi-lobe principale pour intégration fondamentale et harmoniques
-        public int ToneHalfWidthBins { get; set; } = 8; // BH7 mainlobe large: ±8 bins typiquement
+        // Largeur utilisée pour intégrer/exclure la fondamentale (mainlobe + skirts)
+        // Doit dépendre de la fenêtre (BH7 > Hann > Rect)
+        public int FundamentalHalfWidthBins { get; set; } = 8;
+
+        // Largeur utilisée pour mesurer une harmonique (sinon on "mesure le bruit")
+        public int HarmonicHalfWidthBins { get; set; } = 1;
 
         public int MaxHarmonics { get; set; } = 7;      // 2..N
 
@@ -131,7 +136,7 @@ namespace AudioHexViewer
             var excluded = new bool[bins];
 
             // Exclure fondamentale (±W)
-            double pFund = IntegrateTonePowerAndMark(excluded, p, kFund, opt.ToneHalfWidthBins, kMin, kMax);
+            double pFund = IntegrateTonePowerAndMark(excluded, p, kFund, opt.FundamentalHalfWidthBins, kMin, kMax);
 
             // 4) Harmoniques
             var harmonics = new List<HarmonicInfo>();
@@ -148,7 +153,7 @@ namespace AudioHexViewer
                 int kH = (int)Math.Round(fh * fftSize / (double)sampleRate);
                 if (kH < kMin || kH > kMax) continue;
 
-                double pThis = IntegrateTonePowerAndMark(excluded, p, kH, opt.ToneHalfWidthBins, kMin, kMax);
+                double pThis = IntegrateTonePowerAndMark(excluded, p, kH, opt.HarmonicHalfWidthBins, kMin, kMax);
                 pHarm += pThis;
 
                 if (pFund > 0.0 && pThis > 0.0)

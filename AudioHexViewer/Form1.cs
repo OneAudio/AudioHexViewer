@@ -2917,6 +2917,11 @@ namespace AudioHexViewer
         //
         private void Capture_DataAvailable(object? sender, WaveInEventArgs e)
         {
+            // En mode test, on laisse la capture tourner (pour l’instant),
+            // mais on IGNORE ses buffers pour éviter tout mélange carte son + signal test.
+            if (_useSineTest || _useMetricsRefTest)
+                return;
+
             ProcessBuffer(e.Buffer, e.BytesRecorded);
         }
 
