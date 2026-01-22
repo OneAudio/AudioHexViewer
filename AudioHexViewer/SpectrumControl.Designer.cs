@@ -103,7 +103,8 @@
             // 
             // lblFftTicker
             // 
-            lblFftTicker.Location = new Point(991, 8);
+            lblFftTicker.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            lblFftTicker.Location = new Point(982, 8);
             lblFftTicker.Name = "lblFftTicker";
             lblFftTicker.Size = new Size(37, 22);
             lblFftTicker.TabIndex = 35;
@@ -124,7 +125,7 @@
             label1.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             label1.AutoSize = true;
             label1.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            label1.Location = new Point(990, 25);
+            label1.Location = new Point(981, 30);
             label1.Name = "label1";
             label1.Size = new Size(38, 15);
             label1.TabIndex = 32;
@@ -270,7 +271,7 @@
             lblWindowInfo.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             lblWindowInfo.AutoSize = true;
             lblWindowInfo.ForeColor = SystemColors.HotTrack;
-            lblWindowInfo.Location = new Point(990, 40);
+            lblWindowInfo.Location = new Point(981, 47);
             lblWindowInfo.Name = "lblWindowInfo";
             lblWindowInfo.Size = new Size(47, 15);
             lblWindowInfo.TabIndex = 8;
@@ -289,9 +290,9 @@
             // chkLogX
             // 
             chkLogX.Appearance = Appearance.Button;
-            chkLogX.Location = new Point(914, 40);
+            chkLogX.Location = new Point(885, 40);
             chkLogX.Name = "chkLogX";
-            chkLogX.Size = new Size(45, 23);
+            chkLogX.Size = new Size(74, 23);
             chkLogX.TabIndex = 11;
             chkLogX.Text = "LOG";
             chkLogX.TextAlign = ContentAlignment.MiddleCenter;

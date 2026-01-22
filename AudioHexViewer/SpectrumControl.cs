@@ -1313,7 +1313,16 @@ namespace AudioHexViewer
                 ? $"{df / 1000.0:F2} kHz"
                 : (df >= 10.0 ? $"{df:F1} Hz" : $"{df:F2} Hz");
 
+            // --- Channel mode (pour affichage) ---
+            string channelText = SelectedChannelMode switch
+            {
+                "Left" => "Left",
+                "Right" => "Right",
+                _ => "Both" // "L+R" ou valeur inconnue
+            };
+
             _TopInfoLine =
+                $"Channel:{channelText}    " +
                 $"SR:{srText}    " +
                 $"N={N:N0}    " +
                 $"ΔF={dfText}    " +
@@ -1321,6 +1330,7 @@ namespace AudioHexViewer
                 $"Win:{winText}    " +
                 $"{avgText}    ";
                 //$"{acdcText}";
+
 
             _overlayInfoAnno.Visible = false;   // on ne l’utilise plus
             chartSpectrum.Invalidate();         // force un repaint pour voir la ligne mise à jour
@@ -1491,6 +1501,8 @@ namespace AudioHexViewer
 
                 // Mise à jour immédiate de l'UI d'unité (même en LIVE)
                 UpdateLevelUnitUi();
+                // Mise à jour de l'overlay
+                UpdateOverlayInfo();
 
                 // IMPORTANT :
                 // En mode LIVE on ne force PAS un redraw immédiat, car la voie nouvellement choisie
