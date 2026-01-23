@@ -142,10 +142,11 @@ namespace AudioHexViewer
         public string SelectedChannelMode => comboChannel.SelectedItem as string ?? "L+R";
 
         public bool IsLeftChannelActive =>
-            SelectedChannelMode == "Left" || SelectedChannelMode == "L+R";
+    SelectedChannelMode == "Left" || SelectedChannelMode == "L+R" || SelectedChannelMode == "L/R";
 
         public bool IsRightChannelActive =>
             SelectedChannelMode == "Right" || SelectedChannelMode == "L+R";
+
 
 
         // Applique les couleurs du thème au contrôle Spectrum.
@@ -1485,6 +1486,7 @@ namespace AudioHexViewer
             comboChannel.Items.Add("Left");
             comboChannel.Items.Add("Right");
             comboChannel.Items.Add("L+R");
+            comboChannel.Items.Add("L/R");
             comboChannel.SelectedIndex = 2; // Par défaut les 2 voies sont affichées
 
             comboChannel.SelectedIndexChanged += (s, e) =>
@@ -3003,7 +3005,41 @@ namespace AudioHexViewer
 
             return db;
         }
+        //
+        /// <summary>
+        /// Convertit un ratio de puissance (Left/Right) en dB : 10*log10(P_L / P_R).
+        /// Utilisé par le mode "L/R" (pré-Bode).
+        /// </summary>
+        private static double[] PowerRatioToDb(double[] leftPower, double[] rightPower)
+        {
+            int n = Math.Min(leftPower.Length, rightPower.Length);
+            var db = new double[n];
 
+            // Epsilon pour éviter les divisions par 0 -> +Inf
+            const double EPS = 1e-30;
+
+            for (int k = 0; k < n; k++)
+            {
+                double pL = leftPower[k];
+                double pR = rightPower[k];
+                if (pL < EPS) pL = EPS;
+                if (pR < EPS) pR = EPS;
+
+                double v = 10.0 * Math.Log10(pL / pR);
+
+                // Clamp large : ici ce n'est pas du dBFS (peut être positif).
+                if (double.IsNaN(v) || double.IsInfinity(v)) v = 0.0;
+                if (v < -200.0) v = -200.0;
+                if (v > 200.0) v = 200.0;
+
+                db[k] = v;
+            }
+
+            return db;
+        }
+
+        //
+        //
         // Alimente une frame de spectre externe (calculée hors UI)
         internal void FeedExternalSpectrum(AudioHexViewer.Core.SpectrumFrame frame)
         {
@@ -3039,9 +3075,29 @@ namespace AudioHexViewer
                 out double[]? outPowR,
                 out int avgFill);
 
-            // Conversion POWER -> dBFS pour l’affichage/peak-hold
-            currentLeftSpectrum = (outPowL != null) ? PowerToDbFs(outPowL) : null;
-            currentRightSpectrum = (outPowR != null) ? PowerToDbFs(outPowR) : null;
+            // Conversion POWER -> dB pour l’affichage/peak-hold
+            // - Modes classiques : dBFS = 10*log10(power), clamp [-200..0]
+            // - Mode "L/R" : gain relatif = 10*log10(P_L/P_R), clamp large [-200..200]
+            if (string.Equals(SelectedChannelMode, "L/R", StringComparison.OrdinalIgnoreCase))
+            {
+                if (outPowL == null || outPowR == null)
+                {
+                    // Ratio impossible si un canal manque : on efface pour éviter un affichage trompeur.
+                    currentLeftSpectrum = null;
+                    currentRightSpectrum = null;
+                }
+                else
+                {
+                    currentLeftSpectrum = PowerRatioToDb(outPowL, outPowR);
+                    currentRightSpectrum = null; // le ratio est une seule courbe
+                }
+            }
+            else
+            {
+                currentLeftSpectrum = (outPowL != null) ? PowerToDbFs(outPowL) : null;
+                currentRightSpectrum = (outPowR != null) ? PowerToDbFs(outPowR) : null;
+            }
+
 
             // Progression UI : uniquement en mode Count
             if (mode != SpectrumPostProcessor.AveragingMode.Count || avgTargetCount <= 1)
@@ -3400,6 +3456,39 @@ private static void DecimateForPlotWithGivenFreqAxis(
                 return (hz / 1000.0).ToString("0.#") + "k";
             return hz.ToString("0");
         }
+        //
+        /// <summary>
+        /// Applique le mode X (LIN/LOG) de manière atomique et sûre.
+        /// Le Chart WinForms peut lever "logarithmic scale cannot be used" si min <= 0 en LOG.
+        /// </summary>
+        private void ApplyAxisXModeSafe(ChartArea area, bool useLog, double fMin, double fMax)
+        {
+            // Normalisation des bornes
+            if (double.IsNaN(fMin) || double.IsInfinity(fMin)) fMin = 0.0;
+            if (double.IsNaN(fMax) || double.IsInfinity(fMax)) fMax = fMin + 1.0;
+
+            if (useLog)
+            {
+                // LOG => min strictement > 0
+                fMin = Math.Max(1.0, fMin);
+                if (fMax <= fMin) fMax = fMin * 10.0;
+            }
+            else
+            {
+                // LIN => min >= 0 acceptable
+                if (fMax <= fMin) fMax = fMin + 1.0;
+            }
+
+            // Application "atomique" :
+            // 1) repasser en LIN (évite l’état transitoire invalide)
+            // 2) poser les bornes
+            // 3) repasser en LOG si besoin
+            area.AxisX.IsLogarithmic = false;
+            area.AxisX.Minimum = fMin;
+            area.AxisX.Maximum = fMax;
+            area.AxisX.IsLogarithmic = useLog;
+        }
+
 
         // Surcharge pratique : réutilise les derniers buffers temps connus
         private void UpdateSpectrumChartAndStats()
@@ -3518,13 +3607,26 @@ private static void DecimateForPlotWithGivenFreqAxis(
             double yMinAuto = -200.0;
             double yMaxAuto = 0.0;
 
+            // Mode "L/R" : on affiche un gain relatif (dB), pas un niveau dBFS.
+            // On choisit une échelle par défaut centrée pour permettre des gains +/-.
+            if (string.Equals(modeForUnit, "L/R", StringComparison.OrdinalIgnoreCase))
+            {
+                yMinAuto = -160.0;
+                yMaxAuto = 40.0;
+                useDbvAxis = false; // pas de dBV sur un ratio
+                area.AxisY.Title = "Gain (dB)";
+            }
+
             // Limite supérieure autorisée (utile en dBV après calibration).
             // On garde une échelle par défaut de 200 dB (span = 200).
             const double YMAX_CAP = 100.0;
             const double DEFAULT_SPAN_DB = 200.0;
 
-
-            if (useDbvAxis)
+            if (string.Equals(modeForUnit, "L/R", StringComparison.OrdinalIgnoreCase))
+            {
+                // Title déjà fixé plus haut.
+            }
+            else if (useDbvAxis)
             {
                 // En dBV, on applique un décalage (offset) : dBV = dBFS + offset
                 // En mode L+R, les offsets peuvent être différents => on prend un range qui couvre les 2
@@ -3632,9 +3734,6 @@ private static void DecimateForPlotWithGivenFreqAxis(
             area.AxisY.LabelStyle.Format = "F" + yDecimals;
 
             // --- Axe X : on fixe d'abord les bornes, puis on active le log si besoin ---
-            area.AxisX.Minimum = fMin;
-            area.AxisX.Maximum = fMax;
-
             if (useLog)
             {
                 if (area.AxisX.Minimum <= 0)
@@ -3714,11 +3813,10 @@ private static void DecimateForPlotWithGivenFreqAxis(
             // --- Ce qu'on affiche en fonction du combo Channel ---
             string mode = comboChannel.SelectedItem as string ?? "L+R";
 
-            // IMPORTANT :
-            // - showLeft/showRight restent basés sur les tableaux FULL (pour les métriques et la logique UI globale).
-            // - MAIS le tracé doit utiliser les tableaux PLOT (_plot*) pour limiter le nombre de points.
-            bool showLeft = (mode == "Left" || mode == "L+R") && (currentLeftSpectrum != null);
+            // "L/R" est une seule courbe portée par "Left" (currentLeftSpectrum = ratio en dB)
+            bool showLeft = (mode == "Left" || mode == "L+R" || mode == "L/R") && (currentLeftSpectrum != null);
             bool showRight = (mode == "Right" || mode == "L+R") && (currentRightSpectrum != null);
+
 
             bool peakHoldOn = (chkPeakHold != null && chkPeakHold.Checked);
             bool useDbvPlot = UseDbvForMode(mode);
@@ -4419,8 +4517,24 @@ private static void DecimateForPlotWithGivenFreqAxis(
                 area.AxisX.StripLines.Clear();
 
                 // Bornes "safe" par défaut
-                area.AxisX.Minimum = 0.0;
-                area.AxisX.Maximum = _sampleRate > 0 ? _sampleRate / 2.0 : 1.0;
+                // IMPORTANT : si l’axe est en LOG, le minimum doit être STRICTEMENT > 0
+                bool useLog = (chkLogX != null && chkLogX.Checked);
+
+                // Pour éviter un état transitoire invalide, on force temporairement LIN,
+                // on pose des bornes valides, puis on remet LOG si besoin.
+                area.AxisX.IsLogarithmic = false;
+
+                double xMax = (_sampleRate > 0) ? (_sampleRate / 2.0) : 1.0;
+                double xMin = useLog ? 1.0 : 0.0;
+
+                // Sécurité : garantir xMax > xMin
+                if (xMax <= xMin) xMax = xMin * 10.0;
+
+                area.AxisX.Minimum = xMin;
+                area.AxisX.Maximum = xMax;
+
+                area.AxisX.IsLogarithmic = useLog;
+
 
                 area.AxisX.MajorGrid.Enabled = true;
                 area.AxisX.MinorGrid.Enabled = false;
