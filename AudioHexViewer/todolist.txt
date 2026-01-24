@@ -15,15 +15,21 @@ Le 21/01/2026
 
 3 - Revoir le mode de fonctionnement des overlay.( bouton comme  les curseurs à voir..)
 
-4a - Corriger le décalage verticales des overlay lorsque on est en dBV
+4a - Corriger le décalage verticales des overlay lorsque on est en dBV                          --> OK Fait 24/01
     (Il faut que l'offset dBFS->dBV soit enregistré dans la courbe)
 
-4b - Les overlay gardent la totalitée des points de la FFT, lorsqu'ils son affichés
+4b - Les overlay gardent la totalitée des points de la FFT, lorsqu'ils son affichés             --> OK Fait 24/01
  dans le chart c'est très lourd et cela ralentit beaucoupe le rafraichissement.
  Il faut donc faire différement !    
 
-4c - Il faut aussi revoir le mode peak-hold pour limiter le nombre de points de celui-ci,
-    tout comme le graphique et les overlays.
+4c - Il faut aussi revoir le mode peak-hold pour limiter le nombre de points de celui-ci,       --> OK Fait 24/01
+    tout comme le graphique et les overlays.    
+
+5 - Ajouter une fonction de moyennage cohérente (synchrone) pour les mesures de THD 
+
+6- vérifier l'optimisation ds calculs de FFT :
+    a) Est ce que les voies non affichée sont calculée ? IL NE FAUT PAS, INUTILE !
+    b) Quel est le temps de calcul de la FFT en pratique selon la valeur de N ?
 
 
 -----------------------------------------------------------------------------------------

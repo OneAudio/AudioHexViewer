@@ -44,32 +44,45 @@ namespace AudioHexViewer
             return n;
         }
 
-        public void SaveToFile(string filePath, SpectrumResult current, string name, SpectrumOptions options)
+        public void SaveToFile(string filePath,
+                       string name,
+                       int sampleRate,
+                       int fftSize,
+                       string window,
+                       bool removeDc,
+                       double[] freqHz,
+                       double[]? leftDbFs,
+                       double[]? rightDbFs)
         {
-            if (current == null) throw new ArgumentNullException(nameof(current));
             if (string.IsNullOrWhiteSpace(filePath)) throw new ArgumentException("filePath vide");
+            if (freqHz == null || freqHz.Length == 0) throw new ArgumentException("freqHz vide");
+            if (leftDbFs == null && rightDbFs == null) throw new ArgumentException("pas de données spectre");
+
+            if (leftDbFs != null && leftDbFs.Length != freqHz.Length)
+                throw new ArgumentException("leftDbFs length != freqHz length");
+            if (rightDbFs != null && rightDbFs.Length != freqHz.Length)
+                throw new ArgumentException("rightDbFs length != freqHz length");
 
             var dto = new OverlayFile
             {
-                Version = 1,
+                Version = 2,
                 Name = string.IsNullOrWhiteSpace(name) ? "Overlay" : name,
                 CreatedUtc = DateTime.UtcNow,
-                SampleRate = current.SampleRate,
-                FftSize = current.FftSize,
-                Window = options.WindowType.ToString(),
-                RemoveDc = options.RemoveDc,
-                LeftDbFs = current.LeftDbFs,
-                RightDbFs = current.RightDbFs
+
+                SampleRate = sampleRate,
+                FftSize = fftSize,
+                Window = window,
+                RemoveDc = removeDc,
+
+                FreqHz = freqHz,
+                LeftDbFs = leftDbFs,
+                RightDbFs = rightDbFs
             };
 
-            var jsonOpt = new JsonSerializerOptions
-            {
-                WriteIndented = true
-            };
-
-            string json = JsonSerializer.Serialize(dto, jsonOpt);
-            File.WriteAllText(filePath, json);
+            var jsonOpt = new JsonSerializerOptions { WriteIndented = true };
+            File.WriteAllText(filePath, JsonSerializer.Serialize(dto, jsonOpt));
         }
+
 
         public OverlayFile LoadFromFile(string filePath)
         {
@@ -79,15 +92,25 @@ namespace AudioHexViewer
             string json = File.ReadAllText(filePath);
             var dto = JsonSerializer.Deserialize<OverlayFile>(json);
 
-            if (dto == null)
-                throw new InvalidDataException("Overlay invalide: JSON vide");
+            // Overlay V2 uniquement
+            if (dto.Version != 2)
+                throw new InvalidDataException("Overlay invalide: version non supportée (V2 uniquement).");
 
-            // petite validation minimale
-            if (dto.FftSize <= 0 || dto.SampleRate <= 0)
+            if (dto.SampleRate <= 0 || dto.FftSize <= 0)
                 throw new InvalidDataException("Overlay invalide: SampleRate/FftSize");
+
+            if (dto.FreqHz == null || dto.FreqHz.Length == 0)
+                throw new InvalidDataException("Overlay invalide: FreqHz manquant");
 
             if (dto.LeftDbFs == null && dto.RightDbFs == null)
                 throw new InvalidDataException("Overlay invalide: pas de données spectre");
+
+            if (dto.LeftDbFs != null && dto.LeftDbFs.Length != dto.FreqHz.Length)
+                throw new InvalidDataException("Overlay invalide: LeftDbFs length != FreqHz length");
+
+            if (dto.RightDbFs != null && dto.RightDbFs.Length != dto.FreqHz.Length)
+                throw new InvalidDataException("Overlay invalide: RightDbFs length != FreqHz length");
+
 
             return dto;
         }

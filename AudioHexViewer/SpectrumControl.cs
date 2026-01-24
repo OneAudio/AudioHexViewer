@@ -3164,8 +3164,8 @@ namespace AudioHexViewer
     // Budget points ~ 2 points/pixel, cap pour éviter un surcoût UI
     var (fMin, fMax) = GetVisibleFreqRangeHz();
     int px = GetPlotPixelWidth();
-    int budget = Math.Min(200_000, Math.Max(2000, px * 2));
-    bool useLogX = IsXAxisLog();
+    int budget = Math.Min(4096, Math.Max(512, px * 2)); // Nombre de points max pour le tracé
+            bool useLogX = IsXAxisLog();
 
     // Courbe principale
     if (currentLeftSpectrum != null)
@@ -3912,10 +3912,14 @@ private static void DecimateForPlotWithGivenFreqAxis(
                         s.BorderDashStyle = ChartDashStyle.Dot;
                         s.BorderWidth = _colors.OverlayWidth;
 
-                        for (int i = startIndex; i < ov.Length; i++)
+                        var ovLeft = slot.Data.LeftDbFs;
+                        if (ovLeft != null)
                         {
-                            double f = (double)i * _sampleRate / slot.Data.FftSize;
-                            s.Points.AddXY(f, ov[i]);
+                            var fx = slot.Data.FreqHz;
+                            int n = Math.Min(fx.Length, ovLeft.Length);
+
+                            for (int i = startIndex; i < n; i++)
+                                s.Points.AddXY(fx[i], useDbvPlot ? (ovLeft[i] + _levelCalOffsetDbLeft) : ovLeft[i]);
                         }
                         chartSpectrum.Series.Add(s);
                     }
@@ -3933,11 +3937,16 @@ private static void DecimateForPlotWithGivenFreqAxis(
                         s.BorderDashStyle = ChartDashStyle.Dot;
                         s.BorderWidth = _colors.OverlayWidth;
 
-                        for (int i = startIndex; i < ov.Length; i++)
+                        var ovRight = slot.Data.RightDbFs;
+                        if (ovRight != null)
                         {
-                            double f = (double)i * _sampleRate / slot.Data.FftSize;
-                            s.Points.AddXY(f, ov[i]);
-                        }
+                            var fx = slot.Data.FreqHz;
+                            int n = Math.Min(fx.Length, ovRight.Length);
+
+                            for (int i = startIndex; i < n; i++)
+                                s.Points.AddXY(fx[i], useDbvPlot ? (ovRight[i] + _levelCalOffsetDbRight) : ovRight[i]);
+                        }             
+
                         chartSpectrum.Series.Add(s);
                     }
                 }
@@ -4639,29 +4648,24 @@ private static void DecimateForPlotWithGivenFreqAxis(
         {
             if (freqAxis == null || currentLeftSpectrum == null || _sampleRate <= 0 || lastFftSize <= 0)
                 throw new InvalidOperationException("Pas de spectre courant à sauvegarder.");
+                        
+            bool removeDc = false;                 // RemoveDC est commenté dans ton UI actuellement
+            string window = lastWindow.ToString(); // Conserver l'info de fenêtre
 
-            // Snapshot = ce qui est affiché (après averaging)
-            var snap = new SpectrumResult(
-                lastFftSize,
+            _overlays.SaveToFile(
+                filePath,
+                name,
                 _sampleRate,
-                freqAxis,
-                currentLeftSpectrum,
-                currentRightSpectrum,
-                lastTimeLeft,
-                lastTimeRight,
-                null,
-                null);
+                lastFftSize,
+                window,
+                removeDc,
+                _plotFreqAxis!,
+                _plotLeftSpectrum,
+                _plotRightSpectrum);
 
-            var options = new SpectrumOptions
-            {
-                WindowType = lastWindow,
-                //RemoveDc = (chkRemoveDC != null && chkRemoveDC.Checked),
-                NeedComplexFft = false
-            };
+            _overlays.LoadIntoSlot(slotIndex, filePath);                 // <-- charge dans le slot
+            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);    // <-- redraw immédiat
 
-            _overlays.SaveToFile(filePath, snap, name, options);
-            _overlays.LoadIntoSlot(slotIndex, filePath);   // <-- charge dans le slot
-            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight); // <-- redraw immédiat
         }
         //
         public (bool loaded, bool enabled, string name, string? filePath, bool compatible) OverlayGetStatus(int slotIndex)

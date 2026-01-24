@@ -4,7 +4,7 @@ namespace AudioHexViewer
 {
     internal sealed class OverlayFile
     {
-        public int Version { get; set; } = 1;
+        public int Version { get; set; } = 2;
 
         public string Name { get; set; } = "Overlay";
         public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
@@ -14,6 +14,9 @@ namespace AudioHexViewer
         public int FftSize { get; set; }
         public string Window { get; set; } = "Rectangular";
         public bool RemoveDc { get; set; }
+
+        // (V2) Axe X explicite : même longueur que LeftDbFs/RightDbFs
+        public double[] FreqHz { get; set; } = Array.Empty<double>();
 
         // Données spectre (dBFS)
         public double[]? LeftDbFs { get; set; }
