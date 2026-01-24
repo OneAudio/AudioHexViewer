@@ -142,7 +142,7 @@ namespace AudioHexViewer
         public string SelectedChannelMode => comboChannel.SelectedItem as string ?? "L+R";
 
         public bool IsLeftChannelActive =>
-    SelectedChannelMode == "Left" || SelectedChannelMode == "L+R" || SelectedChannelMode == "L/R";
+    SelectedChannelMode == "Left" || SelectedChannelMode == "L+R" || SelectedChannelMode == "L÷R";
 
         public bool IsRightChannelActive =>
             SelectedChannelMode == "Right" || SelectedChannelMode == "L+R";
@@ -1315,12 +1315,16 @@ namespace AudioHexViewer
                 : (df >= 10.0 ? $"{df:F1} Hz" : $"{df:F2} Hz");
 
             // --- Channel mode (pour affichage) ---
+            // --- Channel mode (pour affichage) ---
             string channelText = SelectedChannelMode switch
             {
                 "Left" => "Left",
                 "Right" => "Right",
-                _ => "Both" // "L+R" ou valeur inconnue
+                "L÷R" => "L÷R",
+                "L+R" => "Both",
+                _ => SelectedChannelMode // fallback (affiche la valeur brute si inattendue)
             };
+
 
             _TopInfoLine =
                 $"Channel:{channelText}    " +
@@ -1486,7 +1490,7 @@ namespace AudioHexViewer
             comboChannel.Items.Add("Left");
             comboChannel.Items.Add("Right");
             comboChannel.Items.Add("L+R");
-            comboChannel.Items.Add("L/R");
+            comboChannel.Items.Add("L÷R");
             comboChannel.SelectedIndex = 2; // Par défaut les 2 voies sont affichées
 
             comboChannel.SelectedIndexChanged += (s, e) =>
@@ -3008,7 +3012,7 @@ namespace AudioHexViewer
         //
         /// <summary>
         /// Convertit un ratio de puissance (Left/Right) en dB : 10*log10(P_L / P_R).
-        /// Utilisé par le mode "L/R" (pré-Bode).
+        /// Utilisé par le mode "L÷R" (pré-Bode).
         /// </summary>
         private static double[] PowerRatioToDb(double[] leftPower, double[] rightPower)
         {
@@ -3077,8 +3081,8 @@ namespace AudioHexViewer
 
             // Conversion POWER -> dB pour l’affichage/peak-hold
             // - Modes classiques : dBFS = 10*log10(power), clamp [-200..0]
-            // - Mode "L/R" : gain relatif = 10*log10(P_L/P_R), clamp large [-200..200]
-            if (string.Equals(SelectedChannelMode, "L/R", StringComparison.OrdinalIgnoreCase))
+            // - Mode "L÷R" : gain relatif = 10*log10(P_L/P_R), clamp large [-200..200]
+            if (string.Equals(SelectedChannelMode, "L÷R", StringComparison.OrdinalIgnoreCase))
             {
                 if (outPowL == null || outPowR == null)
                 {
@@ -3543,10 +3547,6 @@ private static void DecimateForPlotWithGivenFreqAxis(
                 return fx[maxIdx];
             }
 
-
-
-            chartSpectrum.Series.Clear();
-
             var area = chartSpectrum.ChartAreas["SpectrumArea"];
 
             // --- Axe X lin / log ---
@@ -3607,12 +3607,12 @@ private static void DecimateForPlotWithGivenFreqAxis(
             double yMinAuto = -200.0;
             double yMaxAuto = 0.0;
 
-            // Mode "L/R" : on affiche un gain relatif (dB), pas un niveau dBFS.
+            // Mode "L÷R" : on affiche un gain relatif (dB), pas un niveau dBFS.
             // On choisit une échelle par défaut centrée pour permettre des gains +/-.
-            if (string.Equals(modeForUnit, "L/R", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(modeForUnit, "L÷R", StringComparison.OrdinalIgnoreCase))
             {
-                yMinAuto = -160.0;
-                yMaxAuto = 40.0;
+                //yMinAuto = -160.0;
+                //yMaxAuto = 40.0;
                 useDbvAxis = false; // pas de dBV sur un ratio
                 area.AxisY.Title = "Gain (dB)";
             }
@@ -3622,7 +3622,7 @@ private static void DecimateForPlotWithGivenFreqAxis(
             const double YMAX_CAP = 100.0;
             const double DEFAULT_SPAN_DB = 200.0;
 
-            if (string.Equals(modeForUnit, "L/R", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(modeForUnit, "L÷R", StringComparison.OrdinalIgnoreCase))
             {
                 // Title déjà fixé plus haut.
             }
@@ -3813,8 +3813,8 @@ private static void DecimateForPlotWithGivenFreqAxis(
             // --- Ce qu'on affiche en fonction du combo Channel ---
             string mode = comboChannel.SelectedItem as string ?? "L+R";
 
-            // "L/R" est une seule courbe portée par "Left" (currentLeftSpectrum = ratio en dB)
-            bool showLeft = (mode == "Left" || mode == "L+R" || mode == "L/R") && (currentLeftSpectrum != null);
+            // "L÷R" est une seule courbe portée par "Left" (currentLeftSpectrum = ratio en dB)
+            bool showLeft = (mode == "Left" || mode == "L+R" || mode == "L÷R") && (currentLeftSpectrum != null);
             bool showRight = (mode == "Right" || mode == "L+R") && (currentRightSpectrum != null);
 
 
@@ -3823,6 +3823,31 @@ private static void DecimateForPlotWithGivenFreqAxis(
 
             _statsShowLeft = showLeft;
             _statsShowRight = showRight;
+
+
+            bool doThd = _thdMeasuresEnabled;
+
+            // [Fix B] En LOG, si on ne pourra pas ajouter AU MOINS une série,
+            // on ne touche pas au chart (on garde l'ancienne courbe) et on continue vers les mesures.
+            bool useLog_now = (chkLogX != null && chkLogX.Checked);
+            if (useLog_now)
+            {
+                // 1) Si aucune voie n'est affichable (Right sans spectre droit, etc.)
+                if (!showLeft && !showRight)
+                    goto MEASURES_AND_TEXT;
+
+                // 2) Si les données PLOT ne sont pas prêtes (cas transitoire), on évite de vider le chart.
+                //    Sinon on risque "LOG + 0 série" pendant un paint.
+                if (_plotFreqAxis == null || _plotFreqAxis.Length < 2)
+                    goto MEASURES_AND_TEXT;
+
+                if (showLeft && (_plotLeftSpectrum == null || _plotLeftSpectrum.Length < 2))
+                    goto MEASURES_AND_TEXT;
+
+                if (showRight && (_plotRightSpectrum == null || _plotRightSpectrum.Length < 2))
+                    goto MEASURES_AND_TEXT;
+            }
+
 
             // >>> PLOT : peak-hold et spectres décimés (tracé uniquement)
             double[]? plotFx = _plotFreqAxis;
@@ -3838,6 +3863,9 @@ private static void DecimateForPlotWithGivenFreqAxis(
                 // (Alternative possible : fallback sur FULL, mais ça peut saturer l'UI en points.)
             }
 
+            // [Fix B] On ne clear le chart QUE si on va réellement reconstruire des séries.
+            // Si on a sauté vers MEASURES_AND_TEXT (état transitoire invalide), cette ligne n'est jamais atteinte.
+            chartSpectrum.Series.Clear();
 
             // --- Overlays ---
             foreach (var slot in _overlays.Slots)
@@ -4149,7 +4177,7 @@ private static void DecimateForPlotWithGivenFreqAxis(
             // =========================
             //   MESURES ANALYTIQUES
             // =========================
-            bool doThd = _thdMeasuresEnabled;
+            MEASURES_AND_TEXT:
             ChannelMetrics? mL = null;
             ChannelMetrics? mR = null;
 

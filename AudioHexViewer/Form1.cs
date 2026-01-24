@@ -439,7 +439,7 @@ namespace AudioHexViewer
 
                 while (!ct.IsCancellationRequested)
                 {
-                    // Génère le chunk (L/R identiques) via ton vrai générateur
+                    // Génère le chunk (L÷R identiques) via ton vrai générateur
                     TestWaves.FillStereoReferenceSignal(
                         l, r, chunk,
                         spec,

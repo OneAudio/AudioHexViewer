@@ -3,11 +3,11 @@ Chose à faire :
 Le 21/01/2026
 -------------
 
-1 - Ajout d'une fonction L/R (ratio)
-    a) Ajout affichage L/R
+1 - Ajout d'une fonction L÷R (ratio)
+    a) Ajout affichage L÷R
     b) Correction  erreur échelle log qui apparait de temps en temps (seulement en mode LOG)
     c) Regareder la bonne méthode de calcul pour le diagramme de Bode.
-    d) Ajout affichage phase en mode L/R
+    d) Ajout affichage phase en mode L÷R
     e) Ajout du phase wrapp/unwrap
     f) Ajout dialogue échelle y de la phase (ajout combo existante)
 
