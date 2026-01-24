@@ -3126,26 +3126,32 @@ namespace AudioHexViewer
             else
                 UpdateAvgProgressUi(avgFill, avgTargetCount);
 
-
-
-            // Peak-hold (sur la courbe déjà calculée et moyennée)
+            // Peak-hold : on le calculera sur la version PLOT (décimée) pour éviter un coût O(Nbins) inutile.
             bool peakEnabled = (chkPeakHold != null && chkPeakHold.Checked);
-            _post.UpdatePeakHold(currentLeftSpectrum, currentRightSpectrum, peakEnabled);
 
             // Axe fréquence FULL (servira aux métriques)
             freqAxis = frame.FreqAxisHz;
 
-            // Construit la version "PLOT" décimée (tracé only), à partir des tableaux dB et peak-hold.
+            // Construit la version "PLOT" décimée (tracé only), à partir des tableaux dB (FULL).
             BuildPlotDataFromFull();
+
+            // Peak-hold : calcul uniquement sur les tableaux PLOT (décimés).
+            // => même nombre de points que la courbe affichée, coût CPU maîtrisé.
+            _post.UpdatePeakHold(_plotLeftSpectrum, _plotRightSpectrum, peakEnabled);
+
+            // Peak PLOT = directement l'état du post-processor (mêmes longueurs que _plot*Spectrum)
+            _plotPeakLeft = peakEnabled ? _post.GetPeakLeft() : null;
+            _plotPeakRight = peakEnabled ? _post.GetPeakRight() : null;
 
             // Puis UI update (stats + chart)
             UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
 
+
         }
         //
         // Construit les tableaux décimés uniquement pour le tracé (chart).
-// IMPORTANT : les métriques restent calculées sur currentLeftSpectrum/currentRightSpectrum + freqAxis (FULL).
-private void BuildPlotDataFromFull()
+        // IMPORTANT : les métriques restent calculées sur currentLeftSpectrum/currentRightSpectrum + freqAxis (FULL).
+        private void BuildPlotDataFromFull()
 {
     _plotFreqAxis = null;
     _plotLeftSpectrum = null;
@@ -3178,21 +3184,18 @@ private void BuildPlotDataFromFull()
             DecimateForPlotWithGivenFreqAxis(freqAxis, currentRightSpectrum, _plotFreqAxis, out _plotRightSpectrum);
     }
 
-    // Peak-hold : on décime aussi, sinon tailles incompatibles avec la courbe affichée
-    var peakL = _post.GetPeakLeft();
-    var peakR = _post.GetPeakRight();
+            // Peak-hold : ne PAS traiter ici.
+            // Il est désormais calculé sur les tableaux PLOT dans FeedExternalSpectrum() (après décimation).
+            // Ici, BuildPlotDataFromFull() ne prépare que les courbes PLOT principales.
+            _plotPeakLeft = null;
+            _plotPeakRight = null;
 
-    if (peakL != null && _plotFreqAxis != null)
-        DecimateForPlotWithGivenFreqAxis(freqAxis, peakL, _plotFreqAxis, out _plotPeakLeft);
+        }
 
-    if (peakR != null && _plotFreqAxis != null)
-        DecimateForPlotWithGivenFreqAxis(freqAxis, peakR, _plotFreqAxis, out _plotPeakRight);
-}
-
-// Décimation "tracé only" : conserve le max dans chaque bucket.
-// Entrées : freqFull (monotone), yFull (dBFS), plage visible, budget points, mode log/lin.
-// Sorties : freqOut/yOut de taille <= budget.
-private static void DecimateForPlot(
+        // Décimation "tracé only" : conserve le max dans chaque bucket.
+        // Entrées : freqFull (monotone), yFull (dBFS), plage visible, budget points, mode log/lin.
+        // Sorties : freqOut/yOut de taille <= budget.
+        private static void DecimateForPlot(
     double[] freqFull, double[] yFull,
     double fMin, double fMax,
     int maxPoints,
