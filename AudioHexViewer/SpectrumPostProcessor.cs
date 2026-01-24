@@ -1,4 +1,5 @@
-﻿using System;
+﻿using MathNet.Numerics;
+using System;
 using System.Linq;
 
 namespace AudioHexViewer
@@ -36,6 +37,23 @@ namespace AudioHexViewer
         private double[]? _peakHoldLeftDb;
         private double[]? _peakHoldRightDb;
 
+        // ------------------------------------------------------------------
+        // --- FRF / Bode (Welch cross-spectrum) state ---
+        // Right = entrée X, Left = sortie Y
+        // Gxx = <X * conj(X)>   (réel, positif)
+        // Gxy = <X * conj(Y)>   (complex)
+        // ------------------------------------------------------------------
+
+        private bool _frfInit = false;
+        private AveragingMode _frfMode = AveragingMode.None;
+        private int _frfAvgTarget = 0;
+        private double _frfExpAlpha = 0.0;
+
+        private double[]? _frfGxx;          // auto-spectrum entrée
+        private System.Numerics.Complex[]? _frfGxy; // cross-spectrum
+        private int _frfFillCount = 0;
+
+
         public void ResetAveragingState()
         {
             _avgRingPos = 0;
@@ -54,6 +72,15 @@ namespace AudioHexViewer
             _expLeftPower = null;
             _expRightPower = null;
 
+        }
+
+        // Reset spécifique FRF (Bode / H1)
+        public void ResetFrfState()
+        {
+            _frfInit = false;
+            _frfFillCount = 0;
+            _frfGxx = null;
+            _frfGxy = null;
         }
 
         public void ResetPeakHoldState()
@@ -401,5 +428,114 @@ namespace AudioHexViewer
                 }
             }
         }
+        /// <summary>
+        /// Estimation FRF H1 (Welch) :
+        /// H1(f) = Gxy(f) / Gxx(f)
+        /// Right = entrée X, Left = sortie Y
+        /// Sortie : gain en dB (20*log10(|H1|))
+        /// </summary>
+        public void ApplyFrfH1Welch(
+            Complex32[] rightBins,   // X
+            Complex32[] leftBins,    // Y
+            AveragingMode mode,
+            int avgTargetCount,
+            double expAlpha,
+            out double[] gainDb,
+            out int fillCountForUi)
+        {
+            int bins = Math.Min(rightBins.Length, leftBins.Length);
+
+            // Détection changement de configuration → reset
+            bool needReset =
+                (!_frfInit) ||
+                (_frfMode != mode) ||
+                (_frfAvgTarget != avgTargetCount) ||
+                (Math.Abs(_frfExpAlpha - expAlpha) > 1e-12) ||
+                (_frfGxx == null || _frfGxx.Length != bins) ||
+                (_frfGxy == null || _frfGxy.Length != bins);
+
+            if (needReset)
+            {
+                ResetFrfState();
+                _frfMode = mode;
+                _frfAvgTarget = avgTargetCount;
+                _frfExpAlpha = expAlpha;
+
+                _frfGxx = new double[bins];
+                _frfGxy = new System.Numerics.Complex[bins];
+                _frfInit = true;
+            }
+
+            // --- Calcul instantané ---
+            for (int k = 0; k < bins; k++)
+            {
+                var X = rightBins[k];
+                var Y = leftBins[k];
+
+                // Gxx = X * conj(X) = |X|^2 (réel)
+                double gxxInst = (double)X.Real * X.Real + (double)X.Imaginary * X.Imaginary;
+
+                // Gxy = X * conj(Y) (complex)
+                var yConj = new Complex32(Y.Real, -Y.Imaginary);
+                var gxy32 = X * yConj;
+
+                // on stocke en Complex(double) pour l'accumulation (plus stable numériquement)
+                var gxyInst = new System.Numerics.Complex(gxy32.Real, gxy32.Imaginary);
+
+
+                if (mode == AveragingMode.Exponential)
+                {
+                    double a = expAlpha;
+                    double b = 1.0 - a;
+
+                    _frfGxx[k] = a * _frfGxx[k] + b * gxxInst;
+                    _frfGxy[k] = a * _frfGxy[k] + b * gxyInst;
+                }
+                else
+                {
+                    // Mode COUNT (accumulation simple)
+                    _frfGxx[k] += gxxInst;
+                    _frfGxy[k] += gxyInst;
+                }
+            }
+
+            // Gestion du fill count (COUNT uniquement)
+            if (mode == AveragingMode.Count)
+            {
+                if (_frfFillCount < avgTargetCount)
+                    _frfFillCount++;
+            }
+            else
+            {
+                _frfFillCount = 0; // exponentiel : pas de warm-up
+            }
+
+            fillCountForUi = _frfFillCount;
+
+            // --- Calcul du gain ---
+            gainDb = new double[bins];
+            const double EPS = 1e-30;
+
+            for (int k = 0; k < bins; k++)
+            {
+                double gxx = _frfGxx[k];
+                if (gxx < EPS)
+                {
+                    gainDb[k] = -200.0;
+                    continue;
+                }
+
+                System.Numerics.Complex H = _frfGxy[k] / gxx;
+                double mag = H.Magnitude;
+
+                double db = (mag <= EPS) ? -200.0 : 20.0 * Math.Log10(mag);
+                if (db < -200.0) db = -200.0;
+                if (db > 200.0) db = 200.0;
+
+                gainDb[k] = db;
+            }
+        }
+
     }
+
 }

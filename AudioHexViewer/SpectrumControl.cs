@@ -1,14 +1,15 @@
 using MathNet.Numerics;
 using MathNet.Numerics.IntegralTransforms;
 using System;
-using System.Globalization;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
 using static AudioHexViewer.SpectrumControl;
+using static AudioHexViewer.SpectrumPostProcessor;
 using ChartSeries = System.Windows.Forms.DataVisualization.Charting.Series;
 
 
@@ -2921,6 +2922,7 @@ namespace AudioHexViewer
         private void ResetAveragingState()
         {
             _post.ResetAveragingState();
+            _post.ResetFrfState();
 
             _expAvgPrimed = false;
             _expAvgLinL = null;
@@ -3082,26 +3084,41 @@ namespace AudioHexViewer
             // Conversion POWER -> dB pour l’affichage/peak-hold
             // - Modes classiques : dBFS = 10*log10(power), clamp [-200..0]
             // - Mode "L÷R" : gain relatif = 10*log10(P_L/P_R), clamp large [-200..200]
-            if (string.Equals(SelectedChannelMode, "L÷R", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(SelectedChannelMode, "L÷R", StringComparison.OrdinalIgnoreCase))                
             {
-                if (outPowL == null || outPowR == null)
+                // -----------------------------------------------------------------
+                // BODE / FRF (H1)
+                // Right = entrée X, Left = sortie Y
+                // Calcul entièrement délégué au SpectrumPostProcessor
+                // -----------------------------------------------------------------
+
+                if (frame.RightBins != null && frame.LeftBins != null)
                 {
-                    // Ratio impossible si un canal manque : on efface pour éviter un affichage trompeur.
-                    currentLeftSpectrum = null;
+                    _post.ApplyFrfH1Welch(
+                        frame.RightBins,     // X (entrée)
+                        frame.LeftBins,      // Y (sortie)
+                        mode,                // Averaging mode (EXISTANT)
+                        avgTargetCount,      // Target count (EXISTANT)
+                        _avgExpAlpha,        // Alpha exponentiel (EXISTANT)
+                        out var gainDb,
+                        out avgFill);        // Fill count UI (EXISTANT)
+
+
+                    currentLeftSpectrum = gainDb;   // une seule courbe (gain)
                     currentRightSpectrum = null;
                 }
                 else
                 {
-                    currentLeftSpectrum = PowerRatioToDb(outPowL, outPowR);
-                    currentRightSpectrum = null; // le ratio est une seule courbe
+                    currentLeftSpectrum = null;
+                    currentRightSpectrum = null;
                 }
             }
             else
             {
+                // ---- Chemin EXISTANT, INCHANGÉ ----
                 currentLeftSpectrum = (outPowL != null) ? PowerToDbFs(outPowL) : null;
                 currentRightSpectrum = (outPowR != null) ? PowerToDbFs(outPowR) : null;
             }
-
 
             // Progression UI : uniquement en mode Count
             if (mode != SpectrumPostProcessor.AveragingMode.Count || avgTargetCount <= 1)
