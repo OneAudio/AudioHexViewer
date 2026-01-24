@@ -6,7 +6,7 @@ Le 21/01/2026
 1 - Ajout d'une fonction L÷R (ratio)
     a) Ajout affichage L÷R                                                                      --> OK Fait 24/01
     b) Correction  erreur échelle log qui apparait de temps en temps (seulement en mode LOG)    --> OK Fait 24/01
-    c) Regareder la bonne méthode de calcul pour le diagramme de Bode.
+    c) Regareder la bonne méthode de calcul pour le diagramme de Bode.                          --> OK Fait 24/01
     d) Ajout affichage phase en mode L÷R
     e) Ajout du phase wrapp/unwrap
     f) Ajout dialogue échelle y de la phase (ajout combo existante)
@@ -17,9 +17,13 @@ Le 21/01/2026
 
 4a - Corriger le décalage verticales des overlay lorsque on est en dBV
     (Il faut que l'offset dBFS->dBV soit enregistré dans la courbe)
+
 4b - Les overlay gardent la totalitée des points de la FFT, lorsqu'ils son affichés
  dans le chart c'est très lourd et cela ralentit beaucoupe le rafraichissement.
  Il faut donc faire différement !    
+
+4c - Il faut aussi revoir le mode peak-hold pour limiter le nombre de points de celui-ci,
+    tout comme le graphique et les overlays.
 
 
 -----------------------------------------------------------------------------------------

@@ -3593,9 +3593,13 @@ private static void DecimateForPlotWithGivenFreqAxis(
                 area.AxisX.IsMarginVisible = true;
             }
 
+
+
             // --- Application des limites X custom (si définies) ---
             double fMin = customFMin ?? fMinAuto;   // Hz
             double fMax = customFMax ?? fMaxAuto;   // Hz
+
+            ApplyAxisXModeSafe(area, useLog, fMin, fMax);
 
             // Sécurités de base
             double xMinPhys = useLog ? 1.0 : 0.0;
