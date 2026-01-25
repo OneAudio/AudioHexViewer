@@ -28,7 +28,7 @@ Le 21/01/2026
 5 - Ajouter une fonction de moyennage cohérente (synchrone) pour les mesures de THD 
 
 6- vérifier l'optimisation ds calculs de FFT :
-    a) Est ce que les voies non affichée sont calculée ? IL NE FAUT PAS, INUTILE !
+    a) Est ce que les voies non affichée sont calculée ? IL NE FAUT PAS, INUTILE !              --> OK Fait 24/01
     b) Quel est le temps de calcul de la FFT en pratique selon la valeur de N ?
 
 

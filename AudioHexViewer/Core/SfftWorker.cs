@@ -363,6 +363,9 @@ namespace AudioHexViewer.Core
                     bool ok = _ring.TryReadWindow(absStart, _fftSize, _winL, _winR);
                     if (ok)
                     {
+                        // Mesure temps CPU de cette frame FFT (window fill + FFT + normalisation + enqueue)
+                        long t0 = Stopwatch.GetTimestamp();
+
                         // Lecture des flags une seule fois (évite variations en plein calcul)
                         bool doL = (_needLeft != 0);
                         bool doR = (_needRight != 0);
@@ -422,6 +425,11 @@ namespace AudioHexViewer.Core
 
                             _stats.IncFramesComputed();
 
+                            // Fin mesure (µs)
+                            long t1 = Stopwatch.GetTimestamp();
+                            long us = (long)((t1 - t0) * (1_000_000.0 / Stopwatch.Frequency));
+                            _stats.ReportFftTimeUs(us);
+
                             // Ownership transféré à la frame => ne pas rendre ici
                             binsL = null;
                             binsR = null;
@@ -460,12 +468,14 @@ namespace AudioHexViewer.Core
                         long df = frames - _framesAtLastRate;
                         double fps = (dt > 1e-9) ? (df / dt) : 0.0;
 
-                        // On stocke le fps dans LastError pour l’instant (temporaire)
-                        _stats.SetLastError($"FFT/s~{fps:F1}  nextEnd={_nextHopEndAbs}  w={w}");
+                        // IMPORTANT : LastError redevient "réservé aux erreurs".
+                        // La cadence FFT (télémétrie) vit dans SfftStats.
+                        _stats.SetFftPerSec(fps);
 
                         _framesAtLastRate = frames;
                         _lastRateTime = t;
                     }
+
                 }
             }
             catch (Exception ex)

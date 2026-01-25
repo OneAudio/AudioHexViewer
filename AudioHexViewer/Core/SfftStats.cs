@@ -13,6 +13,16 @@ namespace AudioHexViewer.Core
         private string _workerState = "STOP";
         private string _lastError = "";
 
+        // ---- Perf / timings (thread-safe) ----
+        // Stockage en "milli-unité" pour éviter volatile/double.
+        // - FFT/s en milli-FFT/s (ex: 1234 => 1.234 FFT/s)
+        private int _fftPerSecMilli;
+
+        // Temps FFT en microsecondes (µs)
+        private int _fftLastUs;
+        private int _fftAvgUs; // moyenne lissée (EWMA)
+
+
         // ---- Format ----
         private int _sampleRate;
         private int _fftSize;
@@ -35,6 +45,17 @@ namespace AudioHexViewer.Core
             public readonly string WorkerState;
             public readonly string LastError;
 
+            // ---- Perf ----
+            public readonly int FftPerSecMilli;
+            public double FftPerSec => FftPerSecMilli / 1000.0;
+
+            public readonly int FftLastUs;
+            public readonly int FftAvgUs;
+
+            public double FftLastMs => FftLastUs / 1000.0;
+            public double FftAvgMs => FftAvgUs / 1000.0;
+
+
             public readonly int SampleRate;
             public readonly int FftSize;
             public readonly int Hop;
@@ -50,7 +71,10 @@ namespace AudioHexViewer.Core
                         string workerState, string lastError,
                         int sampleRate, int fftSize, int hop,
                         int overlapPermille,
-                        long nextEndAbs, int progressPermille)
+                        long nextEndAbs, int progressPermille,
+                        int fftPerSecMilli,
+                        int fftLastUs, int fftAvgUs)
+
             {
                 AbsWrite = absWrite;
                 FramesComputed = framesComputed;
@@ -63,6 +87,10 @@ namespace AudioHexViewer.Core
                 OverlapPermille = overlapPermille;
                 NextEndAbs = nextEndAbs;
                 ProgressPermille = progressPermille;
+                FftPerSecMilli = fftPerSecMilli;
+                FftLastUs = fftLastUs;
+                FftAvgUs = fftAvgUs;
+
             }
         }
 
@@ -80,6 +108,10 @@ namespace AudioHexViewer.Core
 
             Interlocked.Exchange(ref _nextEndAbs, 0);
             Volatile.Write(ref _progressPermille, 0);
+
+            Volatile.Write(ref _fftPerSecMilli, 0);
+            Volatile.Write(ref _fftLastUs, 0);
+            Volatile.Write(ref _fftAvgUs, 0);
 
             SetWorkerState("STOP");
             SetLastError("");
@@ -124,6 +156,38 @@ namespace AudioHexViewer.Core
             if (pm > 1000) pm = 1000;
             Volatile.Write(ref _progressPermille, pm);
         }
+        //
+        /// <summary>
+        /// Met à jour la cadence FFT réelle (FFT/s).
+        /// Stockage en milli-FFT/s pour éviter double cross-thread.
+        /// </summary>
+        public void SetFftPerSec(double fps)
+        {
+            if (double.IsNaN(fps) || double.IsInfinity(fps) || fps < 0) fps = 0;
+            int m = (int)Math.Round(fps * 1000.0);
+            if (m < 0) m = 0;
+            Volatile.Write(ref _fftPerSecMilli, m);
+        }
+
+        /// <summary>
+        /// Enregistre le temps CPU (en µs) d'une itération FFT (une frame).
+        /// EWMA simple pour lisser (évite un affichage trop bruité).
+        /// </summary>
+        public void ReportFftTimeUs(long lastUs)
+        {
+            if (lastUs < 0) lastUs = 0;
+            if (lastUs > int.MaxValue) lastUs = int.MaxValue;
+
+            int u = (int)lastUs;
+
+            // Dernière mesure
+            Volatile.Write(ref _fftLastUs, u);
+
+            // Moyenne lissée (EWMA): avg = avg + (u-avg)/8  (~alpha=0.125)
+            int prev = Volatile.Read(ref _fftAvgUs);
+            int next = (prev == 0) ? u : (prev + ((u - prev) >> 3));
+            Volatile.Write(ref _fftAvgUs, next);
+        }
 
         // ---- Reader ----
         public Snap Snapshot()
@@ -139,7 +203,11 @@ namespace AudioHexViewer.Core
                 hop: Volatile.Read(ref _hop),
                 overlapPermille: Volatile.Read(ref _overlapPermille),
                 nextEndAbs: Interlocked.Read(ref _nextEndAbs),
-                progressPermille: Volatile.Read(ref _progressPermille)
+                progressPermille: Volatile.Read(ref _progressPermille),
+                // ---- Perf ----
+                fftPerSecMilli: Volatile.Read(ref _fftPerSecMilli),
+                fftLastUs: Volatile.Read(ref _fftLastUs),
+                fftAvgUs: Volatile.Read(ref _fftAvgUs)
             );
         }
     }

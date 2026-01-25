@@ -1168,9 +1168,23 @@ namespace AudioHexViewer
                         ? $" AbsEnd={_lastFrameUi.AbsEnd}"
                         : $" AbsWrite={snap.AbsWrite}";
 
+                    // --- Barre de titre debug minimaliste ---
+                    // Objectif : uniquement la perf "réelle" et une éventuelle erreur.
+                    // (Le reste est déjà visible ailleurs dans l'UI.)
+                    string err = snap.LastError ?? "";
+                    string errStr = "";
+
+                    if (!string.IsNullOrWhiteSpace(err))
+                    {
+                        // Évite un titre énorme si exception/stacktrace
+                        const int MaxErrLen = 80;
+                        err = err.Replace("\r", " ").Replace("\n", " ");
+                        if (err.Length > MaxErrLen) err = err.Substring(0, MaxErrLen) + "…";
+                        errStr = $" | ERR: {err}";
+                    }
+
                     this.Text =
-                        $"AudioHexViewer | UI shown~{(_uiFramesShown / Math.Max(0.001, t)):F1}/s drained~{(_uiFramesDrained / Math.Max(0.001, t)):F1}/s (cap 10Hz) | " +
-                        $"FFT/s exp~{expectedFps:F2} hop={snap.Hop}{progStr} |{absStr} N={snap.FftSize} Fs={snap.SampleRate}";
+                        $"AudioHexViewer | FFT/s act={snap.FftPerSec:F1} | FFT={snap.FftAvgMs:F3} ms{errStr}";
 
                     _uiLastRateT = t;
                 }
@@ -3075,29 +3089,7 @@ namespace AudioHexViewer
 
 
                 _sfftStats.SetAbsWrite(_floatRing.AbsWrite);
-
-                // --- DEBUG TEMPORAIRE (étape 2) : état worker + FFT/s estimé ---
-                var snap = _sfftStats.Snapshot();
-                if (snap.SampleRate > 0)
-                {
-                    double seconds = (double)snap.AbsWrite / snap.SampleRate;
-
-                    // LastError contient temporairement "FFT/s~..."
-                    string info = snap.LastError ?? "";
-
-                    if (this.IsHandleCreated)
-                    {
-                        this.BeginInvoke(new Action(() =>
-                        {
-                            //this.Text =
-                            //    $"AudioHexViewer | t={seconds:F2}s | AbsWrite={snap.AbsWrite} | " +
-                            //    $"Frames={snap.FramesComputed} Skip={snap.FramesSkipped} | {snap.WorkerState} | {info}";
-                        }));
-                    }
-                }
-
-
-
+                                
             }
 
             // 1) Toujours alimenter le ring buffer REW-like
