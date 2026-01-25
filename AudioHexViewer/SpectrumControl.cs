@@ -24,6 +24,12 @@ namespace AudioHexViewer
         public event Action<bool>? ThdEnabledChanged;
         public event Action? ThdSettingsRequested;
 
+        // --------------------------------------------------------------------
+        // Channel UI (mode Left/Right/L+R/L÷R) => informe l'extérieur (worker)
+        // --------------------------------------------------------------------
+        public event Action<string>? ChannelModeChanged;
+
+
         private bool _suppressThdUiEvents = false;
         internal bool IsXAxisLog() => _xAxisIsLog;
 
@@ -143,10 +149,13 @@ namespace AudioHexViewer
         public string SelectedChannelMode => comboChannel.SelectedItem as string ?? "L+R";
 
         public bool IsLeftChannelActive =>
-    SelectedChannelMode == "Left" || SelectedChannelMode == "L+R" || SelectedChannelMode == "L÷R";
+        SelectedChannelMode == "Left" || SelectedChannelMode == "L+R" || SelectedChannelMode == "L÷R";
 
         public bool IsRightChannelActive =>
-            SelectedChannelMode == "Right" || SelectedChannelMode == "L+R";
+        SelectedChannelMode == "Right"
+        || SelectedChannelMode == "L+R"
+        || SelectedChannelMode == "L÷R"; // IMPORTANT: FRF/H1 => besoin des 2 voies
+
 
 
 
@@ -270,19 +279,6 @@ namespace AudioHexViewer
         private readonly SpectrumMetricsOptions _metricsOpt = new SpectrumMetricsOptions();
 
         private SpectrumSettings.ThdSettings _thdUi = new SpectrumSettings.ThdSettings();
-
-        public enum ChannelMode
-        {
-            Left,
-            Right,
-            Both // affiche les deux voies
-        }
-
-        private readonly int[] FftSizeOptions =
-        {
-            2048, 4096, 8192, 16384, 32768,
-            65536, 131072, 262144, 524288, 1048576
-        };
 
         private int lastFftSize;
         private int? _forcedFftSize = null;
@@ -1496,13 +1492,6 @@ namespace AudioHexViewer
 
             comboChannel.SelectedIndexChanged += (s, e) =>
             {
-                //switch (comboChannel.SelectedIndex)
-                //{
-                //    case 0: lastChannel = ChannelMode.Left; break;
-                //    case 1: lastChannel = ChannelMode.Right; break;
-                //    case 2: lastChannel = ChannelMode.Both; break;
-                //}
-
                 if (_isRestoringSettings)
                     return;
 
@@ -1510,6 +1499,10 @@ namespace AudioHexViewer
                 UpdateLevelUnitUi();
                 // Mise à jour de l'overlay
                 UpdateOverlayInfo();
+
+                // Informe l'extérieur immédiatement (même en LIVE)
+                // => le worker pourra éviter de calculer une voie inutile.
+                ChannelModeChanged?.Invoke(SelectedChannelMode);
 
                 // IMPORTANT :
                 // En mode LIVE on ne force PAS un redraw immédiat, car la voie nouvellement choisie

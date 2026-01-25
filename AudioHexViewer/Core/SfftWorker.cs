@@ -19,6 +19,21 @@ namespace AudioHexViewer.Core
         private readonly int _fftSize;
         private readonly int _hop;
 
+        // ---- Active channels (évite de calculer des FFT inutiles) ----
+        // 1 = actif, 0 = inactif. Volatile pour lecture/écriture cross-thread.
+        private volatile int _needLeft = 1;
+        private volatile int _needRight = 1;
+
+        /// <summary>
+        /// Définit quelles voies doivent être calculées.
+        /// Appelé par Form1 quand l'UI change de mode (Left/Right/L+R/L÷R).
+        /// </summary>
+        public void SetActiveChannels(bool needLeft, bool needRight)
+        {
+            _needLeft = needLeft ? 1 : 0;
+            _needRight = needRight ? 1 : 0;
+        }
+
         private CancellationTokenSource? _cts;
         private Task? _task;
 
@@ -348,37 +363,46 @@ namespace AudioHexViewer.Core
                     bool ok = _ring.TryReadWindow(absStart, _fftSize, _winL, _winR);
                     if (ok)
                     {
-                        // --- FFT réelle (Étape 3) ---
-                        // Convertit float [-1..1] -> double, applique fenêtre, FFT Complex32, magnitude -> dBFS
+                        // Lecture des flags une seule fois (évite variations en plein calcul)
+                        bool doL = (_needLeft != 0);
+                        bool doR = (_needRight != 0);
 
                         int N = _fftSize;
-                        int bins = N / 2 + 1;
-
-                        // Remplissage des buffers FFT réutilisés
-                        for (int i = 0; i < N; i++)
-                        {
-                            double wl = _winL[i] * _window[i];
-                            double wr = _winR[i] * _window[i];
-                            _fftL[i] = new MathNet.Numerics.Complex32((float)wl, 0f);
-                            _fftR[i] = new MathNet.Numerics.Complex32((float)wr, 0f);
-                        }
-
-                        Fourier.Forward(_fftL, FourierOptions.Matlab);
-                        Fourier.Forward(_fftR, FourierOptions.Matlab);
-
-
-                        // On publie uniquement les bins positifs [0..N/2] en complexe.
-                        // L'UI décidera ensuite : magnitude, dBFS, dBV, averaging, etc.
                         int half = N / 2;
 
-                        // Bins complexes poolés (taille exacte = N/2+1)
-                        var binsL = RentBins();
-                        var binsR = RentBins();
+                        // Remplissage des buffers FFT réutilisés (uniquement voies actives)
+                        // NOTE: on évite la voie inactive => gain CPU direct (boucle + FFT)
+                        for (int i = 0; i < N; i++)
+                        {
+                            double wcoef = _window[i];
+
+                            if (doL)
+                            {
+                                double wl = _winL[i] * wcoef;
+                                _fftL[i] = new MathNet.Numerics.Complex32((float)wl, 0f);
+                            }
+
+                            if (doR)
+                            {
+                                double wr = _winR[i] * wcoef;
+                                _fftR[i] = new MathNet.Numerics.Complex32((float)wr, 0f);
+                            }
+                        }
+
+                        // FFT uniquement sur les voies demandées
+                        if (doL) Fourier.Forward(_fftL, FourierOptions.Matlab);
+                        if (doR) Fourier.Forward(_fftR, FourierOptions.Matlab);
+
+                        // Bins complexes poolés UNIQUEMENT si nécessaires
+                        MathNet.Numerics.Complex32[]? binsL = null;
+                        MathNet.Numerics.Complex32[]? binsR = null;
+
+                        if (doL) binsL = RentBins();
+                        if (doR) binsR = RentBins();
 
                         try
                         {
-                            // Normalisation amplitude : on garde la même logique que ton ancien dBFS
-                            // (équivalent à ton scale: 2 / windowSum)
+                            // Normalisation amplitude (inchangée)
                             float scale2 = (float)(2.0 / _windowSum);
                             float scale1 = (float)(1.0 / _windowSum);
 
@@ -386,33 +410,30 @@ namespace AudioHexViewer.Core
                             {
                                 float s = (k == 0 || k == half) ? scale1 : scale2;
 
-                                binsL[k] = _fftL[k] * s;
-                                binsR[k] = _fftR[k] * s;
+                                if (binsL != null) binsL[k] = _fftL[k] * s;
+                                if (binsR != null) binsR[k] = _fftR[k] * s;
                             }
 
-
-                            // Publication frame
+                            // Publication frame (LeftBins/RightBins peuvent être null)
                             int fs = _stats.Snapshot().SampleRate;
 
-                            // IMPORTANT : SpectrumFrame doit désormais porter le callback ReturnBins (Étape A)
                             var frame = new SpectrumFrame(fs, N, _nextHopEndAbs, binsL, binsR, _freqAxis, ReturnBins);
                             _outQueue.Enqueue(frame);
 
                             _stats.IncFramesComputed();
 
-                            // On a transféré l'ownership des buffers à la frame => ne pas les rendre ici
-                            binsL = null!;
-                            binsR = null!;
+                            // Ownership transféré à la frame => ne pas rendre ici
+                            binsL = null;
+                            binsR = null;
                         }
                         finally
                         {
-                            // Si une exception arrive avant l'enqueue, on rend au pool
+                            // Si exception avant enqueue, rendre au pool seulement ce qui a été loué
                             if (binsL != null) ReturnBins(binsL);
                             if (binsR != null) ReturnBins(binsR);
                         }
-
-
                     }
+
 
                     else
                     {

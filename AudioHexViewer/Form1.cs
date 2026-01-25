@@ -508,6 +508,19 @@ namespace AudioHexViewer
             }
         }
         //
+        private void ApplyActiveChannelsToWorker(string mode)
+        {
+            // Détermine les voies requises par le mode d'affichage.
+            // IMPORTANT:
+            // - "Left"  => seulement L
+            // - "Right" => seulement R
+            // - "L+R"   => L et R
+            // - "L÷R"   => nécessite L et R (FRF/H1)
+            bool needL = (mode == "Left" || mode == "L+R" || mode == "L÷R");
+            bool needR = (mode == "Right" || mode == "L+R" || mode == "L÷R");
+
+            _sfftWorker?.SetActiveChannels(needL, needR);
+        }
         //
         private void RestartSfftFromUi()
         {
@@ -563,6 +576,8 @@ namespace AudioHexViewer
             var windowTypeObj = spectrumControl?.SelectedWindowType ?? (object)"BlackmanHarris7";
             _sfftWorker = new SfftWorker(_floatRing, _sfftStats, fs, fftSize, hop, windowTypeObj, _sfftFrames);
 
+            // Applique le mode voie courant dès la création du worker
+            ApplyActiveChannelsToWorker(spectrumControl?.SelectedChannelMode ?? "L+R");
 
             _sfftWorker.Start();
             // Met à jour les stats visibles tout de suite (sans attendre la 1ère FFT)
@@ -1244,6 +1259,8 @@ namespace AudioHexViewer
                     if (_sfftWorker != null)
                         RestartSfftFromUi();
                 };
+
+               
             }
 
             //InitCursorsMenu();
@@ -3437,6 +3454,17 @@ namespace AudioHexViewer
                 int sampleRate = currentFormat?.SampleRate ?? 48000;
 
                 spectrumControl = new SpectrumControl();
+                // ---- ChannelMode -> active/désactive les voies FFT côté worker (core) ----
+                // IMPORTANT : SpectrumControl est créé ICI (ShowSpectrumArea), pas dans le ctor.
+                // Donc l'abonnement doit être fait ici, sinon le changement de voie pendant RUN
+                // ne reconfigure jamais le worker (symptôme : Right ne s'affiche pas sans relancer Read).
+
+                spectrumControl.ChannelModeChanged += mode =>
+                {
+                    ApplyActiveChannelsToWorker(mode);
+                };
+
+
                 spectrumControl.UpdateSampleRate(sampleRate);
 
                 _lblFftTicker = spectrumControl.FftTickerLabel;
