@@ -439,7 +439,7 @@ namespace AudioHexViewer
 
                 while (!ct.IsCancellationRequested)
                 {
-                    // Génère le chunk (L÷R identiques) via ton vrai générateur
+                    // Génère le chunk (Bode Plot identiques) via ton vrai générateur
                     TestWaves.FillStereoReferenceSignal(
                         l, r, chunk,
                         spec,
@@ -515,9 +515,9 @@ namespace AudioHexViewer
             // - "Left"  => seulement L
             // - "Right" => seulement R
             // - "L+R"   => L et R
-            // - "L÷R"   => nécessite L et R (FRF/H1)
-            bool needL = (mode == "Left" || mode == "L+R" || mode == "L÷R");
-            bool needR = (mode == "Right" || mode == "L+R" || mode == "L÷R");
+            // - "Bode Plot"   => nécessite L et R (FRF/H1)
+            bool needL = (mode == "Left" || mode == "L+R" || mode == "Bode Plot");
+            bool needR = (mode == "Right" || mode == "L+R" || mode == "Bode Plot");
 
             _sfftWorker?.SetActiveChannels(needL, needR);
         }

@@ -40,7 +40,7 @@ namespace AudioHexViewer
             // Déjà bindé ? (important : tlpCursors existe déjà car Designer)
             if (_c1Toggle != null) return;
 
-            // On masque les anciennes cases "Cursor L÷R" (elles restent la source de vérité)
+            // On masque les anciennes cases "Cursor Bode Plot" (elles restent la source de vérité)
             if (chkCursorL != null) chkCursorL.Visible = false;
             if (chkCursorR != null) chkCursorR.Visible = false;
 

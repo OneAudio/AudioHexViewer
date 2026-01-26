@@ -26,7 +26,7 @@ namespace AudioHexViewer.Core
 
         /// <summary>
         /// Définit quelles voies doivent être calculées.
-        /// Appelé par Form1 quand l'UI change de mode (Left/Right/L+R/L÷R).
+        /// Appelé par Form1 quand l'UI change de mode (Left/Right/L+R/Bode Plot).
         /// </summary>
         public void SetActiveChannels(bool needLeft, bool needRight)
         {

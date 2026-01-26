@@ -435,13 +435,15 @@ namespace AudioHexViewer
         /// Sortie : gain en dB (20*log10(|H1|))
         /// </summary>
         public void ApplyFrfH1Welch(
-            Complex32[] rightBins,   // X
-            Complex32[] leftBins,    // Y
+            Complex32[] rightBins,
+            Complex32[] leftBins,
             AveragingMode mode,
             int avgTargetCount,
             double expAlpha,
             out double[] gainDb,
+            out double[] phaseDeg,
             out int fillCountForUi)
+
         {
             int bins = Math.Min(rightBins.Length, leftBins.Length);
 
@@ -515,6 +517,7 @@ namespace AudioHexViewer
             // --- Calcul du gain ---
             gainDb = new double[bins];
             const double EPS = 1e-30;
+            phaseDeg = new double[bins];
 
             for (int k = 0; k < bins; k++)
             {
@@ -526,13 +529,24 @@ namespace AudioHexViewer
                 }
 
                 System.Numerics.Complex H = _frfGxy[k] / gxx;
-                double mag = H.Magnitude;
 
+                // --- Gain ---
+                double mag = H.Magnitude;
                 double db = (mag <= EPS) ? -200.0 : 20.0 * Math.Log10(mag);
                 if (db < -200.0) db = -200.0;
                 if (db > 200.0) db = 200.0;
-
                 gainDb[k] = db;
+
+                // --- Phase (brute, non unwrap) ---
+                double phaseRad = Math.Atan2(H.Imaginary, H.Real);
+                double deg = phaseRad * (180.0 / Math.PI);
+
+                // clamp sécurité (évite NaN visuels)
+                if (deg < -180.0) deg = -180.0;
+                if (deg > 180.0) deg = 180.0;
+
+                phaseDeg[k] = deg;
+
             }
         }
 

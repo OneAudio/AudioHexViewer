@@ -3,7 +3,7 @@
 namespace AudioHexViewer.Core
 {
     /// <summary>
-    /// Ring buffer stéréo float (L÷R séparés), index absolu en samples (par canal).
+    /// Ring buffer stéréo float (Bode Plot séparés), index absolu en samples (par canal).
     /// Thread-safe via lock (simple et robuste pour démarrer).
     ///
     /// Convention: AbsWrite = nombre total de samples écrits (par canal) depuis le start.
@@ -35,7 +35,7 @@ namespace AudioHexViewer.Core
 
         public void PushBlock(ReadOnlySpan<float> left, ReadOnlySpan<float> right)
         {
-            if (left.Length != right.Length) throw new ArgumentException("L÷R length mismatch");
+            if (left.Length != right.Length) throw new ArgumentException("Bode Plot length mismatch");
 
             lock (_lock)
             {

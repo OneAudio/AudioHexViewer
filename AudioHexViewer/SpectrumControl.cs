@@ -25,7 +25,7 @@ namespace AudioHexViewer
         public event Action? ThdSettingsRequested;
 
         // --------------------------------------------------------------------
-        // Channel UI (mode Left/Right/L+R/L÷R) => informe l'extérieur (worker)
+        // Channel UI (mode Left/Right/L+R/Bode Plot) => informe l'extérieur (worker)
         // --------------------------------------------------------------------
         public event Action<string>? ChannelModeChanged;
 
@@ -148,13 +148,21 @@ namespace AudioHexViewer
         // Source de vérité : le mode sélectionné dans le contrôle Channel
         public string SelectedChannelMode => comboChannel.SelectedItem as string ?? "L+R";
 
+        // FRF / Bode : Right = entrée, Left = sortie
+        private bool IsFrfMode()
+        {
+            var m = SelectedChannelMode ?? "";
+            return m.Equals("L/R", StringComparison.OrdinalIgnoreCase)
+                || m.Equals("Bode Plot", StringComparison.OrdinalIgnoreCase); // si tu l'utilises dans l'UI
+        }
+
         public bool IsLeftChannelActive =>
-        SelectedChannelMode == "Left" || SelectedChannelMode == "L+R" || SelectedChannelMode == "L÷R";
+        SelectedChannelMode == "Left" || SelectedChannelMode == "L+R" || SelectedChannelMode == "Bode Plot";
 
         public bool IsRightChannelActive =>
         SelectedChannelMode == "Right"
         || SelectedChannelMode == "L+R"
-        || SelectedChannelMode == "L÷R"; // IMPORTANT: FRF/H1 => besoin des 2 voies
+        || SelectedChannelMode == "Bode Plot"; // IMPORTANT: FRF/H1 => besoin des 2 voies
 
 
 
@@ -302,6 +310,10 @@ namespace AudioHexViewer
         // Spectres courants & axe fréquence
         private double[]? currentLeftSpectrum;
         private double[]? currentRightSpectrum;
+        // --- FRF Phase (degrés) ---
+        // Utilisé UNIQUEMENT en mode "Bode Plot" (Right=entrée, Left=sortie)
+        private double[]? currentFrfPhaseDeg;
+
         private double[]? freqAxis;
 
         // --- Données FULL (résolution complète) : utilisées pour métriques / curseurs / estimations ---
@@ -313,6 +325,9 @@ namespace AudioHexViewer
         private double[]? _plotFreqAxis;
         private double[]? _plotLeftSpectrum;
         private double[]? _plotRightSpectrum;
+        // Phase décimée pour le tracé (AxisY2) — uniquement en mode "Bode Plot"
+        private double[]? _plotFrfPhaseDeg;
+
         private double[]? _plotPeakLeft;
         private double[]? _plotPeakRight;
 
@@ -508,7 +523,7 @@ namespace AudioHexViewer
         private const int ChartStatsWidthPx = 200;      // largeur du panneau stats
         private const int ChartStatsMinPlotWidthPx = 420; // largeur mini du graphe (évite d’écraser le plot)
 
-        //
+        //     
         // Formatage axe Y (dBFS), divisions secondaires
         private static string FormatDbMinor(double db, double stepMinor)
         {
@@ -1052,6 +1067,29 @@ namespace AudioHexViewer
             // - Axe X = fréquences >= 0
             double v = e.Value;
 
+            // --- IMPORTANT (FRF/Phase) -------------------------------------------------
+            // Le handler FormatNumber ne sait pas sur quel axe il travaille.
+            // Donc si l'axe X est en log, il masque tous les labels positifs non "decades".
+            // Problème : l'axe Phase (Y2) contient des valeurs positives (+90, +180) => masquées.
+            // On détecte ici les labels typiques de la phase et on bypass le filtrage log.
+            // ---------------------------------------------------------------------------
+            if (IsFrfMode())
+            {
+                // Labels phase attendus : multiples de 90° dans une plage raisonnable.
+                // (évite d'impacter l'axe X : ses decades sont 1,10,100,1k,...)
+                const double eps = 1e-9;
+                bool isPhaseTick =
+                    (v >= -360.0 && v <= 360.0) &&
+                    (Math.Abs((v / 90.0) - Math.Round(v / 90.0)) < eps);
+
+                if (isPhaseTick)
+                {
+                    // format simple, sans "Hz", sans "k", etc.
+                    e.LocalizedValue = v.ToString("0", CultureInfo.InvariantCulture);
+                    return;
+                }
+            }
+
             // --- En LOG : ne garder que les décades 1,10,100,1k,10k,100k... ---
             if (_xAxisIsLog && v > 0.0)
             {
@@ -1317,7 +1355,7 @@ namespace AudioHexViewer
             {
                 "Left" => "Left",
                 "Right" => "Right",
-                "L÷R" => "L÷R",
+                "Bode Plot" => "Bode Plot",
                 "L+R" => "Both",
                 _ => SelectedChannelMode // fallback (affiche la valeur brute si inattendue)
             };
@@ -1487,7 +1525,7 @@ namespace AudioHexViewer
             comboChannel.Items.Add("Left");
             comboChannel.Items.Add("Right");
             comboChannel.Items.Add("L+R");
-            comboChannel.Items.Add("L÷R");
+            comboChannel.Items.Add("Bode Plot");
             comboChannel.SelectedIndex = 2; // Par défaut les 2 voies sont affichées
 
             comboChannel.SelectedIndexChanged += (s, e) =>
@@ -1499,6 +1537,9 @@ namespace AudioHexViewer
                 UpdateLevelUnitUi();
                 // Mise à jour de l'overlay
                 UpdateOverlayInfo();
+
+                // IMPORTANT: en FRF (L/R) on masque le panneau stats -> on récupère toute la largeur
+                ApplyChartStatsMargin(chartSpectrum, invalidate: true, reservedScale: IsFrfMode() ? 0f : 1f);
 
                 // Informe l'extérieur immédiatement (même en LIVE)
                 // => le worker pourra éviter de calculer une voie inutile.
@@ -2194,6 +2235,10 @@ namespace AudioHexViewer
             // il faut forcer ici la mise à jour du texte affiché pour refléter la sélection réelle.
             UpdateWindowInfo();
             UpdateOverlayInfo();
+            // IMPORTANT (startup en FRF) : ApplySpectrumSettings() inhibe les events UI,
+            // donc on force ici la mise en page du chart (marges / largeur) selon le mode courant.
+            ApplyChartStatsMargin(chartSpectrum, invalidate: true, reservedScale: IsFrfMode() ? 0f : 1f);
+
 
         }
 
@@ -2326,7 +2371,9 @@ namespace AudioHexViewer
             int w = chart.ClientSize.Width;
             if (w <= 0) return;
 
-            int reserved = ChartStatsWidthPx;
+            // En mode FRF (Bode Plot), on a supprimé le panneau stats => pas de marge réservée.
+            int reserved = IsFrfMode() ? 0 : ChartStatsWidthPx;
+
 
             // Si la fenêtre devient petite : on réduit la marge stats pour garder un plot utilisable
             int maxReserved = Math.Max(120, w - ChartStatsMinPlotWidthPx);
@@ -3007,7 +3054,7 @@ namespace AudioHexViewer
         //
         /// <summary>
         /// Convertit un ratio de puissance (Left/Right) en dB : 10*log10(P_L / P_R).
-        /// Utilisé par le mode "L÷R" (pré-Bode).
+        /// Utilisé par le mode "Bode Plot" (pré-Bode).
         /// </summary>
         private static double[] PowerRatioToDb(double[] leftPower, double[] rightPower)
         {
@@ -3076,8 +3123,8 @@ namespace AudioHexViewer
 
             // Conversion POWER -> dB pour l’affichage/peak-hold
             // - Modes classiques : dBFS = 10*log10(power), clamp [-200..0]
-            // - Mode "L÷R" : gain relatif = 10*log10(P_L/P_R), clamp large [-200..200]
-            if (string.Equals(SelectedChannelMode, "L÷R", StringComparison.OrdinalIgnoreCase))                
+            // - Mode "Bode Plot" : gain relatif = 10*log10(P_L/P_R), clamp large [-200..200]
+            if (string.Equals(SelectedChannelMode, "Bode Plot", StringComparison.OrdinalIgnoreCase))                
             {
                 // -----------------------------------------------------------------
                 // BODE / FRF (H1)
@@ -3093,11 +3140,13 @@ namespace AudioHexViewer
                         mode,                // Averaging mode (EXISTANT)
                         avgTargetCount,      // Target count (EXISTANT)
                         _avgExpAlpha,        // Alpha exponentiel (EXISTANT)
-                        out var gainDb,
+                        out var gainDb,      //  Gain dB (EXISTANT)
+                        out var phaseDeg,    // <-- NOUVEAU (Phase)
                         out avgFill);        // Fill count UI (EXISTANT)
 
 
                     currentLeftSpectrum = gainDb;   // une seule courbe (gain)
+                    currentFrfPhaseDeg = phaseDeg;   // <-- NEW : stocke la phase (FULL) pour le plot / curseurs
                     currentRightSpectrum = null;
                 }
                 else
@@ -3145,43 +3194,48 @@ namespace AudioHexViewer
         // Construit les tableaux décimés uniquement pour le tracé (chart).
         // IMPORTANT : les métriques restent calculées sur currentLeftSpectrum/currentRightSpectrum + freqAxis (FULL).
         private void BuildPlotDataFromFull()
-{
-    _plotFreqAxis = null;
-    _plotLeftSpectrum = null;
-    _plotRightSpectrum = null;
-    _plotPeakLeft = null;
-    _plotPeakRight = null;
-
-    if (freqAxis == null) return;
-
-    // Budget points ~ 2 points/pixel, cap pour éviter un surcoût UI
-    var (fMin, fMax) = GetVisibleFreqRangeHz();
-    int px = GetPlotPixelWidth();
-    int budget = Math.Min(4096, Math.Max(512, px * 2)); // Nombre de points max pour le tracé
-            bool useLogX = IsXAxisLog();
-
-    // Courbe principale
-    if (currentLeftSpectrum != null)
-        DecimateForPlot(freqAxis, currentLeftSpectrum, fMin, fMax, budget, useLogX, out _plotFreqAxis, out _plotLeftSpectrum);
-
-    // Si left absent mais right présent, on doit quand même sortir un freq axis plot
-    if (_plotFreqAxis == null && currentRightSpectrum != null)
-        DecimateForPlot(freqAxis, currentRightSpectrum, fMin, fMax, budget, useLogX, out _plotFreqAxis, out _plotRightSpectrum);
-
-    // Droite (réutilise le même freq axis si déjà construit)
-    if (currentRightSpectrum != null)
-    {
-        if (_plotFreqAxis == null)
-            DecimateForPlot(freqAxis, currentRightSpectrum, fMin, fMax, budget, useLogX, out _plotFreqAxis, out _plotRightSpectrum);
-        else
-            DecimateForPlotWithGivenFreqAxis(freqAxis, currentRightSpectrum, _plotFreqAxis, out _plotRightSpectrum);
-    }
-
-            // Peak-hold : ne PAS traiter ici.
-            // Il est désormais calculé sur les tableaux PLOT dans FeedExternalSpectrum() (après décimation).
-            // Ici, BuildPlotDataFromFull() ne prépare que les courbes PLOT principales.
+        {
+            _plotFreqAxis = null;
+            _plotLeftSpectrum = null;
+            _plotRightSpectrum = null;
+            _plotFrfPhaseDeg = null;
             _plotPeakLeft = null;
             _plotPeakRight = null;
+
+            if (freqAxis == null) return;
+
+            // Budget points ~ 2 points/pixel, cap pour éviter un surcoût UI
+            var (fMin, fMax) = GetVisibleFreqRangeHz();
+            int px = GetPlotPixelWidth();
+            int budget = Math.Min(4096, Math.Max(512, px * 2)); // Nombre de points max pour le tracé
+                    bool useLogX = IsXAxisLog();
+
+            // Courbe principale
+            if (currentLeftSpectrum != null)
+                DecimateForPlot(freqAxis, currentLeftSpectrum, fMin, fMax, budget, useLogX, out _plotFreqAxis, out _plotLeftSpectrum);
+
+            // En mode FRF, on décime aussi la phase sur le MEME axe fréquentiel (_plotFreqAxis)
+            if (currentFrfPhaseDeg != null && _plotFreqAxis != null)
+                DecimateForPlotWithGivenFreqAxis(freqAxis, currentFrfPhaseDeg, _plotFreqAxis, out _plotFrfPhaseDeg);
+
+            // Si left absent mais right présent, on doit quand même sortir un freq axis plot
+            if (_plotFreqAxis == null && currentRightSpectrum != null)
+                DecimateForPlot(freqAxis, currentRightSpectrum, fMin, fMax, budget, useLogX, out _plotFreqAxis, out _plotRightSpectrum);
+
+            // Droite (réutilise le même freq axis si déjà construit)
+            if (currentRightSpectrum != null)
+            {
+                if (_plotFreqAxis == null)
+                    DecimateForPlot(freqAxis, currentRightSpectrum, fMin, fMax, budget, useLogX, out _plotFreqAxis, out _plotRightSpectrum);
+                else
+                    DecimateForPlotWithGivenFreqAxis(freqAxis, currentRightSpectrum, _plotFreqAxis, out _plotRightSpectrum);
+            }
+
+                    // Peak-hold : ne PAS traiter ici.
+                    // Il est désormais calculé sur les tableaux PLOT dans FeedExternalSpectrum() (après décimation).
+                    // Ici, BuildPlotDataFromFull() ne prépare que les courbes PLOT principales.
+                    _plotPeakLeft = null;
+                    _plotPeakRight = null;
 
         }
 
@@ -3189,79 +3243,79 @@ namespace AudioHexViewer
         // Entrées : freqFull (monotone), yFull (dBFS), plage visible, budget points, mode log/lin.
         // Sorties : freqOut/yOut de taille <= budget.
         private static void DecimateForPlot(
-    double[] freqFull, double[] yFull,
-    double fMin, double fMax,
-    int maxPoints,
-    bool useLogX,
-    out double[] freqOut,
-    out double[] yOut)
-{
-    int nIn = Math.Min(freqFull.Length, yFull.Length);
-    if (nIn <= 0) { freqOut = Array.Empty<double>(); yOut = Array.Empty<double>(); return; }
-
-    // bornes indices
-    int i0 = Array.BinarySearch(freqFull, fMin);
-    if (i0 < 0) i0 = ~i0;
-    int i1 = Array.BinarySearch(freqFull, fMax);
-    if (i1 < 0) i1 = ~i1;
-
-    i0 = Math.Max(0, Math.Min(nIn - 1, i0));
-    i1 = Math.Max(i0 + 1, Math.Min(nIn, i1));
-
-    if (maxPoints <= 0) maxPoints = 2000;
-
-    // Pas de décimation si déjà petit : slice
-    int span = i1 - i0;
-    if (span <= maxPoints)
-    {
-        int n = span;
-        freqOut = new double[n];
-        yOut = new double[n];
-        Array.Copy(freqFull, i0, freqOut, 0, n);
-        Array.Copy(yFull, i0, yOut, 0, n);
-        return;
-    }
-
-    // LOG X : buckets uniformes en log10(f)
-    if (useLogX)
-    {
-        if (fMin <= 0) fMin = 1.0;
-        if (fMax <= fMin) fMax = fMin * 10.0;
-
-        int nOut = maxPoints;
-        freqOut = new double[nOut];
-        yOut = new double[nOut];
-
-        double logMin = Math.Log10(fMin);
-        double logMax = Math.Log10(fMax);
-        double logStep = (logMax - logMin) / nOut;
-
-        for (int j = 0; j < nOut; j++)
+            double[] freqFull, double[] yFull,
+            double fMin, double fMax,
+            int maxPoints,
+            bool useLogX,
+            out double[] freqOut,
+            out double[] yOut)
         {
-            double fa = Math.Pow(10.0, logMin + j * logStep);
-            double fb = Math.Pow(10.0, logMin + (j + 1) * logStep);
+        int nIn = Math.Min(freqFull.Length, yFull.Length);
+        if (nIn <= 0) { freqOut = Array.Empty<double>(); yOut = Array.Empty<double>(); return; }
 
-            int a = Array.BinarySearch(freqFull, fa);
-            if (a < 0) a = ~a;
-            int b = Array.BinarySearch(freqFull, fb);
-            if (b < 0) b = ~b;
+        // bornes indices
+        int i0 = Array.BinarySearch(freqFull, fMin);
+        if (i0 < 0) i0 = ~i0;
+        int i1 = Array.BinarySearch(freqFull, fMax);
+        if (i1 < 0) i1 = ~i1;
 
-            if (a < i0) a = i0;
-            if (b > i1) b = i1;
-            if (b <= a) b = Math.Min(i1, a + 1);
+        i0 = Math.Max(0, Math.Min(nIn - 1, i0));
+        i1 = Math.Max(i0 + 1, Math.Min(nIn, i1));
 
-            // max dB dans le segment
-            int kMax = a;
-            double yMax = yFull[a];
-            for (int k = a; k < b; k++)
-            {
-                double y = yFull[k];
-                if (y > yMax) { yMax = y; kMax = k; }
-            }
+        if (maxPoints <= 0) maxPoints = 2000;
 
-            freqOut[j] = freqFull[kMax];
-            yOut[j] = yMax;
+        // Pas de décimation si déjà petit : slice
+        int span = i1 - i0;
+        if (span <= maxPoints)
+        {
+            int n = span;
+            freqOut = new double[n];
+            yOut = new double[n];
+            Array.Copy(freqFull, i0, freqOut, 0, n);
+            Array.Copy(yFull, i0, yOut, 0, n);
+            return;
         }
+
+        // LOG X : buckets uniformes en log10(f)
+        if (useLogX)
+        {
+            if (fMin <= 0) fMin = 1.0;
+            if (fMax <= fMin) fMax = fMin * 10.0;
+
+            int nOut = maxPoints;
+            freqOut = new double[nOut];
+            yOut = new double[nOut];
+
+            double logMin = Math.Log10(fMin);
+            double logMax = Math.Log10(fMax);
+            double logStep = (logMax - logMin) / nOut;
+
+            for (int j = 0; j < nOut; j++)
+            {
+                double fa = Math.Pow(10.0, logMin + j * logStep);
+                double fb = Math.Pow(10.0, logMin + (j + 1) * logStep);
+
+                int a = Array.BinarySearch(freqFull, fa);
+                if (a < 0) a = ~a;
+                int b = Array.BinarySearch(freqFull, fb);
+                if (b < 0) b = ~b;
+
+                if (a < i0) a = i0;
+                if (b > i1) b = i1;
+                if (b <= a) b = Math.Min(i1, a + 1);
+
+                // max dB dans le segment
+                int kMax = a;
+                double yMax = yFull[a];
+                for (int k = a; k < b; k++)
+                {
+                    double y = yFull[k];
+                    if (y > yMax) { yMax = y; kMax = k; }
+                }
+
+                freqOut[j] = freqFull[kMax];
+                yOut[j] = yMax;
+            }
 
         return;
     }
@@ -3624,9 +3678,9 @@ private static void DecimateForPlotWithGivenFreqAxis(
             double yMinAuto = -200.0;
             double yMaxAuto = 0.0;
 
-            // Mode "L÷R" : on affiche un gain relatif (dB), pas un niveau dBFS.
+            // Mode "Bode Plot" : on affiche un gain relatif (dB), pas un niveau dBFS.
             // On choisit une échelle par défaut centrée pour permettre des gains +/-.
-            if (string.Equals(modeForUnit, "L÷R", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(modeForUnit, "Bode Plot", StringComparison.OrdinalIgnoreCase))
             {
                 //yMinAuto = -160.0;
                 //yMaxAuto = 40.0;
@@ -3634,12 +3688,31 @@ private static void DecimateForPlotWithGivenFreqAxis(
                 area.AxisY.Title = "Gain (dB)";
             }
 
+            // --- Axe Y2 : Phase (uniquement en mode Bode Plot) ---
+            bool frfMode = string.Equals(modeForUnit, "Bode Plot", StringComparison.OrdinalIgnoreCase);
+
+            area.AxisY2.Enabled = frfMode ? AxisEnabled.True : AxisEnabled.False;
+
+            if (frfMode)
+            {
+                area.AxisY2.Title = "Phase (deg)";
+                area.AxisY2.Minimum = -180.0;
+                area.AxisY2.Maximum = 180.0;
+
+                // 5 divisions => 4 zones => 90° par division
+                area.AxisY2.Interval = 90;
+
+                // Grilles : on reste sobre (tu peux ajuster si tu veux)
+                area.AxisY2.MajorGrid.Enabled = false;
+                area.AxisY2.MinorGrid.Enabled = false;
+            }
+
             // Limite supérieure autorisée (utile en dBV après calibration).
             // On garde une échelle par défaut de 200 dB (span = 200).
             const double YMAX_CAP = 100.0;
             const double DEFAULT_SPAN_DB = 200.0;
 
-            if (string.Equals(modeForUnit, "L÷R", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(modeForUnit, "Bode Plot", StringComparison.OrdinalIgnoreCase))
             {
                 // Title déjà fixé plus haut.
             }
@@ -3830,8 +3903,8 @@ private static void DecimateForPlotWithGivenFreqAxis(
             // --- Ce qu'on affiche en fonction du combo Channel ---
             string mode = comboChannel.SelectedItem as string ?? "L+R";
 
-            // "L÷R" est une seule courbe portée par "Left" (currentLeftSpectrum = ratio en dB)
-            bool showLeft = (mode == "Left" || mode == "L+R" || mode == "L÷R") && (currentLeftSpectrum != null);
+            // "Bode Plot" est une seule courbe portée par "Left" (currentLeftSpectrum = ratio en dB)
+            bool showLeft = (mode == "Left" || mode == "L+R" || mode == "Bode Plot") && (currentLeftSpectrum != null);
             bool showRight = (mode == "Right" || mode == "L+R") && (currentRightSpectrum != null);
 
 
@@ -3960,6 +4033,22 @@ private static void DecimateForPlotWithGivenFreqAxis(
                     seriesL.Points.AddXY(plotFx[i], useDbvPlot ? (plotL[i] + _levelCalOffsetDbLeft) : plotL[i]);
 
                 chartSpectrum.Series.Add(seriesL);
+
+                // --- FRF Phase : 2e courbe sur AxisY2 (uniquement en mode Bode Plot) ---
+                if (mode == "Bode Plot" && plotFx != null && _plotFrfPhaseDeg != null)
+                {
+                    var seriesPh = new ChartSeries("Phase");
+                    seriesPh.ChartType = SeriesChartType.FastLine;
+                    seriesPh.BorderWidth = _colors.FftWidth;     // même épaisseur que FFT
+                    seriesPh.ChartArea = "SpectrumArea";
+                    seriesPh.YAxisType = AxisType.Secondary;     // <= IMPORTANT : AxisY2
+
+                    int n = Math.Min(plotFx.Length, _plotFrfPhaseDeg.Length);
+                    for (int i = startIndex; i < n; i++)
+                        seriesPh.Points.AddXY(plotFx[i], _plotFrfPhaseDeg[i]);
+
+                    chartSpectrum.Series.Add(seriesPh);
+                }
 
                 if (peakHoldOn && peakL != null)
                 {
@@ -5090,55 +5179,15 @@ private static void DecimateForPlotWithGivenFreqAxis(
 
                 g.Restore(saved);
             }
-            //
-            //if (isExport && !string.IsNullOrWhiteSpace(_TopInfoLine) && !plotForText.IsEmpty)
-            //{
-            //    var g = e.ChartGraphics.Graphics;
-            //    var saved = g.Save();
-            //    g.ResetClip();
-
-            //    try
-            //    {
-            //        // On construit 1 ou 2 lignes (TopInfo + THD)
-            //        string? thdLine = null;
-            //        if (_thdMeasuresEnabled)
-            //        {
-            //            string FormatHz(double hz) => (hz >= 1000.0) ? $"{hz / 1000.0:F0} kHz" : $"{hz:F0} Hz";
-            //            string hpf = _thdUi.UseHPF ? FormatHz(_thdUi.FlowHz) : "OFF";
-            //            string lpf = _thdUi.UseLPF ? FormatHz(_thdUi.FhighHz) : "OFF";
-            //            thdLine = $"THD filter - HPF: {hpf}, LPF: {lpf}";
-            //        }
-
-            //        var lines = (thdLine == null) ? new[] { _TopInfoLine } : new[] { _TopInfoLine, thdLine };
-
-            //        using var font = new Font(chart.Font.FontFamily, chart.Font.SizeInPoints * 0.95f, FontStyle.Regular);
-            //        using var b = new SolidBrush(InfoTextColor);
-            //        using var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
-
-            //        float lineH = font.GetHeight(g);
-            //        float totalH = lineH * lines.Length;
-
-            //        // Bas du plot (dans le graphe, sans toucher aux labels d’axe)
-            //        float y = plotForText.Bottom - totalH - (4f * sExport);
-            //        if (y < plotForText.Top + 2f) y = plotForText.Top + 2f;
-
-            //        // (optionnel) fond léger pour lisibilité
-            //        // using var bg = new SolidBrush(Color.FromArgb(180, Color.White));
-            //        // g.FillRectangle(bg, plotForText.Left, y - 2, plotForText.Width, totalH + 4);
-
-            //        for (int i = 0; i < lines.Length; i++)
-            //        {
-            //            var r = new RectangleF(plotForText.Left, y + i * lineH, plotForText.Width, lineH);
-            //            g.DrawString(lines[i], font, b, r, fmt);
-            //        }
-            //    }
-            //    finally { g.Restore(saved); }
-            //}
-
-            //
+            
             try
             {
-                DrawChartStatsPanel(e.ChartGraphics.Graphics, chart, area);
+
+                // Stats panel (tableau) affichée uniquement en UI si non FRF
+                if (!IsFrfMode())
+                {
+                    DrawChartStatsPanel(e.ChartGraphics.Graphics, chart, area); // Stats panel (tableau)
+                }
 
                 // Export only
                 if (isExport)
@@ -5409,6 +5458,9 @@ private static void DecimateForPlotWithGivenFreqAxis(
         //
         private void ApplyChartStatsMargin(Chart chart, bool invalidate, float reservedScale)
         {
+            if (IsFrfMode())
+                reservedScale = 0f;
+
             var area = chart.ChartAreas.FirstOrDefault(a => a.Name == "SpectrumArea");
             if (area == null) return;
 
