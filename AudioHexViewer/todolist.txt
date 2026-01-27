@@ -4,16 +4,16 @@ Le 21/01/2026
 -------------
 
 1 - Ajout d'une fonction Bode Plot (ratio)
-    a) Ajout affichage Bode Plot                                                                      --> OK Fait 24/01
-    b) Correction  erreur échelle log qui apparait de temps en temps (seulement en mode LOG)    --> OK Fait 24/01
-    c) Regareder la bonne méthode de calcul pour le diagramme de Bode.                          --> OK Fait 24/01
-    d) Ajout affichage phase en mode Bode Plot                                                  --> OK Fait 26/01
-    e) Ajout du phase wrapp/unwrap
-    f) Ajout dialogue échelle y de la phase dans le combo existant :
+    a) Ajout affichage Bode Plot                                                                    --> OK Fait 24/01
+    b) Correction  erreur échelle log qui apparait de temps en temps (seulement en mode LOG)        --> OK Fait 24/01
+    c) Regarder la bonne méthode de calcul pour le diagramme de Bode.                               --> OK Fait 24/01
+    d) Ajout affichage phase en mode Bode Plot                                                      --> OK Fait 26/01
+    e) Ajout dialogue échelle y de la phase dans le combo existant :
        --> Phase Unwrap ON/OFF, Phi_min= -360 ° Phi_min= +360 ° 
-    g) griser les réglages inutiles de l'onglet spectrum en mode FRF 
+    f) griser les réglages inutiles de l'onglet spectrum en mode FRF 
        (THD,Setting, échelle dBV,Windowing ?, Average ?)
-    h)
+    g) Ajouter une case à cocher pour afficher ou pas la Phase et une seconde pour active "unwrap".
+    h) Ajouter l'affichage de la cohérence du FRF
 
 2 - Réorganier la partie haute de l'interface GUI.
 

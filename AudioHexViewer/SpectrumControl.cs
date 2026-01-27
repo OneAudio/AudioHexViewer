@@ -2723,8 +2723,29 @@ namespace AudioHexViewer
             var curve = ResolveCurveForCursor(isCursor1);
             if (curve == ResolvedCurve.None) return false;
 
-            double[]? spec = (curve == ResolvedCurve.Left) ? currentLeftSpectrum : currentRightSpectrum;
+            double[]? spec = null;
+
+            switch (curve)
+            {
+                case ResolvedCurve.Left:
+                    spec = currentLeftSpectrum;
+                    break;
+
+                case ResolvedCurve.Right:
+                    spec = currentRightSpectrum;
+                    break;
+
+                case ResolvedCurve.Gain:
+                    spec = currentLeftSpectrum;      // Gain FRF stocké ici (dB)
+                    break;
+
+                case ResolvedCurve.Phase:
+                    spec = currentFrfPhaseDeg;       // Phase FRF (deg)
+                    break;
+            }
+
             if (spec == null || spec.Length == 0) return false;
+
 
             var area = chartSpectrum.ChartAreas["SpectrumArea"];
 
@@ -4169,6 +4190,8 @@ private static void DecimateForPlotWithGivenFreqAxis(
                     seriesPh.BorderWidth = _colors.FftWidth;     // même épaisseur que FFT
                     seriesPh.ChartArea = "SpectrumArea";
                     seriesPh.YAxisType = AxisType.Secondary;     // <= IMPORTANT : AxisY2
+                    seriesPh.Color = FftRightColor;              // Phase = couleur voie Right
+
 
                     int n = Math.Min(plotFx.Length, _plotFrfPhaseDeg.Length);
                     for (int i = startIndex; i < n; i++)
