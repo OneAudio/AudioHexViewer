@@ -29,6 +29,7 @@ namespace AudioHexViewer
         // --------------------------------------------------------------------
         public event Action<string>? ChannelModeChanged;
 
+        string phi = "\u03C6"; // 
 
         private bool _suppressThdUiEvents = false;
         internal bool IsXAxisLog() => _xAxisIsLog;
@@ -1707,6 +1708,17 @@ namespace AudioHexViewer
             if (comboLevelUnit == null)
                 return;
 
+            // En mode Bode Plot (FRF), l'unité Y de la combo ne doit pas intervenir (pas de calibration ici).
+            // On force donc dBFS et on grise la combo.
+            if (IsFrfMode())
+            {
+                comboLevelUnit.Enabled = false;
+                _levelUnit = "dBFS";
+                if (comboLevelUnit.SelectedIndex != 0)
+                    comboLevelUnit.SelectedIndex = 0;
+                return;
+            }
+
             bool canDbv = IsDbvAvailableForCurrentMode();
 
             // On grise complètement la ComboBox tant que dBV n'est pas dispo,
@@ -2650,6 +2662,33 @@ namespace AudioHexViewer
             };
         }
         //
+        // Libellé affiché dans l'UI pour indiquer sur quelle "courbe" est le curseur.
+        // - Mode normal : L / R
+        // - Mode Bode Plot : Gain / Phase
+        private string CursorCurveLabel(ResolvedCurve c)
+        {
+            if (IsFrfMode())
+            {
+                return c switch
+                {
+                    ResolvedCurve.Gain => "Gain",
+                    ResolvedCurve.Phase => phi,
+                    // Tolérance si jamais un ancien chemin envoie Left/Right en FRF
+                    ResolvedCurve.Left => "Gain",
+                    ResolvedCurve.Right => phi,
+                    _ => "—"
+                };
+            }
+
+            return c switch
+            {
+                ResolvedCurve.Left => "L",
+                ResolvedCurve.Right => "R",
+                _ => "—"
+            };
+        }
+
+        //
         public bool TryGetCursor1FrequencyHz(out double hz)
         {
             hz = 0;
@@ -2884,7 +2923,7 @@ namespace AudioHexViewer
                     if (lbl != null)
                     {
                         lbl.ForeColor = Color.Gray;
-                        lbl.Text = $"{(isCursor1 ? "C1" : "C2")}({CurveLetter(curve)}): {f:0.##} Hz  --" + (locked ? "  (LOCK)" : "");
+                        lbl.Text = $"{(isCursor1 ? "C1" : "C2")}({CursorCurveLabel(curve)}): {f:0.##} Hz  --" + (locked ? "  (LOCK)" : "");
                         lbl.Visible = true;
                     }
                     return;
@@ -2912,7 +2951,7 @@ namespace AudioHexViewer
 
                     case ResolvedCurve.Phase:
                         spec = currentFrfPhaseDeg;  // Phase FRF
-                        unit = "deg";
+                        unit = "°";
                         useY2 = true;
                         break;
                 }
@@ -2959,35 +2998,10 @@ namespace AudioHexViewer
                 if (lbl != null)
                 {
                     lbl.ForeColor = InfoTextColor;
-                    lbl.Text = $"{(isCursor1 ? "C1" : "C2")}({CurveLetter(curve)}): {f:0.##} Hz  {yVal:0.##} {unit}" + (locked ? "  (LOCK)" : "");
+                    lbl.Text = $"{(isCursor1 ? "C1" : "C2")}({CursorCurveLabel(curve)}): {f:0.##} Hz  {yVal:0.##} {unit}" + (locked ? "  (LOCK)" : "");
                     lbl.Visible = true;
                 }
-
-
-                double db = spec[idx];
-
-                // Conversion éventuelle dBFS -> dBV selon unité choisie
-                if (UseDbvForCurrentMode())
-                {
-                    db += (curve == ResolvedCurve.Right) ? _levelCalOffsetDbRight : _levelCalOffsetDbLeft;
-                }
-
-                // Couleur selon la VOIE réellement trackée
-                var curveCol = CurveColor(curve);
-                line.LineColor = Color.FromArgb(180, curveCol);
-
-                markVisible = true;
-                markFreq = f;
-                markDb = yVal;
-                markColor = curveCol;
-
-
-                if (lbl != null)
-                {
-                    lbl.ForeColor = InfoTextColor;
-                    lbl.Text = $"{(isCursor1 ? "C1" : "C2")}({CurveLetter(curve)}): {f:0.##} Hz  {db:0.##} {CurrentLevelUnitLabel()}" + (locked ? "  (LOCK)" : "");
-                    lbl.Visible = true;
-                }
+                                
             }
 
             // C1
@@ -3050,7 +3064,7 @@ namespace AudioHexViewer
                         {
                             double dY = _cursorMarkRDb - _cursorMarkLDb; // Y = dB (Gain) OU deg (Phase)
 
-                            string unit = _cursorMarkLUsesY2 ? "deg" : (IsFrfMode() ? "dB" : CurrentLevelUnitLabel());
+                            string unit = _cursorMarkLUsesY2 ? "°" : (IsFrfMode() ? "dB" : CurrentLevelUnitLabel());
 
                             _lblCursorDeltaInfo.ForeColor = InfoTextColor;
                             _lblCursorDeltaInfo.Text = $"Δ:  ΔF={dF:0.##} Hz   ΔY={dY:0.##} {unit}";
