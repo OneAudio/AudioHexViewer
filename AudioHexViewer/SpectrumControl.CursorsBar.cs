@@ -219,9 +219,13 @@ namespace AudioHexViewer
 
 
         // --------- Track cycle L->R->A->L ---------
+        // --------- Track cycle (Normal: Left/Right/Auto) / (FRF: Gain/Phase/Auto) ---------
 
         private void CycleTrackButton(Button btn, bool isC1)
         {
+            // IMPORTANT:
+            // - En mode normal : Auto / Left / Right
+            // - En mode FRF (Bode Plot) : Auto / Gain / Phase
             string next = NextTrackText(btn.Text);
             btn.Text = next;
 
@@ -232,21 +236,75 @@ namespace AudioHexViewer
             chartSpectrum?.Invalidate();
         }
 
-        private static string NextTrackText(string cur) => cur switch { "Left" => "Right", "Right" => "Auto", _ => "Left" };
-
-        private static CursorTrackMode TextToMode(string t) => t switch
+        /// <summary>
+        /// Retourne le prochain texte de tracking.
+        /// En FRF: Auto -> Gain -> Phase -> Auto
+        /// En normal: Left -> Right -> Auto -> Left
+        /// </summary>
+        private string NextTrackText(string cur)
         {
+            if (IsFrfMode())
+            {
+                // Tolérant : accepte d'anciens labels Left/Right si l'UI n'est pas encore resync
+                return cur switch
+                {
+                    "Gain" => "Phase",
+                    "Phase" => "Auto",
+                    "Left" => "Phase",   // compat (Left == Gain)
+                    "Right" => "Auto",   // compat (Right == Phase)
+                    _ => "Gain",         // Auto ou autre -> Gain
+                };
+            }
+
+            // Mode normal
+            return cur switch
+            {
+                "Left" => "Right",
+                "Right" => "Auto",
+                _ => "Left",
+            };
+        }
+
+        /// <summary>
+        /// Convertit un libellé de bouton (Auto/Gain/Phase/Left/Right) vers CursorTrackMode.
+        /// NOTE: on mappe Gain->Left et Phase->Right pour ne pas toucher à l'enum.
+        /// </summary>
+        private CursorTrackMode TextToMode(string t) => t switch
+        {
+            "Gain" => CursorTrackMode.Left,
             "Left" => CursorTrackMode.Left,
+
+            "Phase" => CursorTrackMode.Right,
             "Right" => CursorTrackMode.Right,
-            _ => CursorTrackMode.Auto
+
+            _ => CursorTrackMode.Auto,
         };
 
-        private static string ModeToText(CursorTrackMode m) => m switch
+        /// <summary>
+        /// Convertit CursorTrackMode vers le libellé affiché.
+        /// En FRF: Left->Gain, Right->Phase
+        /// En normal: Left/Right
+        /// </summary>
+        private string ModeToText(CursorTrackMode m)
         {
-            CursorTrackMode.Left => "Left",
-            CursorTrackMode.Right => "Right",
-            _ => "Auto"
-        };
+            if (IsFrfMode())
+            {
+                return m switch
+                {
+                    CursorTrackMode.Left => "Gain",
+                    CursorTrackMode.Right => "Phase",
+                    _ => "Auto",
+                };
+            }
+
+            return m switch
+            {
+                CursorTrackMode.Left => "Left",
+                CursorTrackMode.Right => "Right",
+                _ => "Auto",
+            };
+        }
+
         //
         // --------- Actions Pk / Set ---------
         private void MoveCursorToPeak(bool isC1)

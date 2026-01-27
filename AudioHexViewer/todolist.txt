@@ -7,9 +7,13 @@ Le 21/01/2026
     a) Ajout affichage Bode Plot                                                                      --> OK Fait 24/01
     b) Correction  erreur échelle log qui apparait de temps en temps (seulement en mode LOG)    --> OK Fait 24/01
     c) Regareder la bonne méthode de calcul pour le diagramme de Bode.                          --> OK Fait 24/01
-    d) Ajout affichage phase en mode Bode Plot
+    d) Ajout affichage phase en mode Bode Plot                                                  --> OK Fait 26/01
     e) Ajout du phase wrapp/unwrap
-    f) Ajout dialogue échelle y de la phase (ajout combo existante)
+    f) Ajout dialogue échelle y de la phase dans le combo existant :
+       --> Phase Unwrap ON/OFF, Phi_min= -360 ° Phi_min= +360 ° 
+    g) griser les réglages inutiles de l'onglet spectrum en mode FRF 
+       (THD,Setting, échelle dBV,Windowing ?, Average ?)
+    h)
 
 2 - Réorganier la partie haute de l'interface GUI.
 
@@ -29,7 +33,13 @@ Le 21/01/2026
 
 6- vérifier l'optimisation ds calculs de FFT :
     a) Est ce que les voies non affichée sont calculée ? IL NE FAUT PAS, INUTILE !              --> OK Fait 24/01
-    b) Quel est le temps de calcul de la FFT en pratique selon la valeur de N ?
+    b) Quel est le temps de calcul de la FFT en pratique selon la valeur de N ?                 --> OK Fait 25/01
+
+7 - Améliorations du fonctionnent des curseurs :
+    a) De chaque coté du bouton "Peak", ajouter un bouton < et >. Un appui permet de chercher "Previous Peak" ou "NextPeak".
+    b) Intégrer les curseurs dans le panneau de mesures à droite, tout en bas.
+
+8 - Prévoir la normalisation de gain/phase (calibration) pour le mode FRF.(plus tard)
 
 
 -----------------------------------------------------------------------------------------

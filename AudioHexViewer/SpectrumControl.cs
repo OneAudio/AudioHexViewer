@@ -456,6 +456,10 @@ namespace AudioHexViewer
         private double _cursorMarkLFreq, _cursorMarkLDb;
         private double _cursorMarkRFreq, _cursorMarkRDb;
 
+        // true => la valeur Y est à lire/dessiner sur AxisY2 (ex: phase en mode Bode Plot)
+        private bool _cursorMarkLUsesY2;
+        private bool _cursorMarkRUsesY2;
+
         private double _cursorTargetHzL = 1000.0; // valeur init au choix
         private double _cursorTargetHzR = 1000.0;
 
@@ -1541,6 +1545,8 @@ namespace AudioHexViewer
                 // IMPORTANT: en FRF (L/R) on masque le panneau stats -> on récupère toute la largeur
                 ApplyChartStatsMargin(chartSpectrum, invalidate: true, reservedScale: IsFrfMode() ? 0f : 1f);
 
+                SyncCursorUiFromModel(); // met à jour les libellés Auto/Gain/Phase ou Auto/Left/Right
+
                 // Informe l'extérieur immédiatement (même en LIVE)
                 // => le worker pourra éviter de calculer une voie inutile.
                 ChannelModeChanged?.Invoke(SelectedChannelMode);
@@ -2550,18 +2556,55 @@ namespace AudioHexViewer
         private enum ResolvedCurve
         {
             None,
+
+            // Mode FFT normal
             Left,
-            Right
+            Right,
+
+            // Mode FRF / Bode Plot
+            Gain,   // courbe de gain (dB)
+            Phase   // courbe de phase (deg) sur AxisY2
         }
+
 
         private ResolvedCurve ResolveCurveForCursor(bool isCursor1)
         {
-            // "Voie dispo" = affichée ET spectre présent (important depuis l'optim voies actives)
+            CursorTrackMode mode = isCursor1 ? _c1TrackMode : _c2TrackMode;
+
+            // -----------------------------
+            // Mode FRF / Bode Plot
+            // -----------------------------
+            if (IsFrfMode())
+            {
+                // Disponibilités spécifiques FRF :
+                // - Gain : stocké dans currentLeftSpectrum (dB)
+                // - Phase : stockée dans currentFrfPhaseDeg (deg)
+                bool gainAvail = (currentLeftSpectrum != null);
+                bool phaseAvail = (currentFrfPhaseDeg != null);
+
+                switch (mode)
+                {
+                    case CursorTrackMode.Left:   // Left == Gain (mapping UI)
+                        return gainAvail ? ResolvedCurve.Gain : ResolvedCurve.None;
+
+                    case CursorTrackMode.Right:  // Right == Phase (mapping UI)
+                        return phaseAvail ? ResolvedCurve.Phase : ResolvedCurve.None;
+
+                    default: // Auto
+                        if (gainAvail && phaseAvail)
+                            return isCursor1 ? ResolvedCurve.Gain : ResolvedCurve.Phase; // spec: C1=Gain, C2=Phase
+                        if (gainAvail) return ResolvedCurve.Gain;
+                        if (phaseAvail) return ResolvedCurve.Phase;
+                        return ResolvedCurve.None;
+                }
+            }
+
+            // -----------------------------
+            // Mode FFT normal (Left/Right)
+            // -----------------------------
+            // "Voie dispo" = affichée ET spectre présent
             bool leftAvail = _statsShowLeft && currentLeftSpectrum != null;
             bool rightAvail = _statsShowRight && currentRightSpectrum != null;
-
-            // Remplace ces noms par ceux que tu as créés à l'étape 1 si besoin
-            CursorTrackMode mode = isCursor1 ? _c1TrackMode : _c2TrackMode;
 
             switch (mode)
             {
@@ -2580,15 +2623,22 @@ namespace AudioHexViewer
             }
         }
 
+
         private Color CurveColor(ResolvedCurve c)
         {
             return c switch
             {
                 ResolvedCurve.Left => FftLeftColor,
                 ResolvedCurve.Right => FftRightColor,
+
+                // FRF : on réutilise les mêmes couleurs (Gain=LeftColor, Phase=RightColor)
+                ResolvedCurve.Gain => FftLeftColor,
+                ResolvedCurve.Phase => FftRightColor,
+
                 _ => Color.Gray
             };
         }
+
 
         private static string CurveLetter(ResolvedCurve c)
         {
@@ -2786,7 +2836,8 @@ namespace AudioHexViewer
                 ref bool markVisible,
                 ref double markFreq,
                 ref double markDb,
-                ref Color markColor)
+                ref Color markColor,
+                ref bool markUsesY2)
             {
                 if (!enabled || line == null || idx < minIdx || idx >= freqAxis.Length)
                 {
@@ -2818,12 +2869,39 @@ namespace AudioHexViewer
                     return;
                 }
 
-                double[]? spec = (curve == ResolvedCurve.Left) ? currentLeftSpectrum : currentRightSpectrum;
+                // Sélection de la source selon la courbe réellement trackée
+                double[]? spec = null;
+                bool useY2 = false;          // phase => AxisY2
+                string unit = CurrentLevelUnitLabel(); // par défaut (FFT normal)
+
+                switch (curve)
+                {
+                    case ResolvedCurve.Left:
+                        spec = currentLeftSpectrum;
+                        break;
+
+                    case ResolvedCurve.Right:
+                        spec = currentRightSpectrum;
+                        break;
+
+                    case ResolvedCurve.Gain:
+                        spec = currentLeftSpectrum; // Gain FRF stocké ici (déjà en dB)
+                        unit = "dB";
+                        break;
+
+                    case ResolvedCurve.Phase:
+                        spec = currentFrfPhaseDeg;  // Phase FRF
+                        unit = "deg";
+                        useY2 = true;
+                        break;
+                }
+
                 if (spec == null || idx >= spec.Length)
                 {
                     line.LineColor = Color.FromArgb(180, Color.Gray);
                     markVisible = false;
                     markColor = Color.Gray;
+                    markUsesY2 = false;
 
                     if (lbl != null)
                     {
@@ -2834,6 +2912,37 @@ namespace AudioHexViewer
                     return;
                 }
 
+                double yVal = spec[idx];
+
+                // IMPORTANT :
+                // - En mode FRF : Gain est déjà en dB => pas de dBV/dBFS
+                // - En mode FFT normal : on conserve la conversion dBFS->dBV si activée
+                if (!IsFrfMode())
+                {
+                    if (UseDbvForCurrentMode())
+                    {
+                        // Ici curve = Left/Right uniquement (normal)
+                        yVal += (curve == ResolvedCurve.Right) ? _levelCalOffsetDbRight : _levelCalOffsetDbLeft;
+                    }
+                }
+
+                var col = CurveColor(curve);
+                line.LineColor = Color.FromArgb(180, col);
+
+                markVisible = true;
+                markFreq = f;
+                markDb = yVal;       // conserve le nom "Db" mais contient Y (dB ou deg) selon la courbe
+                markColor = col;
+                markUsesY2 = useY2;
+
+                if (lbl != null)
+                {
+                    lbl.ForeColor = InfoTextColor;
+                    lbl.Text = $"{(isCursor1 ? "C1" : "C2")}({CurveLetter(curve)}): {f:0.##} Hz  {yVal:0.##} {unit}" + (locked ? "  (LOCK)" : "");
+                    lbl.Visible = true;
+                }
+
+
                 double db = spec[idx];
 
                 // Conversion éventuelle dBFS -> dBV selon unité choisie
@@ -2843,13 +2952,14 @@ namespace AudioHexViewer
                 }
 
                 // Couleur selon la VOIE réellement trackée
-                var col = CurveColor(curve);
-                line.LineColor = Color.FromArgb(180, col);
+                var curveCol = CurveColor(curve);
+                line.LineColor = Color.FromArgb(180, curveCol);
 
                 markVisible = true;
                 markFreq = f;
-                markDb = db;
-                markColor = col;
+                markDb = yVal;
+                markColor = curveCol;
+
 
                 if (lbl != null)
                 {
@@ -2864,13 +2974,15 @@ namespace AudioHexViewer
             {
                 _cursorFreqL = freqAxis[_cursorIdxL];
                 UpdateOne(onC1, true, _cursorIdxL, _cursorLineL, _lblCursorLInfo, _cursorLockedL, c1Curve,
-                    ref _cursorMarkLVisible, ref _cursorMarkLFreq, ref _cursorMarkLDb, ref _cursorMarkLColor);
+                    ref _cursorMarkLVisible, ref _cursorMarkLFreq, ref _cursorMarkLDb, ref _cursorMarkLColor, ref _cursorMarkLUsesY2);
+
             }
             else
             {
                 if (_cursorLineL != null) _cursorLineL.Visible = false;
                 if (_lblCursorLInfo != null) { _lblCursorLInfo.Text = ""; _lblCursorLInfo.Visible = false; }
                 _cursorMarkLVisible = false;
+                _cursorMarkLUsesY2 = false;
             }
 
             // C2
@@ -2878,13 +2990,15 @@ namespace AudioHexViewer
             {
                 _cursorFreqR = freqAxis[_cursorIdxR];
                 UpdateOne(onC2, false, _cursorIdxR, _cursorLineR, _lblCursorRInfo, _cursorLockedR, c2Curve,
-                    ref _cursorMarkRVisible, ref _cursorMarkRFreq, ref _cursorMarkRDb, ref _cursorMarkRColor);
+                        ref _cursorMarkRVisible, ref _cursorMarkRFreq, ref _cursorMarkRDb, ref _cursorMarkRColor, ref _cursorMarkRUsesY2);
+
             }
             else
             {
                 if (_cursorLineR != null) _cursorLineR.Visible = false;
                 if (_lblCursorRInfo != null) { _lblCursorRInfo.Text = ""; _lblCursorRInfo.Visible = false; }
                 _cursorMarkRVisible = false;
+                _cursorMarkRUsesY2 = false;
             }
             //
             // --- Delta (C2 - C1) ---
@@ -2904,10 +3018,23 @@ namespace AudioHexViewer
                     if (_cursorMarkLVisible && _cursorMarkRVisible)
                     {
                         double dF = _cursorMarkRFreq - _cursorMarkLFreq; // C2 - C1
-                        double dA = _cursorMarkRDb - _cursorMarkLDb;      // C2 - C1
 
-                        _lblCursorDeltaInfo.ForeColor = InfoTextColor;
-                        _lblCursorDeltaInfo.Text = $"Δ:  ΔF={dF:0.##} Hz   ΔA={dA:0.##} dB";
+                        // Si les curseurs sont sur des courbes différentes (Gain vs Phase) => delta uniquement fréquence
+                        if (_cursorMarkLUsesY2 != _cursorMarkRUsesY2)
+                        {
+                            _lblCursorDeltaInfo.ForeColor = InfoTextColor;
+                            _lblCursorDeltaInfo.Text = $"Δ:  ΔF={dF:0.##} Hz";
+                        }
+                        else
+                        {
+                            double dY = _cursorMarkRDb - _cursorMarkLDb; // Y = dB (Gain) OU deg (Phase)
+
+                            string unit = _cursorMarkLUsesY2 ? "deg" : (IsFrfMode() ? "dB" : CurrentLevelUnitLabel());
+
+                            _lblCursorDeltaInfo.ForeColor = InfoTextColor;
+                            _lblCursorDeltaInfo.Text = $"Δ:  ΔF={dF:0.##} Hz   ΔY={dY:0.##} {unit}";
+                        }
+
                     }
                     else
                     {
@@ -4887,32 +5014,35 @@ private static void DecimateForPlotWithGivenFreqAxis(
             /// ----------------------------
             // Dessin des marqueurs de curseur
             /// ----------------------------
-            void DrawDownTriangle(double f, double db, Color color)
+            void DrawDownTriangle(double f, double yValue, bool useY2, Color color)
             {
                 float x = (float)area.AxisX.ValueToPixelPosition(f);
-                float y = (float)area.AxisY.ValueToPixelPosition(db);
+                float y = useY2
+                    ? (float)area.AxisY2.ValueToPixelPosition(yValue)
+                    : (float)area.AxisY.ValueToPixelPosition(yValue);
 
-                // Scale géométrique pour export (sinon triangle "petit" en x2)
                 float h = 10f * sExport;
                 float w = 12f * sExport;
 
                 var pts = new[]
                 {
-            new PointF(x, y),
-            new PointF(x - w/2f, y - h),
-            new PointF(x + w/2f, y - h)
-            };
+                    new PointF(x, y),
+                    new PointF(x - w/2f, y - h),
+                    new PointF(x + w/2f, y - h)
+                };
 
                 using var brush = new SolidBrush(Color.FromArgb(220, color));
                 e.ChartGraphics.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 e.ChartGraphics.Graphics.FillPolygon(brush, pts);
             }
 
+
             if (_cursorMarkLVisible)
-                DrawDownTriangle(_cursorMarkLFreq, _cursorMarkLDb, _cursorMarkLColor);
+                DrawDownTriangle(_cursorMarkLFreq, _cursorMarkLDb, _cursorMarkLUsesY2, _cursorMarkLColor);
 
             if (_cursorMarkRVisible)
-                DrawDownTriangle(_cursorMarkRFreq, _cursorMarkRDb, _cursorMarkRColor);
+                DrawDownTriangle(_cursorMarkRFreq, _cursorMarkRDb, _cursorMarkRUsesY2, _cursorMarkRColor);
+
 
             // ----------------------------
             // Y : ticks + labels mineurs
