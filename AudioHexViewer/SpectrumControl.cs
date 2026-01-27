@@ -315,6 +315,10 @@ namespace AudioHexViewer
         // Utilisé UNIQUEMENT en mode "Bode Plot" (Right=entrée, Left=sortie)
         private double[]? currentFrfPhaseDeg;
 
+        // FRF (Bode) UI toggles
+        private bool _frfPhaseEnabled = false;   // bouton "enable φ" : OFF par défaut
+        private bool _frfPhaseUnwrap = false;    // bouton "unwrap φ" : OFF => wrap par défaut
+
         private double[]? freqAxis;
 
         // --- Données FULL (résolution complète) : utilisées pour métriques / curseurs / estimations ---
@@ -708,6 +712,13 @@ namespace AudioHexViewer
             InitOverlayAnnotation();
             // Curseurs
             InitCursorBarUi();
+
+            // FRF (Bode) extra buttons
+            btnPhiEnable.Click += BtnPhiEnable_Click;
+            btnPhiUnwrap.Click += BtnPhiUnwrap_Click;
+
+            // état initial (phase OFF, wrap ON)
+            ApplyFrfPhiButtonsUi();
 
             // Clic droit sur la zone du spectre -> ouverture de la boîte d'axes
             chartSpectrum.MouseUp += ChartSpectrum_MouseUp;
@@ -1547,6 +1558,8 @@ namespace AudioHexViewer
                 ApplyChartStatsMargin(chartSpectrum, invalidate: true, reservedScale: IsFrfMode() ? 0f : 1f);
 
                 SyncCursorUiFromModel(); // met à jour les libellés Auto/Gain/Phase ou Auto/Left/Right
+                ApplyFrfPhiButtonsUi(); // montre/masque les boutons φ selon IsFrfMode()
+
 
                 // Informe l'extérieur immédiatement (même en LIVE)
                 // => le worker pourra éviter de calculer une voie inutile.
@@ -2256,6 +2269,9 @@ namespace AudioHexViewer
             // IMPORTANT (startup en FRF) : ApplySpectrumSettings() inhibe les events UI,
             // donc on force ici la mise en page du chart (marges / largeur) selon le mode courant.
             ApplyChartStatsMargin(chartSpectrum, invalidate: true, reservedScale: IsFrfMode() ? 0f : 1f);
+            SyncCursorUiFromModel();
+            ApplyFrfPhiButtonsUi();
+
 
 
         }
@@ -2592,7 +2608,11 @@ namespace AudioHexViewer
                 // - Gain : stocké dans currentLeftSpectrum (dB)
                 // - Phase : stockée dans currentFrfPhaseDeg (deg)
                 bool gainAvail = (currentLeftSpectrum != null);
-                bool phaseAvail = (currentFrfPhaseDeg != null);
+
+                // IMPORTANT : “phase dispo pour les curseurs” == la série phase est réellement affichée
+                // (quand tu désactives φ, le chart ne trace la phase que si _plotFrfPhaseDeg != null)
+                bool phaseShown = (_plotFrfPhaseDeg != null);                 // phase visible sur le chart :contentReference[oaicite:1]{index=1}
+                bool phaseAvail = (currentFrfPhaseDeg != null) && phaseShown; // curseurs autorisés sur Phase uniquement si visible
 
                 switch (mode)
                 {
@@ -2600,15 +2620,19 @@ namespace AudioHexViewer
                         return gainAvail ? ResolvedCurve.Gain : ResolvedCurve.None;
 
                     case CursorTrackMode.Right:  // Right == Phase (mapping UI)
-                        return phaseAvail ? ResolvedCurve.Phase : ResolvedCurve.None;
+                                                 // Si la phase est désactivée => on force Gain (si dispo)
+                        return phaseAvail ? ResolvedCurve.Phase : (gainAvail ? ResolvedCurve.Gain : ResolvedCurve.None);
 
                     default: // Auto
+                             // Si la phase est désactivée => Auto retombe forcément sur Gain
                         if (gainAvail && phaseAvail)
                             return isCursor1 ? ResolvedCurve.Gain : ResolvedCurve.Phase; // spec: C1=Gain, C2=Phase
+
                         if (gainAvail) return ResolvedCurve.Gain;
                         if (phaseAvail) return ResolvedCurve.Phase;
                         return ResolvedCurve.None;
                 }
+
             }
 
             // -----------------------------
@@ -2841,6 +2865,42 @@ namespace AudioHexViewer
                 else hi = mid;
             }
             return lo;
+        }
+        //
+        private void BtnPhiEnable_Click(object? sender, EventArgs e)
+        {
+            _frfPhaseEnabled = !_frfPhaseEnabled;
+
+            // On ne bloque pas les curseurs Phase même si la courbe est masquée (ton point 1)
+            ApplyFrfPhiButtonsUi();
+            SyncCursorUiFromModel();
+
+            // Force un redraw rapide
+            chartSpectrum.Invalidate();
+        }
+
+        private void BtnPhiUnwrap_Click(object? sender, EventArgs e)
+        {
+            _frfPhaseUnwrap = !_frfPhaseUnwrap; // vert quand unwrap φ (ton point 2)
+            ApplyFrfPhiButtonsUi();
+
+            // Force recalcul display (unwrap change la courbe)
+            chartSpectrum.Invalidate();
+        }
+
+        private void ApplyFrfPhiButtonsUi()
+        {
+            // Visible uniquement en mode FRF (Bode)
+            bool frf = IsFrfMode(); // tu l’as déjà dans le control (utilisé dans le rendu FRF)
+            btnPhiEnable.Visible = frf;
+            btnPhiUnwrap.Visible = frf;
+
+            if (!frf)
+                return;
+
+            // Mini toggle look (même logique que tes carrés C1/C2)
+            btnPhiEnable.BackColor = _frfPhaseEnabled ? Color.LightGreen : SystemColors.Control;
+            btnPhiUnwrap.BackColor = _frfPhaseUnwrap ? Color.LightGreen : SystemColors.Control;
         }
 
         //
@@ -3308,7 +3368,9 @@ namespace AudioHexViewer
 
 
                     currentLeftSpectrum = gainDb;   // une seule courbe (gain)
-                    currentFrfPhaseDeg = phaseDeg;   // <-- NEW : stocke la phase (FULL) pour le plot / curseurs
+                    //currentFrfPhaseDeg = phaseDeg;   // <-- NEW : stocke la phase (FULL) pour le plot / curseurs
+                    currentFrfPhaseDeg = _frfPhaseUnwrap? UnwrapPhaseDegrees(phaseDeg) : phaseDeg;
+
                     currentRightSpectrum = null;
                 }
                 else
@@ -3400,7 +3462,36 @@ namespace AudioHexViewer
                     _plotPeakRight = null;
 
         }
+        //
+        /// <summary>
+        /// Unwrap une phase en degrés supposée "wrapée" (typiquement [-180..180]) en phase continue.
+        /// </summary>
+        private static double[] UnwrapPhaseDegrees(double[] wrappedDeg)
+        {
+            if (wrappedDeg.Length == 0) return wrappedDeg;
 
+            var u = new double[wrappedDeg.Length];
+            u[0] = wrappedDeg[0];
+
+            double offset = 0.0;
+            for (int i = 1; i < wrappedDeg.Length; i++)
+            {
+                double prev = wrappedDeg[i - 1];
+                double cur = wrappedDeg[i];
+
+                double d = cur - prev;
+
+                // Corrige les sauts typiques à ±180/±360
+                if (d > 180.0) offset -= 360.0;
+                else if (d < -180.0) offset += 360.0;
+
+                u[i] = cur + offset;
+            }
+
+            return u;
+        }
+
+        //
         // Décimation "tracé only" : conserve le max dans chaque bucket.
         // Entrées : freqFull (monotone), yFull (dBFS), plage visible, budget points, mode log/lin.
         // Sorties : freqOut/yOut de taille <= budget.
@@ -4197,7 +4288,8 @@ private static void DecimateForPlotWithGivenFreqAxis(
                 chartSpectrum.Series.Add(seriesL);
 
                 // --- FRF Phase : 2e courbe sur AxisY2 (uniquement en mode Bode Plot) ---
-                if (mode == "Bode Plot" && plotFx != null && _plotFrfPhaseDeg != null)
+                // --- FRF Phase : 2e courbe sur AxisY2 (uniquement en mode Bode Plot) ---
+                if (mode == "Bode Plot" && _frfPhaseEnabled && plotFx != null && _plotFrfPhaseDeg != null)
                 {
                     var seriesPh = new ChartSeries("Phase");
                     seriesPh.ChartType = SeriesChartType.FastLine;
@@ -4206,13 +4298,13 @@ private static void DecimateForPlotWithGivenFreqAxis(
                     seriesPh.YAxisType = AxisType.Secondary;     // <= IMPORTANT : AxisY2
                     seriesPh.Color = FftRightColor;              // Phase = couleur voie Right
 
-
                     int n = Math.Min(plotFx.Length, _plotFrfPhaseDeg.Length);
                     for (int i = startIndex; i < n; i++)
                         seriesPh.Points.AddXY(plotFx[i], _plotFrfPhaseDeg[i]);
 
                     chartSpectrum.Series.Add(seriesPh);
                 }
+
 
                 if (peakHoldOn && peakL != null)
                 {

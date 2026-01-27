@@ -184,6 +184,14 @@ namespace AudioHexViewer
             _cursorUiSync = true;
             try
             {
+                // En Bode Plot : si la phase est désactivée, on force les 2 curseurs sur Gain.
+                // (Auto et Phase deviennent impossibles)
+                if (IsFrfMode() && !_frfPhaseEnabled)
+                {
+                    if (C1TrackMode != CursorTrackMode.Left) C1TrackMode = CursorTrackMode.Left; // Gain
+                    if (C2TrackMode != CursorTrackMode.Left) C2TrackMode = CursorTrackMode.Left; // Gain
+                }
+
                 _c1TrackBtn.Text = ModeToText(C1TrackMode);
                 _c2TrackBtn.Text = ModeToText(C2TrackMode);
 
@@ -243,6 +251,18 @@ namespace AudioHexViewer
         /// </summary>
         private string NextTrackText(string cur)
         {
+            // Phase FRF désactivée
+            if (!_frfPhaseEnabled)
+            {
+                // Phase désactivée : cycle réduit (Gain <-> Auto), mais Auto sera de toute façon forcé vers Gain
+                return cur switch
+                {
+                    "Gain" => "Auto",
+                    _ => "Gain", // Auto/Phase/Left/Right -> Gain
+                };
+            }
+
+            // Mode Bode Plot (FRF)
             if (IsFrfMode())
             {
                 // Tolérant : accepte d'anciens labels Left/Right si l'UI n'est pas encore resync
@@ -269,16 +289,24 @@ namespace AudioHexViewer
         /// Convertit un libellé de bouton (Auto/Gain/Phase/Left/Right) vers CursorTrackMode.
         /// NOTE: on mappe Gain->Left et Phase->Right pour ne pas toucher à l'enum.
         /// </summary>
-        private CursorTrackMode TextToMode(string t) => t switch
+        private CursorTrackMode TextToMode(string t)
         {
-            "Gain" => CursorTrackMode.Left,
-            "Left" => CursorTrackMode.Left,
+            // En Bode Plot avec phase OFF : "Phase" est interdit => force Gain
+            if (IsFrfMode() && !_frfPhaseEnabled && (t == "Phase" || t == "Right"))
+                return CursorTrackMode.Left; // Gain
 
-            "Phase" => CursorTrackMode.Right,
-            "Right" => CursorTrackMode.Right,
+            return t switch
+            {
+                "Gain" => CursorTrackMode.Left,
+                "Left" => CursorTrackMode.Left,
 
-            _ => CursorTrackMode.Auto,
-        };
+                "Phase" => CursorTrackMode.Right,
+                "Right" => CursorTrackMode.Right,
+
+                _ => CursorTrackMode.Auto,
+            };
+        }
+
 
         /// <summary>
         /// Convertit CursorTrackMode vers le libellé affiché.
