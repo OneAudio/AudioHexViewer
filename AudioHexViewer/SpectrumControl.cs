@@ -1551,6 +1551,8 @@ namespace AudioHexViewer
 
                 // Mise à jour immédiate de l'UI d'unité (même en LIVE)
                 UpdateLevelUnitUi();
+                // F
+                UpdateFrfUiLocks();   // <-- AJOUT
                 // Mise à jour de l'overlay
                 UpdateOverlayInfo();
 
@@ -1714,7 +1716,92 @@ namespace AudioHexViewer
 
             return dbfs + (isRightChannel ? _levelCalOffsetDbRight : _levelCalOffsetDbLeft);
         }
+        //
+        //
+        // Grise/force certains contrôles quand le mode Bode Plot (FRF) est actif.
+        private void UpdateFrfUiLocks()
+        {
+            bool frf = IsFrfMode();
 
+            // 1) THD : griser en FRF
+            if (chkEnableThd != null)
+            {
+                if (frf)
+                    chkEnableThd.Checked = false; // sécurité : on coupe la mesure THD si on arrive en FRF
+                chkEnableThd.Enabled = !frf;
+            }
+            if (btnThdSettings != null)
+            {
+                btnThdSettings.Enabled = !frf;
+            }
+
+            // 2) Windowing : forcer Hann + griser en FRF
+            if (comboWindow == null)
+                return;
+
+            if (frf)
+            {
+                // mémorise la sélection précédente (une seule fois)
+                if (_windowIndexBeforeFrf < 0)
+                    _windowIndexBeforeFrf = comboWindow.SelectedIndex;
+
+                int hannIdx = comboWindow.Items.IndexOf("Hann");
+                if (hannIdx < 0) hannIdx = 1; // fallback “raisonnable” si la liste change
+
+                // Forcer Hann même si on est en live / même si les events sont inhibés :
+                if (comboWindow.SelectedIndex != hannIdx)
+                {
+                    bool prevRestore = _isRestoringSettings;
+                    _isRestoringSettings = true;
+                    try
+                    {
+                        comboWindow.SelectedIndex = hannIdx;
+                    }
+                    finally
+                    {
+                        _isRestoringSettings = prevRestore;
+                    }
+
+                    // IMPORTANT : garder l’état interne cohérent (comme dans ApplySpectrumSettings) :contentReference[oaicite:4]{index=4}
+                    lastWindow = (WindowType)hannIdx;
+
+                    // Mise à jour texte overlay “Win=…” si nécessaire
+                    UpdateWindowInfo();
+                }
+
+                comboWindow.Enabled = false;
+            }
+            else
+            {
+                comboWindow.Enabled = true;
+
+                // Restaurer la fenêtre d’avant FRF (si on l’avait mémorisée)
+                if (_windowIndexBeforeFrf >= 0 && _windowIndexBeforeFrf < comboWindow.Items.Count)
+                {
+                    int restoreIdx = _windowIndexBeforeFrf;
+                    _windowIndexBeforeFrf = -1;
+
+                    if (comboWindow.SelectedIndex != restoreIdx)
+                    {
+                        bool prevRestore = _isRestoringSettings;
+                        _isRestoringSettings = true;
+                        try
+                        {
+                            comboWindow.SelectedIndex = restoreIdx;
+                        }
+                        finally
+                        {
+                            _isRestoringSettings = prevRestore;
+                        }
+
+                        lastWindow = (WindowType)comboWindow.SelectedIndex;
+                        UpdateWindowInfo();
+                    }
+                }
+            }
+        }
+
+        //
         // Met à jour l'état de la ComboBox d'unité de niveau (dBFS/dBV)
         private void UpdateLevelUnitUi()
         {
@@ -2250,6 +2337,7 @@ namespace AudioHexViewer
                 _levelGainVrmsPerFsRight = _levelCalValidRight ? GainFromOffsetDb(_levelCalOffsetDbRight) : 0.0;
 
                 UpdateLevelUnitUi();
+                UpdateFrfUiLocks();   // <-- AJOUT (important si startup direct en FRF)
 
             }
             finally
@@ -4981,6 +5069,9 @@ private static void DecimateForPlotWithGivenFreqAxis(
 
         public bool OverlayIsLoaded(int slotIndex) => _overlays.Slots[slotIndex].Data != null;
         public bool OverlayIsEnabled(int slotIndex) => _overlays.Slots[slotIndex].Enabled;
+
+        // Mémorise la fenêtre choisie hors FRF, pour la restaurer quand on sort du mode Bode Plot.
+        private int _windowIndexBeforeFrf = -1;
 
         public void OverlaySave(int slotIndex, string filePath, string name)
         {
