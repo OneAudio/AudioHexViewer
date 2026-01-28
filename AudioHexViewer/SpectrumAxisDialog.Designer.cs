@@ -19,6 +19,10 @@
             lblYMin = new Label();
             numYMax = new NumericUpDown();
             numYMin = new NumericUpDown();
+            lblY2Max = new Label();
+            lblY2Min = new Label();
+            cmbY2Max = new ComboBox();
+            cmbY2Min = new ComboBox();
             tabX = new TabControl();
             tabMinMax = new TabPage();
             lblFMin = new Label();
@@ -83,12 +87,52 @@
             numYMin.Size = new Size(90, 23);
             numYMin.TabIndex = 3;
             numYMin.Value = new decimal(new int[] { 200, 0, 0, int.MinValue });
+            //
+            //
             // 
+            // lblY2Max
+            // 
+            lblY2Max.AutoSize = true;
+            lblY2Max.Location = new Point(12, 85);
+            lblY2Max.Name = "lblY2Max";
+            lblY2Max.Size = new Size(86, 15);
+            lblY2Max.TabIndex = 20;
+            lblY2Max.Text = "Y2 max (deg)";
+
+            // 
+            // lblY2Min
+            // 
+            lblY2Min.AutoSize = true;
+            lblY2Min.Location = new Point(12, 120);
+            lblY2Min.Name = "lblY2Min";
+            lblY2Min.Size = new Size(84, 15);
+            lblY2Min.TabIndex = 21;
+            lblY2Min.Text = "Y2 min (deg)";
+
+            // 
+            // cmbY2Max
+            // 
+            cmbY2Max.FormattingEnabled = true;
+            cmbY2Max.Location = new Point(114, 82);
+            cmbY2Max.Name = "cmbY2Max";
+            cmbY2Max.Size = new Size(90, 23);
+            cmbY2Max.TabIndex = 22;
+
+            // 
+            // cmbY2Min
+            // 
+            cmbY2Min.FormattingEnabled = true;
+            cmbY2Min.Location = new Point(114, 117);
+            cmbY2Min.Name = "cmbY2Min";
+            cmbY2Min.Size = new Size(90, 23);
+            cmbY2Min.TabIndex = 23;
+
+            //
             // tabX
             // 
             tabX.Controls.Add(tabMinMax);
             tabX.Controls.Add(tabCenterSpan);
-            tabX.Location = new Point(12, 80);
+            tabX.Location = new Point(12, 150);
             tabX.Name = "tabX";
             tabX.SelectedIndex = 0;
             tabX.Size = new Size(196, 97);
@@ -194,7 +238,7 @@
             // btnOk
             // 
             btnOk.DialogResult = DialogResult.OK;
-            btnOk.Location = new Point(129, 212);
+            btnOk.Location = new Point(129, 282);
             btnOk.Name = "btnOk";
             btnOk.Size = new Size(75, 23);
             btnOk.TabIndex = 8;
@@ -203,7 +247,7 @@
             // 
             // btnDefault
             // 
-            btnDefault.Location = new Point(129, 183);
+            btnDefault.Location = new Point(129, 253);
             btnDefault.Name = "btnDefault";
             btnDefault.Size = new Size(75, 23);
             btnDefault.TabIndex = 6;
@@ -212,7 +256,7 @@
             // 
             // btnFitY
             // 
-            btnFitY.Location = new Point(12, 183);
+            btnFitY.Location = new Point(12, 253);
             btnFitY.Name = "btnFitY";
             btnFitY.Size = new Size(75, 23);
             btnFitY.TabIndex = 5;
@@ -221,7 +265,7 @@
             // 
             // btnFitX
             // 
-            btnFitX.Location = new Point(12, 212);
+            btnFitX.Location = new Point(12, 282);
             btnFitX.Name = "btnFitX";
             btnFitX.Size = new Size(75, 23);
             btnFitX.TabIndex = 7;
@@ -233,11 +277,15 @@
             AcceptButton = btnOk;
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(220, 247);
+            ClientSize = new Size(220, 317);
             Controls.Add(btnOk);
             Controls.Add(btnFitX);
             Controls.Add(btnDefault);
             Controls.Add(btnFitY);
+            Controls.Add(cmbY2Min);
+            Controls.Add(cmbY2Max);
+            Controls.Add(lblY2Min);
+            Controls.Add(lblY2Max);
             Controls.Add(tabX);
             Controls.Add(numYMin);
             Controls.Add(numYMax);
@@ -270,6 +318,11 @@
         private Label lblYMin;
         private NumericUpDown numYMax;
         private NumericUpDown numYMin;
+
+        private Label lblY2Max;
+        private Label lblY2Min;
+        private ComboBox cmbY2Max;
+        private ComboBox cmbY2Min;
 
         private TabControl tabX;
         private TabPage tabMinMax;

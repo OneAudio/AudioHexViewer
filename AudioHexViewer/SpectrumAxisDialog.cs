@@ -9,9 +9,41 @@ namespace AudioHexViewer
     {
         private bool _updating = false;
 
+        private const double PHASE_ABS_MAX_DEG = 360.0;
+
+        private static bool TryParseDeg(string? s, out double deg)
+        {
+            deg = 0.0;
+            if (string.IsNullOrWhiteSpace(s)) return false;
+            return double.TryParse(s, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out deg);
+        }
+
+
         public SpectrumAxisDialog()
         {
             InitializeComponent();
+
+            // Phase (Y2) : combobox éditables + valeurs usuelles
+            cmbY2Min.DropDownStyle = ComboBoxStyle.DropDown;
+            cmbY2Max.DropDownStyle = ComboBoxStyle.DropDown;
+
+            double[] presets = new double[]
+            {
+            -360, -270, -180, -135, -90, -45, 0, 45, 90, 135, 180, 270, 360
+            };
+
+            cmbY2Min.Items.AddRange(presets.Select(v => v.ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Cast<object>().ToArray());
+            cmbY2Max.Items.AddRange(presets.Select(v => v.ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Cast<object>().ToArray());
+
+            // Defaults cohérents
+            cmbY2Min.Text = "-180";
+            cmbY2Max.Text = "180";
+
+            // Validation légère à la volée (sans popup)
+            cmbY2Min.TextChanged += (_, __) => { if (!_updating) ValidatePhaseRange(); };
+            cmbY2Max.TextChanged += (_, __) => { if (!_updating) ValidatePhaseRange(); };
+
 
             btnDefault.Click += BtnDefault_Click;
             btnFitY.Click += BtnFitY_Click;
@@ -69,6 +101,58 @@ namespace AudioHexViewer
                 numYMax.Value = (decimal)value;
             }
         }
+
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        [Browsable(false)]
+        public bool PhaseRangeEnabled
+        {
+            get => cmbY2Min.Enabled && cmbY2Max.Enabled;
+            set
+            {
+                cmbY2Min.Enabled = value;
+                cmbY2Max.Enabled = value;
+                lblY2Min.Enabled = value;
+                lblY2Max.Enabled = value;
+            }
+        }
+
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        [Browsable(false)]
+        public double PhaseMaxDeg
+        {
+            get => GetPhaseComboValue(cmbY2Max, +180.0);
+            set => SetPhaseComboValue(cmbY2Max, value);
+        }
+
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        [Browsable(false)]
+        public double PhaseMinDeg
+        {
+            get => GetPhaseComboValue(cmbY2Min, -180.0);
+            set => SetPhaseComboValue(cmbY2Min, value);
+        }
+
+        private static double ClampPhase(double v)
+        {
+            if (v > PHASE_ABS_MAX_DEG) return PHASE_ABS_MAX_DEG;
+            if (v < -PHASE_ABS_MAX_DEG) return -PHASE_ABS_MAX_DEG;
+            return v;
+        }
+
+        private double GetPhaseComboValue(ComboBox cmb, double fallback)
+        {
+            if (TryParseDeg(cmb.Text, out var v))
+                return ClampPhase(v);
+
+            return fallback;
+        }
+
+        private void SetPhaseComboValue(ComboBox cmb, double value)
+        {
+            value = ClampPhase(value);
+            cmb.Text = value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [Browsable(false)]
@@ -228,7 +312,29 @@ namespace AudioHexViewer
                 _updating = false;
             }
         }
+        //
+        private void ValidatePhaseRange()
+        {
+            if (!PhaseRangeEnabled)
+                return;
 
+            _updating = true;
+            try
+            {
+                double pmin = ClampPhase(GetPhaseComboValue(cmbY2Min, -180.0));
+                double pmax = ClampPhase(GetPhaseComboValue(cmbY2Max, +180.0));
+
+                // Évite min >= max (on garde au moins 1° de span)
+                if (pmax <= pmin)
+                    pmax = Math.Min(PHASE_ABS_MAX_DEG, pmin + 1.0);
+
+                SetPhaseComboValue(cmbY2Min, pmin);
+                SetPhaseComboValue(cmbY2Max, pmax);
+            }
+            finally { _updating = false; }
+        }
+
+        //
         private void SyncFromMinMax()
         {
             if (SampleRateHz <= 0.0 || FftSizeN <= 0)

@@ -417,6 +417,9 @@ namespace AudioHexViewer
         private double? customFMin = null;   // en Hz
         private double? customFMax = null;   // en Hz
 
+        private double? customPhaseMin = null; // deg
+        private double? customPhaseMax = null; // deg
+
         // Derniers buffers temporels utilisés (pour les stats)
         private double[]? lastTimeLeft = null;
         private double[]? lastTimeRight = null;
@@ -3831,6 +3834,14 @@ private static void DecimateForPlotWithGivenFreqAxis(
                 dlg.FMinHz = fMinCurrent;   // *** en Hz ***
                 dlg.FMaxHz = fMaxCurrent;   // *** en Hz ***
 
+                // Y2 Phase (deg) — uniquement si l'affichage phase est actif
+                bool phaseUiEnabled = IsFrfMode() && _frfPhaseEnabled;
+                dlg.PhaseRangeEnabled = _frfPhaseEnabled;
+
+                dlg.PhaseMinDeg = customPhaseMin ?? -180.0;
+                dlg.PhaseMaxDeg = customPhaseMax ?? 180.0;
+
+
                 dlg.SampleRateHz = _sampleRate;
                 // 🔧 Ajuster dynamiquement la borne max de Fmax
                 double fmaxCap = SpectrumAxisDialog.GetAllowedFmax(_sampleRate);
@@ -3847,6 +3858,18 @@ private static void DecimateForPlotWithGivenFreqAxis(
 
                     customFMin = dlg.FMinHz;   // plus de *1000
                     customFMax = dlg.FMaxHz;
+
+                    if (phaseUiEnabled)
+                    {
+                        customPhaseMin = dlg.PhaseMinDeg;
+                        customPhaseMax = dlg.PhaseMaxDeg;
+                    }
+                    else
+                    {
+                        // Si phase non affichée, on ne force pas une plage custom
+                        customPhaseMin = null;
+                        customPhaseMax = null;
+                    }
 
                     if (customYMin >= customYMax)
                         customYMin = customYMax - 10.0;
@@ -4037,11 +4060,21 @@ private static void DecimateForPlotWithGivenFreqAxis(
             if (frfMode)
             {
                 area.AxisY2.Title = "Phase (deg)";
-                area.AxisY2.Minimum = -180.0;
-                area.AxisY2.Maximum = 180.0;
+                double pmin = customPhaseMin ?? -180.0;
+                double pmax = customPhaseMax ?? 180.0;
 
-                // 5 divisions => 4 zones => 90° par division
-                area.AxisY2.Interval = 90;
+                // Sécurité : clamp + cohérence
+                pmin = Math.Max(-360.0, Math.Min(360.0, pmin));
+                pmax = Math.Max(-360.0, Math.Min(360.0, pmax));
+                if (pmax <= pmin) pmax = Math.Min(360.0, pmin + 1.0);
+
+                area.AxisY2.Minimum = pmin;
+                area.AxisY2.Maximum = pmax;
+
+                // 5 divisions visuelles (4 intervalles)
+                double span = pmax - pmin;
+                area.AxisY2.Interval = Math.Max(1.0, span / 4.0);
+
 
                 // Grilles : on reste sobre (tu peux ajuster si tu veux)
                 area.AxisY2.MajorGrid.Enabled = false;
