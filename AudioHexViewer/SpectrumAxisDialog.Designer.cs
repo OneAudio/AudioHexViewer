@@ -21,8 +21,8 @@
             cmbYRange = new ComboBox();
             lblY2Max = new Label();
             lblY2Min = new Label();
-            cmbY2Max = new ComboBox();
-            cmbY2Min = new ComboBox();
+            numY2Max = new NumericUpDown();
+            cmbY2Range = new ComboBox();
             tabX = new TabControl();
             tabMinMax = new TabPage();
             lblFMin = new Label();
@@ -55,7 +55,7 @@
             lblYMax.Name = "lblYMax";
             lblYMax.Size = new Size(65, 15);
             lblYMax.TabIndex = 0;
-            lblYMax.Text = "Y max (dB)";
+            lblYMax.Text = "Level max (dB)";
             // 
             // lblYMin
             // 
@@ -64,7 +64,7 @@
             lblYMin.Name = "lblYMin";
             lblYMin.Size = new Size(63, 15);
             lblYMin.TabIndex = 1;
-            lblYMin.Text = "Y min (dB)";
+            lblYMin.Text = "Level min (dB)";
             // 
             // numYMax
             // 
@@ -90,7 +90,7 @@
             lblY2Max.Name = "lblY2Max";
             lblY2Max.Size = new Size(77, 15);
             lblY2Max.TabIndex = 20;
-            lblY2Max.Text = "Y2 max (deg)";
+            lblY2Max.Text = "Phase max (°)";
             // 
             // lblY2Min
             // 
@@ -99,23 +99,27 @@
             lblY2Min.Name = "lblY2Min";
             lblY2Min.Size = new Size(75, 15);
             lblY2Min.TabIndex = 21;
-            lblY2Min.Text = "Y2 min (deg)";
+            lblY2Min.Text = "Phase range (°)";
             // 
-            // cmbY2Max
             // 
-            cmbY2Max.FormattingEnabled = true;
-            cmbY2Max.Location = new Point(114, 82);
-            cmbY2Max.Name = "cmbY2Max";
-            cmbY2Max.Size = new Size(90, 23);
-            cmbY2Max.TabIndex = 22;
+            // numY2Max
             // 
-            // cmbY2Min
+            numY2Max.Increment = new decimal(new int[] { 5, 0, 0, 0 });
+            numY2Max.Location = new Point(114, 82);
+            numY2Max.Name = "numY2Max";
+            numY2Max.Size = new Size(90, 23);
+            numY2Max.TabIndex = 22;
+
             // 
-            cmbY2Min.FormattingEnabled = true;
-            cmbY2Min.Location = new Point(114, 117);
-            cmbY2Min.Name = "cmbY2Min";
-            cmbY2Min.Size = new Size(90, 23);
-            cmbY2Min.TabIndex = 23;
+            // cmbY2Range
+            // 
+            cmbY2Range.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbY2Range.FormattingEnabled = true;
+            cmbY2Range.Location = new Point(114, 117);
+            cmbY2Range.Name = "cmbY2Range";
+            cmbY2Range.Size = new Size(90, 23);
+            cmbY2Range.TabIndex = 23;
+
             // 
             // tabX
             // 
@@ -271,8 +275,8 @@
             Controls.Add(btnFitX);
             Controls.Add(btnDefault);
             Controls.Add(btnFitY);
-            Controls.Add(cmbY2Min);
-            Controls.Add(cmbY2Max);
+            Controls.Add(cmbY2Range);
+            Controls.Add(numY2Max);
             Controls.Add(lblY2Min);
             Controls.Add(lblY2Max);
             Controls.Add(tabX);
@@ -309,8 +313,8 @@
 
         private Label lblY2Max;
         private Label lblY2Min;
-        private ComboBox cmbY2Max;
-        private ComboBox cmbY2Min;
+        private NumericUpDown numY2Max;
+        private ComboBox cmbY2Range;
 
         private TabControl tabX;
         private TabPage tabMinMax;

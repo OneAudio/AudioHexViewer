@@ -13,6 +13,8 @@ namespace AudioHexViewer
 
         private const double PHASE_ABS_MAX_DEG = 360.0;
 
+        private static readonly int[] AllowedY2RangesDeg = new[] { 360, 270, 180, 120, 90, 45, 30, 15, 5 };
+
         private static bool TryParseDeg(string? s, out double deg)
         {
             deg = 0.0;
@@ -46,27 +48,35 @@ namespace AudioHexViewer
             // Default scale (caller will overwrite MainYScale before showing the dialog)
             ApplyMainYScaleToUi();
 
+            // --- Phase Y2 axis (Y2 Max + Y2 Range) ---
+            cmbY2Range.DropDownStyle = ComboBoxStyle.DropDownList;
 
+            cmbY2Range.Items.Clear();
+            cmbY2Range.Items.AddRange(AllowedY2RangesDeg.Select(v => v.ToString(CultureInfo.InvariantCulture))
+                                                       .Cast<object>()
+                                                       .ToArray());
 
-            // Phase (Y2) : combobox éditables + valeurs usuelles
-            cmbY2Min.DropDownStyle = ComboBoxStyle.DropDown;
-            cmbY2Max.DropDownStyle = ComboBoxStyle.DropDown;
+            // Events: keep Y2 Max rounded/clamped and keep the range list consistent.
+            numY2Max.ValueChanged += (_, __) => { if (!_updating) ValidateAndApplyY2(); };
+            numY2Max.Validated += (_, __) => { if (!_updating) ValidateAndApplyY2(); };
 
-            double[] presets = new double[]
+            cmbY2Range.SelectedIndexChanged += (_, __) => { if (!_updating) ValidateAndApplyY2(); };
+
+            // Defaults
+            _updating = true;
+            try
             {
-            360, 270, 180, 135, 90, 45, 0, -45, -90, -135, -180, -270, -360
-            };
+                numY2Max.Minimum = (decimal)-PHASE_ABS_MAX_DEG;
+                numY2Max.Maximum = (decimal)+PHASE_ABS_MAX_DEG;
+                numY2Max.Increment = 5;
+                numY2Max.DecimalPlaces = 0;
+                numY2Max.Value = 180;
 
-            cmbY2Min.Items.AddRange(presets.Select(v => v.ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Cast<object>().ToArray());
-            cmbY2Max.Items.AddRange(presets.Select(v => v.ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Cast<object>().ToArray());
+                cmbY2Range.SelectedItem = "360"; // sera refiltré juste après
+            }
+            finally { _updating = false; }
 
-            // Defaults cohérents
-            cmbY2Min.Text = "-180";
-            cmbY2Max.Text = "180";
-
-            // Validation légère à la volée (sans popup)
-            cmbY2Min.TextChanged += (_, __) => { if (!_updating) ValidatePhaseRange(); };
-            cmbY2Max.TextChanged += (_, __) => { if (!_updating) ValidatePhaseRange(); };
+            ValidateAndApplyY2();   
 
 
             btnDefault.Click += BtnDefault_Click;
@@ -178,30 +188,53 @@ namespace AudioHexViewer
         [Browsable(false)]
         public bool PhaseRangeEnabled
         {
-            get => cmbY2Min.Enabled && cmbY2Max.Enabled;
+            get => numY2Max.Enabled && cmbY2Range.Enabled;
             set
             {
-                cmbY2Min.Enabled = value;
-                cmbY2Max.Enabled = value;
+                numY2Max.Enabled = value;
+                cmbY2Range.Enabled = value;
                 lblY2Min.Enabled = value;
                 lblY2Max.Enabled = value;
             }
         }
 
+
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [Browsable(false)]
         public double PhaseMaxDeg
         {
-            get => GetPhaseComboValue(cmbY2Max, +180.0);
-            set => SetPhaseComboValue(cmbY2Max, value);
+            get => (double)numY2Max.Value;
+            set
+            {
+                double v = RoundUpToStep(value, 5.0);
+                v = Clamp(v, -PHASE_ABS_MAX_DEG, +PHASE_ABS_MAX_DEG);
+
+                _updating = true;
+                try { numY2Max.Value = (decimal)v; }
+                finally { _updating = false; }
+
+                ValidateAndApplyY2();
+            }
         }
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [Browsable(false)]
         public double PhaseMinDeg
         {
-            get => GetPhaseComboValue(cmbY2Min, -180.0);
-            set => SetPhaseComboValue(cmbY2Min, value);
+            get
+            {
+                double y2Max = PhaseMaxDeg;
+                int range = GetSelectedY2RangeDeg(fallback: 360);
+                return y2Max - range;
+            }
+            set
+            {
+                // Derive range from desired min (same concept as Y main axis)
+                double y2Max = PhaseMaxDeg;
+                double desiredRange = y2Max - value;
+                SetY2RangeFromDesired(desiredRange);
+                ValidateAndApplyY2();
+            }
         }
 
         private static double ClampPhase(double v)
@@ -252,20 +285,20 @@ namespace AudioHexViewer
             {
                 case YScaleMode.Dbfs:
                     _yMaxAllowed = YMAX_DBFS_HARD;
-                    lblYMax.Text = "Y Max (dBFS)";
-                    lblYMin.Text = "Y Range (dBFS)";
+                    lblYMax.Text = "Level Top (dBFS)";
+                    lblYMin.Text = "Range (dBFS)";
                     break;
 
                 case YScaleMode.Dbv:
                     _yMaxAllowed = YMAX_DBV_HARD;
-                    lblYMax.Text = "Y Max (dBV)";
-                    lblYMin.Text = "Y Range (dBV)";
+                    lblYMax.Text = "Level Top (dBV)";
+                    lblYMin.Text = "Range (dBV)";
                     break;
 
                 case YScaleMode.DbGain:
                     _yMaxAllowed = YMAX_DBV_HARD;
-                    lblYMax.Text = "Y Max (dB)";
-                    lblYMin.Text = "Y Range (dB)";
+                    lblYMax.Text = "Gain Top (dB)";
+                    lblYMin.Text = "Range (dB)";
                     break;
             }
 
@@ -545,26 +578,85 @@ namespace AudioHexViewer
             }
         }
         //
-        private void ValidatePhaseRange()
+        private int GetSelectedY2RangeDeg(int fallback)
         {
-            if (!PhaseRangeEnabled)
-                return;
+            if (cmbY2Range.SelectedItem is string s &&
+                int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out int r))
+                return r;
 
+            if (int.TryParse(cmbY2Range.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out r))
+                return r;
+
+            return fallback;
+        }
+
+        private void ApplyY2RangeListFilter(int maxAllowedRangeDeg, int? preferred = null)
+        {
             _updating = true;
             try
             {
-                double pmin = ClampPhase(GetPhaseComboValue(cmbY2Min, -180.0));
-                double pmax = ClampPhase(GetPhaseComboValue(cmbY2Max, +180.0));
+                var allowed = AllowedY2RangesDeg.Where(r => r <= maxAllowedRangeDeg).ToArray();
+                if (allowed.Length == 0)
+                    allowed = new[] { AllowedY2RangesDeg.Last() }; // defensive
 
-                // Évite min >= max (on garde au moins 1° de span)
-                if (pmax <= pmin)
-                    pmax = Math.Min(PHASE_ABS_MAX_DEG, pmin + 1.0);
+                int current = GetSelectedY2RangeDeg(fallback: allowed.Max());
 
-                SetPhaseComboValue(cmbY2Min, pmin);
-                SetPhaseComboValue(cmbY2Max, pmax);
+                cmbY2Range.Items.Clear();
+                cmbY2Range.Items.AddRange(
+                    allowed.Select(v => v.ToString(CultureInfo.InvariantCulture))
+                           .Cast<object>()
+                           .ToArray()
+                );
+
+                int target;
+                if (preferred.HasValue && allowed.Contains(preferred.Value))
+                    target = preferred.Value;
+                else if (allowed.Contains(current))
+                    target = current;
+                else
+                    target = allowed.Max();
+
+                cmbY2Range.SelectedItem = target.ToString(CultureInfo.InvariantCulture);
             }
             finally { _updating = false; }
         }
+
+        private void SetY2RangeFromDesired(double desiredRangeDeg)
+        {
+            int maxAllowed = (int)Math.Floor(PhaseMaxDeg - (-PHASE_ABS_MAX_DEG));
+            if (maxAllowed < 0) maxAllowed = 0;
+
+            int chosen = AllowedY2RangesDeg
+                .Where(r => r <= maxAllowed)
+                .OrderByDescending(r => r)
+                .FirstOrDefault(r => r <= desiredRangeDeg);
+
+            if (chosen == 0)
+                chosen = AllowedY2RangesDeg.Where(r => r <= maxAllowed).DefaultIfEmpty(AllowedY2RangesDeg.Last()).Max();
+
+            ApplyY2RangeListFilter(maxAllowed, preferred: chosen);
+        }
+
+        private void ValidateAndApplyY2()
+        {
+            _updating = true;
+            try
+            {
+                double y2Max = (double)numY2Max.Value;
+
+                // Round UP to upper multiple of 5° then clamp
+                y2Max = RoundUpToStep(y2Max, 5.0);
+                y2Max = Clamp(y2Max, -PHASE_ABS_MAX_DEG, +PHASE_ABS_MAX_DEG);
+
+                numY2Max.Value = (decimal)y2Max;
+
+                // Range must be <= y2Max - (-360)
+                int maxAllowedRange = (int)Math.Floor(y2Max - (-PHASE_ABS_MAX_DEG));
+                ApplyY2RangeListFilter(maxAllowedRange);
+            }
+            finally { _updating = false; }
+        }
+
 
         //
         private void SyncFromMinMax()
