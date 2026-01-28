@@ -18,7 +18,7 @@
             lblYMax = new Label();
             lblYMin = new Label();
             numYMax = new NumericUpDown();
-            numYMin = new NumericUpDown();
+            cmbYRange = new ComboBox();
             lblY2Max = new Label();
             lblY2Min = new Label();
             cmbY2Max = new ComboBox();
@@ -39,7 +39,6 @@
             btnFitY = new Button();
             btnFitX = new Button();
             ((System.ComponentModel.ISupportInitialize)numYMax).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)numYMin).BeginInit();
             tabX.SuspendLayout();
             tabMinMax.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)numFMin).BeginInit();
@@ -54,61 +53,53 @@
             lblYMax.AutoSize = true;
             lblYMax.Location = new Point(12, 15);
             lblYMax.Name = "lblYMax";
-            lblYMax.Size = new Size(77, 15);
+            lblYMax.Size = new Size(65, 15);
             lblYMax.TabIndex = 0;
-            lblYMax.Text = "Y max (dBFS)";
+            lblYMax.Text = "Y max (dB)";
             // 
             // lblYMin
             // 
             lblYMin.AutoSize = true;
             lblYMin.Location = new Point(12, 50);
             lblYMin.Name = "lblYMin";
-            lblYMin.Size = new Size(75, 15);
+            lblYMin.Size = new Size(63, 15);
             lblYMin.TabIndex = 1;
-            lblYMin.Text = "Y min (dBFS)";
+            lblYMin.Text = "Y min (dB)";
             // 
             // numYMax
             // 
-            numYMax.DecimalPlaces = 1;
+            numYMax.Increment = new decimal(new int[] { 5, 0, 0, 0 });
             numYMax.Location = new Point(114, 12);
-            numYMax.Maximum = new decimal(new int[] { 100, 0, 0, 0 });
-            numYMax.Minimum = new decimal(new int[] { 300, 0, 0, int.MinValue });
             numYMax.Name = "numYMax";
             numYMax.Size = new Size(90, 23);
             numYMax.TabIndex = 2;
             // 
-            // numYMin
+            // cmbYRange
             // 
-            numYMin.DecimalPlaces = 1;
-            numYMin.Location = new Point(114, 48);
-            numYMin.Maximum = new decimal(new int[] { 0, 0, 0, 0 });
-            numYMin.Minimum = new decimal(new int[] { 300, 0, 0, int.MinValue });
-            numYMin.Name = "numYMin";
-            numYMin.Size = new Size(90, 23);
-            numYMin.TabIndex = 3;
-            numYMin.Value = new decimal(new int[] { 200, 0, 0, int.MinValue });
-            //
-            //
+            cmbYRange.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbYRange.FormattingEnabled = true;
+            cmbYRange.Location = new Point(114, 47);
+            cmbYRange.Name = "cmbYRange";
+            cmbYRange.Size = new Size(90, 23);
+            cmbYRange.TabIndex = 3;
             // 
             // lblY2Max
             // 
             lblY2Max.AutoSize = true;
             lblY2Max.Location = new Point(12, 85);
             lblY2Max.Name = "lblY2Max";
-            lblY2Max.Size = new Size(86, 15);
+            lblY2Max.Size = new Size(77, 15);
             lblY2Max.TabIndex = 20;
             lblY2Max.Text = "Y2 max (deg)";
-
             // 
             // lblY2Min
             // 
             lblY2Min.AutoSize = true;
             lblY2Min.Location = new Point(12, 120);
             lblY2Min.Name = "lblY2Min";
-            lblY2Min.Size = new Size(84, 15);
+            lblY2Min.Size = new Size(75, 15);
             lblY2Min.TabIndex = 21;
             lblY2Min.Text = "Y2 min (deg)";
-
             // 
             // cmbY2Max
             // 
@@ -117,7 +108,6 @@
             cmbY2Max.Name = "cmbY2Max";
             cmbY2Max.Size = new Size(90, 23);
             cmbY2Max.TabIndex = 22;
-
             // 
             // cmbY2Min
             // 
@@ -126,8 +116,7 @@
             cmbY2Min.Name = "cmbY2Min";
             cmbY2Min.Size = new Size(90, 23);
             cmbY2Min.TabIndex = 23;
-
-            //
+            // 
             // tabX
             // 
             tabX.Controls.Add(tabMinMax);
@@ -147,7 +136,7 @@
             tabMinMax.Location = new Point(4, 24);
             tabMinMax.Name = "tabMinMax";
             tabMinMax.Padding = new Padding(3);
-            tabMinMax.Size = new Size(188, 64);
+            tabMinMax.Size = new Size(188, 69);
             tabMinMax.TabIndex = 0;
             tabMinMax.Text = "Mini/Maxi";
             tabMinMax.UseVisualStyleBackColor = true;
@@ -287,7 +276,7 @@
             Controls.Add(lblY2Min);
             Controls.Add(lblY2Max);
             Controls.Add(tabX);
-            Controls.Add(numYMin);
+            Controls.Add(cmbYRange);
             Controls.Add(numYMax);
             Controls.Add(lblYMin);
             Controls.Add(lblYMax);
@@ -298,7 +287,6 @@
             StartPosition = FormStartPosition.CenterParent;
             Text = "FFT Axis Limits";
             ((System.ComponentModel.ISupportInitialize)numYMax).EndInit();
-            ((System.ComponentModel.ISupportInitialize)numYMin).EndInit();
             tabX.ResumeLayout(false);
             tabMinMax.ResumeLayout(false);
             tabMinMax.PerformLayout();
@@ -317,7 +305,7 @@
         private Label lblYMax;
         private Label lblYMin;
         private NumericUpDown numYMax;
-        private NumericUpDown numYMin;
+        private ComboBox cmbYRange;
 
         private Label lblY2Max;
         private Label lblY2Min;

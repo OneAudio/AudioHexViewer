@@ -3,43 +3,29 @@ Chose à faire :
 Le 21/01/2026
 -------------
 
-1 - Ajout d'une fonction Bode Plot (ratio)
-    a) Ajout affichage Bode Plot                                                                    --> OK Fait 24/01
-    b) Correction  erreur échelle log qui apparait de temps en temps (seulement en mode LOG)        --> OK Fait 24/01
-    c) Regarder la bonne méthode de calcul pour le diagramme de Bode.                               --> OK Fait 24/01
-    d) Ajout affichage phase en mode Bode Plot                                                      --> OK Fait 26/01
-    e) Ajout dialogue échelle y de la phase dans le combo existant :
-       --> Phase Unwrap ON/OFF, Phi_min= -360 ° Phi_min= +360 ° 
-    f) griser les réglages inutiles de l'onglet spectrum en mode FRF 
-       (THD,Setting, échelle dBV,Windowing ?, Average ?)
-    g) Ajouter une case à cocher pour afficher ou pas la Phase et une seconde pour active "unwrap". --> OK Fait 27/01
+0 - Améliorer les 2 axes verticaux pour éviter les labels qui disparaissent.
+
+
+
+1 - Ajout d'une fonction Bode Plot (ratio)  
     h) Ajouter l'affichage de la cohérence du FRF
 
 2 - Réorganier la partie haute de l'interface GUI.
 
 3 - Revoir le mode de fonctionnement des overlay.( bouton comme  les curseurs à voir..)
-
-4a - Corriger le décalage verticales des overlay lorsque on est en dBV                          --> OK Fait 24/01
-    (Il faut que l'offset dBFS->dBV soit enregistré dans la courbe)
-
-4b - Les overlay gardent la totalitée des points de la FFT, lorsqu'ils son affichés             --> OK Fait 24/01
- dans le chart c'est très lourd et cela ralentit beaucoupe le rafraichissement.
- Il faut donc faire différement !    
-
-4c - Il faut aussi revoir le mode peak-hold pour limiter le nombre de points de celui-ci,       --> OK Fait 24/01
-    tout comme le graphique et les overlays.    
-
+  
 5 - Ajouter une fonction de moyennage cohérente (synchrone) pour les mesures de THD 
 
-6- vérifier l'optimisation ds calculs de FFT :
-    a) Est ce que les voies non affichée sont calculée ? IL NE FAUT PAS, INUTILE !              --> OK Fait 24/01
-    b) Quel est le temps de calcul de la FFT en pratique selon la valeur de N ?                 --> OK Fait 25/01
+6 - Pour le mode FRF (Bode Plot), le moyennage serait à revoir...
 
 7 - Améliorations du fonctionnent des curseurs :
     a) De chaque coté du bouton "Peak", ajouter un bouton < et >. Un appui permet de chercher "Previous Peak" ou "NextPeak".
     b) Intégrer les curseurs dans le panneau de mesures à droite, tout en bas.
 
 8 - Prévoir la normalisation de gain/phase (calibration) pour le mode FRF.(plus tard)
+
+9 - Ajouter un bouton "Axis" dans le coin en bas à gauche du graph (origine)
+    qui permet d'ouvrir le dialogue "FFT Axis Limits" comme le click droit dans le graph.
 
 
 -----------------------------------------------------------------------------------------

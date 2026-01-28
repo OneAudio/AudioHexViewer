@@ -2,6 +2,8 @@
 using System.ComponentModel;
 using System.Linq;
 using System.Windows.Forms;
+using System.Globalization;
+
 
 namespace AudioHexViewer
 {
@@ -24,13 +26,35 @@ namespace AudioHexViewer
         {
             InitializeComponent();
 
+            // --- Main Y axis (Y Max + Y Range) 
+            cmbYRange.DropDownStyle = ComboBoxStyle.DropDownList;  // fixed list          
+
+            cmbYRange.Items.Clear();
+            cmbYRange.Items.AddRange(
+                // store as strings for stable SelectedItem matching
+                AllowedYRangesDb.Select(v => v.ToString(CultureInfo.InvariantCulture))
+                                .Cast<object>()
+                                .ToArray()
+            );
+
+            // Events: keep Y Max rounded/clamped and keep the range list consistent.
+            numYMax.ValueChanged += (_, __) => { if (!_updating) ValidateAndApplyMainY(); };
+            numYMax.Validated += (_, __) => { if (!_updating) ValidateAndApplyMainY(); }; // si l'utilisateur tape au clavier
+
+            cmbYRange.SelectedIndexChanged += (_, __) => { if (!_updating) ValidateAndApplyMainY(); };
+
+            // Default scale (caller will overwrite MainYScale before showing the dialog)
+            ApplyMainYScaleToUi();
+
+
+
             // Phase (Y2) : combobox éditables + valeurs usuelles
             cmbY2Min.DropDownStyle = ComboBoxStyle.DropDown;
             cmbY2Max.DropDownStyle = ComboBoxStyle.DropDown;
 
             double[] presets = new double[]
             {
-            -360, -270, -180, -135, -90, -45, 0, 45, 90, 135, 180, 270, 360
+            360, 270, 180, 135, 90, 45, 0, -45, -90, -135, -180, -270, -360
             };
 
             cmbY2Min.Items.AddRange(presets.Select(v => v.ToString("0", System.Globalization.CultureInfo.InvariantCulture)).Cast<object>().ToArray());
@@ -65,6 +89,44 @@ namespace AudioHexViewer
             };
         }
 
+        // -------------------- Y Axis (main) --------------------
+        // UI requirement:
+        // - User selects Y Max (dB) on a 5 dB grid (editable combobox).
+        // - User selects Y Range (dB) from a fixed list (DropDownList).
+        // - YMin is derived: YMin = YMax - YRange.
+        // - Allowed YMax bounds depend on the display unit (dBFS / dBV / Gain(dB)).
+        //
+        public enum YScaleMode
+        {
+            Dbfs,   // Level (dBFS) : YMax in [ -195 ; 0 ]
+            Dbv,    // Level (dBV)  : YMax in [ -195 ; +100 ]
+            DbGain  // Gain (dB)    : YMax in [ -195 ; +100 ]
+        }
+
+        private static readonly int[] AllowedYRangesDb = new[] { 5, 10, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200};
+
+        private const double YMIN_HARD = -195.0;
+        private const double YMAX_DBFS_HARD = 0.0;
+        private const double YMAX_DBV_HARD = 100.0;
+
+        private YScaleMode _yScaleMode = YScaleMode.Dbfs;
+
+        private double _yMaxAllowed = YMAX_DBFS_HARD;
+        private double _yMinAllowed = YMIN_HARD;
+
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        [Browsable(false)]
+        public YScaleMode MainYScale
+        {
+            get => _yScaleMode;
+            set
+            {
+                _yScaleMode = value;
+                ApplyMainYScaleToUi();
+            }
+        }
+
+
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
@@ -88,7 +150,6 @@ namespace AudioHexViewer
         [Browsable(false)]
         public Func<(double yMin, double yMax)>? FitYProvider { get; set; }
 
-        // ---------- Public API conservée (compat avec ton code actuel) ----------
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [Browsable(false)]
         public double YMax
@@ -96,11 +157,22 @@ namespace AudioHexViewer
             get => (double)numYMax.Value;
             set
             {
-                if ((decimal)value < numYMax.Minimum) value = (double)numYMax.Minimum;
-                if ((decimal)value > numYMax.Maximum) value = (double)numYMax.Maximum;
-                numYMax.Value = (decimal)value;
+                // Round UP to upper multiple of 5 dB then clamp to unit bounds
+                double v = RoundUpToStep(value, 5.0);
+                v = Clamp(v, _yMinAllowed, _yMaxAllowed);
+
+                _updating = true;
+                try
+                {
+                    numYMax.Value = (decimal)v;
+                }
+                finally { _updating = false; }
+
+                ValidateAndApplyMainY();
             }
         }
+
+
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [Browsable(false)]
@@ -153,19 +225,179 @@ namespace AudioHexViewer
             cmb.Text = value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
         }
 
+        
+        private static double RoundUpToStep(double value, double step)
+        {
+            // Requirement: round to the upper multiple of 5 dB.
+            // Example: -83 -> -80, +12 -> +15, -80 -> -80.
+            if (step <= 0.0) return value;
+
+            // Important: Math.Ceiling works with negatives as expected for "upper" rounding.
+            return Math.Ceiling(value / step) * step;
+        }
+
+
+        private static double Clamp(double v, double lo, double hi)
+        {
+            if (v < lo) return lo;
+            if (v > hi) return hi;
+            return v;
+        }
+
+        private void ApplyMainYScaleToUi()
+        {
+            _yMinAllowed = YMIN_HARD;
+
+            switch (_yScaleMode)
+            {
+                case YScaleMode.Dbfs:
+                    _yMaxAllowed = YMAX_DBFS_HARD;
+                    lblYMax.Text = "Y Max (dBFS)";
+                    lblYMin.Text = "Y Range (dBFS)";
+                    break;
+
+                case YScaleMode.Dbv:
+                    _yMaxAllowed = YMAX_DBV_HARD;
+                    lblYMax.Text = "Y Max (dBV)";
+                    lblYMin.Text = "Y Range (dBV)";
+                    break;
+
+                case YScaleMode.DbGain:
+                    _yMaxAllowed = YMAX_DBV_HARD;
+                    lblYMax.Text = "Y Max (dB)";
+                    lblYMin.Text = "Y Range (dB)";
+                    break;
+            }
+
+            // Configure NumericUpDown bounds based on unit
+            _updating = true;
+            try
+            {
+                numYMax.Minimum = (decimal)_yMinAllowed;
+                numYMax.Maximum = (decimal)_yMaxAllowed;
+                numYMax.Increment = 5;
+                numYMax.DecimalPlaces = 0;
+
+                // Optional: force current value into bounds immediately
+                double v = Clamp((double)numYMax.Value, _yMinAllowed, _yMaxAllowed);
+                v = RoundUpToStep(v, 5.0);
+                numYMax.Value = (decimal)v;
+            }
+            finally { _updating = false; }
+
+            ValidateAndApplyMainY();
+
+        }
+
+        private int GetSelectedYRangeDb(int fallback)
+        {
+            if (cmbYRange.SelectedItem is string s &&
+                int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out int r))
+                return r;
+
+            if (int.TryParse(cmbYRange.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out r))
+                return r;
+
+            return fallback;
+        }
+
+        private void ApplyRangeListFilter(int maxAllowedRangeDb, int? preferred = null)
+        {
+            _updating = true;
+            try
+            {
+                var allowed = AllowedYRangesDb.Where(r => r <= maxAllowedRangeDb).ToArray();
+                if (allowed.Length == 0)
+                    allowed = new[] { AllowedYRangesDb.Last() }; // defensive
+
+                // Preserve current selection if still valid
+                int current = GetSelectedYRangeDb(fallback: allowed.Max());
+
+                cmbYRange.Items.Clear();
+                cmbYRange.Items.AddRange(
+                    allowed.Select(v => v.ToString(CultureInfo.InvariantCulture))
+                           .Cast<object>()
+                           .ToArray()
+                );
+
+                int target;
+
+                // Priority:
+                // 1) explicit preferred if valid
+                // 2) current selection if still valid
+                // 3) largest allowed (fallback)
+                if (preferred.HasValue && allowed.Contains(preferred.Value))
+                    target = preferred.Value;
+                else if (allowed.Contains(current))
+                    target = current;
+                else
+                    target = allowed.Max();
+
+                cmbYRange.SelectedItem = target.ToString(CultureInfo.InvariantCulture);
+            }
+            finally { _updating = false; }
+        }
+
+
+        private void SetYRangeFromDesired(double desiredRangeDb)
+        {
+            int maxAllowed = (int)Math.Floor(YMax - _yMinAllowed);
+            if (maxAllowed < 0) maxAllowed = 0;
+
+            int chosen = AllowedYRangesDb
+                .Where(r => r <= maxAllowed)
+                .OrderByDescending(r => r)
+                .FirstOrDefault(r => r <= desiredRangeDb);
+
+            if (chosen == 0)
+                chosen = AllowedYRangesDb.Where(r => r <= maxAllowed).DefaultIfEmpty(AllowedYRangesDb.Last()).Max();
+
+            ApplyRangeListFilter(maxAllowed, preferred: chosen);
+        }
+
+        private void ValidateAndApplyMainY()
+        {
+            _updating = true;
+            try
+            {
+                double yMax = (double)numYMax.Value;
+
+                // Round UP to upper multiple of 5 dB then clamp
+                yMax = RoundUpToStep(yMax, 5.0);
+                yMax = Clamp(yMax, _yMinAllowed, _yMaxAllowed);
+
+                // Push corrected value back to the control (keyboard input can be off-grid)
+                numYMax.Value = (decimal)yMax;
+
+                // Filter Range list so it never contradicts YMax (Range <= yMax - (-195))
+                int maxAllowedRange = (int)Math.Floor(yMax - _yMinAllowed);
+                ApplyRangeListFilter(maxAllowedRange);
+            }
+            finally { _updating = false; }
+        }
+
+
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [Browsable(false)]
         public double YMin
         {
-            get => (double)numYMin.Value;
+            get
+            {
+                double yMax = YMax;
+                int range = GetSelectedYRangeDb(fallback: 180);
+                return yMax - range;
+            }
             set
             {
-                if ((decimal)value < numYMin.Minimum) value = (double)numYMin.Minimum;
-                if ((decimal)value > numYMin.Maximum) value = (double)numYMin.Maximum;
-                numYMin.Value = (decimal)value;
+                // YMin is derived. Convert to a range selection:
+                double yMax = YMax;
+                double desiredRange = yMax - value;
+                SetYRangeFromDesired(desiredRange);
+                ValidateAndApplyMainY();
             }
         }
+
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [Browsable(false)]
@@ -465,12 +697,12 @@ namespace AudioHexViewer
             return Clamp(span, SpanMin, maxSpan);
         }
 
-        private static double Clamp(double v, double lo, double hi)
-        {
-            if (v < lo) return lo;
-            if (v > hi) return hi;
-            return v;
-        }
+        //private static double Clamp(double v, double lo, double hi)
+        //{
+        //    if (v < lo) return lo;
+        //    if (v > hi) return hi;
+        //    return v;
+        //}
 
         // --------- Boutons existants (inchangés côté user) ---------
 
@@ -481,31 +713,28 @@ namespace AudioHexViewer
             double fMin = 1.0;
             double fMax = (fs > 0.0) ? (fs / 2.0) : (double)numFMax.Maximum;
 
-            // Clamp
             fMin = Math.Max((double)numFMin.Minimum, Math.Min((double)numFMin.Maximum, fMin));
             fMax = Math.Max((double)numFMax.Minimum, Math.Min((double)numFMax.Maximum, fMax));
 
-            // Y = 0 .. -200 dBFS
-            double yMax = 0.0;
-            double yMin = -200.0;
-
-            yMax = Math.Max((double)numYMax.Minimum, Math.Min((double)numYMax.Maximum, yMax));
-            yMin = Math.Max((double)numYMin.Minimum, Math.Min((double)numYMin.Maximum, yMin));
+            // Y defaults depend on the main Y unit
+            double yMaxDefault = (_yScaleMode == YScaleMode.Dbfs) ? 0.0 : 100.0;
+            int yRangeDefault = (_yScaleMode == YScaleMode.Dbfs) ? 180 : 200;
 
             _updating = true;
             try
             {
                 numFMin.Value = (decimal)fMin;
                 numFMax.Value = (decimal)fMax;
-                numYMax.Value = (decimal)yMax;
-                numYMin.Value = (decimal)yMin;
+                numYMax.Value = (decimal)Clamp(RoundUpToStep(yMaxDefault, 5.0), _yMinAllowed, _yMaxAllowed);
+                SetYRangeFromDesired(yRangeDefault);
+                ValidateAndApplyMainY();
             }
             finally { _updating = false; }
 
-            // synchro center/span
             if (SampleRateHz > 0.0 && FftSizeN > 0)
                 SyncFromMinMax();
         }
+
 
         private void BtnFitY_Click(object? sender, EventArgs e)
         {
@@ -524,11 +753,6 @@ namespace AudioHexViewer
                 return;
             }
 
-            // Clamp to numeric bounds (supports dBFS and dBV)
-            double yMaxAllowed = (double)numYMax.Maximum;
-            double yMinAllowed = (double)numYMin.Minimum;
-
-            // Guard: ensure we have a sane range from the provider
             if (yMaxData < yMinData)
             {
                 var tmp = yMaxData;
@@ -536,37 +760,35 @@ namespace AudioHexViewer
                 yMinData = tmp;
             }
 
-            // Pre-clamp to allowed bounds
-            yMaxData = Math.Min(yMaxAllowed, yMaxData);
-            yMinData = Math.Max(yMinAllowed, yMinData);
+            // Clamp to unit-specific bounds
+            yMaxData = Math.Min(_yMaxAllowed, yMaxData);
+            yMinData = Math.Max(_yMinAllowed, yMinData);
 
-            // Round to nice 10 dB steps
-            double yMax = Math.Ceiling(yMaxData / 10.0) * 10.0;
-            double yMin = Math.Floor(yMinData / 10.0) * 10.0;
+            // Round YMax UP to upper multiple of 5 dB
+            double yMax = RoundUpToStep(yMaxData, 5.0);
+            yMax = Clamp(yMax, _yMinAllowed, _yMaxAllowed);
 
-            // Final clamp after rounding
-            yMax = Math.Min(yMaxAllowed, yMax);
-            yMin = Math.Max(yMinAllowed, yMin);
 
-            if ((yMax - yMin) < 20.0)
+            // Needed span to include the data
+            double neededSpan = yMax - yMinData;
+
+            // Pick range: smallest allowed >= neededSpan but <= maxAllowed
+            int maxAllowed = (int)Math.Floor(yMax - _yMinAllowed);
+            var ordered = AllowedYRangesDb.OrderBy(r => r).ToArray();
+            int range = ordered.FirstOrDefault(r => r >= neededSpan && r <= maxAllowed);
+            if (range == 0)
+                range = ordered.Where(r => r <= maxAllowed).DefaultIfEmpty(ordered.First()).Max();
+
+            _updating = true;
+            try
             {
-                yMin = yMax - 20.0;
-
-                if (yMin < yMinAllowed) { yMin = yMinAllowed; yMax = yMin + 20.0; }
-                if (yMax > yMaxAllowed)
-                {
-                    yMax = yMaxAllowed;
-                    yMin = yMax - 20.0;
-                    if (yMin < yMinAllowed) yMin = yMinAllowed;
-                }
+                numYMax.Value = (decimal)yMax;
+                SetYRangeFromDesired(range);
+                ValidateAndApplyMainY();
             }
-
-            yMax = Math.Max((double)numYMax.Minimum, Math.Min((double)numYMax.Maximum, yMax));
-            yMin = Math.Max((double)numYMin.Minimum, Math.Min((double)numYMin.Maximum, yMin));
-
-            numYMax.Value = (decimal)yMax;
-            numYMin.Value = (decimal)yMin;
+            finally { _updating = false; }
         }
+
 
         private void BtnFitX_Click(object? sender, EventArgs e)
         {

@@ -3829,8 +3829,20 @@ private static void DecimateForPlotWithGivenFreqAxis(
 
             using (var dlg = new SpectrumAxisDialog())
             {
-                dlg.YMin = yMinCurrent;
+                // Main Y axis unit must be set before injecting YMin/YMax (so the dialog can clamp/round correctly).
+                string modeForUnit = (comboChannel?.SelectedItem as string) ?? "L+R";
+                bool useDbvAxis = UseDbvForMode(modeForUnit);
+
+                if (string.Equals(modeForUnit, "Bode Plot", StringComparison.OrdinalIgnoreCase))
+                    dlg.MainYScale = SpectrumAxisDialog.YScaleMode.DbGain;
+                else if (useDbvAxis)
+                    dlg.MainYScale = SpectrumAxisDialog.YScaleMode.Dbv;
+                else
+                    dlg.MainYScale = SpectrumAxisDialog.YScaleMode.Dbfs;
+
+                // IMPORTANT: set YMax first, then YMin (YMin is derived via the selected range).
                 dlg.YMax = yMaxCurrent;
+                dlg.YMin = yMinCurrent;
                 dlg.FMinHz = fMinCurrent;   // *** en Hz ***
                 dlg.FMaxHz = fMaxCurrent;   // *** en Hz ***
 
