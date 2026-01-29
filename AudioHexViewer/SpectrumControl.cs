@@ -5490,6 +5490,84 @@ private static void DecimateForPlotWithGivenFreqAxis(
                         }
                     }
                 }
+                //
+                // ----------------------------
+                // Y2 : ticks + labels mineurs (Phase en Bode Plot)
+                // Même style que l'axe Y principal, sans grille supplémentaire.
+                // Subdivisions secondaires fixes : 5
+                // ----------------------------
+                if (area.AxisY2.Enabled == AxisEnabled.True)
+                {
+                    double yMajor2 = area.AxisY2.Interval;
+                    if (yMajor2 > 0)
+                    {
+                        double yMinor2 = yMajor2 / 5.0; // demandé : 5 subdivisions secondaires
+
+                        double yMin2 = area.AxisY2.Minimum;
+                        double yMax2 = area.AxisY2.Maximum;
+
+                        // Bord droit du plot (en pixels)
+                        float xRightPlot = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Maximum);
+
+                        Font baseFont = area.AxisY.LabelStyle.Font ?? chart.Font;
+                        using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
+                        using (Pen p = new Pen(LabelMinorColor, 1.0f))
+                        {
+                            float tickLenRight = 5f * sExport;  // même longueur que Y (gauche)
+                            float gap = 1f * sExport;           // même gap
+                            float margin = 8f * sExport;        // même margin (mais côté droit)
+
+                            float lastLabelBottom = float.NegativeInfinity;
+
+                            // Démarrage aligné sur la grille minor
+                            double y0 = yMin2;
+                            double yStart = yMin2 + Math.Floor((yMax2 - yMin2) / yMinor2) * yMinor2;
+
+                            // minorPerMajor = 5 (fixe) ; m==0 => tick major => skip (déjà géré par Chart)
+                            int minorPerMajor = 5;
+
+                            for (double y = yStart; y >= yMin2 - 1e-9; y -= yMinor2)
+                            {
+                                int idx = (int)Math.Round((y - y0) / yMinor2);
+                                int m = idx % minorPerMajor;
+                                if (m < 0) m += minorPerMajor;
+                                if (m == 0) continue; // pas de label/tick mineur sur un major
+
+                                float yPix = (float)area.AxisY2.ValueToPixelPosition(y);
+
+                                // Tick mineur côté droit
+                                e.ChartGraphics.Graphics.DrawLine(p,
+                                    xRightPlot + gap,
+                                    yPix,
+                                    xRightPlot + gap + tickLenRight,
+                                    yPix);
+
+                                // Format label mineur : cohérent avec le pas (comme dB), mais sans "deg" ni symbole
+                                string txt = FormatDbMinor(y, yMinor2); // réutilise la logique de décimales existante
+
+                                SizeF sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
+                                float xText = xRightPlot + gap + tickLenRight + margin;
+                                float yText = yPix - sz.Height / 2f;
+
+                                // Anti-chevauchement vertical (même logique que Y)
+                                if (yText <= lastLabelBottom + 2f * sExport)
+                                    continue;
+
+                                var g = e.ChartGraphics.Graphics;
+                                var saved = g.Save();
+                                g.ResetClip();
+
+                                using var b = new SolidBrush(LabelMinorColor);
+                                g.DrawString(txt, minorFont, b, xText, yText);
+
+                                g.Restore(saved);
+
+                                lastLabelBottom = yText + sz.Height;
+                            }
+                        }
+                    }
+                }
+
 
                 // ---------------------------------------------------------
                 // Ligne SR/N/Overlap au dessus du graphe

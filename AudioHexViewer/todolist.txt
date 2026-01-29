@@ -5,8 +5,6 @@ Le 21/01/2026
 
 0 - Améliorer les 2 axes verticaux pour éviter les labels qui disparaissent.
 
-
-
 1 - Ajout d'une fonction Bode Plot (ratio)  
     h) Ajouter l'affichage de la cohérence du FRF
 
@@ -25,7 +23,7 @@ Le 21/01/2026
 8 - Prévoir la normalisation de gain/phase (calibration) pour le mode FRF.(plus tard)
 
 9 - Ajouter un bouton "Axis" dans le coin en bas à gauche du graph (origine)
-    qui permet d'ouvrir le dialogue "FFT Axis Limits" comme le click droit dans le graph.
+    qui permet d'ouvrir le dialogue "FFT Axis Limits" comme le click droit dans le graph.           --> Ok fait le 29/01/2026
 
 
 -----------------------------------------------------------------------------------------
