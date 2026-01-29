@@ -253,9 +253,21 @@ namespace AudioHexViewer
             area.AxisX.LineColor = LabelMajorColor;
             area.AxisY.LineColor = LabelMajorColor;
             area.AxisX.MajorTickMark.LineColor = LabelMajorColor;
-            area.AxisY.MajorTickMark.LineColor = LabelMajorColor;
+            //area.AxisY.MajorTickMark.LineColor = LabelMajorColor;
             area.AxisX.MinorTickMark.LineColor = LabelMinorColor;
-            area.AxisY.MinorTickMark.LineColor = LabelMinorColor;
+            //area.AxisY.MinorTickMark.LineColor = LabelMinorColor;
+
+            // --------------------------------------------------------------------
+            // Ticks majeurs : réduire leur longueur pour éviter qu’ils “touchent”
+            // nos labels custom (major labels dessinés à la main).
+            // --------------------------------------------------------------------
+            area.AxisY.MajorTickMark.Size = 0.5f;
+            area.AxisY2.MajorTickMark.Size = 0.5f;
+
+            // (Optionnel) si tu veux aussi uniformiser le style :
+            area.AxisY.MajorTickMark.TickMarkStyle = TickMarkStyle.OutsideArea;
+            area.AxisY2.MajorTickMark.TickMarkStyle = TickMarkStyle.OutsideArea;
+
 
             // Activer les ticks "minor" pour que LabelMinor soit visible (sinon le Chart garde ses défauts).
             area.AxisX.MinorTickMark.Enabled = false;
@@ -4205,10 +4217,9 @@ private static void DecimateForPlotWithGivenFreqAxis(
                 area.AxisY2.Minimum = pmin;
                 area.AxisY2.Maximum = pmax;
 
-                // 5 divisions visuelles (4 intervalles)
+                // 6 zones visuelles => 6 intervalles => 7 labels majeurs
                 double span = pmax - pmin;
                 area.AxisY2.Interval = Math.Max(1.0, span / 4.0);
-
 
                 // Grilles : on reste sobre (tu peux ajuster si tu veux)
                 area.AxisY2.MajorGrid.Enabled = false;
@@ -5668,7 +5679,7 @@ private static void DecimateForPlotWithGivenFreqAxis(
                                 float yText = yPix - sz.Height / 2f;
 
                                 // Anti-chevauchement vertical (même logique que Y)
-                                if (yText <= lastLabelBottom + 2f * sExport)
+                                if (yText <= lastLabelBottom + 0f * sExport)
                                     continue;
 
                                 var g = e.ChartGraphics.Graphics;

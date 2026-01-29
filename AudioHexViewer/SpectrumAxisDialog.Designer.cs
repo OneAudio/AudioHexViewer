@@ -70,7 +70,7 @@
             // 
             // numYMax
             // 
-            numYMax.Increment = new decimal(new int[] { 5, 0, 0, 0 });
+            numYMax.Increment = new decimal(new int[] { 10, 0, 0, 0 });
             numYMax.Location = new Point(114, 12);
             numYMax.Name = "numYMax";
             numYMax.Size = new Size(90, 23);
