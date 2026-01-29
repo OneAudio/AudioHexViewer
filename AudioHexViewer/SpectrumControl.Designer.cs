@@ -39,11 +39,15 @@
             tlpCursors = new TableLayoutPanel();
             btnC1 = new Button();
             btnC1Track = new Button();
+            btnC1PrevPk = new Button();
             btnC1Pk = new Button();
+            btnC1NextPk = new Button();
             btnC1Set = new Button();
             btnC2 = new Button();
             btnC2Track = new Button();
+            btnC2PrevPk = new Button();
             btnC2Pk = new Button();
+            btnC2NextPk = new Button();
             btnC2Set = new Button();
             tlpPhi = new TableLayoutPanel();
             btnPhiEnable = new Button();
@@ -118,7 +122,7 @@
             // label2
             // 
             label2.AutoSize = true;
-            label2.Location = new Point(678, 1);
+            label2.Location = new Point(704, 1);
             label2.Name = "label2";
             label2.Size = new Size(91, 15);
             label2.TabIndex = 34;
@@ -242,9 +246,9 @@
             lblUnits.AutoSize = true;
             lblUnits.Location = new Point(922, 1);
             lblUnits.Name = "lblUnits";
-            lblUnits.Size = new Size(44, 15);
+            lblUnits.Size = new Size(46, 15);
             lblUnits.TabIndex = 13;
-            lblUnits.Text = "Y Units";
+            lblUnits.Text = "dB Unit";
             // 
             // comboLevelUnit
             // 
@@ -304,27 +308,32 @@
             // 
             // tlpCursors
             // 
-            tlpCursors.ColumnCount = 4;
+            tlpCursors.ColumnCount = 6;
             tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34F));
             tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 45F));
+            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 22F));
             tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 40F));
+            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 22F));
             tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34F));
-            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 20F));
             tlpCursors.Controls.Add(btnC1, 0, 0);
             tlpCursors.Controls.Add(btnC1Track, 1, 0);
-            tlpCursors.Controls.Add(btnC1Pk, 2, 0);
-            tlpCursors.Controls.Add(btnC1Set, 3, 0);
+            tlpCursors.Controls.Add(btnC1PrevPk, 2, 0);
+            tlpCursors.Controls.Add(btnC1Pk, 3, 0);
+            tlpCursors.Controls.Add(btnC1NextPk, 4, 0);
+            tlpCursors.Controls.Add(btnC1Set, 5, 0);
             tlpCursors.Controls.Add(btnC2, 0, 1);
             tlpCursors.Controls.Add(btnC2Track, 1, 1);
-            tlpCursors.Controls.Add(btnC2Pk, 2, 1);
-            tlpCursors.Controls.Add(btnC2Set, 3, 1);
+            tlpCursors.Controls.Add(btnC2PrevPk, 2, 1);
+            tlpCursors.Controls.Add(btnC2Pk, 3, 1);
+            tlpCursors.Controls.Add(btnC2NextPk, 4, 1);
+            tlpCursors.Controls.Add(btnC2Set, 5, 1);
             tlpCursors.Location = new Point(650, 16);
             tlpCursors.Margin = new Padding(0);
             tlpCursors.Name = "tlpCursors";
             tlpCursors.RowCount = 2;
             tlpCursors.RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
             tlpCursors.RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
-            tlpCursors.Size = new Size(153, 46);
+            tlpCursors.Size = new Size(197, 46);
             tlpCursors.TabIndex = 33;
             // 
             // btnC1
@@ -349,25 +358,47 @@
             btnC1Track.Text = "Left";
             btnC1Track.UseVisualStyleBackColor = true;
             // 
+            // btnC1PrevPk
+            // 
+            btnC1PrevPk.Dock = DockStyle.Fill;
+            btnC1PrevPk.Location = new Point(79, 0);
+            btnC1PrevPk.Margin = new Padding(0);
+            btnC1PrevPk.Name = "btnC1PrevPk";
+            btnC1PrevPk.Size = new Size(22, 23);
+            btnC1PrevPk.TabIndex = 2;
+            btnC1PrevPk.Text = "<";
+            btnC1PrevPk.UseVisualStyleBackColor = true;
+            // 
             // btnC1Pk
             // 
             btnC1Pk.Dock = DockStyle.Fill;
-            btnC1Pk.Location = new Point(79, 0);
+            btnC1Pk.Location = new Point(101, 0);
             btnC1Pk.Margin = new Padding(0);
             btnC1Pk.Name = "btnC1Pk";
             btnC1Pk.Size = new Size(40, 23);
-            btnC1Pk.TabIndex = 2;
+            btnC1Pk.TabIndex = 3;
             btnC1Pk.Text = "Peak";
             btnC1Pk.UseVisualStyleBackColor = true;
+            // 
+            // btnC1NextPk
+            // 
+            btnC1NextPk.Dock = DockStyle.Fill;
+            btnC1NextPk.Location = new Point(141, 0);
+            btnC1NextPk.Margin = new Padding(0);
+            btnC1NextPk.Name = "btnC1NextPk";
+            btnC1NextPk.Size = new Size(22, 23);
+            btnC1NextPk.TabIndex = 4;
+            btnC1NextPk.Text = ">";
+            btnC1NextPk.UseVisualStyleBackColor = true;
             // 
             // btnC1Set
             // 
             btnC1Set.Dock = DockStyle.Fill;
-            btnC1Set.Location = new Point(119, 0);
+            btnC1Set.Location = new Point(163, 0);
             btnC1Set.Margin = new Padding(0);
             btnC1Set.Name = "btnC1Set";
             btnC1Set.Size = new Size(34, 23);
-            btnC1Set.TabIndex = 3;
+            btnC1Set.TabIndex = 5;
             btnC1Set.Text = "Set";
             btnC1Set.UseVisualStyleBackColor = true;
             // 
@@ -393,25 +424,47 @@
             btnC2Track.Text = "Right";
             btnC2Track.UseVisualStyleBackColor = true;
             // 
+            // btnC2PrevPk
+            // 
+            btnC2PrevPk.Dock = DockStyle.Fill;
+            btnC2PrevPk.Location = new Point(79, 23);
+            btnC2PrevPk.Margin = new Padding(0);
+            btnC2PrevPk.Name = "btnC2PrevPk";
+            btnC2PrevPk.Size = new Size(22, 23);
+            btnC2PrevPk.TabIndex = 6;
+            btnC2PrevPk.Text = "<";
+            btnC2PrevPk.UseVisualStyleBackColor = true;
+            // 
             // btnC2Pk
             // 
             btnC2Pk.Dock = DockStyle.Fill;
-            btnC2Pk.Location = new Point(79, 23);
+            btnC2Pk.Location = new Point(101, 23);
             btnC2Pk.Margin = new Padding(0);
             btnC2Pk.Name = "btnC2Pk";
             btnC2Pk.Size = new Size(40, 23);
-            btnC2Pk.TabIndex = 6;
+            btnC2Pk.TabIndex = 7;
             btnC2Pk.Text = "Peak";
             btnC2Pk.UseVisualStyleBackColor = true;
+            // 
+            // btnC2NextPk
+            // 
+            btnC2NextPk.Dock = DockStyle.Fill;
+            btnC2NextPk.Location = new Point(141, 23);
+            btnC2NextPk.Margin = new Padding(0);
+            btnC2NextPk.Name = "btnC2NextPk";
+            btnC2NextPk.Size = new Size(22, 23);
+            btnC2NextPk.TabIndex = 8;
+            btnC2NextPk.Text = ">";
+            btnC2NextPk.UseVisualStyleBackColor = true;
             // 
             // btnC2Set
             // 
             btnC2Set.Dock = DockStyle.Fill;
-            btnC2Set.Location = new Point(119, 23);
+            btnC2Set.Location = new Point(163, 23);
             btnC2Set.Margin = new Padding(0);
             btnC2Set.Name = "btnC2Set";
             btnC2Set.Size = new Size(34, 23);
-            btnC2Set.TabIndex = 7;
+            btnC2Set.TabIndex = 10;
             btnC2Set.Text = "Set";
             btnC2Set.UseVisualStyleBackColor = true;
             // 
@@ -421,7 +474,7 @@
             tlpPhi.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 47F));
             tlpPhi.Controls.Add(btnPhiEnable, 0, 0);
             tlpPhi.Controls.Add(btnPhiUnwrap, 0, 1);
-            tlpPhi.Location = new Point(813, 16);
+            tlpPhi.Location = new Point(860, 16);
             tlpPhi.Margin = new Padding(0);
             tlpPhi.Name = "tlpPhi";
             tlpPhi.RowCount = 2;
@@ -687,11 +740,15 @@
         private TableLayoutPanel tlpPhi;
         private Button btnC1;
         private Button btnC1Track;
+        private Button btnC1PrevPk;
         private Button btnC1Pk;
+        private Button btnC1NextPk;
         private Button btnC1Set;
         private Button btnC2;
         private Button btnC2Track;
+        private Button btnC2PrevPk;
         private Button btnC2Pk;
+        private Button btnC2NextPk;
         private Button btnC2Set;
         private Label label2;
         private Label lblFftTicker;

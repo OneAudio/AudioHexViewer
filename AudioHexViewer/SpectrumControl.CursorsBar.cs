@@ -10,12 +10,16 @@ namespace AudioHexViewer
 
         private Button? _c1Toggle;
         private Button? _c1TrackBtn;
+        private Button? _c1PrevPeak;
         private Button? _c1Peak;
+        private Button? _c1NextPeak;
         private Button? _c1Set;
 
         private Button? _c2Toggle;
         private Button? _c2TrackBtn;
+        private Button? _c2PrevPeak;
         private Button? _c2Peak;
+        private Button? _c2NextPeak;
         private Button? _c2Set;
 
         private bool _cursorUiSync;
@@ -49,12 +53,16 @@ namespace AudioHexViewer
 
             _c1Toggle = btnC1;
             _c1TrackBtn = btnC1Track;
+            _c1PrevPeak = btnC1PrevPk;
             _c1Peak = btnC1Pk;
+            _c1NextPeak = btnC1NextPk;
             _c1Set = btnC1Set;
 
             _c2Toggle = btnC2;
             _c2TrackBtn = btnC2Track;
+            _c2PrevPeak = btnC2PrevPk;
             _c2Peak = btnC2Pk;
+            _c2NextPeak = btnC2NextPk;
             _c2Set = btnC2Set;
 
             if (_cursorBar == null || _c1Toggle == null || _c2Toggle == null
@@ -69,7 +77,8 @@ namespace AudioHexViewer
 
 
             // Fix “centrage” + look uniforme (sinon dépend du Designer)
-            var all = new[] { _c1Toggle, _c1TrackBtn, _c1Peak, _c1Set, _c2Toggle, _c2TrackBtn, _c2Peak, _c2Set };
+            var all = new[] { _c1Toggle, _c1TrackBtn, _c1PrevPeak, _c1Peak, _c1NextPeak, _c1Set,
+                              _c2Toggle, _c2TrackBtn, _c2PrevPeak, _c2Peak, _c2NextPeak, _c2Set };
             foreach (var b in all)
             {
                 b.TextAlign = ContentAlignment.MiddleCenter;
@@ -102,8 +111,12 @@ namespace AudioHexViewer
             _c2Toggle.Click -= C2Toggle_Click;
             _c1TrackBtn.Click -= C1Track_Click;
             _c2TrackBtn.Click -= C2Track_Click;
+            _c1PrevPeak.Click -= C1PrevPeak_Click;
+            _c2PrevPeak.Click -= C2PrevPeak_Click;
             _c1Peak.Click -= C1Peak_Click;
             _c2Peak.Click -= C2Peak_Click;
+            _c1NextPeak.Click -= C1NextPeak_Click;
+            _c2NextPeak.Click -= C2NextPeak_Click;
             _c1Set.Click -= C1Set_Click;
             _c2Set.Click -= C2Set_Click;
 
@@ -111,8 +124,12 @@ namespace AudioHexViewer
             _c2Toggle.Click += C2Toggle_Click;
             _c1TrackBtn.Click += C1Track_Click;
             _c2TrackBtn.Click += C2Track_Click;
+            _c1PrevPeak.Click += C1PrevPeak_Click;
+            _c2PrevPeak.Click += C2PrevPeak_Click;
             _c1Peak.Click += C1Peak_Click;
             _c2Peak.Click += C2Peak_Click;
+            _c1NextPeak.Click += C1NextPeak_Click;
+            _c2NextPeak.Click += C2NextPeak_Click;
             _c1Set.Click += C1Set_Click;
             _c2Set.Click += C2Set_Click;
 
@@ -157,8 +174,13 @@ namespace AudioHexViewer
             SyncCursorUiFromModel();
         }
 
+        private void C1PrevPeak_Click(object? sender, EventArgs e) => MoveCursorToAdjacentPeak(isC1: true, next: false);
         private void C1Peak_Click(object? sender, EventArgs e) => MoveCursorToPeak(isC1: true);
+        private void C1NextPeak_Click(object? sender, EventArgs e) => MoveCursorToAdjacentPeak(isC1: true, next: true);
+
+        private void C2PrevPeak_Click(object? sender, EventArgs e) => MoveCursorToAdjacentPeak(isC1: false, next: false);
         private void C2Peak_Click(object? sender, EventArgs e) => MoveCursorToPeak(isC1: false);
+        private void C2NextPeak_Click(object? sender, EventArgs e) => MoveCursorToAdjacentPeak(isC1: false, next: true);
 
         private void C1Set_Click(object? sender, EventArgs e) => OpenSimpleSetDialog(isC1: true);
         private void C2Set_Click(object? sender, EventArgs e) => OpenSimpleSetDialog(isC1: false);
@@ -174,8 +196,6 @@ namespace AudioHexViewer
             if (_cursorUiSync) return;
             SyncCursorUiFromModel();
         }
-
-
 
         private void SyncCursorUiFromModel()
         {
@@ -264,7 +284,6 @@ namespace AudioHexViewer
                     _ => "Gain", // Auto/Phase/Left/Right -> Gain (tolérant)
                 };
             }
-
 
             // Mode Bode Plot (FRF)
             if (IsFrfMode())
@@ -362,6 +381,57 @@ namespace AudioHexViewer
 
             SyncCursorUiFromModel();
         }
+
+        /// <summary>
+        /// Déplace le curseur sur le pic local précédent/suivant (dans la plage X visible).
+        /// - "Pic" = maximum local (3 points) : spec[i-1] &lt;= spec[i] &amp;&amp; spec[i] &gt; spec[i+1]
+        /// - Le scan commence APRES la position actuelle du curseur (pour Next),
+        ///   ou AVANT (pour Previous), afin d'éviter de retomber sur le même pic.
+        /// </summary>
+        private void MoveCursorToAdjacentPeak(bool isC1, bool next)
+        {
+            if (isC1)
+            {
+                if (!CursorLeftEnabled) CursorLeftEnabled = true;
+
+                if (next)
+                {
+                    if (TryFindNextPeakFrequencyForCursor1(out var hz))
+                        SetCursor1FrequencyHz(hz);
+                    else
+                        MessageBox.Show(this.FindForm(), "Aucun pic suivant trouvé pour C1 (plage visible / data).");
+                }
+                else
+                {
+                    if (TryFindPreviousPeakFrequencyForCursor1(out var hz))
+                        SetCursor1FrequencyHz(hz);
+                    else
+                        MessageBox.Show(this.FindForm(), "Aucun pic précédent trouvé pour C1 (plage visible / data).");
+                }
+            }
+            else
+            {
+                if (!CursorRightEnabled) CursorRightEnabled = true;
+
+                if (next)
+                {
+                    if (TryFindNextPeakFrequencyForCursor2(out var hz))
+                        SetCursor2FrequencyHz(hz);
+                    else
+                        MessageBox.Show(this.FindForm(), "Aucun pic suivant trouvé pour C2 (plage visible / data).");
+                }
+                else
+                {
+                    if (TryFindPreviousPeakFrequencyForCursor2(out var hz))
+                        SetCursor2FrequencyHz(hz);
+                    else
+                        MessageBox.Show(this.FindForm(), "Aucun pic précédent trouvé pour C2 (plage visible / data).");
+                }
+            }
+
+            SyncCursorUiFromModel();
+        }
+
 
         private void OpenSimpleSetDialog(bool isC1)
         {

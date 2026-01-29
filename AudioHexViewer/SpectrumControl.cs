@@ -2933,6 +2933,21 @@ namespace AudioHexViewer
         public bool TryFindPeakFrequencyForCursor2(out double peakHz)
             => TryFindPeakFrequencyForCursor(isCursor1: false, out peakHz);
 
+        public bool TryFindNextPeakFrequencyForCursor1(out double peakHz)
+            => TryFindAdjacentPeakFrequencyForCursor(isCursor1: true, next: true, out peakHz);
+
+        public bool TryFindPreviousPeakFrequencyForCursor1(out double peakHz)
+            => TryFindAdjacentPeakFrequencyForCursor(isCursor1: true, next: false, out peakHz);
+
+        public bool TryFindNextPeakFrequencyForCursor2(out double peakHz)
+            => TryFindAdjacentPeakFrequencyForCursor(isCursor1: false, next: true, out peakHz);
+
+        public bool TryFindPreviousPeakFrequencyForCursor2(out double peakHz)
+            => TryFindAdjacentPeakFrequencyForCursor(isCursor1: false, next: false, out peakHz);
+
+
+
+
         private bool TryFindPeakFrequencyForCursor(bool isCursor1, out double peakHz)
         {
             peakHz = 0;
@@ -2999,7 +3014,104 @@ namespace AudioHexViewer
             peakHz = freqAxis[best];
             return true;
         }
+        //
+        /// <summary>
+        /// Trouve le pic local précédent/suivant dans la plage X visible, relativement à la position actuelle du curseur.
+        /// Définition "pic" (volontairement simple, robuste, testable) :
+        /// - maximum local sur 3 points : spec[i-1] &lt;= spec[i] &amp;&amp; spec[i] &gt; spec[i+1]
+        /// - on ignore les bords (i0 et i1)
+        /// Remarques :
+        /// - Pour Next, le scan commence à (idxCur+1) ; pour Previous à (idxCur-1)
+        /// - Ne fait PAS de wrap-around : si aucun pic dans la direction, retourne false.
+        /// </summary>
+        private bool TryFindAdjacentPeakFrequencyForCursor(bool isCursor1, bool next, out double peakHz)
+        {
+            peakHz = 0;
 
+            if (freqAxis == null || freqAxis.Length == 0) return false;
+
+            // voie réellement trackée
+            var curve = ResolveCurveForCursor(isCursor1);
+            if (curve == ResolvedCurve.None) return false;
+
+            double[]? spec = null;
+            switch (curve)
+            {
+                case ResolvedCurve.Left:
+                    spec = currentLeftSpectrum;
+                    break;
+                case ResolvedCurve.Right:
+                    spec = currentRightSpectrum;
+                    break;
+                case ResolvedCurve.Gain:
+                    spec = currentLeftSpectrum;      // Gain FRF stocké ici (dB)
+                    break;
+                case ResolvedCurve.Phase:
+                    spec = currentFrfPhaseDeg;       // Phase FRF (deg)
+                    break;
+            }
+
+            if (spec == null || spec.Length == 0) return false;
+
+            var area = chartSpectrum.ChartAreas["SpectrumArea"];
+
+            // plage visible du graphe (spec demandé)
+            double fMin = area.AxisX.Minimum;
+            double fMax = area.AxisX.Maximum;
+            if (fMax <= fMin) return false;
+
+            bool useLog = (chkLogX != null && chkLogX.Checked);
+            int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
+
+            int i0 = LowerBound(freqAxis, fMin);
+            int i1 = UpperBound(freqAxis, fMax) - 1;
+
+            i0 = Math.Max(i0, minIdx);
+            i1 = Math.Min(i1, Math.Min(freqAxis.Length - 1, spec.Length - 1));
+
+            // On a besoin au minimum de (i-1, i, i+1)
+            if (i1 - i0 < 2) return false;
+
+            int idxCur = isCursor1 ? _cursorIdxL : _cursorIdxR;
+            idxCur = Math.Max(i0, Math.Min(i1, idxCur));
+
+            if (next)
+            {
+                // scan vers la droite : premier pic local après idxCur
+                for (int i = Math.Max(i0 + 1, idxCur + 1); i <= i1 - 1; i++)
+                {
+                    double a = spec[i - 1];
+                    double b = spec[i];
+                    double c = spec[i + 1];
+
+                    if (a <= b && b > c)
+                    {
+                        peakHz = freqAxis[i];
+                        return true;
+                    }
+                }
+            }
+            else
+            {
+                // scan vers la gauche : premier pic local avant idxCur
+                for (int i = Math.Min(i1 - 1, idxCur - 1); i >= i0 + 1; i--)
+                {
+                    double a = spec[i - 1];
+                    double b = spec[i];
+                    double c = spec[i + 1];
+
+                    if (a <= b && b > c)
+                    {
+                        peakHz = freqAxis[i];
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        //
         private static int LowerBound(double[] a, double x)
         {
             int lo = 0, hi = a.Length;
