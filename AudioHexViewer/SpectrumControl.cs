@@ -3886,10 +3886,12 @@ private static void DecimateForPlotWithGivenFreqAxis(
 
                 // Y2 Phase (deg) — uniquement si l'affichage phase est actif
                 bool phaseUiEnabled = IsFrfMode() && _frfPhaseEnabled;
-                dlg.PhaseRangeEnabled = _frfPhaseEnabled;
+                dlg.PhaseRangeEnabled = phaseUiEnabled;
 
-                dlg.PhaseMinDeg = customPhaseMin ?? -180.0;
+                // IMPORTANT : set PhaseMax first, then PhaseMin (PhaseMin is derived via the selected range).
                 dlg.PhaseMaxDeg = customPhaseMax ?? 180.0;
+                dlg.PhaseMinDeg = customPhaseMin ?? -180.0;
+
 
 
                 dlg.SampleRateHz = _sampleRate;
@@ -3932,8 +3934,10 @@ private static void DecimateForPlotWithGivenFreqAxis(
 
                     ResetAveragingState();
                     UpdateSpectrumChartAndStats();
+
                 }
             }
+
         }
         //
         private static string FormatHzK(double hz)

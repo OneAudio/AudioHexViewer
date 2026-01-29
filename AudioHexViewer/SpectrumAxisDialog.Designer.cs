@@ -230,7 +230,7 @@
             // btnOk
             // 
             btnOk.DialogResult = DialogResult.OK;
-            btnOk.Location = new Point(221, 253);
+            btnOk.Location = new Point(189, 253);
             btnOk.Name = "btnOk";
             btnOk.Size = new Size(75, 23);
             btnOk.TabIndex = 8;
@@ -239,7 +239,7 @@
             // 
             // btnDefault
             // 
-            btnDefault.Location = new Point(12, 253);
+            btnDefault.Location = new Point(16, 253);
             btnDefault.Name = "btnDefault";
             btnDefault.Size = new Size(75, 23);
             btnDefault.TabIndex = 6;
@@ -248,27 +248,27 @@
             // 
             // btnFitY
             // 
-            btnFitY.Location = new Point(221, 12);
+            btnFitY.Location = new Point(210, 12);
             btnFitY.Name = "btnFitY";
-            btnFitY.Size = new Size(75, 40);
+            btnFitY.Size = new Size(54, 58);
             btnFitY.TabIndex = 5;
             btnFitY.Text = "Auto Fit Level";
             btnFitY.UseVisualStyleBackColor = true;
             // 
             // btnFitX
             // 
-            btnFitX.Location = new Point(221, 174);
+            btnFitX.Location = new Point(210, 174);
             btnFitX.Name = "btnFitX";
-            btnFitX.Size = new Size(75, 40);
+            btnFitX.Size = new Size(54, 58);
             btnFitX.TabIndex = 7;
-            btnFitX.Text = "Auto Fit Frequency";
+            btnFitX.Text = "Fit to Fs/2";
             btnFitX.UseVisualStyleBackColor = true;
             // 
             // btnFitY2
             // 
-            btnFitY2.Location = new Point(221, 82);
+            btnFitY2.Location = new Point(210, 82);
             btnFitY2.Name = "btnFitY2";
-            btnFitY2.Size = new Size(75, 40);
+            btnFitY2.Size = new Size(54, 58);
             btnFitY2.TabIndex = 24;
             btnFitY2.Text = "Auto Fit Phase";
             btnFitY2.UseVisualStyleBackColor = true;
@@ -279,7 +279,7 @@
             AcceptButton = btnOk;
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(304, 287);
+            ClientSize = new Size(271, 287);
             Controls.Add(btnFitY2);
             Controls.Add(btnOk);
             Controls.Add(btnFitX);

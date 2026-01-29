@@ -169,6 +169,10 @@ namespace AudioHexViewer
         [Browsable(false)]
         public Func<(double y2Min, double y2Max)>? FitY2Provider { get; set; }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        [Browsable(false)]
+        public Action? PreviewChanged { get; set; }
+
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [Browsable(false)]
@@ -887,8 +891,13 @@ namespace AudioHexViewer
                 numYMax.Value = (decimal)yMax;
                 SetYRangeFromDesired(range);
                 ValidateAndApplyMainY();
+                PreviewChanged?.Invoke();
             }
             finally { _updating = false; }
+
+            //
+            
+
         }
 
 
@@ -999,12 +1008,15 @@ namespace AudioHexViewer
                 // Applique la liste filtrée + sélection (via ton mécanisme existant)
                 // -> On laisse ValidateAndApplyY2() faire le filtrage final cohérent.
                 cmbY2Range.SelectedItem = chosenRange.ToString(CultureInfo.InvariantCulture);
+                PreviewChanged?.Invoke();
+
             }
             finally { _updating = false; }
 
             ValidateAndApplyY2();
-        }
+            
 
+        }
 
     }
 }
