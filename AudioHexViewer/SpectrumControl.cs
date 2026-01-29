@@ -17,6 +17,14 @@ namespace AudioHexViewer
 {
     public partial class SpectrumControl : UserControl
     {
+        // --------------------------------------------------------------------
+        // Overlay UI: "Axis" button (bottom-left of the chart)
+        // Opens the same "Axis Parameters" dialog as the right-click on the chart.
+        // IMPORTANT: UI-only (no FFT / no scheduling).
+        // --------------------------------------------------------------------
+        private Button? _btnAxis;
+        private ToolTip? _toolTipAxis;
+
 
         // --------------------------------------------------------------------
         // THD UI (checkbox + button in the Spectrum tab)
@@ -751,6 +759,11 @@ namespace AudioHexViewer
             ApplyThdSettings(_thdUi);
             UpdateRunButtonAppearance();
             InitOverlayAnnotation();
+
+            // "Axis" button in the bottom-left corner of the chart (UI helper).
+            // Keeps the existing right-click access to the same dialog.
+            InitAxisButtonUi();
+
             // Curseurs
             InitCursorBarUi();
 
@@ -3851,7 +3864,70 @@ private static void DecimateForPlotWithGivenFreqAxis(
                 ShowAxisDialog();
             }
         }
+        //
+        /// <summary>
+        /// Adds a small overlay button "Axis" in the bottom-left corner of the chart.
+        /// This is a UI helper to open the Axis Parameters dialog without using right-click.
+        /// The right-click behavior remains unchanged.
+        /// </summary>
+        private void InitAxisButtonUi()
+        {
+            if (_btnAxis != null)
+                return; // already initialized
 
+            // Parent it to the chart so it stays positioned relative to the graph area.
+            _btnAxis = new Button();
+            _btnAxis.Name = "btnAxis";
+            _btnAxis.Text = "Axis Setup";
+            _btnAxis.AutoSize = true;
+            _btnAxis.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            _btnAxis.Padding = new Padding(8, 2, 8, 2);
+            _btnAxis.FlatStyle = FlatStyle.Flat;
+            _btnAxis.FlatAppearance.BorderSize = 1;
+            _btnAxis.TabStop = false;
+            _btnAxis.Cursor = Cursors.Hand;
+
+            // Keep the button attached to the bottom-left corner of its parent.
+            _btnAxis.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
+
+            // Slightly translucent background (still readable).
+            // Note: WinForms button doesn't support true alpha in all themes, but this is safe.
+            _btnAxis.BackColor = Color.FromArgb(230, SystemColors.Control);
+
+            // Open the same dialog as the existing right-click on the chart.
+            _btnAxis.Click += (_, __) => ShowAxisDialog();
+
+            // Tooltip (optional but nice UX)
+            _toolTipAxis ??= new ToolTip();
+            _toolTipAxis.SetToolTip(_btnAxis, "Axis Parameters");
+
+            chartSpectrum.Controls.Add(_btnAxis);
+            _btnAxis.BringToFront();
+
+            // Initial placement + keep in place on resize.
+            PositionAxisButton();
+            chartSpectrum.Resize += (_, __) => PositionAxisButton();
+        }
+
+        /// <summary>
+        /// Computes and applies the overlay button position inside the chart.
+        /// Uses a fixed margin from the bottom-left corner.
+        /// </summary>
+        private void PositionAxisButton()
+        {
+            if (_btnAxis == null)
+                return;
+
+            const int marginPx = 6;
+
+            int x = marginPx;
+            int y = Math.Max(marginPx, chartSpectrum.ClientSize.Height - _btnAxis.Height - marginPx);
+
+            _btnAxis.Location = new Point(x, y);
+            _btnAxis.BringToFront();
+        }
+
+        //
         private void ShowAxisDialog()
         {
             if (chartSpectrum.ChartAreas.Count == 0)
