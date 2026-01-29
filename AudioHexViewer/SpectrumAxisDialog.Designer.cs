@@ -105,7 +105,7 @@
             // 
             // numY2Max
             // 
-            numY2Max.Increment = new decimal(new int[] { 5, 0, 0, 0 });
+            numY2Max.Increment = new decimal(new int[] { 15, 0, 0, 0 });
             numY2Max.Location = new Point(114, 82);
             numY2Max.Name = "numY2Max";
             numY2Max.Size = new Size(90, 23);

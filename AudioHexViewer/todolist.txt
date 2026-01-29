@@ -3,7 +3,7 @@ Chose à faire :
 Le 21/01/2026
 -------------
 
-0 - Améliorer les 2 axes verticaux pour éviter les labels qui disparaissent.
+0 - Améliorer les 2 axes verticaux pour éviter les labels qui disparaissent.                             --> Ok fait le 29/01/2026
 
 1 - Ajout d'une fonction Bode Plot (ratio)  
     h) Ajouter l'affichage de la cohérence du FRF

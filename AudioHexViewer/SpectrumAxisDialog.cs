@@ -13,7 +13,7 @@ namespace AudioHexViewer
 
         private const double PHASE_ABS_MAX_DEG = 360.0;
 
-        private static readonly int[] AllowedY2RangesDeg = new[] { 360, 270, 180, 120, 90, 45, 30, 15, 5 };
+        private static readonly int[] AllowedY2RangesDeg = new[] { 360, 270, 180, 120, 90, 45, 30, 15 };
 
         private static bool TryParseDeg(string? s, out double deg)
         {
@@ -72,7 +72,7 @@ namespace AudioHexViewer
             {
                 numY2Max.Minimum = (decimal)-PHASE_ABS_MAX_DEG;
                 numY2Max.Maximum = (decimal)+PHASE_ABS_MAX_DEG;
-                numY2Max.Increment = 5;
+                numY2Max.Increment = 15;
                 numY2Max.DecimalPlaces = 0;
                 numY2Max.Value = 180;
 
@@ -976,8 +976,8 @@ namespace AudioHexViewer
                 y2Min = tmp;
             }
 
-            // Y2 max arrondi au multiple de 5 supérieur
-            y2Max = RoundUpToStep(y2Max, 5.0);
+            // Y2 max arrondi au multiple de 15 supérieur
+            y2Max = RoundUpToStep(y2Max, 15.0);
             y2Max = Clamp(y2Max, HARD_MIN, HARD_MAX);
 
             // Range minimal nécessaire pour inclure y2Min (sans dépasser HARD_MIN)

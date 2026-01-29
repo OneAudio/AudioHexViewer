@@ -277,6 +277,9 @@ namespace AudioHexViewer
             area.AxisY2.MajorTickMark.LineColor = LabelMajorColor;
             area.AxisX2.MinorTickMark.LineColor = LabelMinorColor;
             area.AxisY2.MinorTickMark.LineColor = LabelMinorColor;
+            // On remplace les labels majeurs du Chart par notre rendu PostPaint (deterministe)
+            area.AxisY2.LabelStyle.ForeColor = Color.Transparent;
+
 
             chartSpectrum.Invalidate();
         }
@@ -4328,6 +4331,10 @@ private static void DecimateForPlotWithGivenFreqAxis(
             }
             area.AxisY.LabelStyle.Format = "F" + yDecimals;
 
+            // On remplace les labels majeurs du Chart par notre rendu PostPaint (deterministe)
+            // => on masque ceux du Chart sans impacter le layout (ForeColor transparent).
+            area.AxisY.LabelStyle.ForeColor = Color.Transparent;
+
             // --- Axe X : on fixe d'abord les bornes, puis on active le log si besoin ---
             if (useLog)
             {
@@ -5427,6 +5434,117 @@ private static void DecimateForPlotWithGivenFreqAxis(
             if (_cursorMarkRVisible)
                 DrawDownTriangle(_cursorMarkRFreq, _cursorMarkRDb, _cursorMarkRUsesY2, _cursorMarkRColor);
 
+            // ----------------------------
+            // Y : labels majeurs (remplacement complet du Chart)
+            // ----------------------------
+            {
+                double yMajor = area.AxisY.MajorGrid.Interval;
+                if (yMajor <= 0) yMajor = area.AxisY.Interval; // sécurité
+
+                if (yMajor > 0)
+                {
+                    double yMin = area.AxisY.Minimum;
+                    double yMax = area.AxisY.Maximum;
+
+                    // même repère X que les mineurs (bord gauche du plot)
+                    float xLeftPlot = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Minimum);
+
+                    Font baseFont = area.AxisY.LabelStyle.Font ?? chart.Font;
+                    using (Font majorFont = new Font(baseFont.FontFamily, baseFont.Size, baseFont.Style))
+                    {
+                        float margin = 8f * sExport;
+                        float lastLabelBottom = float.NegativeInfinity;
+
+                        // format déterministe cohérent avec le pas majeur
+                        string fmt;
+                        if (Math.Abs(yMajor - Math.Round(yMajor)) < 1e-9) fmt = "0";
+                        else fmt = "F" + GetStepDecimals(yMajor);
+
+                        // On parcourt du haut vers le bas (comme les mineurs)
+                        double yStart = yMin + Math.Floor((yMax - yMin) / yMajor) * yMajor;
+
+                        for (double y = yStart; y >= yMin - 1e-9; y -= yMajor)
+                        {
+                            float yPix = (float)area.AxisY.ValueToPixelPosition(y);
+
+                            string txt = y.ToString(fmt, CultureInfo.InvariantCulture);
+                            SizeF sz = e.ChartGraphics.Graphics.MeasureString(txt, majorFont);
+
+                            float xText = xLeftPlot - sz.Width - margin;
+                            float yText = yPix - sz.Height / 2f;
+
+                            if (yText <= lastLabelBottom + 2f * sExport) continue;
+
+                            var g = e.ChartGraphics.Graphics;
+                            var saved = g.Save();
+                            g.ResetClip();
+
+                            using var b = new SolidBrush(LabelMajorColor);
+                            g.DrawString(txt, majorFont, b, xText, yText);
+
+                            g.Restore(saved);
+
+                            lastLabelBottom = yText + sz.Height;
+                        }
+                    }
+                }
+            }
+
+            // ----------------------------
+            // Y2 : labels majeurs (remplacement complet du Chart)
+            // ----------------------------
+            if (area.AxisY2.Enabled == AxisEnabled.True)
+            {
+                double yMajor2 = area.AxisY2.Interval;
+                if (yMajor2 <= 0) yMajor2 = area.AxisY2.MajorGrid.Interval; // sécurité
+
+                if (yMajor2 > 0)
+                {
+                    double yMin2 = area.AxisY2.Minimum;
+                    double yMax2 = area.AxisY2.Maximum;
+
+                    // même repère X que tes mineurs, mais côté droit
+                    float xRightPlot = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Maximum);
+
+                    Font baseFont = area.AxisY2.LabelStyle.Font ?? chart.Font;
+                    using (Font majorFont = new Font(baseFont.FontFamily, baseFont.Size, baseFont.Style))
+                    {
+                        float margin = 8f * sExport;
+                        float gap = 1f * sExport;
+                        float lastLabelBottom = float.NegativeInfinity;
+
+                        string fmt;
+                        if (Math.Abs(yMajor2 - Math.Round(yMajor2)) < 1e-9) fmt = "0";
+                        else fmt = "F" + GetStepDecimals(yMajor2);
+
+                        double yStart = yMin2 + Math.Floor((yMax2 - yMin2) / yMajor2) * yMajor2;
+
+                        for (double y = yStart; y >= yMin2 - 1e-9; y -= yMajor2)
+                        {
+                            float yPix = (float)area.AxisY2.ValueToPixelPosition(y);
+
+                            string txt = y.ToString(fmt, CultureInfo.InvariantCulture);
+                            SizeF sz = e.ChartGraphics.Graphics.MeasureString(txt, majorFont);
+
+                            float xText = xRightPlot + gap + margin;
+                            float yText = yPix - sz.Height / 2f;
+
+                            if (yText <= lastLabelBottom + 2f * sExport) continue;
+
+                            var g = e.ChartGraphics.Graphics;
+                            var saved = g.Save();
+                            g.ResetClip();
+
+                            using var b = new SolidBrush(LabelMajorColor);
+                            g.DrawString(txt, majorFont, b, xText, yText);
+
+                            g.Restore(saved);
+
+                            lastLabelBottom = yText + sz.Height;
+                        }
+                    }
+                }
+            }
 
             // ----------------------------
             // Y : ticks + labels mineurs
