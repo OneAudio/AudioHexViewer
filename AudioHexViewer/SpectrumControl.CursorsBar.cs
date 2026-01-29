@@ -251,16 +251,20 @@ namespace AudioHexViewer
         /// </summary>
         private string NextTrackText(string cur)
         {
-            // Phase FRF désactivée
-            if (!_frfPhaseEnabled)
+            // Phase FRF désactivée (UNIQUEMENT en mode Bode/FRF)
+            // IMPORTANT : en dehors du mode FRF, _frfPhaseEnabled peut rester à false,
+            // mais ça ne doit pas impacter le cycle Left/Right/Auto du mode normal.
+            if (IsFrfMode() && !_frfPhaseEnabled)
             {
-                // Phase désactivée : cycle réduit (Gain <-> Auto), mais Auto sera de toute façon forcé vers Gain
+                // Phase désactivée : cycle réduit (Gain <-> Auto).
+                // NOTE: SyncCursorUiFromModel() force de toute façon Auto -> Gain en FRF.
                 return cur switch
                 {
                     "Gain" => "Auto",
-                    _ => "Gain", // Auto/Phase/Left/Right -> Gain
+                    _ => "Gain", // Auto/Phase/Left/Right -> Gain (tolérant)
                 };
             }
+
 
             // Mode Bode Plot (FRF)
             if (IsFrfMode())
