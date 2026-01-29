@@ -28,6 +28,10 @@ namespace AudioHexViewer
         {
             InitializeComponent();
 
+            // Close dialog on Escape (same behavior as Cancel)
+            KeyPreview = true;
+            KeyDown += SpectrumAxisDialog_KeyDown;
+
             // --- Main Y axis (Y Max + Y Range) 
             cmbYRange.DropDownStyle = ComboBoxStyle.DropDownList;  // fixed list          
 
@@ -76,12 +80,13 @@ namespace AudioHexViewer
             }
             finally { _updating = false; }
 
-            ValidateAndApplyY2();   
+            ValidateAndApplyY2();
 
 
             btnDefault.Click += BtnDefault_Click;
             btnFitY.Click += BtnFitY_Click;
             btnFitX.Click += BtnFitX_Click;
+            btnFitY2.Click += BtnFitY2_Click;
 
             // synchro X
             numFMin.ValueChanged += (_, __) => { if (!_updating) SyncFromMinMax(); };
@@ -113,7 +118,7 @@ namespace AudioHexViewer
             DbGain  // Gain (dB)    : YMax in [ -195 ; +100 ]
         }
 
-        private static readonly int[] AllowedYRangesDb = new[] { 5, 10, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200};
+        private static readonly int[] AllowedYRangesDb = new[] { 5, 10, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200 };
 
         private const double YMIN_HARD = -195.0;
         private const double YMAX_DBFS_HARD = 0.0;
@@ -145,7 +150,7 @@ namespace AudioHexViewer
         }
 
         // caps UI
-        private static readonly double[] AllowedFmaxCaps = 
+        private static readonly double[] AllowedFmaxCaps =
             { 25_000, 50_000, 100_000, 200_000, 400_000 };
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -159,6 +164,11 @@ namespace AudioHexViewer
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [Browsable(false)]
         public Func<(double yMin, double yMax)>? FitYProvider { get; set; }
+
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        [Browsable(false)]
+        public Func<(double y2Min, double y2Max)>? FitY2Provider { get; set; }
+
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [Browsable(false)]
@@ -258,7 +268,7 @@ namespace AudioHexViewer
             cmb.Text = value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
         }
 
-        
+
         private static double RoundUpToStep(double value, double step)
         {
             // Requirement: round to the upper multiple of 5 dB.
@@ -921,5 +931,80 @@ namespace AudioHexViewer
 
             SyncFromMinMax();
         }
+
+        // --------- Escape key handling to cancel the dialog ---------
+        private void SpectrumAxisDialog_KeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+
+                DialogResult = DialogResult.Cancel; // important: caller sees "Cancel"
+                Close();
+            }
+        }
+
+        private void BtnFitY2_Click(object? sender, EventArgs e)
+        {
+            if (FitY2Provider == null)
+                return;
+
+            var (y2Min, y2Max) = FitY2Provider();
+
+            // Limites imposées pour le fit phase (spécification)
+            const double HARD_MIN = -180.0;
+            const double HARD_MAX = +180.0;
+
+            y2Min = Clamp(y2Min, HARD_MIN, HARD_MAX);
+            y2Max = Clamp(y2Max, HARD_MIN, HARD_MAX);
+
+            // Sécurité : si inversé
+            if (y2Max < y2Min)
+            {
+                double tmp = y2Max;
+                y2Max = y2Min;
+                y2Min = tmp;
+            }
+
+            // Y2 max arrondi au multiple de 5 supérieur
+            y2Max = RoundUpToStep(y2Max, 5.0);
+            y2Max = Clamp(y2Max, HARD_MIN, HARD_MAX);
+
+            // Range minimal nécessaire pour inclure y2Min (sans dépasser HARD_MIN)
+            // RangeNeeded = y2Max - y2Min, mais aussi borné par (y2Max - HARD_MIN)
+            double rangeNeeded = y2Max - y2Min;
+            double rangeMaxAllowed = y2Max - HARD_MIN;
+            if (rangeNeeded > rangeMaxAllowed)
+                rangeNeeded = rangeMaxAllowed;
+
+            // Choisir le plus petit range de la liste qui couvre rangeNeeded
+            // Liste existante : AllowedY2RangesDeg = { 360,270,180,120,90,45,30,15,5 } :contentReference[oaicite:2]{index=2}
+            int chosenRange = AllowedY2RangesDeg
+                .Where(r => r <= rangeMaxAllowed + 1e-9)      // ne doit pas contredire HARD_MIN
+                .Where(r => r >= rangeNeeded - 1e-9)          // doit couvrir
+                .OrderBy(r => r)                               // plus petit possible
+                .FirstOrDefault();
+
+            // Fallback défensif : prendre le plus grand range autorisé
+            if (chosenRange == 0)
+                chosenRange = AllowedY2RangesDeg.Where(r => r <= rangeMaxAllowed + 1e-9).DefaultIfEmpty(AllowedY2RangesDeg.Last()).Max();
+
+            _updating = true;
+            try
+            {
+                // Applique Y2 Max
+                numY2Max.Value = (decimal)y2Max;
+
+                // Applique la liste filtrée + sélection (via ton mécanisme existant)
+                // -> On laisse ValidateAndApplyY2() faire le filtrage final cohérent.
+                cmbY2Range.SelectedItem = chosenRange.ToString(CultureInfo.InvariantCulture);
+            }
+            finally { _updating = false; }
+
+            ValidateAndApplyY2();
+        }
+
+
     }
 }

@@ -38,7 +38,9 @@
             btnDefault = new Button();
             btnFitY = new Button();
             btnFitX = new Button();
+            btnFitY2 = new Button();
             ((System.ComponentModel.ISupportInitialize)numYMax).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)numY2Max).BeginInit();
             tabX.SuspendLayout();
             tabMinMax.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)numFMin).BeginInit();
@@ -53,7 +55,7 @@
             lblYMax.AutoSize = true;
             lblYMax.Location = new Point(12, 15);
             lblYMax.Name = "lblYMax";
-            lblYMax.Size = new Size(65, 15);
+            lblYMax.Size = new Size(85, 15);
             lblYMax.TabIndex = 0;
             lblYMax.Text = "Level max (dB)";
             // 
@@ -62,7 +64,7 @@
             lblYMin.AutoSize = true;
             lblYMin.Location = new Point(12, 50);
             lblYMin.Name = "lblYMin";
-            lblYMin.Size = new Size(63, 15);
+            lblYMin.Size = new Size(83, 15);
             lblYMin.TabIndex = 1;
             lblYMin.Text = "Level min (dB)";
             // 
@@ -88,7 +90,7 @@
             lblY2Max.AutoSize = true;
             lblY2Max.Location = new Point(12, 85);
             lblY2Max.Name = "lblY2Max";
-            lblY2Max.Size = new Size(77, 15);
+            lblY2Max.Size = new Size(80, 15);
             lblY2Max.TabIndex = 20;
             lblY2Max.Text = "Phase max (°)";
             // 
@@ -97,10 +99,9 @@
             lblY2Min.AutoSize = true;
             lblY2Min.Location = new Point(12, 120);
             lblY2Min.Name = "lblY2Min";
-            lblY2Min.Size = new Size(75, 15);
+            lblY2Min.Size = new Size(87, 15);
             lblY2Min.TabIndex = 21;
             lblY2Min.Text = "Phase range (°)";
-            // 
             // 
             // numY2Max
             // 
@@ -109,7 +110,6 @@
             numY2Max.Name = "numY2Max";
             numY2Max.Size = new Size(90, 23);
             numY2Max.TabIndex = 22;
-
             // 
             // cmbY2Range
             // 
@@ -119,7 +119,6 @@
             cmbY2Range.Name = "cmbY2Range";
             cmbY2Range.Size = new Size(90, 23);
             cmbY2Range.TabIndex = 23;
-
             // 
             // tabX
             // 
@@ -231,7 +230,7 @@
             // btnOk
             // 
             btnOk.DialogResult = DialogResult.OK;
-            btnOk.Location = new Point(129, 282);
+            btnOk.Location = new Point(221, 253);
             btnOk.Name = "btnOk";
             btnOk.Size = new Size(75, 23);
             btnOk.TabIndex = 8;
@@ -240,7 +239,7 @@
             // 
             // btnDefault
             // 
-            btnDefault.Location = new Point(129, 253);
+            btnDefault.Location = new Point(12, 253);
             btnDefault.Name = "btnDefault";
             btnDefault.Size = new Size(75, 23);
             btnDefault.TabIndex = 6;
@@ -249,28 +248,39 @@
             // 
             // btnFitY
             // 
-            btnFitY.Location = new Point(12, 253);
+            btnFitY.Location = new Point(221, 12);
             btnFitY.Name = "btnFitY";
-            btnFitY.Size = new Size(75, 23);
+            btnFitY.Size = new Size(75, 40);
             btnFitY.TabIndex = 5;
-            btnFitY.Text = "Fit Y";
+            btnFitY.Text = "Auto Fit Level";
             btnFitY.UseVisualStyleBackColor = true;
             // 
             // btnFitX
             // 
-            btnFitX.Location = new Point(12, 282);
+            btnFitX.Location = new Point(221, 174);
             btnFitX.Name = "btnFitX";
-            btnFitX.Size = new Size(75, 23);
+            btnFitX.Size = new Size(75, 40);
             btnFitX.TabIndex = 7;
-            btnFitX.Text = "Fit X";
+            btnFitX.Text = "Auto Fit Frequency";
             btnFitX.UseVisualStyleBackColor = true;
+            // 
+            // btnFitY2
+            // 
+            btnFitY2.Location = new Point(221, 82);
+            btnFitY2.Name = "btnFitY2";
+            btnFitY2.Size = new Size(75, 40);
+            btnFitY2.TabIndex = 24;
+            btnFitY2.Text = "Auto Fit Phase";
+            btnFitY2.UseVisualStyleBackColor = true;
+            btnFitY2.Click += BtnFitY2_Click;
             // 
             // SpectrumAxisDialog
             // 
             AcceptButton = btnOk;
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(220, 317);
+            ClientSize = new Size(304, 287);
+            Controls.Add(btnFitY2);
             Controls.Add(btnOk);
             Controls.Add(btnFitX);
             Controls.Add(btnDefault);
@@ -289,8 +299,9 @@
             MinimizeBox = false;
             Name = "SpectrumAxisDialog";
             StartPosition = FormStartPosition.CenterParent;
-            Text = "FFT Axis Limits";
+            Text = "Axis Parameters";
             ((System.ComponentModel.ISupportInitialize)numYMax).EndInit();
+            ((System.ComponentModel.ISupportInitialize)numY2Max).EndInit();
             tabX.ResumeLayout(false);
             tabMinMax.ResumeLayout(false);
             tabMinMax.PerformLayout();
@@ -334,5 +345,6 @@
         private Button btnDefault;
         private Button btnFitY;
         private Button btnFitX;
+        private Button btnFitY2;
     }
 }

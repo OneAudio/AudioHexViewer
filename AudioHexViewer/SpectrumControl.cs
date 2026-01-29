@@ -70,7 +70,45 @@ namespace AudioHexViewer
 
             return (Math.Max(0.0, min), Math.Min(nyq, max));
         }
+        //
+        private (double minDeg, double maxDeg) GetVisiblePhaseRangeDeg_ForFitY2()
+        {
+            // Fit demandé sur données visibles (plot)
+            var phase = _plotFrfPhaseDeg;
+            var fx = _plotFreqAxis;
 
+            // Si pas de phase dispo -> fallback safe
+            if (phase == null || fx == null || phase.Length == 0 || fx.Length != phase.Length)
+                return (-180.0, +180.0);
+
+            var (fMin, fMax) = GetVisibleFreqRangeHz();
+
+            double min = double.PositiveInfinity;
+            double max = double.NegativeInfinity;
+
+            for (int i = 0; i < phase.Length; i++)
+            {
+                double f = fx[i];
+                if (f < fMin || f > fMax) continue;
+
+                double p = phase[i];
+                if (double.IsNaN(p) || double.IsInfinity(p)) continue;
+
+                if (p < min) min = p;
+                if (p > max) max = p;
+            }
+
+            if (!double.IsFinite(min) || !double.IsFinite(max))
+                return (-180.0, +180.0);
+
+            // Spec: Fit borné à +/-180°
+            if (min < -180.0) min = -180.0;
+            if (max > +180.0) max = +180.0;
+
+            return (min, max);
+        }
+
+        //
         // --- Unités volts pour l’affichage RMS/Peak ---
         private enum VoltUnit { V, mV, uV }
         private VoltUnit _vrmsUnitLeft = VoltUnit.mV;
@@ -3860,6 +3898,7 @@ private static void DecimateForPlotWithGivenFreqAxis(
                 dlg.SetFmaxMaximum(fmaxCap);
 
                 dlg.FitYProvider = GetCurrentYRangeGlobal;
+                dlg.FitY2Provider = GetVisiblePhaseRangeDeg_ForFitY2;
                 dlg.FftSizeN = lastFftSize;
 
 
