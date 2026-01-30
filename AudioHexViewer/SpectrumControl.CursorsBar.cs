@@ -35,10 +35,9 @@ namespace AudioHexViewer
 
 
 
-        /// <summary>
+        
         /// Crée la barre curseurs (C1/C2) dans panelStats, en bas à droite sous grpRightStats.
-        /// Appelée depuis le constructeur SpectrumControl() après InitializeComponent().
-        /// </summary>
+        /// Appelée depuis le constructeur SpectrumControl() après InitializeComponent().        
         private void InitCursorBarUi()
         {
             // Déjà bindé ? (important : tlpCursors existe déjà car Designer)
@@ -102,9 +101,12 @@ namespace AudioHexViewer
         //
         private void WireCursorBarEvents()
         {
-            if (_c1Toggle == null || _c2Toggle == null || _c1TrackBtn == null || _c2TrackBtn == null
-                || _c1Peak == null || _c2Peak == null || _c1Set == null || _c2Set == null)
-                return;
+            if (_c1Toggle == null || _c2Toggle == null
+                || _c1TrackBtn == null || _c2TrackBtn == null
+                || _c1PrevPeak == null || _c1Peak == null || _c1NextPeak == null || _c1Set == null
+                || _c2PrevPeak == null || _c2Peak == null || _c2NextPeak == null || _c2Set == null)
+            return;
+
 
             // IMPORTANT : éviter de brancher deux fois si InitCursorBarUi est rappelé
             _c1Toggle.Click -= C1Toggle_Click;
@@ -174,13 +176,27 @@ namespace AudioHexViewer
             SyncCursorUiFromModel();
         }
 
-        private void C1PrevPeak_Click(object? sender, EventArgs e) => MoveCursorToAdjacentPeak(isC1: true, next: false);
+        
         private void C1Peak_Click(object? sender, EventArgs e) => MoveCursorToPeak(isC1: true);
+        
+        private void C2Peak_Click(object? sender, EventArgs e) => MoveCursorToPeak(isC1: false);
+
+        
+        /// C1: Previous peak ("<") button.        
+        private void C1PrevPeak_Click(object? sender, EventArgs e) => MoveCursorToAdjacentPeak(isC1: true, next: false);
+
+        
+        /// C1: Next peak (">") button.        
         private void C1NextPeak_Click(object? sender, EventArgs e) => MoveCursorToAdjacentPeak(isC1: true, next: true);
 
+        
+        /// C2: Previous peak ("<") button.        
         private void C2PrevPeak_Click(object? sender, EventArgs e) => MoveCursorToAdjacentPeak(isC1: false, next: false);
-        private void C2Peak_Click(object? sender, EventArgs e) => MoveCursorToPeak(isC1: false);
+
+        
+        /// C2: Next peak (">") button.        
         private void C2NextPeak_Click(object? sender, EventArgs e) => MoveCursorToAdjacentPeak(isC1: false, next: true);
+
 
         private void C1Set_Click(object? sender, EventArgs e) => OpenSimpleSetDialog(isC1: true);
         private void C2Set_Click(object? sender, EventArgs e) => OpenSimpleSetDialog(isC1: false);
@@ -264,11 +280,10 @@ namespace AudioHexViewer
             chartSpectrum?.Invalidate();
         }
 
-        /// <summary>
+        
         /// Retourne le prochain texte de tracking.
         /// En FRF: Auto -> Gain -> Phase -> Auto
-        /// En normal: Left -> Right -> Auto -> Left
-        /// </summary>
+        /// En normal: Left -> Right -> Auto -> Left        
         private string NextTrackText(string cur)
         {
             // Phase FRF désactivée (UNIQUEMENT en mode Bode/FRF)
@@ -308,10 +323,9 @@ namespace AudioHexViewer
             };
         }
 
-        /// <summary>
+        
         /// Convertit un libellé de bouton (Auto/Gain/Phase/Left/Right) vers CursorTrackMode.
-        /// NOTE: on mappe Gain->Left et Phase->Right pour ne pas toucher à l'enum.
-        /// </summary>
+        /// NOTE: on mappe Gain->Left et Phase->Right pour ne pas toucher à l'enum.        
         private CursorTrackMode TextToMode(string t)
         {
             // En Bode Plot avec phase OFF : "Phase" est interdit => force Gain
@@ -331,11 +345,10 @@ namespace AudioHexViewer
         }
 
 
-        /// <summary>
+        
         /// Convertit CursorTrackMode vers le libellé affiché.
         /// En FRF: Left->Gain, Right->Phase
-        /// En normal: Left/Right
-        /// </summary>
+        /// En normal: Left/Right        
         private string ModeToText(CursorTrackMode m)
         {
             if (IsFrfMode())
@@ -381,12 +394,18 @@ namespace AudioHexViewer
 
             SyncCursorUiFromModel();
         }
-
+        //
         /// <summary>
-        /// Déplace le curseur sur le pic local précédent/suivant (dans la plage X visible).
-        /// - "Pic" = maximum local (3 points) : spec[i-1] &lt;= spec[i] &amp;&amp; spec[i] &gt; spec[i+1]
-        /// - Le scan commence APRES la position actuelle du curseur (pour Next),
-        ///   ou AVANT (pour Previous), afin d'éviter de retomber sur le même pic.
+        /// Déplace le curseur sur le pic "visible" précédent/suivant (dans la plage X visible).
+        ///
+        /// IMPORTANT: la définition de "pic" n'est pas le simple 3-points local max.
+        /// On utilise l'algo robuste qui vit dans SpectrumControl.cs:
+        /// - maximum local sur une courbe légèrement lissée
+        /// - seuil de proéminence (dB)
+        /// - seuil relatif au maximum visible (dB)
+        ///
+        /// Le scan commence APRES la position actuelle du curseur (pour Next),
+        /// ou AVANT (pour Previous), afin d'éviter de retomber sur le même pic.
         /// </summary>
         private void MoveCursorToAdjacentPeak(bool isC1, bool next)
         {
@@ -432,7 +451,7 @@ namespace AudioHexViewer
             SyncCursorUiFromModel();
         }
 
-
+        //
         private void OpenSimpleSetDialog(bool isC1)
         {
             double? current = null;

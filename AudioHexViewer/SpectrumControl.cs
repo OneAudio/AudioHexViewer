@@ -2933,19 +2933,370 @@ namespace AudioHexViewer
         public bool TryFindPeakFrequencyForCursor2(out double peakHz)
             => TryFindPeakFrequencyForCursor(isCursor1: false, out peakHz);
 
+        // --- NEW: Prev/Next Peak (for buttons "<" and ">") ------------------------------------
+        //
+        // These methods search for the next/previous "prominent peak" relative to the CURRENT
+        // cursor position, using the SAME peak definition as the "Peak" button:
+        //
+        // - Local maximum (3-point test)
+        // - Minimum prominence vs neighbors (±PEAK_PROMINENCE_HALF_WINDOW_BINS)
+        // - Minimum dB above local noise floor (median estimate)
+        //
+        // The search is done within the currently visible X range of the chart.
+        // --------------------------------------------------------------------------------------
+
         public bool TryFindNextPeakFrequencyForCursor1(out double peakHz)
-            => TryFindAdjacentPeakFrequencyForCursor(isCursor1: true, next: true, out peakHz);
+            => TryFindAdjacentPeakFrequencyForCursor(isCursor1: true, direction: +1, out peakHz);
 
         public bool TryFindPreviousPeakFrequencyForCursor1(out double peakHz)
-            => TryFindAdjacentPeakFrequencyForCursor(isCursor1: true, next: false, out peakHz);
+            => TryFindAdjacentPeakFrequencyForCursor(isCursor1: true, direction: -1, out peakHz);
 
         public bool TryFindNextPeakFrequencyForCursor2(out double peakHz)
-            => TryFindAdjacentPeakFrequencyForCursor(isCursor1: false, next: true, out peakHz);
+            => TryFindAdjacentPeakFrequencyForCursor(isCursor1: false, direction: +1, out peakHz);
 
         public bool TryFindPreviousPeakFrequencyForCursor2(out double peakHz)
-            => TryFindAdjacentPeakFrequencyForCursor(isCursor1: false, next: false, out peakHz);
+            => TryFindAdjacentPeakFrequencyForCursor(isCursor1: false, direction: -1, out peakHz);
+
+        private bool TryFindAdjacentPeakFrequencyForCursor(bool isCursor1, int direction, out double peakHz)
+        {
+            peakHz = 0;
+
+            if (freqAxis == null || freqAxis.Length == 0) return false;
+            if (direction != -1 && direction != +1) return false;
+
+            // which curve is actually tracked by this cursor?
+            var curve = ResolveCurveForCursor(isCursor1);
+            if (curve == ResolvedCurve.None) return false;
+
+            double[]? spec = null;
+
+            switch (curve)
+            {
+                case ResolvedCurve.Left:
+                    spec = currentLeftSpectrum;
+                    break;
+
+                case ResolvedCurve.Right:
+                    spec = currentRightSpectrum;
+                    break;
+
+                case ResolvedCurve.Gain:
+                    spec = currentLeftSpectrum;      // FRF gain stored here (dB)
+                    break;
+
+                case ResolvedCurve.Phase:
+                    spec = currentFrfPhaseDeg;       // FRF phase (deg)
+                    break;
+            }
+
+            if (spec == null || spec.Length == 0) return false;
+
+            var area = chartSpectrum.ChartAreas["SpectrumArea"];
+
+            // visible X range
+            double fMin = area.AxisX.Minimum;
+            double fMax = area.AxisX.Maximum;
+            if (fMax <= fMin) return false;
+
+            bool useLog = (chkLogX != null && chkLogX.Checked);
+            int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
+
+            int i0 = LowerBound(freqAxis, fMin);
+            int i1 = UpperBound(freqAxis, fMax) - 1;
+
+            i0 = Math.Max(i0, minIdx);
+            i1 = Math.Min(i1, Math.Min(freqAxis.Length - 1, spec.Length - 1));
+            if (i1 <= i0) return false;
+
+            // start from current cursor index, clamped in visible range
+            int cur = isCursor1 ? _cursorIdxL : _cursorIdxR;
+            cur = Math.Max(i0, Math.Min(cur, i1));
+            // ------------------------------------------------------------------
+            // < / > buttons peak navigation based on what is VISIBLE in the chart:
+            //
+            // We intentionally use the *PLOT* arrays (_plot*) because they are exactly
+            // what is displayed (decimated / aligned with current zoom).
+            // => The noise floor we compute matches the visible noise floor.
+            // ------------------------------------------------------------------
+
+            // 0) Choose PLOT arrays according to the curve tracked by this cursor
+            double[]? plotSpec = null;
+            double[]? plotFreq = _plotFreqAxis;
+
+            switch (curve)
+            {
+                case ResolvedCurve.Left:
+                    plotSpec = _plotLeftSpectrum;
+                    break;
+
+                case ResolvedCurve.Right:
+                    plotSpec = _plotRightSpectrum;
+                    break;
+
+                case ResolvedCurve.Gain:
+                    plotSpec = _plotLeftSpectrum; // FRF gain is stored/plot on left
+                    break;
+
+                case ResolvedCurve.Phase:
+                    plotSpec = _plotFrfPhaseDeg;  // phase plot
+                    break;
+            }
+
+            if (plotFreq == null || plotSpec == null || plotFreq.Length == 0 || plotSpec.Length == 0)
+                return false;
+
+            // 1) Current cursor frequency (FULL) -> Hz
+            double curHz = freqAxis[cur];
+
+            // 2) Noise floor = MEDIAN of the VISIBLE plot values
+            // (ignore NaN/Inf)
+            var tmp = new List<double>(plotSpec.Length);
+            for (int i = 0; i < plotSpec.Length; i++)
+            {
+                double v = plotSpec[i];
+                if (double.IsNaN(v) || double.IsInfinity(v)) continue;
+                tmp.Add(v);
+            }
+            if (tmp.Count == 0) return false;
+
+            tmp.Sort();
+            double noiseFloorDb = (tmp.Count & 1) == 1
+                ? tmp[tmp.Count / 2]
+                : 0.5 * (tmp[tmp.Count / 2 - 1] + tmp[tmp.Count / 2]);
+
+            double thresholdDb = noiseFloorDb + NOISE_TO_PEAK_THRESHOLD_DB;
+
+            // 3) Build groups of contiguous PLOT points above threshold
+            // and keep one peak per group (max value inside group)
+            var peaksHz = new List<double>();
+
+            bool inGroup = false;
+            double groupTopDb = double.NegativeInfinity;
+            double groupTopHz = 0;
+
+            int n = Math.Min(plotFreq.Length, plotSpec.Length);
+
+            for (int i = 0; i < n; i++)
+            {
+                double v = plotSpec[i];
+                if (double.IsNaN(v) || double.IsInfinity(v)) continue;
+
+                if (v >= thresholdDb)
+                {
+                    if (!inGroup)
+                    {
+                        inGroup = true;
+                        groupTopDb = v;
+                        groupTopHz = plotFreq[i];
+                    }
+                    else if (v > groupTopDb)
+                    {
+                        groupTopDb = v;
+                        groupTopHz = plotFreq[i];
+                    }
+                }
+                else if (inGroup)
+                {
+                    peaksHz.Add(groupTopHz);
+                    inGroup = false;
+                }
+            }
+
+            if (inGroup)
+                peaksHz.Add(groupTopHz);
+
+            if (peaksHz.Count == 0)
+                return false;
+
+            // 4) Select next / previous peak based on frequency (Hz)
+            // (because plot index != full FFT index)
+            double selectedHz = 0;
+            bool found = false;
+
+            if (direction > 0)
+            {
+                // Next: first peak strictly to the right
+                for (int k = 0; k < peaksHz.Count; k++)
+                {
+                    double hz = peaksHz[k];
+                    if (hz > curHz)
+                    {
+                        selectedHz = hz;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                // Prev: last peak strictly to the left
+                for (int k = peaksHz.Count - 1; k >= 0; k--)
+                {
+                    double hz = peaksHz[k];
+                    if (hz < curHz)
+                    {
+                        selectedHz = hz;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!found)
+                return false;
+
+            peakHz = selectedHz;
+            return true;
 
 
+        }
+
+
+        // =========================================================================================
+        // PEAK SEARCH (Cursor "Peak", "Prev Peak", "Next Peak")
+        //
+        // Objectif : ne sélectionner que des "pics visibles" (tonalité, harmoniques, raies),
+        // et ignorer les petites irrégularités dues au bruit.
+        //
+        // Définition pratique d’un "peak" (version simple, robuste, et testable) :
+        //  1) Local maximum : le bin i doit être un maximum local (vs voisins immédiats).
+        //  2) Prominence : le bin i doit dépasser ses voisins (±N bins) d’au moins X dB.
+        //  3) Au-dessus du bruit : le bin i doit être au moins Y dB au-dessus d’un "noise floor"
+        //     local (estimé par médiane sur une fenêtre autour du bin).
+        //
+        // Les 3 critères ensemble évitent de sauter sur du bruit.
+        // =========================================================================================
+
+        // ================= Peak search (cursor Next/Prev Peak) =================
+        //
+        // IMPORTANT : on travaille en dB (spectre affiché), sur la plage visible.
+        // Un "peak" doit :
+        //  1) être un max local (>= voisins)
+        //  2) être "prominent" : dépasser les "épaules" (pas les bins collés au sommet)
+        //  3) dépasser le bruit local (médiane) d'au moins X dB
+        //
+        // Tous les seuils sont regroupés ici pour pouvoir les ajuster facilement.
+        //
+        // (3) Bruit local : médiane d'une fenêtre glissante centrée autour du bin testé.
+        private const int NOISE_FLOOR_HALF_WINDOW_BINS = 256;
+        private const double PEAK_MIN_ABOVE_NOISE_DB = 6.0;
+
+        // (2) Prominence : on prend une fenêtre ±W bins MAIS on ignore les bins trop proches
+        // du sommet (lobe principal). Sinon, avec Hann/Blackman-Harris, les bins voisins
+        // restent proches du max et la "prominence" devient artificiellement faible.
+        private const int PEAK_PROMINENCE_HALF_WINDOW_BINS = 4;
+
+        // Nombre de bins exclus autour du bin central (sommet) pour mesurer la "prominence"
+        // sur les épaules du pic plutôt que sur le lobe principal.
+        private const int PEAK_PROMINENCE_EXCLUDE_BINS = 2;
+
+
+        private const double PEAK_MIN_PROMINENCE_DB = 3.0;
+
+
+        // Petit epsilon pour éviter les égalités / instabilités.
+        private const double PEAK_EPS = 1e-12;
+
+        // ------------------------------------------------------------------
+        // Simple peak detection based on visible noise floor (median)
+        // Used ONLY for Next/Prev peak navigation (< > buttons)
+        // ------------------------------------------------------------------
+        private const double NOISE_TO_PEAK_THRESHOLD_DB = 6.0;
+
+        private static double MedianOfRange(double[] data, int i0, int i1)
+        {
+            int n = i1 - i0 + 1;
+            if (n <= 0) return double.NaN;
+
+            var tmp = new double[n];
+            Array.Copy(data, i0, tmp, 0, n);
+            Array.Sort(tmp);
+
+            return (n & 1) == 1
+                ? tmp[n / 2]
+                : 0.5 * (tmp[n / 2 - 1] + tmp[n / 2]);
+        }
+
+
+
+        private static double MedianInclusive(List<double> values)
+        {
+            if (values.Count == 0) return double.NegativeInfinity;
+            values.Sort();
+            int n = values.Count;
+            if ((n & 1) == 1) return values[n / 2];
+            return 0.5 * (values[n / 2 - 1] + values[n / 2]);
+        }
+
+
+        private static bool IsProminentPeak(double[] specDb, int i, int i0, int i1)
+        {
+            // Sécurité indices
+            if (i <= i0 || i >= i1)
+                return false;
+
+            double center = specDb[i];
+
+            // --------------------------------------------------------------------
+            // 1) Max local simple (forme)
+            // --------------------------------------------------------------------
+            if (center < specDb[i - 1] || center < specDb[i + 1])
+                return false;
+
+            // --------------------------------------------------------------------
+            // 2) Prominence par rapport aux "épaules" (hors lobe principal)
+            // --------------------------------------------------------------------
+            int a = Math.Max(i0, i - PEAK_PROMINENCE_HALF_WINDOW_BINS);
+            int b = Math.Min(i1, i + PEAK_PROMINENCE_HALF_WINDOW_BINS);
+
+            double bestShoulder = double.NegativeInfinity;
+
+            for (int k = a; k <= b; k++)
+            {
+                // Exclure le lobe principal
+                if (Math.Abs(k - i) <= PEAK_PROMINENCE_EXCLUDE_BINS)
+                    continue;
+
+                bestShoulder = Math.Max(bestShoulder, specDb[k]);
+            }
+
+            if (double.IsNegativeInfinity(bestShoulder))
+                return false;
+
+            double prominenceDb = center - bestShoulder;
+            if (prominenceDb < PEAK_MIN_PROMINENCE_DB)
+                return false;
+
+            // --------------------------------------------------------------------
+            // 3) Noise floor local (médiane robuste)
+            // --------------------------------------------------------------------
+            int na = Math.Max(i0, i - NOISE_FLOOR_HALF_WINDOW_BINS);
+            int nb = Math.Min(i1, i + NOISE_FLOOR_HALF_WINDOW_BINS);
+
+            var noiseVals = new List<double>(nb - na);
+
+            for (int k = na; k <= nb; k++)
+            {
+                // On exclut la zone du pic lui-même
+                if (Math.Abs(k - i) <= PEAK_PROMINENCE_EXCLUDE_BINS)
+                    continue;
+
+                noiseVals.Add(specDb[k]);
+            }
+
+            if (noiseVals.Count == 0)
+                return false;
+
+            double noiseFloor = MedianInclusive(noiseVals);
+
+            if ((center - noiseFloor) < PEAK_MIN_ABOVE_NOISE_DB)
+                return false;
+
+            // --------------------------------------------------------------------
+            // → Pic valide
+            // --------------------------------------------------------------------
+            return true;
+        }
 
 
         private bool TryFindPeakFrequencyForCursor(bool isCursor1, out double peakHz)
@@ -2981,7 +3332,6 @@ namespace AudioHexViewer
 
             if (spec == null || spec.Length == 0) return false;
 
-
             var area = chartSpectrum.ChartAreas["SpectrumArea"];
 
             // plage visible du graphe (spec demandé)
@@ -2999,10 +3349,20 @@ namespace AudioHexViewer
             i1 = Math.Min(i1, Math.Min(freqAxis.Length - 1, spec.Length - 1));
             if (i1 <= i0) return false;
 
-            int best = i0;
-            double bestDb = spec[i0];
-            for (int i = i0 + 1; i <= i1; i++)
+            // --- Nouveau : cherche le meilleur "pic" (selon critères) ---
+            int best = -1;
+            double bestDb = double.NegativeInfinity;
+
+            // On évite les bords car on teste i-1 / i+1
+            int start = Math.Max(i0 + 1, i0);
+            int end = Math.Min(i1 - 1, i1);
+
+            for (int i = start; i <= end; i++)
             {
+                // Candidats uniquement si "peak" selon critères robustes
+                if (!IsProminentPeak(spec, i, i0, i1))
+                    continue;
+
                 double db = spec[i];
                 if (db > bestDb)
                 {
@@ -3011,105 +3371,27 @@ namespace AudioHexViewer
                 }
             }
 
+            // Fallback : si aucun "pic visible" détecté, on retombe sur le max simple
+            // (pour ne jamais avoir un bouton Peak "muet" sur certains signaux).
+            if (best < 0)
+            {
+                best = i0;
+                bestDb = spec[i0];
+                for (int i = i0 + 1; i <= i1; i++)
+                {
+                    double db = spec[i];
+                    if (db > bestDb)
+                    {
+                        bestDb = db;
+                        best = i;
+                    }
+                }
+            }
+
             peakHz = freqAxis[best];
             return true;
         }
-        //
-        /// <summary>
-        /// Trouve le pic local précédent/suivant dans la plage X visible, relativement à la position actuelle du curseur.
-        /// Définition "pic" (volontairement simple, robuste, testable) :
-        /// - maximum local sur 3 points : spec[i-1] &lt;= spec[i] &amp;&amp; spec[i] &gt; spec[i+1]
-        /// - on ignore les bords (i0 et i1)
-        /// Remarques :
-        /// - Pour Next, le scan commence à (idxCur+1) ; pour Previous à (idxCur-1)
-        /// - Ne fait PAS de wrap-around : si aucun pic dans la direction, retourne false.
-        /// </summary>
-        private bool TryFindAdjacentPeakFrequencyForCursor(bool isCursor1, bool next, out double peakHz)
-        {
-            peakHz = 0;
 
-            if (freqAxis == null || freqAxis.Length == 0) return false;
-
-            // voie réellement trackée
-            var curve = ResolveCurveForCursor(isCursor1);
-            if (curve == ResolvedCurve.None) return false;
-
-            double[]? spec = null;
-            switch (curve)
-            {
-                case ResolvedCurve.Left:
-                    spec = currentLeftSpectrum;
-                    break;
-                case ResolvedCurve.Right:
-                    spec = currentRightSpectrum;
-                    break;
-                case ResolvedCurve.Gain:
-                    spec = currentLeftSpectrum;      // Gain FRF stocké ici (dB)
-                    break;
-                case ResolvedCurve.Phase:
-                    spec = currentFrfPhaseDeg;       // Phase FRF (deg)
-                    break;
-            }
-
-            if (spec == null || spec.Length == 0) return false;
-
-            var area = chartSpectrum.ChartAreas["SpectrumArea"];
-
-            // plage visible du graphe (spec demandé)
-            double fMin = area.AxisX.Minimum;
-            double fMax = area.AxisX.Maximum;
-            if (fMax <= fMin) return false;
-
-            bool useLog = (chkLogX != null && chkLogX.Checked);
-            int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
-
-            int i0 = LowerBound(freqAxis, fMin);
-            int i1 = UpperBound(freqAxis, fMax) - 1;
-
-            i0 = Math.Max(i0, minIdx);
-            i1 = Math.Min(i1, Math.Min(freqAxis.Length - 1, spec.Length - 1));
-
-            // On a besoin au minimum de (i-1, i, i+1)
-            if (i1 - i0 < 2) return false;
-
-            int idxCur = isCursor1 ? _cursorIdxL : _cursorIdxR;
-            idxCur = Math.Max(i0, Math.Min(i1, idxCur));
-
-            if (next)
-            {
-                // scan vers la droite : premier pic local après idxCur
-                for (int i = Math.Max(i0 + 1, idxCur + 1); i <= i1 - 1; i++)
-                {
-                    double a = spec[i - 1];
-                    double b = spec[i];
-                    double c = spec[i + 1];
-
-                    if (a <= b && b > c)
-                    {
-                        peakHz = freqAxis[i];
-                        return true;
-                    }
-                }
-            }
-            else
-            {
-                // scan vers la gauche : premier pic local avant idxCur
-                for (int i = Math.Min(i1 - 1, idxCur - 1); i >= i0 + 1; i--)
-                {
-                    double a = spec[i - 1];
-                    double b = spec[i];
-                    double c = spec[i + 1];
-
-                    if (a <= b && b > c)
-                    {
-                        peakHz = freqAxis[i];
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
 
         //
         private static int LowerBound(double[] a, double x)
@@ -3412,10 +3694,6 @@ namespace AudioHexViewer
             PositionCursorInfoLabels();
             chartSpectrum.Invalidate();
         }
-
-
-
-
 
         //
         private void UpdateRunButtonAppearance()
