@@ -3,8 +3,6 @@ Chose à faire :
 Le 21/01/2026
 -------------
 
-
-
 1 - Ajout d'une fonction Bode Plot (ratio)  
     h) Ajouter l'affichage de la cohérence du FRF
 
@@ -15,11 +13,6 @@ Le 21/01/2026
 5 - Ajouter une fonction de moyennage cohérente (synchrone) pour les mesures de THD 
 
 6 - Pour le mode FRF (Bode Plot), le moyennage serait à revoir...
-
-7 - Améliorations du fonctionnent des curseurs :
-    a) De chaque coté du bouton "Peak", ajouter un bouton < et >. 
-    Un appui permet de chercher "Previous Peak" ou "NextPeak".
-    b) Intégrer les curseurs dans le panneau de mesures à droite, tout en bas.
 
 8 - Prévoir la normalisation de gain/phase (calibration) pour le mode FRF.(plus tard)
 

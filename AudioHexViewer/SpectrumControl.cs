@@ -6022,7 +6022,10 @@ private static void DecimateForPlotWithGivenFreqAxis(
                         {
                             float yPix = (float)area.AxisY.ValueToPixelPosition(y);
 
-                            string txt = y.ToString(fmt, CultureInfo.InvariantCulture);
+                            //string txt = y.ToString(fmt, CultureInfo.InvariantCulture);
+                            // En mode Bode Plot (FRF), l’axe Y2 correspond à la phase => unité en degrés sur les labels majeurs
+                            string txt = y.ToString(fmt, CultureInfo.InvariantCulture) + " dB";
+
                             SizeF sz = e.ChartGraphics.Graphics.MeasureString(txt, majorFont);
 
                             float xText = xLeftPlot - sz.Width - margin;
@@ -6078,7 +6081,10 @@ private static void DecimateForPlotWithGivenFreqAxis(
                         {
                             float yPix = (float)area.AxisY2.ValueToPixelPosition(y);
 
-                            string txt = y.ToString(fmt, CultureInfo.InvariantCulture);
+                            //string txt = y.ToString(fmt, CultureInfo.InvariantCulture);
+                            // Phase axis (Y2) in FRF/Bode plot: add degree symbol on major labels
+                            string txt = y.ToString(fmt, CultureInfo.InvariantCulture) + "°";
+
                             SizeF sz = e.ChartGraphics.Graphics.MeasureString(txt, majorFont);
 
                             float xText = xRightPlot + gap + margin;
