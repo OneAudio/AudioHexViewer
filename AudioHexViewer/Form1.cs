@@ -1291,29 +1291,10 @@ namespace AudioHexViewer
             // Verrouille la largeur minimale  la largeur par dfaut
             this.MinimumSize = new Size(this.Width, this.MinimumSize.Height);
 
-            // Largeur et hauteur minimales = taille par dfaut au dmarrage
             _minWidth = this.Width;
-            // Calcule la hauteur minimale "sans graphs" (sans bouger la fentre)
-            _minHeightNoGraphs = ComputeNoGraphsHeight();
-            // Hauteur mini quand les graphs sont visibles (à ajuster si besoin)
-            _minHeightWithGraphs = Math.Max(this.Height, _minHeightNoGraphs + 260);
+            _minHeightNoGraphs = this.Height; // minimum = taille initiale
 
-            // Hauteur avec graphs
-            _borderStyleWithGraphs = this.FormBorderStyle;
-            //_borderStyleSaved = true;
-
-            // Verrouille largeur min + hauteur min (sans graphs)
             this.MinimumSize = new Size(_minWidth, _minHeightNoGraphs);
-
-
-            levelFontRegular = new Font("Tahoma", 12F, FontStyle.Regular);
-            levelFontBold = new Font("Tahoma", 12F, FontStyle.Bold);
-
-            lblLeftLevel.Font = levelFontRegular;
-            lblRightLevel.Font = levelFontRegular;
-
-            // Assurer que l'tat du split correspond au menu au dmarrage
-            splitMain.Panel2Collapsed = !menuShowGraphs.Checked;
 
             // Modes possibles pour la valeur mise en avant
             comboDisplayMode.Items.AddRange(new object[]
@@ -2749,138 +2730,7 @@ namespace AudioHexViewer
                                 MessageBoxIcon.Error);
             }
         }
-
-        private int ComputeNoGraphsHeight()
-        {
-            int nonClientHeight = this.Height - this.ClientSize.Height;
-
-            // Hauteur ncessaire du contenu du panneau haut
-            int panel1Needed = 0;
-            foreach (Control c in splitMain.Panel1.Controls)
-                panel1Needed = Math.Max(panel1Needed, c.Bottom);
-
-            int padding = 8;
-
-            // Hauteur client cible
-            int targetClientHeight = splitMain.Top + panel1Needed + padding;
-
-            // Hauteur totale fentre
-            return targetClientHeight + nonClientHeight;
-        }
         //
-        private void ApplyViewState()
-        {
-            bool showGraphs = menuShowGraphs.Checked;
-            bool graphOnly = menuShowGraphOnly.Checked;
-
-            // "Graph only" n'a pas de sens si les graphs sont cachés
-            if (!showGraphs && graphOnly)
-            {
-                menuShowGraphOnly.Checked = false;
-                graphOnly = false;
-            }
-
-            // Affiche/masque la zone graphs (Panel2)
-            splitMain.Panel2Collapsed = !showGraphs;
-
-            // Affiche/masque le panneau haut (Panel1)
-            splitMain.Panel1Collapsed = graphOnly;
-
-            if (showGraphs)
-            {
-                // Mode graphs => fenêtre redimensionnable
-                this.FormBorderStyle = FormBorderStyle.Sizable;
-                this.MaximizeBox = true;
-                this.MinimizeBox = true;
-                this.MaximumSize = Size.Empty;
-
-                if (_minHeightWithGraphs <= 0)
-                    _minHeightWithGraphs = Math.Max(this.Height, _minHeightNoGraphs + 260);
-
-                this.MinimumSize = new Size(_minWidth, _minHeightWithGraphs);
-
-                // Si on est en "Graph only", on force l'onglet Spectrum (logique avec ta demande)
-                if (graphOnly && tabAnalysis != null && tabSpectrum != null)
-                    tabAnalysis.SelectedTab = tabSpectrum;
-            }
-            else
-            {
-                // Mode compact (pas de graphs) => fenêtre fixe
-                this.FormBorderStyle = FormBorderStyle.FixedSingle;
-                this.MaximizeBox = false;
-
-                this.MinimumSize = new Size(_minWidth, _minHeightNoGraphs);
-                this.MaximumSize = Size.Empty;
-
-                // si graphs cachés, on s'assure que le top est visible
-                splitMain.Panel1Collapsed = false;
-
-                if (this.WindowState == FormWindowState.Maximized)
-                    this.WindowState = FormWindowState.Normal;
-
-                this.Size = new Size(_minWidth, _minHeightNoGraphs);
-            }
-        }
-
-        //
-        private void ApplyShowGraphsState()
-        {
-            bool show = menuShowGraphs.Checked;
-
-            splitMain.Panel2Collapsed = !show;
-
-            if (show)
-            {
-                // IMPORTANT: réactiver le resize + le bouton "agrandir"
-                this.FormBorderStyle = FormBorderStyle.Sizable;
-                this.MaximizeBox = true;
-                this.MinimizeBox = true;   // optionnel mais conseillé
-                this.MaximumSize = Size.Empty; // aucune limite max (évite le carré grisé)
-
-                if (_minHeightWithGraphs <= 0)
-                    _minHeightWithGraphs = Math.Max(this.Height, _minHeightNoGraphs + 260);
-
-                this.MinimumSize = new Size(_minWidth, _minHeightWithGraphs);
-            }
-            else
-            {
-                // Mode compact (pas de resize)
-                this.FormBorderStyle = FormBorderStyle.FixedSingle;
-                this.MaximizeBox = false;
-
-                this.MinimumSize = new Size(_minWidth, _minHeightNoGraphs);
-                this.MaximumSize = Size.Empty;
-
-                // Si la fenêtre est maximisée, repasser en Normal sinon on ne peut pas la réduire
-                if (this.WindowState == FormWindowState.Maximized)
-                    this.WindowState = FormWindowState.Normal;
-
-                // Forcer la taille compacte en largeur + hauteur
-                this.Size = new Size(_minWidth, _minHeightNoGraphs);
-            }
-        }
-
-
-        //
-        private void menuShowGraphs_Click(object? sender, EventArgs e)
-        {
-            // Si l'utilisateur cache les graphs, on désactive aussi "Graph only"
-            if (!menuShowGraphs.Checked && menuShowGraphOnly.Checked)
-                menuShowGraphOnly.Checked = false;
-
-            ApplyViewState();
-        }
-        //
-        private void menuShowGraphOnly_Click(object? sender, EventArgs e)
-        {
-            // Si on active "Graph only", on doit forcément afficher les graphs
-            if (menuShowGraphOnly.Checked && !menuShowGraphs.Checked)
-                menuShowGraphs.Checked = true;
-
-            ApplyViewState();
-        }
-
-
         //
         private void btnRecord_Click(object sender, EventArgs e)
         {
@@ -3957,7 +3807,6 @@ namespace AudioHexViewer
                 ApplyAnalysisSettings(_loadedSessionSettings);
 
             ApplyLoadedSessionSettingsToExistingControls();
-            BeginInvoke(new Action(ApplyViewState));
 
         }
 

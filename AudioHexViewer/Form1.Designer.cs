@@ -41,14 +41,12 @@ namespace AudioHexViewer
             alwaysOnTopToolStripMenuItem = new ToolStripMenuItem();
             menuData = new ToolStripMenuItem();
             menuShowAllFormats = new ToolStripMenuItem();
-            menuShowGraphs = new ToolStripMenuItem();
-            menuShowGraphOnly = new ToolStripMenuItem();
             menuSampleSize = new ToolStripMenuItem();
             menuOverlap = new ToolStripMenuItem();
             menuBuffer = new ToolStripMenuItem();
             exportToolStripMenuItem = new ToolStripMenuItem();
             menuExportPng = new ToolStripMenuItem();
-            splitMain = new SplitContainer();
+            panelTop = new Panel();
             lblFormatInfo = new Label();
             label3 = new Label();
             label7 = new Label();
@@ -78,10 +76,6 @@ namespace AudioHexViewer
             txtLeft = new RichTextBox();
             txtRight = new RichTextBox();
             menuStrip1.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)splitMain).BeginInit();
-            splitMain.Panel1.SuspendLayout();
-            splitMain.Panel2.SuspendLayout();
-            splitMain.SuspendLayout();
             tabAnalysis.SuspendLayout();
             tabHistogram.SuspendLayout();
             SuspendLayout();
@@ -154,7 +148,7 @@ namespace AudioHexViewer
             // menuData
             // 
             menuData.Alignment = ToolStripItemAlignment.Right;
-            menuData.DropDownItems.AddRange(new ToolStripItem[] { menuShowAllFormats, menuShowGraphs, menuShowGraphOnly });
+            menuData.DropDownItems.AddRange(new ToolStripItem[] { menuShowAllFormats });
             menuData.Name = "menuData";
             menuData.Size = new Size(44, 21);
             menuData.Text = "View";
@@ -165,24 +159,6 @@ namespace AudioHexViewer
             menuShowAllFormats.Size = new Size(188, 22);
             menuShowAllFormats.Text = "Show all data formats";
             menuShowAllFormats.Click += menuShowAllFormats_Click;
-            // 
-            // menuShowGraphs
-            // 
-            menuShowGraphs.Checked = true;
-            menuShowGraphs.CheckOnClick = true;
-            menuShowGraphs.CheckState = CheckState.Checked;
-            menuShowGraphs.Name = "menuShowGraphs";
-            menuShowGraphs.Size = new Size(188, 22);
-            menuShowGraphs.Text = "Show graphs";
-            menuShowGraphs.Click += menuShowGraphs_Click;
-            // 
-            // menuShowGraphOnly
-            // 
-            menuShowGraphOnly.CheckOnClick = true;
-            menuShowGraphOnly.Name = "menuShowGraphOnly";
-            menuShowGraphOnly.Size = new Size(188, 22);
-            menuShowGraphOnly.Text = "Show Graph only";
-            menuShowGraphOnly.Click += menuShowGraphOnly_Click;
             // 
             // menuSampleSize
             // 
@@ -218,48 +194,40 @@ namespace AudioHexViewer
             menuExportPng.Size = new Size(209, 22);
             menuExportPng.Text = "Export graph to PNG/PDF";
             menuExportPng.Click += menuExportPng_Click;
+            //
             // 
-            // splitMain
+            // panelTop
             // 
-            splitMain.Dock = DockStyle.Fill;
-            splitMain.FixedPanel = FixedPanel.Panel1;
-            splitMain.IsSplitterFixed = true;
-            splitMain.Location = new Point(0, 0);
-            splitMain.Name = "splitMain";
-            splitMain.Orientation = Orientation.Horizontal;
-            // 
-            // splitMain.Panel1
-            // 
-            splitMain.Panel1.Controls.Add(lblFormatInfo);
-            splitMain.Panel1.Controls.Add(label3);
-            splitMain.Panel1.Controls.Add(label7);
-            splitMain.Panel1.Controls.Add(label6);
-            splitMain.Panel1.Controls.Add(label2);
-            splitMain.Panel1.Controls.Add(barLeftLevel);
-            splitMain.Panel1.Controls.Add(lblLeftLevel);
-            splitMain.Panel1.Controls.Add(barRightLevel);
-            splitMain.Panel1.Controls.Add(lblRightLevel);
-            splitMain.Panel1.Controls.Add(lblLeftMainTitle);
-            splitMain.Panel1.Controls.Add(lblLeftMainValue);
-            splitMain.Panel1.Controls.Add(lblRightMainTitle);
-            splitMain.Panel1.Controls.Add(lblRightMainValue);
-            splitMain.Panel1.Controls.Add(label4);
-            splitMain.Panel1.Controls.Add(comboDisplayMode);
-            splitMain.Panel1.Controls.Add(label1);
-            splitMain.Panel1.Controls.Add(btnStart);
-            splitMain.Panel1.Controls.Add(rbInput);
-            splitMain.Panel1.Controls.Add(rbOutput);
-            splitMain.Panel1.Controls.Add(comboDevices);
-            splitMain.Panel1.Controls.Add(btnRecord);
-            splitMain.Panel1.Controls.Add(btnCalV);
-            // 
-            // splitMain.Panel2
-            // 
-            splitMain.Panel2.Controls.Add(tabAnalysis);
-            splitMain.Panel2.Paint += splitContainer1_Panel2_Paint;
-            splitMain.Size = new Size(1138, 749);
-            splitMain.SplitterDistance = 160;
-            splitMain.TabIndex = 38;
+            panelTop.Dock = DockStyle.Top;
+            panelTop.Location = new Point(0, 25); // sous le MenuStrip (Auto en Dock, mais ok)
+            panelTop.Name = "panelTop";
+            panelTop.Size = new Size(1138, 160);  // reprend l’ancienne SplitterDistance
+            panelTop.TabIndex = 38;
+
+            // On y remet tous les contrôles qui étaient dans splitMain.Panel1
+            panelTop.Controls.Add(lblFormatInfo);
+            panelTop.Controls.Add(label3);
+            panelTop.Controls.Add(label7);
+            panelTop.Controls.Add(label6);
+            panelTop.Controls.Add(label2);
+            panelTop.Controls.Add(barLeftLevel);
+            panelTop.Controls.Add(lblLeftLevel);
+            panelTop.Controls.Add(barRightLevel);
+            panelTop.Controls.Add(lblRightLevel);
+            panelTop.Controls.Add(lblLeftMainTitle);
+            panelTop.Controls.Add(lblLeftMainValue);
+            panelTop.Controls.Add(lblRightMainTitle);
+            panelTop.Controls.Add(lblRightMainValue);
+            panelTop.Controls.Add(label4);
+            panelTop.Controls.Add(comboDisplayMode);
+            panelTop.Controls.Add(label1);
+            panelTop.Controls.Add(btnStart);
+            panelTop.Controls.Add(rbInput);
+            panelTop.Controls.Add(rbOutput);
+            panelTop.Controls.Add(comboDevices);
+            panelTop.Controls.Add(btnRecord);
+            panelTop.Controls.Add(btnCalV);
+
             // 
             // lblFormatInfo
             // 
@@ -575,9 +543,10 @@ namespace AudioHexViewer
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(1138, 749);
+            Controls.Add(tabAnalysis);
+            Controls.Add(panelTop);
             Controls.Add(menuStrip1);
             Controls.Add(label5);
-            Controls.Add(splitMain);
             HelpButton = true;
             MainMenuStrip = menuStrip1;
             Name = "Form1";
@@ -585,11 +554,6 @@ namespace AudioHexViewer
             Load += Form1_Load;
             menuStrip1.ResumeLayout(false);
             menuStrip1.PerformLayout();
-            splitMain.Panel1.ResumeLayout(false);
-            splitMain.Panel1.PerformLayout();
-            splitMain.Panel2.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)splitMain).EndInit();
-            splitMain.ResumeLayout(false);
             tabAnalysis.ResumeLayout(false);
             tabHistogram.ResumeLayout(false);
             ResumeLayout(false);
@@ -606,6 +570,7 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuOpenRecordsFolder;
         private ToolStripMenuItem alwaysOnTopToolStripMenuItem;
         private SplitContainer splitMain;
+        private Panel panelTop;
         private Label label3;
         private Label label7;
         private Label label6;
@@ -636,7 +601,6 @@ namespace AudioHexViewer
         private Label lblFormatInfo;
         private ToolStripMenuItem menuData;
         private ToolStripMenuItem menuShowAllFormats;
-        private ToolStripMenuItem menuShowGraphs;
         private System.Windows.Forms.RichTextBox txtLeft;
         private System.Windows.Forms.RichTextBox txtRight;
         private ToolStripMenuItem menuSampleSize;
@@ -644,6 +608,5 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuBuffer;
         private ToolStripMenuItem exportToolStripMenuItem;
         private ToolStripMenuItem menuExportPng;
-        private ToolStripMenuItem menuShowGraphOnly;
     }
 }
