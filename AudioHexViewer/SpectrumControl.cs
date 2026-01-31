@@ -128,6 +128,9 @@ namespace AudioHexViewer
         private VoltUnit _vdcUnitLeft = VoltUnit.mV;
         private VoltUnit _vdcUnitRight = VoltUnit.mV;
 
+        // Clamp utility for Threshold Peak detection
+        private static double Clamp(double v, double min, double max)
+        => (v < min) ? min : (v > max) ? max : v;
 
 
         /// <summary>
@@ -398,7 +401,7 @@ namespace AudioHexViewer
         // < / > peak navigation threshold (based on visible noise floor)
         // Editable via right-click on < or > buttons.
         // ------------------------------------------------------------------
-        private const double NoiseToPeakThresholdMinDb = 3.0;
+        private const double NoiseToPeakThresholdMinDb = 4.0;
         private const double NoiseToPeakThresholdMaxDb = 100.0;
 
         // Default = 12 dB (as requested)
@@ -2346,6 +2349,7 @@ namespace AudioHexViewer
             s.LevelCalOffsetDbLeft = _levelCalOffsetDbLeft;
             s.LevelCalValidRight = _levelCalValidRight;
             s.LevelCalOffsetDbRight = _levelCalOffsetDbRight;
+            s.NoiseToPeakThresholdDb = _noiseToPeakThresholdDb;
 
             return s;
         }
@@ -2415,6 +2419,9 @@ namespace AudioHexViewer
                     _avgExpAlpha = 0.0;
                     avgTargetCount = (s.Averaging >= 2) ? s.Averaging : 1;
                     ResetAveragingState();
+                    // --- Peak navigation threshold (Previous/Next Peak) ---
+                    _noiseToPeakThresholdDb = Clamp(s.NoiseToPeakThresholdDb, 4.0, 100.0);
+
 
                 }
 
@@ -3088,7 +3095,8 @@ namespace AudioHexViewer
                 ? tmp[tmp.Count / 2]
                 : 0.5 * (tmp[tmp.Count / 2 - 1] + tmp[tmp.Count / 2]);
 
-            double thresholdDb = noiseFloorDb + NoiseToPeakThresholdDb;
+            double thresholdDb = noiseFloorDb + _noiseToPeakThresholdDb;
+
 
             // 3) Build groups of contiguous PLOT points above threshold
             // and keep one peak per group (max value inside group)
@@ -3225,7 +3233,7 @@ namespace AudioHexViewer
         // Simple peak detection based on visible noise floor (median)
         // Used ONLY for Next/Prev peak navigation (< > buttons)
         // ------------------------------------------------------------------
-        private const double NOISE_TO_PEAK_THRESHOLD_DB = 6.0;
+       
 
         private static double MedianOfRange(double[] data, int i0, int i1)
         {
