@@ -394,6 +394,30 @@ namespace AudioHexViewer
         // Phase décimée pour le tracé (AxisY2) — uniquement en mode "Bode Plot"
         private double[]? _plotFrfPhaseDeg;
 
+        // ------------------------------------------------------------------
+        // < / > peak navigation threshold (based on visible noise floor)
+        // Editable via right-click on < or > buttons.
+        // ------------------------------------------------------------------
+        private const double NoiseToPeakThresholdMinDb = 3.0;
+        private const double NoiseToPeakThresholdMaxDb = 100.0;
+
+        // Default = 12 dB (as requested)
+        private double _noiseToPeakThresholdDb = 12.0;
+
+        private double NoiseToPeakThresholdDb
+        {
+            get => _noiseToPeakThresholdDb;
+            set
+            {
+                if (double.IsNaN(value) || double.IsInfinity(value))
+                    return;
+
+                _noiseToPeakThresholdDb = Math.Max(NoiseToPeakThresholdMinDb,
+                                       Math.Min(NoiseToPeakThresholdMaxDb, value));
+            }
+        }
+
+
         private double[]? _plotPeakLeft;
         private double[]? _plotPeakRight;
 
@@ -3064,7 +3088,7 @@ namespace AudioHexViewer
                 ? tmp[tmp.Count / 2]
                 : 0.5 * (tmp[tmp.Count / 2 - 1] + tmp[tmp.Count / 2]);
 
-            double thresholdDb = noiseFloorDb + NOISE_TO_PEAK_THRESHOLD_DB;
+            double thresholdDb = noiseFloorDb + NoiseToPeakThresholdDb;
 
             // 3) Build groups of contiguous PLOT points above threshold
             // and keep one peak per group (max value inside group)
@@ -4420,6 +4444,128 @@ private static void DecimateForPlotWithGivenFreqAxis(
             }
 
         }
+        //
+        // ------------------------------------------------------------------
+        // UI: right-click on < or > buttons => edit NoiseToPeakThresholdDb
+        // ------------------------------------------------------------------
+        private void OpenNoiseToPeakThresholdDialog()
+        {
+            using var dlg = new NoiseToPeakThresholdDialog(
+                currentValueDb: NoiseToPeakThresholdDb,
+                minDb: NoiseToPeakThresholdMinDb,
+                maxDb: NoiseToPeakThresholdMaxDb);
+
+            if (dlg.ShowDialog(this.FindForm()) == DialogResult.OK)
+            {
+                NoiseToPeakThresholdDb = dlg.ValueDb;
+                // Pas besoin de recalcul automatique : la valeur sera prise en compte au prochain < / >
+            }
+        }
+
+        /// <summary>
+        /// Small dialog for editing the Noise→Peak threshold (dB).
+        /// - Editable ComboBox (direct input)
+        /// - Range enforced: [minDb..maxDb]
+        /// - OK/Cancel
+        /// </summary>
+        private sealed class NoiseToPeakThresholdDialog : Form
+        {
+            private readonly NumericUpDown _nud;
+            private readonly Button _btnOk;
+            private readonly Button _btnCancel;
+            private readonly double _minDb;
+            private readonly double _maxDb;
+
+            public double ValueDb { get; private set; }
+
+            public NoiseToPeakThresholdDialog(double currentValueDb, double minDb, double maxDb)
+            {
+                _minDb = minDb;
+                _maxDb = maxDb;
+
+                Text = "Noise→Peak Thres (dB)";
+                FormBorderStyle = FormBorderStyle.FixedDialog;
+                StartPosition = FormStartPosition.CenterParent;
+                MinimizeBox = false;
+                MaximizeBox = false;
+                ShowInTaskbar = false;
+                AutoSize = true;
+                AutoSizeMode = AutoSizeMode.GrowAndShrink;
+                Padding = new Padding(10);
+
+                var lbl = new Label
+                {
+                    AutoSize = true,
+                    Text = $"Threshold dB [{_minDb:0}..{_maxDb:0}] :",
+                    Margin = new Padding(0, 0, 0, 6)
+                };
+
+                _nud = new NumericUpDown
+                {
+                    Width = 120,
+                    Minimum = (decimal)minDb,
+                    Maximum = (decimal)maxDb,
+
+                    // Incréments de 2 dB demandés
+                    Increment = 2m,
+
+                    // Valeurs en dB : on reste en entier (si tu veux 0.5 dB un jour => DecimalPlaces=1 et Increment=0.5m)
+                    DecimalPlaces = 0,
+
+                    // Confort visuel
+                    TextAlign = HorizontalAlignment.Right,
+                };
+                _nud.Value = (decimal)Math.Max(minDb, Math.Min(maxDb, currentValueDb));
+
+                _btnOk = new Button { Text = "OK", DialogResult = DialogResult.OK, AutoSize = true };
+                _btnCancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };
+
+                AcceptButton = _btnOk;
+                CancelButton = _btnCancel;
+
+                var buttons = new FlowLayoutPanel
+                {
+                    FlowDirection = FlowDirection.RightToLeft,
+                    AutoSize = true,
+                    Dock = DockStyle.Bottom,
+                    Margin = new Padding(0, 10, 0, 0)
+                };
+                buttons.Controls.Add(_btnCancel);
+                buttons.Controls.Add(_btnOk);
+
+                var panel = new FlowLayoutPanel
+                {
+                    FlowDirection = FlowDirection.TopDown,
+                    AutoSize = true,
+                    Dock = DockStyle.Fill
+                };
+                panel.Controls.Add(lbl); panel.Controls.Add(_nud);
+
+                panel.Controls.Add(buttons);
+
+                Controls.Add(panel);
+
+                // Validation au OK
+                _btnOk.Click += (_, __) =>
+                {
+                    double v = (double)_nud.Value;
+                    ValueDb = v;
+                    DialogResult = DialogResult.OK;
+                    Close();
+
+                    if (v < _minDb || v > _maxDb)
+                    {
+                        MessageBox.Show(this, $"Value must be between {_minDb:0} and {_maxDb:0} dB.",
+                            "Out of range", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        DialogResult = DialogResult.None;
+                        return;
+                    }
+
+                    ValueDb = v;
+                };
+            }           
+        }
+
         //
         private static string FormatHzK(double hz)
         {

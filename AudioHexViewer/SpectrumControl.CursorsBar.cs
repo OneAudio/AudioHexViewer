@@ -101,24 +101,32 @@ namespace AudioHexViewer
         //
         private void WireCursorBarEvents()
         {
-            if (_c1Toggle == null || _c2Toggle == null
-                || _c1TrackBtn == null || _c2TrackBtn == null
+            if (_c1Toggle == null || _c2Toggle == null || _c1TrackBtn == null || _c2TrackBtn == null
                 || _c1PrevPeak == null || _c1Peak == null || _c1NextPeak == null || _c1Set == null
                 || _c2PrevPeak == null || _c2Peak == null || _c2NextPeak == null || _c2Set == null)
             return;
 
 
+
+            // IMPORTANT : éviter de brancher deux fois si InitCursorBarUi est rappelé
             // IMPORTANT : éviter de brancher deux fois si InitCursorBarUi est rappelé
             _c1Toggle.Click -= C1Toggle_Click;
             _c2Toggle.Click -= C2Toggle_Click;
             _c1TrackBtn.Click -= C1Track_Click;
             _c2TrackBtn.Click -= C2Track_Click;
+
             _c1PrevPeak.Click -= C1PrevPeak_Click;
+            _c1NextPeak.Click -= C1NextPeak_Click;
             _c2PrevPeak.Click -= C2PrevPeak_Click;
+            _c2NextPeak.Click -= C2NextPeak_Click;
+
+            _c1PrevPeak.MouseUp -= PrevNextPeak_MouseUp;
+            _c1NextPeak.MouseUp -= PrevNextPeak_MouseUp;
+            _c2PrevPeak.MouseUp -= PrevNextPeak_MouseUp;
+            _c2NextPeak.MouseUp -= PrevNextPeak_MouseUp;
+
             _c1Peak.Click -= C1Peak_Click;
             _c2Peak.Click -= C2Peak_Click;
-            _c1NextPeak.Click -= C1NextPeak_Click;
-            _c2NextPeak.Click -= C2NextPeak_Click;
             _c1Set.Click -= C1Set_Click;
             _c2Set.Click -= C2Set_Click;
 
@@ -126,14 +134,22 @@ namespace AudioHexViewer
             _c2Toggle.Click += C2Toggle_Click;
             _c1TrackBtn.Click += C1Track_Click;
             _c2TrackBtn.Click += C2Track_Click;
+
             _c1PrevPeak.Click += C1PrevPeak_Click;
+            _c1NextPeak.Click += C1NextPeak_Click;
             _c2PrevPeak.Click += C2PrevPeak_Click;
+            _c2NextPeak.Click += C2NextPeak_Click;
+
+            _c1PrevPeak.MouseUp += PrevNextPeak_MouseUp;
+            _c1NextPeak.MouseUp += PrevNextPeak_MouseUp;
+            _c2PrevPeak.MouseUp += PrevNextPeak_MouseUp;
+            _c2NextPeak.MouseUp += PrevNextPeak_MouseUp;
+
             _c1Peak.Click += C1Peak_Click;
             _c2Peak.Click += C2Peak_Click;
-            _c1NextPeak.Click += C1NextPeak_Click;
-            _c2NextPeak.Click += C2NextPeak_Click;
             _c1Set.Click += C1Set_Click;
             _c2Set.Click += C2Set_Click;
+
 
             // Si quelque chose ailleurs modifie les checkbox (même invisibles), on resynchronise l’UI
             if (chkCursorL != null)
@@ -189,11 +205,11 @@ namespace AudioHexViewer
         /// C1: Next peak (">") button.        
         private void C1NextPeak_Click(object? sender, EventArgs e) => MoveCursorToAdjacentPeak(isC1: true, next: true);
 
-        
+
         /// C2: Previous peak ("<") button.        
         private void C2PrevPeak_Click(object? sender, EventArgs e) => MoveCursorToAdjacentPeak(isC1: false, next: false);
 
-        
+
         /// C2: Next peak (">") button.        
         private void C2NextPeak_Click(object? sender, EventArgs e) => MoveCursorToAdjacentPeak(isC1: false, next: true);
 
@@ -343,9 +359,7 @@ namespace AudioHexViewer
                 _ => CursorTrackMode.Auto,
             };
         }
-
-
-        
+        //              
         /// Convertit CursorTrackMode vers le libellé affiché.
         /// En FRF: Left->Gain, Right->Phase
         /// En normal: Left/Right        
@@ -378,9 +392,7 @@ namespace AudioHexViewer
                 if (!CursorLeftEnabled) CursorLeftEnabled = true;
 
                 if (TryFindPeakFrequencyForCursor1(out var hz))
-                    SetCursor1FrequencyHz(hz);
-                else
-                    MessageBox.Show(this.FindForm(), "Peak non disponible pour C1 (pas de data ou voie inactive).");
+                    SetCursor1FrequencyHz(hz);               
             }
             else
             {
@@ -388,25 +400,20 @@ namespace AudioHexViewer
 
                 if (TryFindPeakFrequencyForCursor2(out var hz))
                     SetCursor2FrequencyHz(hz);
-                else
-                    MessageBox.Show(this.FindForm(), "Peak non disponible pour C2 (pas de data ou voie inactive).");
             }
-
             SyncCursorUiFromModel();
         }
         //
-        /// <summary>
-        /// Déplace le curseur sur le pic "visible" précédent/suivant (dans la plage X visible).
-        ///
-        /// IMPORTANT: la définition de "pic" n'est pas le simple 3-points local max.
-        /// On utilise l'algo robuste qui vit dans SpectrumControl.cs:
-        /// - maximum local sur une courbe légèrement lissée
-        /// - seuil de proéminence (dB)
-        /// - seuil relatif au maximum visible (dB)
-        ///
-        /// Le scan commence APRES la position actuelle du curseur (pour Next),
-        /// ou AVANT (pour Previous), afin d'éviter de retomber sur le même pic.
-        /// </summary>
+        //
+        private void PrevNextPeak_MouseUp(object? sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Right)
+                return;
+
+            // Right-click on < or > : open threshold dialog
+            OpenNoiseToPeakThresholdDialog();
+        }
+        //
         private void MoveCursorToAdjacentPeak(bool isC1, bool next)
         {
             if (isC1)
@@ -417,15 +424,11 @@ namespace AudioHexViewer
                 {
                     if (TryFindNextPeakFrequencyForCursor1(out var hz))
                         SetCursor1FrequencyHz(hz);
-                    else
-                        MessageBox.Show(this.FindForm(), "Aucun pic suivant trouvé pour C1 (plage visible / data).");
                 }
                 else
                 {
                     if (TryFindPreviousPeakFrequencyForCursor1(out var hz))
                         SetCursor1FrequencyHz(hz);
-                    else
-                        MessageBox.Show(this.FindForm(), "Aucun pic précédent trouvé pour C1 (plage visible / data).");
                 }
             }
             else
@@ -436,21 +439,17 @@ namespace AudioHexViewer
                 {
                     if (TryFindNextPeakFrequencyForCursor2(out var hz))
                         SetCursor2FrequencyHz(hz);
-                    else
-                        MessageBox.Show(this.FindForm(), "Aucun pic suivant trouvé pour C2 (plage visible / data).");
                 }
                 else
                 {
                     if (TryFindPreviousPeakFrequencyForCursor2(out var hz))
                         SetCursor2FrequencyHz(hz);
-                    else
-                        MessageBox.Show(this.FindForm(), "Aucun pic précédent trouvé pour C2 (plage visible / data).");
                 }
             }
 
             SyncCursorUiFromModel();
         }
-
+        //
         //
         private void OpenSimpleSetDialog(bool isC1)
         {
