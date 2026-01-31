@@ -41,6 +41,7 @@ namespace AudioHexViewer
             alwaysOnTopToolStripMenuItem = new ToolStripMenuItem();
             menuData = new ToolStripMenuItem();
             menuShowAllFormats = new ToolStripMenuItem();
+            menuDataView = new ToolStripMenuItem();
             menuSampleSize = new ToolStripMenuItem();
             menuOverlap = new ToolStripMenuItem();
             menuBuffer = new ToolStripMenuItem();
@@ -48,20 +49,10 @@ namespace AudioHexViewer
             menuExportPng = new ToolStripMenuItem();
             panelTop = new Panel();
             lblFormatInfo = new Label();
-            label3 = new Label();
             label7 = new Label();
             label6 = new Label();
-            label2 = new Label();
             barLeftLevel = new Panel();
-            lblLeftLevel = new Label();
             barRightLevel = new Panel();
-            lblRightLevel = new Label();
-            lblLeftMainTitle = new Label();
-            lblLeftMainValue = new Label();
-            lblRightMainTitle = new Label();
-            lblRightMainValue = new Label();
-            label4 = new Label();
-            comboDisplayMode = new ComboBox();
             label1 = new Label();
             btnStart = new Button();
             rbInput = new RadioButton();
@@ -76,6 +67,7 @@ namespace AudioHexViewer
             txtLeft = new RichTextBox();
             txtRight = new RichTextBox();
             menuStrip1.SuspendLayout();
+            panelTop.SuspendLayout();
             tabAnalysis.SuspendLayout();
             tabHistogram.SuspendLayout();
             SuspendLayout();
@@ -148,7 +140,7 @@ namespace AudioHexViewer
             // menuData
             // 
             menuData.Alignment = ToolStripItemAlignment.Right;
-            menuData.DropDownItems.AddRange(new ToolStripItem[] { menuShowAllFormats });
+            menuData.DropDownItems.AddRange(new ToolStripItem[] { menuShowAllFormats, menuDataView });
             menuData.Name = "menuData";
             menuData.Size = new Size(44, 21);
             menuData.Text = "View";
@@ -159,6 +151,13 @@ namespace AudioHexViewer
             menuShowAllFormats.Size = new Size(188, 22);
             menuShowAllFormats.Text = "Show all data formats";
             menuShowAllFormats.Click += menuShowAllFormats_Click;
+            // 
+            // menuDataView
+            // 
+            menuDataView.Name = "menuDataView";
+            menuDataView.Size = new Size(188, 22);
+            menuDataView.Text = "DataView";
+            menuDataView.Click += menuDataView_Click;
             // 
             // menuSampleSize
             // 
@@ -194,32 +193,14 @@ namespace AudioHexViewer
             menuExportPng.Size = new Size(209, 22);
             menuExportPng.Text = "Export graph to PNG/PDF";
             menuExportPng.Click += menuExportPng_Click;
-            //
             // 
             // panelTop
             // 
-            panelTop.Dock = DockStyle.Top;
-            panelTop.Location = new Point(0, 25); // sous le MenuStrip (Auto en Dock, mais ok)
-            panelTop.Name = "panelTop";
-            panelTop.Size = new Size(1138, 160);  // reprend l’ancienne SplitterDistance
-            panelTop.TabIndex = 38;
-
-            // On y remet tous les contrôles qui étaient dans splitMain.Panel1
             panelTop.Controls.Add(lblFormatInfo);
-            panelTop.Controls.Add(label3);
             panelTop.Controls.Add(label7);
             panelTop.Controls.Add(label6);
-            panelTop.Controls.Add(label2);
             panelTop.Controls.Add(barLeftLevel);
-            panelTop.Controls.Add(lblLeftLevel);
             panelTop.Controls.Add(barRightLevel);
-            panelTop.Controls.Add(lblRightLevel);
-            panelTop.Controls.Add(lblLeftMainTitle);
-            panelTop.Controls.Add(lblLeftMainValue);
-            panelTop.Controls.Add(lblRightMainTitle);
-            panelTop.Controls.Add(lblRightMainValue);
-            panelTop.Controls.Add(label4);
-            panelTop.Controls.Add(comboDisplayMode);
             panelTop.Controls.Add(label1);
             panelTop.Controls.Add(btnStart);
             panelTop.Controls.Add(rbInput);
@@ -227,7 +208,11 @@ namespace AudioHexViewer
             panelTop.Controls.Add(comboDevices);
             panelTop.Controls.Add(btnRecord);
             panelTop.Controls.Add(btnCalV);
-
+            panelTop.Dock = DockStyle.Top;
+            panelTop.Location = new Point(0, 25);
+            panelTop.Name = "panelTop";
+            panelTop.Size = new Size(1138, 160);
+            panelTop.TabIndex = 38;
             // 
             // lblFormatInfo
             // 
@@ -241,18 +226,6 @@ namespace AudioHexViewer
             lblFormatInfo.TabIndex = 63;
             lblFormatInfo.Text = "Format: (unknown)";
             lblFormatInfo.Click += lblFormatInfo_Click;
-            // 
-            // label3
-            // 
-            label3.AutoSize = true;
-            label3.Font = new Font("Tahoma", 15.75F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            label3.ForeColor = SystemColors.HotTrack;
-            label3.Location = new Point(384, 61);
-            label3.Name = "label3";
-            label3.Size = new Size(82, 25);
-            label3.TabIndex = 56;
-            label3.Text = "RIGHT";
-            label3.TextAlign = ContentAlignment.TopCenter;
             // 
             // label7
             // 
@@ -274,18 +247,6 @@ namespace AudioHexViewer
             label6.TabIndex = 54;
             label6.Text = "dBFS Level";
             // 
-            // label2
-            // 
-            label2.AutoSize = true;
-            label2.Font = new Font("Tahoma", 15.75F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            label2.ForeColor = SystemColors.HotTrack;
-            label2.Location = new Point(8, 61);
-            label2.Name = "label2";
-            label2.Size = new Size(62, 25);
-            label2.TabIndex = 52;
-            label2.Text = "LEFT";
-            label2.TextAlign = ContentAlignment.TopCenter;
-            // 
             // barLeftLevel
             // 
             barLeftLevel.BackColor = Color.FromArgb(32, 32, 32);
@@ -295,18 +256,6 @@ namespace AudioHexViewer
             barLeftLevel.Size = new Size(360, 15);
             barLeftLevel.TabIndex = 57;
             // 
-            // lblLeftLevel
-            // 
-            lblLeftLevel.BackColor = SystemColors.GradientInactiveCaption;
-            lblLeftLevel.Font = new Font("Tahoma", 12F, FontStyle.Regular, GraphicsUnit.Point, 0);
-            lblLeftLevel.ForeColor = SystemColors.HotTrack;
-            lblLeftLevel.Location = new Point(268, 58);
-            lblLeftLevel.Name = "lblLeftLevel";
-            lblLeftLevel.Size = new Size(100, 30);
-            lblLeftLevel.TabIndex = 49;
-            lblLeftLevel.Text = "-∞ dBFS";
-            lblLeftLevel.TextAlign = ContentAlignment.MiddleCenter;
-            // 
             // barRightLevel
             // 
             barRightLevel.BackColor = Color.FromArgb(32, 32, 32);
@@ -315,80 +264,6 @@ namespace AudioHexViewer
             barRightLevel.Name = "barRightLevel";
             barRightLevel.Size = new Size(360, 16);
             barRightLevel.TabIndex = 58;
-            // 
-            // lblRightLevel
-            // 
-            lblRightLevel.BackColor = SystemColors.GradientInactiveCaption;
-            lblRightLevel.Font = new Font("Tahoma", 12F, FontStyle.Regular, GraphicsUnit.Point, 0);
-            lblRightLevel.ForeColor = SystemColors.HotTrack;
-            lblRightLevel.Location = new Point(644, 58);
-            lblRightLevel.Name = "lblRightLevel";
-            lblRightLevel.Size = new Size(100, 30);
-            lblRightLevel.TabIndex = 50;
-            lblRightLevel.Text = "-∞ dBFS";
-            lblRightLevel.TextAlign = ContentAlignment.MiddleCenter;
-            // 
-            // lblLeftMainTitle
-            // 
-            lblLeftMainTitle.BackColor = SystemColors.ControlLight;
-            lblLeftMainTitle.Font = new Font("Tahoma", 12F);
-            lblLeftMainTitle.Location = new Point(8, 89);
-            lblLeftMainTitle.Name = "lblLeftMainTitle";
-            lblLeftMainTitle.Size = new Size(360, 30);
-            lblLeftMainTitle.TabIndex = 59;
-            lblLeftMainTitle.Text = "Float";
-            lblLeftMainTitle.TextAlign = ContentAlignment.MiddleCenter;
-            // 
-            // lblLeftMainValue
-            // 
-            lblLeftMainValue.BackColor = SystemColors.InactiveCaption;
-            lblLeftMainValue.Font = new Font("Segoe UI", 16F, FontStyle.Bold);
-            lblLeftMainValue.Location = new Point(8, 119);
-            lblLeftMainValue.Name = "lblLeftMainValue";
-            lblLeftMainValue.Size = new Size(360, 35);
-            lblLeftMainValue.TabIndex = 60;
-            lblLeftMainValue.Text = "0.000000";
-            lblLeftMainValue.TextAlign = ContentAlignment.MiddleCenter;
-            // 
-            // lblRightMainTitle
-            // 
-            lblRightMainTitle.BackColor = SystemColors.ControlLight;
-            lblRightMainTitle.Font = new Font("Tahoma", 12F);
-            lblRightMainTitle.Location = new Point(384, 89);
-            lblRightMainTitle.Name = "lblRightMainTitle";
-            lblRightMainTitle.Size = new Size(360, 30);
-            lblRightMainTitle.TabIndex = 61;
-            lblRightMainTitle.Text = "Float";
-            lblRightMainTitle.TextAlign = ContentAlignment.MiddleCenter;
-            // 
-            // lblRightMainValue
-            // 
-            lblRightMainValue.BackColor = SystemColors.InactiveCaption;
-            lblRightMainValue.Font = new Font("Segoe UI", 16F, FontStyle.Bold);
-            lblRightMainValue.Location = new Point(384, 119);
-            lblRightMainValue.Name = "lblRightMainValue";
-            lblRightMainValue.Size = new Size(360, 35);
-            lblRightMainValue.TabIndex = 62;
-            lblRightMainValue.Text = "0.000000";
-            lblRightMainValue.TextAlign = ContentAlignment.MiddleCenter;
-            // 
-            // label4
-            // 
-            label4.AutoSize = true;
-            label4.Location = new Point(764, 112);
-            label4.Name = "label4";
-            label4.Size = new Size(99, 15);
-            label4.TabIndex = 48;
-            label4.Text = "Main data format";
-            // 
-            // comboDisplayMode
-            // 
-            comboDisplayMode.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboDisplayMode.FormattingEnabled = true;
-            comboDisplayMode.Location = new Point(764, 131);
-            comboDisplayMode.Name = "comboDisplayMode";
-            comboDisplayMode.Size = new Size(187, 23);
-            comboDisplayMode.TabIndex = 47;
             // 
             // label1
             // 
@@ -480,10 +355,10 @@ namespace AudioHexViewer
             tabAnalysis.Controls.Add(tabHistogram);
             tabAnalysis.Controls.Add(tabSpectrum);
             tabAnalysis.Dock = DockStyle.Fill;
-            tabAnalysis.Location = new Point(0, 0);
+            tabAnalysis.Location = new Point(0, 185);
             tabAnalysis.Name = "tabAnalysis";
             tabAnalysis.SelectedIndex = 0;
-            tabAnalysis.Size = new Size(1138, 585);
+            tabAnalysis.Size = new Size(1138, 564);
             tabAnalysis.TabIndex = 0;
             // 
             // tabHistogram
@@ -491,7 +366,7 @@ namespace AudioHexViewer
             tabHistogram.Controls.Add(panelHistogram);
             tabHistogram.Location = new Point(4, 24);
             tabHistogram.Name = "tabHistogram";
-            tabHistogram.Size = new Size(1130, 557);
+            tabHistogram.Size = new Size(1130, 536);
             tabHistogram.TabIndex = 0;
             tabHistogram.Text = "Histogram";
             tabHistogram.UseVisualStyleBackColor = true;
@@ -502,7 +377,7 @@ namespace AudioHexViewer
             panelHistogram.Dock = DockStyle.Fill;
             panelHistogram.Location = new Point(0, 0);
             panelHistogram.Name = "panelHistogram";
-            panelHistogram.Size = new Size(1130, 557);
+            panelHistogram.Size = new Size(1130, 536);
             panelHistogram.TabIndex = 0;
             // 
             // tabSpectrum
@@ -554,6 +429,8 @@ namespace AudioHexViewer
             Load += Form1_Load;
             menuStrip1.ResumeLayout(false);
             menuStrip1.PerformLayout();
+            panelTop.ResumeLayout(false);
+            panelTop.PerformLayout();
             tabAnalysis.ResumeLayout(false);
             tabHistogram.ResumeLayout(false);
             ResumeLayout(false);
@@ -571,20 +448,10 @@ namespace AudioHexViewer
         private ToolStripMenuItem alwaysOnTopToolStripMenuItem;
         private SplitContainer splitMain;
         private Panel panelTop;
-        private Label label3;
         private Label label7;
         private Label label6;
-        private Label label2;
         private Panel barLeftLevel;
-        private Label lblLeftLevel;
         private Panel barRightLevel;
-        private Label lblRightLevel;
-        private Label lblLeftMainTitle;
-        private Label lblLeftMainValue;
-        private Label lblRightMainTitle;
-        private Label lblRightMainValue;
-        private Label label4;
-        private ComboBox comboDisplayMode;
         private Label label1;
         private Button btnStart;
         private RadioButton rbInput;
@@ -601,6 +468,7 @@ namespace AudioHexViewer
         private Label lblFormatInfo;
         private ToolStripMenuItem menuData;
         private ToolStripMenuItem menuShowAllFormats;
+        private ToolStripMenuItem menuDataView;
         private System.Windows.Forms.RichTextBox txtLeft;
         private System.Windows.Forms.RichTextBox txtRight;
         private ToolStripMenuItem menuSampleSize;

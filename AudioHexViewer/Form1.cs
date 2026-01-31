@@ -237,6 +237,8 @@ namespace AudioHexViewer
 
         private Form? dataFormatsWindow;
 
+        private DataViewForm? _dataViewForm;
+
         //private bool histogramVisible = false;
 
         // Cursors menu
@@ -1263,6 +1265,13 @@ namespace AudioHexViewer
         {
             InitializeComponent();
 
+            _dataViewForm = new DataViewForm();
+            _dataViewForm.Hide();
+
+            // IMPORTANT : on rebranche l’event du combo (car il n’est plus sur Form1)
+            _dataViewForm.comboDisplayMode.SelectedIndexChanged += comboDisplayMode_SelectedIndexChanged;
+
+
             // Relance le SFFT quand l'utilisateur change la fenêtre
             if (spectrumControl != null)
             {
@@ -1277,7 +1286,7 @@ namespace AudioHexViewer
                
             }
 
-            //InitCursorsMenu();
+            InitDataView();
 
             InitAnalysisUi();
 
@@ -1297,7 +1306,7 @@ namespace AudioHexViewer
             this.MinimumSize = new Size(_minWidth, _minHeightNoGraphs);
 
             // Modes possibles pour la valeur mise en avant
-            comboDisplayMode.Items.AddRange(new object[]
+            _dataViewForm!.comboDisplayMode.Items.AddRange(new object[]
             {
                 "Decimal (24b)",
                 "Hex (24 bits)",
@@ -1307,8 +1316,8 @@ namespace AudioHexViewer
                 "Voltage (Vpeak)",
                 "Voltage (Vdc)"
             });
-            comboDisplayMode.SelectedIndex = 0;
-            comboDisplayMode.SelectedIndexChanged += comboDisplayMode_SelectedIndexChanged;
+            _dataViewForm!.comboDisplayMode.SelectedIndex = 0;
+            _dataViewForm!.comboDisplayMode.SelectedIndexChanged += comboDisplayMode_SelectedIndexChanged;
 
             // Init des horodatages de changements de bits
             var now = DateTime.Now;
@@ -1358,6 +1367,39 @@ namespace AudioHexViewer
 
             this.FormClosing += Form1_FormClosing;
         }
+        //
+        private void InitDataView()
+        {
+            _dataViewForm = new DataViewForm();
+
+            // Optionnel mais pratique : la placer près de Form1
+            _dataViewForm.StartPosition = FormStartPosition.Manual;
+            _dataViewForm.Left = this.Right + 10;
+            _dataViewForm.Top = this.Top;
+
+            // ✅ Déplacement des contrôles demandés
+            // MainDataFormat = label4 + comboDisplayMode (dans ton Designer, label4 = "Main data format")
+            _dataViewForm.AttachControls(
+                _dataViewForm!.lblLeftMainTitle, _dataViewForm!.lblRightMainTitle,
+                _dataViewForm!.lblLeftMainValue, _dataViewForm!.lblRightMainValue,
+                _dataViewForm!.label2, _dataViewForm!.label3,
+                _dataViewForm!.lblLeftLevel, _dataViewForm!.lblRightLevel,
+                _dataViewForm!.label4, _dataViewForm!.comboDisplayMode
+            );
+
+            // Ne pas afficher au démarrage
+            _dataViewForm.Hide();
+        }
+        //
+        private void menuDataView_Click(object? sender, EventArgs e)
+        {
+            if (_dataViewForm == null)
+                InitDataView();
+
+            _dataViewForm!.Show();
+            _dataViewForm.BringToFront();
+        }
+
         //
         private void InitCursorsMenu()
         {
@@ -1807,9 +1849,9 @@ namespace AudioHexViewer
             // 3) Main Data Format
             if (!string.IsNullOrEmpty(ui.MainDataFormat))
             {
-                int idx = comboDisplayMode.Items.IndexOf(ui.MainDataFormat);
+                int idx = _dataViewForm!.comboDisplayMode.Items.IndexOf(ui.MainDataFormat);
                 if (idx >= 0)
-                    comboDisplayMode.SelectedIndex = idx;
+                    _dataViewForm!.comboDisplayMode.SelectedIndex = idx;
             }
         }
         //
@@ -1840,7 +1882,7 @@ namespace AudioHexViewer
 
             s.Ui.DeviceId = devId;
             s.Ui.CaptureOutput = captureOutput;
-            s.Ui.MainDataFormat = comboDisplayMode.SelectedItem as string;
+            s.Ui.MainDataFormat = _dataViewForm!.comboDisplayMode.SelectedItem as string;
 
             // Analysis (valeurs actuelles, même si on ne les applique pas encore)
             s.Analysis.BufferSize = analysisBufferSize;
@@ -3183,22 +3225,22 @@ namespace AudioHexViewer
 
                     if (blinkOn)
                     {
-                        lblLeftLevel.Text = "      SAT";
-                        lblLeftLevel.ForeColor = Color.Red;
-                        lblLeftLevel.Font = levelFontBold;
+                        _dataViewForm!.lblLeftLevel.Text = "      SAT";
+                        _dataViewForm!.lblLeftLevel.ForeColor = Color.Red;
+                        _dataViewForm!.lblLeftLevel.Font = levelFontBold;
                     }
                     else
                     {
-                        lblLeftLevel.Text = "";
-                        lblLeftLevel.ForeColor = Color.Red;
-                        lblLeftLevel.Font = levelFontBold;
+                        _dataViewForm!.lblLeftLevel.Text = "";
+                        _dataViewForm!.lblLeftLevel.ForeColor = Color.Red;
+                        _dataViewForm!.lblLeftLevel.Font = levelFontBold;
                     }
                 }
                 else
                 {
-                    lblLeftLevel.Text = double.IsNegativeInfinity(dbLeft) ? "- dBFS" : $"{dbLeft:F1} dBFS";
-                    lblLeftLevel.ForeColor = SystemColors.HotTrack;
-                    lblLeftLevel.Font = levelFontRegular;
+                    _dataViewForm!.lblLeftLevel.Text = double.IsNegativeInfinity(dbLeft) ? "- dBFS" : $"{dbLeft:F1} dBFS";
+                    _dataViewForm!.lblLeftLevel.ForeColor = SystemColors.HotTrack;
+                    _dataViewForm!.lblLeftLevel.Font = levelFontRegular;
                 }
 
                 bool satRActive =
@@ -3212,22 +3254,22 @@ namespace AudioHexViewer
 
                     if (blinkOn)
                     {
-                        lblRightLevel.Text = "SAT";
-                        lblRightLevel.ForeColor = Color.Red;
-                        lblRightLevel.Font = levelFontBold;
+                        _dataViewForm!.lblRightLevel.Text = "SAT";
+                        _dataViewForm!.lblRightLevel.ForeColor = Color.Red;
+                        _dataViewForm!.lblRightLevel.Font = levelFontBold;
                     }
                     else
                     {
-                        lblRightLevel.Text = "";
-                        lblRightLevel.ForeColor = Color.Red;
-                        lblRightLevel.Font = levelFontBold;
+                        _dataViewForm!.lblRightLevel.Text = "";
+                        _dataViewForm!.lblRightLevel.ForeColor = Color.Red;
+                        _dataViewForm!.lblRightLevel.Font = levelFontBold;
                     }
                 }
                 else
                 {
-                    lblRightLevel.Text = double.IsNegativeInfinity(dbRight) ? "- dBFS" : $"{dbRight:F1} dBFS";
-                    lblRightLevel.ForeColor = SystemColors.HotTrack;
-                    lblRightLevel.Font = levelFontRegular;
+                    _dataViewForm!.lblRightLevel.Text = double.IsNegativeInfinity(dbRight) ? "- dBFS" : $"{dbRight:F1} dBFS";
+                    _dataViewForm!.lblRightLevel.ForeColor = SystemColors.HotTrack;
+                    _dataViewForm!.lblRightLevel.Font = levelFontRegular;
                 }
 
                 UpdateMainDisplayFromLastValues();
@@ -3391,7 +3433,7 @@ namespace AudioHexViewer
         //
         private void UpdateMainDisplayFromLastValues()
         {
-            if (comboDisplayMode.SelectedItem is not string mode)
+            if (_dataViewForm!.comboDisplayMode.SelectedItem is not string mode)
                 mode = "Decimal (24b)";// mode par dfaut
 
             // Prparer les valeurs formates
@@ -3484,11 +3526,11 @@ namespace AudioHexViewer
             }
 
             // Met  jour les labels
-            lblLeftMainTitle.Text = $"{mode}";
-            lblRightMainTitle.Text = $"{mode}";
+            _dataViewForm!.lblLeftMainTitle.Text = $"{mode}";
+            _dataViewForm!.lblRightMainTitle.Text = $"{mode}";
 
-            lblLeftMainValue.Text = leftText;
-            lblRightMainValue.Text = rightText;
+            _dataViewForm!.lblLeftMainValue.Text = leftText;
+            _dataViewForm!.lblRightMainValue.Text = rightText;
         }
         //
         //
