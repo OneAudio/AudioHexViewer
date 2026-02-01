@@ -65,9 +65,11 @@ namespace AudioHexViewer
 
             var dto = new OverlayFile
             {
-                Version = 2,
+                Version = OverlayFile.CurrentVersion,
                 Name = string.IsNullOrWhiteSpace(name) ? "Overlay" : name,
                 CreatedUtc = DateTime.UtcNow,
+
+                Kind = OverlayKind.Spectrum,
 
                 SampleRate = sampleRate,
                 FftSize = fftSize,
@@ -78,6 +80,7 @@ namespace AudioHexViewer
                 LeftDbFs = leftDbFs,
                 RightDbFs = rightDbFs
             };
+
 
             var jsonOpt = new JsonSerializerOptions { WriteIndented = true };
             File.WriteAllText(filePath, JsonSerializer.Serialize(dto, jsonOpt));
@@ -92,9 +95,9 @@ namespace AudioHexViewer
             string json = File.ReadAllText(filePath);
             var dto = JsonSerializer.Deserialize<OverlayFile>(json);
 
-            // Overlay V2 uniquement
-            if (dto.Version != 2)
-                throw new InvalidDataException("Overlay invalide: version non supportée (V2 uniquement).");
+            // Overlay V3 uniquement (pas de rétrocompatibilité)
+            if (dto.Version != OverlayFile.CurrentVersion)
+                throw new InvalidDataException("Overlay invalide: version non supportée (V3 uniquement).");
 
             if (dto.SampleRate <= 0 || dto.FftSize <= 0)
                 throw new InvalidDataException("Overlay invalide: SampleRate/FftSize");
@@ -102,14 +105,36 @@ namespace AudioHexViewer
             if (dto.FreqHz == null || dto.FreqHz.Length == 0)
                 throw new InvalidDataException("Overlay invalide: FreqHz manquant");
 
-            if (dto.LeftDbFs == null && dto.RightDbFs == null)
-                throw new InvalidDataException("Overlay invalide: pas de données spectre");
+            // Validation selon le type de vue
+            switch (dto.Kind)
+            {
+                case OverlayKind.Spectrum:
+                    if (dto.LeftDbFs == null && dto.RightDbFs == null)
+                        throw new InvalidDataException("Overlay invalide (Spectrum): pas de données LeftDbFs/RightDbFs.");
 
-            if (dto.LeftDbFs != null && dto.LeftDbFs.Length != dto.FreqHz.Length)
-                throw new InvalidDataException("Overlay invalide: LeftDbFs length != FreqHz length");
+                    if (dto.LeftDbFs != null && dto.LeftDbFs.Length != dto.FreqHz.Length)
+                        throw new InvalidDataException("Overlay invalide (Spectrum): LeftDbFs length != FreqHz length.");
 
-            if (dto.RightDbFs != null && dto.RightDbFs.Length != dto.FreqHz.Length)
-                throw new InvalidDataException("Overlay invalide: RightDbFs length != FreqHz length");
+                    if (dto.RightDbFs != null && dto.RightDbFs.Length != dto.FreqHz.Length)
+                        throw new InvalidDataException("Overlay invalide (Spectrum): RightDbFs length != FreqHz length.");
+                    break;
+
+                case OverlayKind.Bode:
+                    // Spec: on veut gain + phase.
+                    if (dto.GainDb == null || dto.PhaseDeg == null)
+                        throw new InvalidDataException("Overlay invalide (Bode): GainDb et PhaseDeg requis.");
+
+                    if (dto.GainDb.Length != dto.FreqHz.Length)
+                        throw new InvalidDataException("Overlay invalide (Bode): GainDb length != FreqHz length.");
+
+                    if (dto.PhaseDeg.Length != dto.FreqHz.Length)
+                        throw new InvalidDataException("Overlay invalide (Bode): PhaseDeg length != FreqHz length.");
+                    break;
+
+                default:
+                    throw new InvalidDataException("Overlay invalide: Kind inconnu.");
+            }
+
 
 
             return dto;
