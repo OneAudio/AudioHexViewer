@@ -81,7 +81,7 @@
             // 
             // panelTop
             // 
-            panelTop.BorderStyle = BorderStyle.FixedSingle;
+            panelTop.BackColor = Color.Transparent;
             panelTop.Controls.Add(lblFftTicker);
             panelTop.Controls.Add(label2);
             panelTop.Controls.Add(label1);
@@ -113,7 +113,7 @@
             // lblFftTicker
             // 
             lblFftTicker.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            lblFftTicker.Location = new Point(991, 8);
+            lblFftTicker.Location = new Point(993, 8);
             lblFftTicker.Name = "lblFftTicker";
             lblFftTicker.Size = new Size(37, 22);
             lblFftTicker.TabIndex = 35;
@@ -134,7 +134,7 @@
             label1.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             label1.AutoSize = true;
             label1.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            label1.Location = new Point(990, 30);
+            label1.Location = new Point(992, 30);
             label1.Name = "label1";
             label1.Size = new Size(38, 15);
             label1.TabIndex = 32;
@@ -280,7 +280,7 @@
             lblWindowInfo.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             lblWindowInfo.AutoSize = true;
             lblWindowInfo.ForeColor = SystemColors.HotTrack;
-            lblWindowInfo.Location = new Point(990, 47);
+            lblWindowInfo.Location = new Point(992, 47);
             lblWindowInfo.Name = "lblWindowInfo";
             lblWindowInfo.Size = new Size(47, 15);
             lblWindowInfo.TabIndex = 8;
@@ -290,7 +290,7 @@
             // 
             btnRun.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnRun.FlatStyle = FlatStyle.Flat;
-            btnRun.Location = new Point(1043, 8);
+            btnRun.Location = new Point(1045, 8);
             btnRun.Name = "btnRun";
             btnRun.Size = new Size(79, 51);
             btnRun.TabIndex = 9;
@@ -510,7 +510,7 @@
             chartSpectrum.Dock = DockStyle.Fill;
             chartSpectrum.Location = new Point(0, 70);
             chartSpectrum.Name = "chartSpectrum";
-            chartSpectrum.Size = new Size(1138, 430);
+            chartSpectrum.Size = new Size(1138, 480);
             chartSpectrum.TabIndex = 0;
             // 
             // grpRightStats
@@ -669,7 +669,7 @@
             panelStats.Location = new Point(0, 70);
             panelStats.Name = "panelStats";
             panelStats.Padding = new Padding(8);
-            panelStats.Size = new Size(1138, 430);
+            panelStats.Size = new Size(1138, 480);
             panelStats.TabIndex = 0;
             // 
             // SpectrumControl
@@ -679,7 +679,7 @@
             Controls.Add(panelStats);
             Controls.Add(panelTop);
             Name = "SpectrumControl";
-            Size = new Size(1138, 500);
+            Size = new Size(1138, 550);
             panelTop.ResumeLayout(false);
             panelTop.PerformLayout();
             tlpCursors.ResumeLayout(false);

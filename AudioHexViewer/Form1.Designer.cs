@@ -48,13 +48,14 @@ namespace AudioHexViewer
             exportToolStripMenuItem = new ToolStripMenuItem();
             menuExportPng = new ToolStripMenuItem();
             panelTop = new Panel();
-            lblFormatInfo = new Label();
-            label7 = new Label();
+            lblRightLevelMain = new Label();
+            lblLeftLevelMain = new Label();
             label6 = new Label();
             barLeftLevel = new Panel();
+            lblFormatInfo = new Label();
             barRightLevel = new Panel();
+            label7 = new Label();
             label1 = new Label();
-            btnStart = new Button();
             rbInput = new RadioButton();
             rbOutput = new RadioButton();
             comboDevices = new ComboBox();
@@ -196,13 +197,14 @@ namespace AudioHexViewer
             // 
             // panelTop
             // 
-            panelTop.Controls.Add(lblFormatInfo);
-            panelTop.Controls.Add(label7);
+            panelTop.Controls.Add(lblRightLevelMain);
+            panelTop.Controls.Add(lblLeftLevelMain);
             panelTop.Controls.Add(label6);
             panelTop.Controls.Add(barLeftLevel);
+            panelTop.Controls.Add(lblFormatInfo);
             panelTop.Controls.Add(barRightLevel);
+            panelTop.Controls.Add(label7);
             panelTop.Controls.Add(label1);
-            panelTop.Controls.Add(btnStart);
             panelTop.Controls.Add(rbInput);
             panelTop.Controls.Add(rbOutput);
             panelTop.Controls.Add(comboDevices);
@@ -211,89 +213,98 @@ namespace AudioHexViewer
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 25);
             panelTop.Name = "panelTop";
-            panelTop.Size = new Size(1138, 160);
+            panelTop.Size = new Size(1138, 73);
             panelTop.TabIndex = 38;
             // 
-            // lblFormatInfo
+            // lblRightLevelMain
             // 
-            lblFormatInfo.AutoSize = true;
-            lblFormatInfo.BackColor = SystemColors.Highlight;
-            lblFormatInfo.Font = new Font("Segoe UI", 11.25F, FontStyle.Regular, GraphicsUnit.Point, 0);
-            lblFormatInfo.ForeColor = SystemColors.ControlLightLight;
-            lblFormatInfo.Location = new Point(765, 85);
-            lblFormatInfo.Name = "lblFormatInfo";
-            lblFormatInfo.Size = new Size(132, 20);
-            lblFormatInfo.TabIndex = 63;
-            lblFormatInfo.Text = "Format: (unknown)";
-            lblFormatInfo.Click += lblFormatInfo_Click;
+            lblRightLevelMain.BackColor = SystemColors.GradientInactiveCaption;
+            lblRightLevelMain.Font = new Font("Tahoma", 9F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblRightLevelMain.ForeColor = SystemColors.HotTrack;
+            lblRightLevelMain.Location = new Point(449, 47);
+            lblRightLevelMain.Name = "lblRightLevelMain";
+            lblRightLevelMain.Size = new Size(70, 23);
+            lblRightLevelMain.TabIndex = 67;
+            lblRightLevelMain.Text = "-∞ dBFS";
+            lblRightLevelMain.TextAlign = ContentAlignment.MiddleCenter;
             // 
-            // label7
+            // lblLeftLevelMain
             // 
-            label7.AutoSize = true;
-            label7.Font = new Font("Segoe UI", 7F);
-            label7.Location = new Point(414, 28);
-            label7.Name = "label7";
-            label7.Size = new Size(52, 12);
-            label7.TabIndex = 55;
-            label7.Text = "dBFS Level";
+            lblLeftLevelMain.BackColor = SystemColors.GradientInactiveCaption;
+            lblLeftLevelMain.Font = new Font("Tahoma", 9F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblLeftLevelMain.ForeColor = SystemColors.HotTrack;
+            lblLeftLevelMain.Location = new Point(449, 15);
+            lblLeftLevelMain.Name = "lblLeftLevelMain";
+            lblLeftLevelMain.Size = new Size(70, 23);
+            lblLeftLevelMain.TabIndex = 66;
+            lblLeftLevelMain.Text = "-∞ dBFS";
+            lblLeftLevelMain.TextAlign = ContentAlignment.MiddleCenter;
             // 
             // label6
             // 
             label6.AutoSize = true;
             label6.Font = new Font("Segoe UI", 7F);
-            label6.Location = new Point(40, 28);
+            label6.Location = new Point(126, 4);
             label6.Name = "label6";
-            label6.Size = new Size(52, 12);
+            label6.Size = new Size(110, 12);
             label6.TabIndex = 54;
-            label6.Text = "dBFS Level";
+            label6.Text = "dBFS Level Left Channel";
             // 
             // barLeftLevel
             // 
             barLeftLevel.BackColor = Color.FromArgb(32, 32, 32);
             barLeftLevel.BorderStyle = BorderStyle.FixedSingle;
-            barLeftLevel.Location = new Point(8, 42);
+            barLeftLevel.Location = new Point(83, 19);
             barLeftLevel.Name = "barLeftLevel";
             barLeftLevel.Size = new Size(360, 15);
             barLeftLevel.TabIndex = 57;
+            // 
+            // lblFormatInfo
+            // 
+            lblFormatInfo.BackColor = SystemColors.Highlight;
+            lblFormatInfo.Font = new Font("Segoe UI", 11.25F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblFormatInfo.ForeColor = SystemColors.ControlLightLight;
+            lblFormatInfo.Location = new Point(948, 44);
+            lblFormatInfo.Name = "lblFormatInfo";
+            lblFormatInfo.Size = new Size(186, 23);
+            lblFormatInfo.TabIndex = 63;
+            lblFormatInfo.Text = "Format: (unknown)";
+            lblFormatInfo.TextAlign = ContentAlignment.TopCenter;
+            lblFormatInfo.Click += lblFormatInfo_Click;
             // 
             // barRightLevel
             // 
             barRightLevel.BackColor = Color.FromArgb(32, 32, 32);
             barRightLevel.BorderStyle = BorderStyle.FixedSingle;
-            barRightLevel.Location = new Point(384, 42);
+            barRightLevel.Location = new Point(83, 52);
             barRightLevel.Name = "barRightLevel";
-            barRightLevel.Size = new Size(360, 16);
+            barRightLevel.Size = new Size(360, 15);
             barRightLevel.TabIndex = 58;
+            // 
+            // label7
+            // 
+            label7.AutoSize = true;
+            label7.Font = new Font("Segoe UI", 7F);
+            label7.Location = new Point(126, 37);
+            label7.Name = "label7";
+            label7.Size = new Size(117, 12);
+            label7.TabIndex = 55;
+            label7.Text = "dBFS Level Right Channel";
             // 
             // label1
             // 
             label1.AutoSize = true;
-            label1.Location = new Point(765, 39);
+            label1.Location = new Point(851, 19);
             label1.Name = "label1";
             label1.Size = new Size(42, 15);
             label1.TabIndex = 42;
             label1.Text = "Device";
             // 
-            // btnStart
-            // 
-            btnStart.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnStart.BackColor = Color.SeaGreen;
-            btnStart.FlatAppearance.BorderSize = 0;
-            btnStart.FlatStyle = FlatStyle.Flat;
-            btnStart.ForeColor = Color.White;
-            btnStart.Location = new Point(965, 83);
-            btnStart.Name = "btnStart";
-            btnStart.Size = new Size(161, 70);
-            btnStart.TabIndex = 41;
-            btnStart.Text = "READ";
-            btnStart.UseVisualStyleBackColor = false;
-            btnStart.Click += btnStart_Click;
-            // 
             // rbInput
             // 
             rbInput.AutoSize = true;
             rbInput.Checked = true;
-            rbInput.Location = new Point(914, 37);
+            rbInput.Location = new Point(905, 48);
             rbInput.Name = "rbInput";
             rbInput.Size = new Size(37, 19);
             rbInput.TabIndex = 45;
@@ -304,7 +315,7 @@ namespace AudioHexViewer
             // rbOutput
             // 
             rbOutput.AutoSize = true;
-            rbOutput.Location = new Point(860, 37);
+            rbOutput.Location = new Point(851, 48);
             rbOutput.Name = "rbOutput";
             rbOutput.Size = new Size(48, 19);
             rbOutput.TabIndex = 46;
@@ -315,9 +326,9 @@ namespace AudioHexViewer
             // comboDevices
             // 
             comboDevices.FormattingEnabled = true;
-            comboDevices.Location = new Point(765, 58);
+            comboDevices.Location = new Point(899, 16);
             comboDevices.Name = "comboDevices";
-            comboDevices.Size = new Size(186, 23);
+            comboDevices.Size = new Size(235, 23);
             comboDevices.TabIndex = 40;
             // 
             // btnRecord
@@ -327,9 +338,9 @@ namespace AudioHexViewer
             btnRecord.FlatAppearance.BorderSize = 0;
             btnRecord.FlatStyle = FlatStyle.Flat;
             btnRecord.ForeColor = Color.White;
-            btnRecord.Location = new Point(1044, 39);
+            btnRecord.Location = new Point(12, 11);
             btnRecord.Name = "btnRecord";
-            btnRecord.Size = new Size(82, 44);
+            btnRecord.Size = new Size(60, 23);
             btnRecord.TabIndex = 43;
             btnRecord.Text = "● REC";
             btnRecord.UseVisualStyleBackColor = false;
@@ -342,9 +353,9 @@ namespace AudioHexViewer
             btnCalV.FlatAppearance.BorderSize = 0;
             btnCalV.FlatStyle = FlatStyle.Flat;
             btnCalV.ForeColor = Color.White;
-            btnCalV.Location = new Point(965, 39);
+            btnCalV.Location = new Point(12, 44);
             btnCalV.Name = "btnCalV";
-            btnCalV.Size = new Size(82, 44);
+            btnCalV.Size = new Size(60, 23);
             btnCalV.TabIndex = 44;
             btnCalV.Text = "CAL V";
             btnCalV.UseVisualStyleBackColor = false;
@@ -355,10 +366,10 @@ namespace AudioHexViewer
             tabAnalysis.Controls.Add(tabHistogram);
             tabAnalysis.Controls.Add(tabSpectrum);
             tabAnalysis.Dock = DockStyle.Fill;
-            tabAnalysis.Location = new Point(0, 185);
+            tabAnalysis.Location = new Point(0, 98);
             tabAnalysis.Name = "tabAnalysis";
             tabAnalysis.SelectedIndex = 0;
-            tabAnalysis.Size = new Size(1138, 564);
+            tabAnalysis.Size = new Size(1138, 651);
             tabAnalysis.TabIndex = 0;
             // 
             // tabHistogram
@@ -366,7 +377,7 @@ namespace AudioHexViewer
             tabHistogram.Controls.Add(panelHistogram);
             tabHistogram.Location = new Point(4, 24);
             tabHistogram.Name = "tabHistogram";
-            tabHistogram.Size = new Size(1130, 536);
+            tabHistogram.Size = new Size(1130, 623);
             tabHistogram.TabIndex = 0;
             tabHistogram.Text = "Histogram";
             tabHistogram.UseVisualStyleBackColor = true;
@@ -377,14 +388,14 @@ namespace AudioHexViewer
             panelHistogram.Dock = DockStyle.Fill;
             panelHistogram.Location = new Point(0, 0);
             panelHistogram.Name = "panelHistogram";
-            panelHistogram.Size = new Size(1130, 536);
+            panelHistogram.Size = new Size(1130, 623);
             panelHistogram.TabIndex = 0;
             // 
             // tabSpectrum
             // 
             tabSpectrum.Location = new Point(4, 24);
             tabSpectrum.Name = "tabSpectrum";
-            tabSpectrum.Size = new Size(1130, 557);
+            tabSpectrum.Size = new Size(1130, 623);
             tabSpectrum.TabIndex = 1;
             tabSpectrum.Text = "Spectrum";
             tabSpectrum.UseVisualStyleBackColor = true;
@@ -453,7 +464,6 @@ namespace AudioHexViewer
         private Panel barLeftLevel;
         private Panel barRightLevel;
         private Label label1;
-        private Button btnStart;
         private RadioButton rbInput;
         private RadioButton rbOutput;
         private ComboBox comboDevices;
@@ -476,5 +486,7 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuBuffer;
         private ToolStripMenuItem exportToolStripMenuItem;
         private ToolStripMenuItem menuExportPng;
+        internal Label lblLeftLevelMain;
+        internal Label lblRightLevelMain;
     }
 }

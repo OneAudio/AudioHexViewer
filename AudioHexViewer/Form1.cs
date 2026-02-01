@@ -1332,8 +1332,6 @@ namespace AudioHexViewer
             comboDevices.DisplayMember = "FriendlyName";
             LoadDevices();
 
-            UpdateStartButtonAppearance();
-
             comboDevices.SelectedIndexChanged += comboDevices_SelectedIndexChanged;
 
             // Timer calibration
@@ -1383,7 +1381,7 @@ namespace AudioHexViewer
                 _dataViewForm!.lblLeftMainTitle, _dataViewForm!.lblRightMainTitle,
                 _dataViewForm!.lblLeftMainValue, _dataViewForm!.lblRightMainValue,
                 _dataViewForm!.label2, _dataViewForm!.label3,
-                _dataViewForm!.lblLeftLevel, _dataViewForm!.lblRightLevel,
+                _dataViewForm!.lblLeftLevelDV, _dataViewForm!.lblRightLevelDV,
                 _dataViewForm!.label4, _dataViewForm!.comboDisplayMode
             );
 
@@ -2135,26 +2133,6 @@ namespace AudioHexViewer
             UpdateMainDisplayFromLastValues();
         }
 
-        //
-        private void UpdateStartButtonAppearance()
-        {
-            if (capture == null)
-            {
-                // Mode arrt --> bouton READ vert
-                btnStart.Text = "READ";
-                btnStart.BackColor = Color.SeaGreen;
-                btnStart.ForeColor = Color.White;
-            }
-            else
-            {
-                // Mode en cours de capture --> bouton STOP rouge
-                btnStart.Text = "STOP";
-                btnStart.BackColor = Color.Firebrick;
-                btnStart.ForeColor = Color.White;
-            }
-        }
-        //
-
         private void menuOpenCal_Click(object? sender, EventArgs e)
         {
             string path = GetCalibrationFilePath();
@@ -2235,191 +2213,350 @@ namespace AudioHexViewer
             UpdateDeviceInfo();
             UpdateDeviceSummary();   // 
         }
-
-
-        private void btnStart_Click(object sender, EventArgs e)
+        //
+        /// <summary>
+        /// Démarre la capture audio + pipeline d'analyse si elle n'est pas déjà active.
+        /// Remplace l'ancien bouton READ.
+        /// </summary>
+        private void StartCapture()
         {
-            // Si on n'est PAS en train de capturer -> on dmarre (mode READ -> RUN)
-            if (capture == null)
+            if (capture != null)
+                return; // déjà démarré
+
+            if (comboDevices.SelectedItem is not MMDevice dev)
             {
-                if (comboDevices.SelectedItem is not MMDevice dev)
+                MessageBox.Show("Selectionne un priphrique audio.");
+                return;
+            }
+
+            selectedDevice = dev;
+
+            try
+            {
+                // === ICI : on choisit IN ou OUT ===
+                if (!captureOutput)
                 {
-                    MessageBox.Show("Selectionne un priphrique audio.");
-                    return;
+                    // Mode IN : priphrique d'entre (micro / ADC)
+                    capture = new WasapiCapture(selectedDevice);
+                }
+                else
+                {
+                    // Mode OUT : priphrique de sortie (loopback)
+                    capture = new WasapiLoopbackCapture(selectedDevice);
+                }
+                // ================================
+
+                currentFormat = capture.WaveFormat;
+
+                if (histogramControl != null && currentFormat != null)
+                {
+                    histogramControl.UpdateSampleRate(currentFormat.SampleRate);
+                    histogramControl.UpdateHopSamples(analysisHopSamples);
                 }
 
-                selectedDevice = dev;
+                capture.DataAvailable += Capture_DataAvailable;
+                capture.RecordingStopped += Capture_RecordingStopped;
 
-                try
+                // Met à jour le sample rate des modules d'analyse
+                if (currentFormat != null)
                 {
-                    // === ICI : on choisit IN ou OUT ===
-                    if (!captureOutput)
-                    {
-                        // Mode IN : priphrique d'entre (micro / ADC)
-                        capture = new WasapiCapture(selectedDevice);
-                    }
-                    else
-                    {
-                        // Mode OUT : priphrique de sortie (loopback)
-                        capture = new WasapiLoopbackCapture(selectedDevice);
-                    }
-                    // ================================
-
-                    currentFormat = capture.WaveFormat;                                  
-
-                    if (histogramControl != null && currentFormat != null)
+                    if (histogramControl != null)
                     {
                         histogramControl.UpdateSampleRate(currentFormat.SampleRate);
                         histogramControl.UpdateHopSamples(analysisHopSamples);
                     }
 
-                    capture.DataAvailable += Capture_DataAvailable;
-                    capture.RecordingStopped += Capture_RecordingStopped;
-
-                    // Met  jour le sample rate des modules danalyse
-                    if (currentFormat != null)
+                    if (spectrumControl != null)
                     {
-                        if (histogramControl != null)
-                            histogramControl.UpdateSampleRate(currentFormat.SampleRate);
-                        histogramControl.UpdateHopSamples(analysisHopSamples);
-                        if (spectrumControl != null)
-                            spectrumControl.UpdateSampleRate(currentFormat.SampleRate);
+                        spectrumControl.UpdateSampleRate(currentFormat.SampleRate);
                         spectrumControl.UpdateHopSamples(analysisHopSamples);
                     }
-
-
-                    // Mode continu : pas de squence Once
-                    //histOnceActive = false;
-                    //histOnceTargetSamples = 0;
-                    //histOnceAccumSamples = 0;
-
-                    // -------------------------------------------
-
-                    // Dmarrage de la capture audio
-                    capture.StartRecording();
-
-                    // Rinitialisation de la pipeline d'analyse
-                    ResetAnalysisPipeline();                    
-
-                    // (Étape 5) Démarre la pipeline SFFT (ring + worker) avec N/overlap UI courants
-                    RestartSfftFromUi();
-
-                    // --- START test source (après création de _floatRing dans RestartSfftFromUi) ---
-                    if (currentFormat != null)
-                    {
-                        if (_useMetricsRefTest)
-                        {
-                            // Point 2.2 : démarre le signal de référence mesures
-                            // (la méthode exacte sera ajoutée dans TestWaves.cs à l'étape suivante)
-                            StartMetricsReferenceTestSource(currentFormat.SampleRate);
-                        }
-                        else if (_useSineTest)
-                        {
-                            // F9 : sinusoïde simple (comportement actuel)
-                            StartSineTestSource(currentFormat.SampleRate, 1000.0, 0.25);
-                        }
-                    }
-
-
-                    // Démarre le générateur de fenêtres d'analyse (Histogram + Spectrum)
-                    RecomputeHopAndTimer();
-                    analysisTimer?.Start();
-
-
-                    // Bouton en mode STOP private void btnRead_Click(object sender, EventArgs e)
-                    UpdateStartButtonAppearance();
-                    UpdateDeviceInfo();
-                    UpdateDeviceSummary();
-                    UpdateOverlayMenuCaptions();
-
-
-                    // Si l'histogramme existe dj et qu'on est en mode continu,
-                    // on le dmarre tout de suite en "live"
-                    //if (histogramControl != null && !chkHistoOnce.Checked)
-                    //{
-                    //    histogramControl.StartFromRun(false);  // mode continu
-                    //}
                 }
-                catch (Exception ex)
+
+                // Démarrage capture audio
+                capture.StartRecording();
+
+                // Réinitialisation pipeline d'analyse
+                ResetAnalysisPipeline();
+
+                // Démarre pipeline SFFT (ring + worker) avec UI courants
+                RestartSfftFromUi();
+
+                // --- START test source ---
+                if (currentFormat != null)
                 {
-                    MessageBox.Show("Erreur lors du demarrage de la capture : " + ex.Message);
-                    capture = null;
-                    currentFormat = null;
-                    UpdateStartButtonAppearance();   // remet en mode READ vert
-                    UpdateDeviceInfo();
-                    UpdateDeviceSummary();
+                    if (_useMetricsRefTest)
+                        StartMetricsReferenceTestSource(currentFormat.SampleRate);
+                    else if (_useSineTest)
+                        StartSineTestSource(currentFormat.SampleRate, 1000.0, 0.25);
                 }
+
+                // Démarre le générateur de fenêtres d'analyse (Histogram + Spectrum)
+                RecomputeHopAndTimer();
+                analysisTimer?.Start();
+
+                UpdateDeviceInfo();
+                UpdateDeviceSummary();
+                UpdateOverlayMenuCaptions();
             }
-            else
+            catch (Exception ex)
             {
-                //// Si on est dj en train de capturer -> clique = STOP (on annule aussi un ventuel Once en cours)
-                //histOnceActive = false;
-                //histOnceTargetSamples = 0;
-                //histOnceAccumSamples = 0;
-
-                try
-                {
-                    capture.DataAvailable -= Capture_DataAvailable;
-                    capture.RecordingStopped -= Capture_RecordingStopped;
-                    capture.StopRecording();
-                    analysisTimer?.Stop();
-
-                    // (Étape 5) Stop pipeline SFFT
-                    if (_sfftWorker != null)
-                    {
-                        _sfftWorker.Stop();
-                        _sfftWorker = null;
-                    }
-                    while (_sfftFrames.TryDequeue(out _)) { }
-                    _lastFrameUi = null;
-                    StopFftTicker();
-
-                    lock (analysisLock)
-                    {
-                        lastAnalysisLeft = Array.Empty<int>();
-                        lastAnalysisRight = Array.Empty<int>();
-                    }
-                    //analysisCursorStart = 0;
-                }
-                catch
-                {
-                    // on ignore les erreurs de StopRecording
-                }
-
-                // On arrte aussi l'histogramme et le spectre s'ils tournent
-                if (histogramControl != null)
-                {
-                    histogramControl.StopFromRun();
-                }
-
-                if (spectrumControl != null)
-                {
-                    spectrumControl.StopFromRun();
-                }
-
-                capture.Dispose();
+                MessageBox.Show("Erreur lors du demarrage de la capture : " + ex.Message);
                 capture = null;
                 currentFormat = null;
 
-                // --- STOP nouveau ring float ---
-                _floatRing = null;
+                UpdateDeviceInfo();
+                UpdateDeviceSummary();
+            }
+        }
+
+        /// <summary>
+        /// Arrête la capture audio + pipeline d'analyse si active.
+        /// Remplace l'ancien bouton STOP.
+        /// </summary>
+        private void StopCapture()
+        {
+            if (capture == null)
+                return; // déjà arrêté
+
+            try
+            {
+                capture.DataAvailable -= Capture_DataAvailable;
+                capture.RecordingStopped -= Capture_RecordingStopped;
+                capture.StopRecording();
+
+                analysisTimer?.Stop();
+
+                // Stop pipeline SFFT
                 if (_sfftWorker != null)
                 {
                     _sfftWorker.Stop();
                     _sfftWorker = null;
                 }
+                while (_sfftFrames.TryDequeue(out _)) { }
+                _lastFrameUi = null;
+                StopFftTicker();
 
-                _sfftStats.SetWorkerState("STOP");
-
-                UpdateStartButtonAppearance();       // remet READ vert
-                UpdateDeviceInfo();
-                UpdateDeviceSummary();
-                UpdateOverlayMenuCaptions();
-                StopSineTestSource();
-
-
+                lock (analysisLock)
+                {
+                    lastAnalysisLeft = Array.Empty<int>();
+                    lastAnalysisRight = Array.Empty<int>();
+                }
             }
+            catch
+            {
+                // ignore erreurs StopRecording
+            }
+
+            // Arrête aussi histogram + spectre s'ils tournent
+            if (histogramControl != null)
+                histogramControl.StopFromRun();
+
+            if (spectrumControl != null)
+                spectrumControl.StopFromRun();
+
+            capture.Dispose();
+            capture = null;
+            currentFormat = null;
+
+            // STOP ring float
+            _floatRing = null;
+            if (_sfftWorker != null)
+            {
+                _sfftWorker.Stop();
+                _sfftWorker = null;
+            }
+
+            _sfftStats.SetWorkerState("STOP");
+
+            StopSineTestSource();
+
+            UpdateDeviceInfo();
+            UpdateDeviceSummary();
+            UpdateOverlayMenuCaptions();
         }
+
+
+        //private void btnStart_Click(object sender, EventArgs e)
+        //{
+        //    // Si on n'est PAS en train de capturer -> on dmarre (mode READ -> RUN)
+        //    if (capture == null)
+        //    {
+        //        if (comboDevices.SelectedItem is not MMDevice dev)
+        //        {
+        //            MessageBox.Show("Selectionne un priphrique audio.");
+        //            return;
+        //        }
+
+        //        selectedDevice = dev;
+
+        //        try
+        //        {
+        //            // === ICI : on choisit IN ou OUT ===
+        //            if (!captureOutput)
+        //            {
+        //                // Mode IN : priphrique d'entre (micro / ADC)
+        //                capture = new WasapiCapture(selectedDevice);
+        //            }
+        //            else
+        //            {
+        //                // Mode OUT : priphrique de sortie (loopback)
+        //                capture = new WasapiLoopbackCapture(selectedDevice);
+        //            }
+        //            // ================================
+
+        //            currentFormat = capture.WaveFormat;                                  
+
+        //            if (histogramControl != null && currentFormat != null)
+        //            {
+        //                histogramControl.UpdateSampleRate(currentFormat.SampleRate);
+        //                histogramControl.UpdateHopSamples(analysisHopSamples);
+        //            }
+
+        //            capture.DataAvailable += Capture_DataAvailable;
+        //            capture.RecordingStopped += Capture_RecordingStopped;
+
+        //            // Met  jour le sample rate des modules danalyse
+        //            if (currentFormat != null)
+        //            {
+        //                if (histogramControl != null)
+        //                    histogramControl.UpdateSampleRate(currentFormat.SampleRate);
+        //                histogramControl.UpdateHopSamples(analysisHopSamples);
+        //                if (spectrumControl != null)
+        //                    spectrumControl.UpdateSampleRate(currentFormat.SampleRate);
+        //                spectrumControl.UpdateHopSamples(analysisHopSamples);
+        //            }
+
+
+        //            // Mode continu : pas de squence Once
+        //            //histOnceActive = false;
+        //            //histOnceTargetSamples = 0;
+        //            //histOnceAccumSamples = 0;
+
+        //            // -------------------------------------------
+
+        //            // Dmarrage de la capture audio
+        //            capture.StartRecording();
+
+        //            // Rinitialisation de la pipeline d'analyse
+        //            ResetAnalysisPipeline();                    
+
+        //            // (Étape 5) Démarre la pipeline SFFT (ring + worker) avec N/overlap UI courants
+        //            RestartSfftFromUi();
+
+        //            // --- START test source (après création de _floatRing dans RestartSfftFromUi) ---
+        //            if (currentFormat != null)
+        //            {
+        //                if (_useMetricsRefTest)
+        //                {
+        //                    // Point 2.2 : démarre le signal de référence mesures
+        //                    // (la méthode exacte sera ajoutée dans TestWaves.cs à l'étape suivante)
+        //                    StartMetricsReferenceTestSource(currentFormat.SampleRate);
+        //                }
+        //                else if (_useSineTest)
+        //                {
+        //                    // F9 : sinusoïde simple (comportement actuel)
+        //                    StartSineTestSource(currentFormat.SampleRate, 1000.0, 0.25);
+        //                }
+        //            }
+
+
+        //            // Démarre le générateur de fenêtres d'analyse (Histogram + Spectrum)
+        //            RecomputeHopAndTimer();
+        //            analysisTimer?.Start();
+
+
+        //            // Bouton en mode STOP private void btnRead_Click(object sender, EventArgs e)
+        //            UpdateDeviceInfo();
+        //            UpdateDeviceSummary();
+        //            UpdateOverlayMenuCaptions();
+
+
+        //            // Si l'histogramme existe dj et qu'on est en mode continu,
+        //            // on le dmarre tout de suite en "live"
+        //            //if (histogramControl != null && !chkHistoOnce.Checked)
+        //            //{
+        //            //    histogramControl.StartFromRun(false);  // mode continu
+        //            //}
+        //        }
+        //        catch (Exception ex)
+        //        {
+        //            MessageBox.Show("Erreur lors du demarrage de la capture : " + ex.Message);
+        //            capture = null;
+        //            currentFormat = null;
+        //            UpdateDeviceInfo();
+        //            UpdateDeviceSummary();
+        //        }
+        //    }
+        //    else
+        //    {
+        //        //// Si on est dj en train de capturer -> clique = STOP (on annule aussi un ventuel Once en cours)
+        //        //histOnceActive = false;
+        //        //histOnceTargetSamples = 0;
+        //        //histOnceAccumSamples = 0;
+
+        //        try
+        //        {
+        //            capture.DataAvailable -= Capture_DataAvailable;
+        //            capture.RecordingStopped -= Capture_RecordingStopped;
+        //            capture.StopRecording();
+        //            analysisTimer?.Stop();
+
+        //            // (Étape 5) Stop pipeline SFFT
+        //            if (_sfftWorker != null)
+        //            {
+        //                _sfftWorker.Stop();
+        //                _sfftWorker = null;
+        //            }
+        //            while (_sfftFrames.TryDequeue(out _)) { }
+        //            _lastFrameUi = null;
+        //            StopFftTicker();
+
+        //            lock (analysisLock)
+        //            {
+        //                lastAnalysisLeft = Array.Empty<int>();
+        //                lastAnalysisRight = Array.Empty<int>();
+        //            }
+        //            //analysisCursorStart = 0;
+        //        }
+        //        catch
+        //        {
+        //            // on ignore les erreurs de StopRecording
+        //        }
+
+        //        // On arrte aussi l'histogramme et le spectre s'ils tournent
+        //        if (histogramControl != null)
+        //        {
+        //            histogramControl.StopFromRun();
+        //        }
+
+        //        if (spectrumControl != null)
+        //        {
+        //            spectrumControl.StopFromRun();
+        //        }
+
+        //        capture.Dispose();
+        //        capture = null;
+        //        currentFormat = null;
+
+        //        // --- STOP nouveau ring float ---
+        //        _floatRing = null;
+        //        if (_sfftWorker != null)
+        //        {
+        //            _sfftWorker.Stop();
+        //            _sfftWorker = null;
+        //        }
+
+        //        _sfftStats.SetWorkerState("STOP");
+
+        //        UpdateDeviceInfo();
+        //        UpdateDeviceSummary();
+        //        UpdateOverlayMenuCaptions();
+        //        StopSineTestSource();
+
+
+        //    }
+        //}
 
 
 
@@ -3225,22 +3362,23 @@ namespace AudioHexViewer
 
                     if (blinkOn)
                     {
-                        _dataViewForm!.lblLeftLevel.Text = "      SAT";
-                        _dataViewForm!.lblLeftLevel.ForeColor = Color.Red;
-                        _dataViewForm!.lblLeftLevel.Font = levelFontBold;
+                        ApplyLeftLevelDisplay("      SAT", Color.Red, levelFontBold);
+
                     }
                     else
                     {
-                        _dataViewForm!.lblLeftLevel.Text = "";
-                        _dataViewForm!.lblLeftLevel.ForeColor = Color.Red;
-                        _dataViewForm!.lblLeftLevel.Font = levelFontBold;
+                        ApplyLeftLevelDisplay("", Color.Red, levelFontBold);
+
                     }
                 }
                 else
                 {
-                    _dataViewForm!.lblLeftLevel.Text = double.IsNegativeInfinity(dbLeft) ? "- dBFS" : $"{dbLeft:F1} dBFS";
-                    _dataViewForm!.lblLeftLevel.ForeColor = SystemColors.HotTrack;
-                    _dataViewForm!.lblLeftLevel.Font = levelFontRegular;
+                    ApplyLeftLevelDisplay(
+                        double.IsNegativeInfinity(dbLeft) ? "- dBFS" : $"{dbLeft:F1} dBFS",
+                        SystemColors.HotTrack,
+                        levelFontRegular
+                    );
+
                 }
 
                 bool satRActive =
@@ -3254,22 +3392,23 @@ namespace AudioHexViewer
 
                     if (blinkOn)
                     {
-                        _dataViewForm!.lblRightLevel.Text = "SAT";
-                        _dataViewForm!.lblRightLevel.ForeColor = Color.Red;
-                        _dataViewForm!.lblRightLevel.Font = levelFontBold;
+                        ApplyRightLevelDisplay("SAT", Color.Red, levelFontBold);
+
                     }
                     else
                     {
-                        _dataViewForm!.lblRightLevel.Text = "";
-                        _dataViewForm!.lblRightLevel.ForeColor = Color.Red;
-                        _dataViewForm!.lblRightLevel.Font = levelFontBold;
+                        ApplyRightLevelDisplay("", Color.Red, levelFontBold);
+
                     }
                 }
                 else
                 {
-                    _dataViewForm!.lblRightLevel.Text = double.IsNegativeInfinity(dbRight) ? "- dBFS" : $"{dbRight:F1} dBFS";
-                    _dataViewForm!.lblRightLevel.ForeColor = SystemColors.HotTrack;
-                    _dataViewForm!.lblRightLevel.Font = levelFontRegular;
+                    ApplyRightLevelDisplay(
+                        double.IsNegativeInfinity(dbRight) ? "- dBFS" : $"{dbRight:F1} dBFS",
+                        SystemColors.HotTrack,
+                        levelFontRegular
+                    );
+
                 }
 
                 UpdateMainDisplayFromLastValues();
@@ -3938,17 +4077,18 @@ namespace AudioHexViewer
         //
         private void EnsureReadRunning()
         {
-            if (capture != null) return;      // déjà démarré
-            btnStart.PerformClick();          // démarre READ (ta logique existante)
+            if (capture != null) return; // déjà démarré
+            StartCapture();
         }
 
         private void EnsureReadStoppedIfNoTabRunning()
         {
-            if (capture == null) return;      // déjà arrêté
+            if (capture == null) return; // déjà arrêté
             if (_spectrumRunning || _histogramRunning) return;
 
-            btnStart.PerformClick();          // stop READ (ta logique existante)
+            StopCapture();
         }
+
 
         //
         private void ExportActiveGraphToPng()
@@ -4414,6 +4554,54 @@ namespace AudioHexViewer
         }
 
         //
+        private void SetLevelLabels(string leftText, string rightText)
+        {
+            // Form1 (si présents)
+            if (lblLeftLevelMain != null) lblLeftLevelMain.Text = leftText;
+            if (lblRightLevelMain != null) lblRightLevelMain.Text = rightText;
+
+            // DataView (si ouverte / existante)
+            if (_dataViewForm != null)
+            {
+                if (_dataViewForm.lblLeftLevelDV != null) _dataViewForm.lblLeftLevelDV.Text = leftText;
+                if (_dataViewForm.lblRightLevelDV != null) _dataViewForm.lblRightLevelDV.Text = rightText;
+            }
+        }
+        private void ApplyLeftLevelDisplay(string text, Color color, Font font)
+        {
+            if (lblLeftLevelMain != null)
+            {
+                lblLeftLevelMain.Text = text;
+                lblLeftLevelMain.ForeColor = color;
+                lblLeftLevelMain.Font = font;
+            }
+
+            if (_dataViewForm?.lblLeftLevelDV != null)
+            {
+                _dataViewForm.lblLeftLevelDV.Text = text;
+                _dataViewForm.lblLeftLevelDV.ForeColor = color;
+                _dataViewForm.lblLeftLevelDV.Font = font;
+            }
+        }
+
+        private void ApplyRightLevelDisplay(string text, Color color, Font font)
+        {
+            if (lblRightLevelMain != null)
+            {
+                lblRightLevelMain.Text = text;
+                lblRightLevelMain.ForeColor = color;
+                lblRightLevelMain.Font = font;
+            }
+
+            if (_dataViewForm?.lblRightLevelDV != null)
+            {
+                _dataViewForm.lblRightLevelDV.Text = text;
+                _dataViewForm.lblRightLevelDV.ForeColor = color;
+                _dataViewForm.lblRightLevelDV.Font = font;
+            }
+        }
+
+
 
     }
 

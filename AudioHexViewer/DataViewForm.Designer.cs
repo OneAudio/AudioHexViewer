@@ -19,8 +19,8 @@ namespace AudioHexViewer
             panelHost = new Panel();
             label3 = new Label();
             label2 = new Label();
-            lblLeftLevel = new Label();
-            lblRightLevel = new Label();
+            lblLeftLevelDV = new Label();
+            lblRightLevelDV = new Label();
             lblLeftMainTitle = new Label();
             lblLeftMainValue = new Label();
             lblRightMainTitle = new Label();
@@ -34,8 +34,8 @@ namespace AudioHexViewer
             // 
             panelHost.Controls.Add(label3);
             panelHost.Controls.Add(label2);
-            panelHost.Controls.Add(lblLeftLevel);
-            panelHost.Controls.Add(lblRightLevel);
+            panelHost.Controls.Add(lblLeftLevelDV);
+            panelHost.Controls.Add(lblRightLevelDV);
             panelHost.Controls.Add(lblLeftMainTitle);
             panelHost.Controls.Add(lblLeftMainValue);
             panelHost.Controls.Add(lblRightMainTitle);
@@ -72,29 +72,29 @@ namespace AudioHexViewer
             label2.Text = "LEFT";
             label2.TextAlign = ContentAlignment.TopCenter;
             // 
-            // lblLeftLevel
+            // lblLeftLevelDV
             // 
-            lblLeftLevel.BackColor = SystemColors.GradientInactiveCaption;
-            lblLeftLevel.Font = new Font("Tahoma", 12F, FontStyle.Regular, GraphicsUnit.Point, 0);
-            lblLeftLevel.ForeColor = SystemColors.HotTrack;
-            lblLeftLevel.Location = new Point(263, 1);
-            lblLeftLevel.Name = "lblLeftLevel";
-            lblLeftLevel.Size = new Size(100, 30);
-            lblLeftLevel.TabIndex = 65;
-            lblLeftLevel.Text = "-∞ dBFS";
-            lblLeftLevel.TextAlign = ContentAlignment.MiddleCenter;
+            lblLeftLevelDV.BackColor = SystemColors.GradientInactiveCaption;
+            lblLeftLevelDV.Font = new Font("Tahoma", 12F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblLeftLevelDV.ForeColor = SystemColors.HotTrack;
+            lblLeftLevelDV.Location = new Point(263, 1);
+            lblLeftLevelDV.Name = "lblLeftLevelDV";
+            lblLeftLevelDV.Size = new Size(100, 30);
+            lblLeftLevelDV.TabIndex = 65;
+            lblLeftLevelDV.Text = "-∞ dBFS";
+            lblLeftLevelDV.TextAlign = ContentAlignment.MiddleCenter;
             // 
-            // lblRightLevel
+            // lblRightLevelDV
             // 
-            lblRightLevel.BackColor = SystemColors.GradientInactiveCaption;
-            lblRightLevel.Font = new Font("Tahoma", 12F, FontStyle.Regular, GraphicsUnit.Point, 0);
-            lblRightLevel.ForeColor = SystemColors.HotTrack;
-            lblRightLevel.Location = new Point(639, 1);
-            lblRightLevel.Name = "lblRightLevel";
-            lblRightLevel.Size = new Size(100, 30);
-            lblRightLevel.TabIndex = 66;
-            lblRightLevel.Text = "-∞ dBFS";
-            lblRightLevel.TextAlign = ContentAlignment.MiddleCenter;
+            lblRightLevelDV.BackColor = SystemColors.GradientInactiveCaption;
+            lblRightLevelDV.Font = new Font("Tahoma", 12F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblRightLevelDV.ForeColor = SystemColors.HotTrack;
+            lblRightLevelDV.Location = new Point(639, 1);
+            lblRightLevelDV.Name = "lblRightLevelDV";
+            lblRightLevelDV.Size = new Size(100, 30);
+            lblRightLevelDV.TabIndex = 66;
+            lblRightLevelDV.Text = "-∞ dBFS";
+            lblRightLevelDV.TextAlign = ContentAlignment.MiddleCenter;
             // 
             // lblLeftMainTitle
             // 
@@ -174,8 +174,8 @@ namespace AudioHexViewer
             ResumeLayout(false);
         }
         internal ComboBox comboDisplayMode;
-        internal Label lblLeftLevel;
-        internal Label lblRightLevel;
+        internal Label lblLeftLevelDV;
+        internal Label lblRightLevelDV;
         internal Label lblLeftMainTitle;
         internal Label lblLeftMainValue;
         internal Label lblRightMainTitle;
