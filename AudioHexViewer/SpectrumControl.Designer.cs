@@ -113,9 +113,10 @@
             // lblFftTicker
             // 
             lblFftTicker.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            lblFftTicker.Location = new Point(993, 8);
+            lblFftTicker.AutoSize = true;
+            lblFftTicker.Location = new Point(1093, 52);
             lblFftTicker.Name = "lblFftTicker";
-            lblFftTicker.Size = new Size(37, 22);
+            lblFftTicker.Size = new Size(17, 15);
             lblFftTicker.TabIndex = 35;
             lblFftTicker.Text = "\"\"";
             // 
@@ -134,11 +135,11 @@
             label1.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             label1.AutoSize = true;
             label1.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            label1.Location = new Point(992, 30);
+            label1.Location = new Point(1012, 14);
             label1.Name = "label1";
-            label1.Size = new Size(38, 15);
+            label1.Size = new Size(44, 15);
             label1.TabIndex = 32;
-            label1.Text = "T Acq";
+            label1.Text = "T ACQ:";
             // 
             // lblAvgProgress
             // 
@@ -279,10 +280,11 @@
             // 
             lblWindowInfo.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             lblWindowInfo.AutoSize = true;
+            lblWindowInfo.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
             lblWindowInfo.ForeColor = SystemColors.HotTrack;
-            lblWindowInfo.Location = new Point(992, 47);
+            lblWindowInfo.Location = new Point(1006, 36);
             lblWindowInfo.Name = "lblWindowInfo";
-            lblWindowInfo.Size = new Size(47, 15);
+            lblWindowInfo.Size = new Size(50, 15);
             lblWindowInfo.TabIndex = 8;
             lblWindowInfo.Text = "≈ 0.00 s";
             // 
@@ -290,9 +292,9 @@
             // 
             btnRun.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnRun.FlatStyle = FlatStyle.Flat;
-            btnRun.Location = new Point(1045, 8);
+            btnRun.Location = new Point(1075, 5);
             btnRun.Name = "btnRun";
-            btnRun.Size = new Size(79, 51);
+            btnRun.Size = new Size(60, 46);
             btnRun.TabIndex = 9;
             btnRun.Text = "RUN";
             // 

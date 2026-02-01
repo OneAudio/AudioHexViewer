@@ -333,7 +333,6 @@ namespace AudioHexViewer
             // 
             // btnRecord
             // 
-            btnRecord.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnRecord.BackColor = Color.Firebrick;
             btnRecord.FlatAppearance.BorderSize = 0;
             btnRecord.FlatStyle = FlatStyle.Flat;
@@ -348,7 +347,6 @@ namespace AudioHexViewer
             // 
             // btnCalV
             // 
-            btnCalV.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnCalV.BackColor = Color.SteelBlue;
             btnCalV.FlatAppearance.BorderSize = 0;
             btnCalV.FlatStyle = FlatStyle.Flat;
