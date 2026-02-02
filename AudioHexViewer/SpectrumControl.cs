@@ -1,4 +1,7 @@
 using MathNet.Numerics;
+using System.IO;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using MathNet.Numerics.IntegralTransforms;
 using System;
 using System.Collections.Generic;
@@ -348,6 +351,35 @@ namespace AudioHexViewer
         private readonly SpectrumPostProcessor _post = new SpectrumPostProcessor();
 
         private readonly OverlayManager _overlays = new OverlayManager();
+
+        // ===== Overlays V3 (bibliothèque interne) =====
+        // Cache en mémoire pour éviter de relire les .overlay.json à chaque rafraîchissement du chart.
+        private readonly OverlayLibrary _overlayLibrary = new OverlayLibrary();
+
+        private OverlaysForm? _overlaysForm;
+
+        private sealed class CachedOverlay
+        {
+            public OverlayEntry Entry;
+            public OverlayFile Data;
+            public bool Visible;
+
+            public CachedOverlay(OverlayEntry entry, OverlayFile data, bool visible)
+            {
+                Entry = entry;
+                Data = data;
+                Visible = visible;
+            }
+        }
+
+        private readonly List<CachedOverlay> _overlayCache = new List<CachedOverlay>();
+
+        // Json options identiques à OverlayLibrary (enum en string)
+        private readonly JsonSerializerOptions _overlayJsonOptions = new JsonSerializerOptions
+        {
+            Converters = { new JsonStringEnumConverter() }
+        };
+
 
         private readonly SpectrumMetricsOptions _metricsOpt = new SpectrumMetricsOptions();
 
@@ -801,6 +833,7 @@ namespace AudioHexViewer
             ApplyThdSettings(_thdUi);
             UpdateRunButtonAppearance();
             InitOverlayAnnotation();
+            OverlayLibraryReloadCache();
 
             // "Axis" button in the bottom-left corner of the chart (UI helper).
             // Keeps the existing right-click access to the same dialog.
@@ -1261,7 +1294,7 @@ namespace AudioHexViewer
         }
 
         //
-        
+
         public void UpdateSampleRate(int sampleRate)
         {
             if (sampleRate > 0)
@@ -1276,7 +1309,7 @@ namespace AudioHexViewer
         {
             if (hopSamples < 0) hopSamples = 0;
             _hopSamples = hopSamples;
-                        
+
             UpdateOverlayInfo();
         }
 
@@ -1481,7 +1514,7 @@ namespace AudioHexViewer
                 $"Overlap:{overlapPct:F1}%     " +
                 $"Win:{winText}    " +
                 $"{avgText}    ";
-                //$"{acdcText}";
+            //$"{acdcText}";
 
 
             _overlayInfoAnno.Visible = false;   // on ne l’utilise plus
@@ -1603,7 +1636,7 @@ namespace AudioHexViewer
             //{
             //    if (_isRestoringSettings)
             //        return;
-                
+
             //    UpdateAcDcButtonText();
             //    UpdateOverlayInfo();
             //};
@@ -3233,7 +3266,7 @@ namespace AudioHexViewer
         // Simple peak detection based on visible noise floor (median)
         // Used ONLY for Next/Prev peak navigation (< > buttons)
         // ------------------------------------------------------------------
-       
+
 
         private static double MedianOfRange(double[] data, int i0, int i1)
         {
@@ -3644,7 +3677,7 @@ namespace AudioHexViewer
                     lbl.Text = $"{(isCursor1 ? "C1" : "C2")}({CursorCurveLabel(curve)}): {f:0.##} Hz  {yVal:0.##} {unit}" + (locked ? "  (LOCK)" : "");
                     lbl.Visible = true;
                 }
-                                
+
             }
 
             // C1
@@ -3925,7 +3958,7 @@ namespace AudioHexViewer
             // Conversion POWER -> dB pour l’affichage/peak-hold
             // - Modes classiques : dBFS = 10*log10(power), clamp [-200..0]
             // - Mode "Bode Plot" : gain relatif = 10*log10(P_L/P_R), clamp large [-200..200]
-            if (string.Equals(SelectedChannelMode, "Bode Plot", StringComparison.OrdinalIgnoreCase))                
+            if (string.Equals(SelectedChannelMode, "Bode Plot", StringComparison.OrdinalIgnoreCase))
             {
                 // -----------------------------------------------------------------
                 // BODE / FRF (H1)
@@ -3948,7 +3981,7 @@ namespace AudioHexViewer
 
                     currentLeftSpectrum = gainDb;   // une seule courbe (gain)
                     //currentFrfPhaseDeg = phaseDeg;   // <-- NEW : stocke la phase (FULL) pour le plot / curseurs
-                    currentFrfPhaseDeg = _frfPhaseUnwrap? UnwrapPhaseDegrees(phaseDeg) : phaseDeg;
+                    currentFrfPhaseDeg = _frfPhaseUnwrap ? UnwrapPhaseDegrees(phaseDeg) : phaseDeg;
 
                     currentRightSpectrum = null;
                 }
@@ -4011,7 +4044,7 @@ namespace AudioHexViewer
             var (fMin, fMax) = GetVisibleFreqRangeHz();
             int px = GetPlotPixelWidth();
             int budget = Math.Min(4096, Math.Max(512, px * 2)); // Nombre de points max pour le tracé
-                    bool useLogX = IsXAxisLog();
+            bool useLogX = IsXAxisLog();
 
             // Courbe principale
             if (currentLeftSpectrum != null)
@@ -4034,11 +4067,11 @@ namespace AudioHexViewer
                     DecimateForPlotWithGivenFreqAxis(freqAxis, currentRightSpectrum, _plotFreqAxis, out _plotRightSpectrum);
             }
 
-                    // Peak-hold : ne PAS traiter ici.
-                    // Il est désormais calculé sur les tableaux PLOT dans FeedExternalSpectrum() (après décimation).
-                    // Ici, BuildPlotDataFromFull() ne prépare que les courbes PLOT principales.
-                    _plotPeakLeft = null;
-                    _plotPeakRight = null;
+            // Peak-hold : ne PAS traiter ici.
+            // Il est désormais calculé sur les tableaux PLOT dans FeedExternalSpectrum() (après décimation).
+            // Ici, BuildPlotDataFromFull() ne prépare que les courbes PLOT principales.
+            _plotPeakLeft = null;
+            _plotPeakRight = null;
 
         }
         //
@@ -4082,126 +4115,126 @@ namespace AudioHexViewer
             out double[] freqOut,
             out double[] yOut)
         {
-        int nIn = Math.Min(freqFull.Length, yFull.Length);
-        if (nIn <= 0) { freqOut = Array.Empty<double>(); yOut = Array.Empty<double>(); return; }
+            int nIn = Math.Min(freqFull.Length, yFull.Length);
+            if (nIn <= 0) { freqOut = Array.Empty<double>(); yOut = Array.Empty<double>(); return; }
 
-        // bornes indices
-        int i0 = Array.BinarySearch(freqFull, fMin);
-        if (i0 < 0) i0 = ~i0;
-        int i1 = Array.BinarySearch(freqFull, fMax);
-        if (i1 < 0) i1 = ~i1;
+            // bornes indices
+            int i0 = Array.BinarySearch(freqFull, fMin);
+            if (i0 < 0) i0 = ~i0;
+            int i1 = Array.BinarySearch(freqFull, fMax);
+            if (i1 < 0) i1 = ~i1;
 
-        i0 = Math.Max(0, Math.Min(nIn - 1, i0));
-        i1 = Math.Max(i0 + 1, Math.Min(nIn, i1));
+            i0 = Math.Max(0, Math.Min(nIn - 1, i0));
+            i1 = Math.Max(i0 + 1, Math.Min(nIn, i1));
 
-        if (maxPoints <= 0) maxPoints = 2000;
+            if (maxPoints <= 0) maxPoints = 2000;
 
-        // Pas de décimation si déjà petit : slice
-        int span = i1 - i0;
-        if (span <= maxPoints)
-        {
-            int n = span;
-            freqOut = new double[n];
-            yOut = new double[n];
-            Array.Copy(freqFull, i0, freqOut, 0, n);
-            Array.Copy(yFull, i0, yOut, 0, n);
-            return;
-        }
-
-        // LOG X : buckets uniformes en log10(f)
-        if (useLogX)
-        {
-            if (fMin <= 0) fMin = 1.0;
-            if (fMax <= fMin) fMax = fMin * 10.0;
-
-            int nOut = maxPoints;
-            freqOut = new double[nOut];
-            yOut = new double[nOut];
-
-            double logMin = Math.Log10(fMin);
-            double logMax = Math.Log10(fMax);
-            double logStep = (logMax - logMin) / nOut;
-
-            for (int j = 0; j < nOut; j++)
+            // Pas de décimation si déjà petit : slice
+            int span = i1 - i0;
+            if (span <= maxPoints)
             {
-                double fa = Math.Pow(10.0, logMin + j * logStep);
-                double fb = Math.Pow(10.0, logMin + (j + 1) * logStep);
+                int n = span;
+                freqOut = new double[n];
+                yOut = new double[n];
+                Array.Copy(freqFull, i0, freqOut, 0, n);
+                Array.Copy(yFull, i0, yOut, 0, n);
+                return;
+            }
 
-                int a = Array.BinarySearch(freqFull, fa);
-                if (a < 0) a = ~a;
-                int b = Array.BinarySearch(freqFull, fb);
-                if (b < 0) b = ~b;
+            // LOG X : buckets uniformes en log10(f)
+            if (useLogX)
+            {
+                if (fMin <= 0) fMin = 1.0;
+                if (fMax <= fMin) fMax = fMin * 10.0;
 
-                if (a < i0) a = i0;
-                if (b > i1) b = i1;
-                if (b <= a) b = Math.Min(i1, a + 1);
+                int nOut = maxPoints;
+                freqOut = new double[nOut];
+                yOut = new double[nOut];
 
-                // max dB dans le segment
-                int kMax = a;
-                double yMax = yFull[a];
-                for (int k = a; k < b; k++)
+                double logMin = Math.Log10(fMin);
+                double logMax = Math.Log10(fMax);
+                double logStep = (logMax - logMin) / nOut;
+
+                for (int j = 0; j < nOut; j++)
                 {
-                    double y = yFull[k];
-                    if (y > yMax) { yMax = y; kMax = k; }
+                    double fa = Math.Pow(10.0, logMin + j * logStep);
+                    double fb = Math.Pow(10.0, logMin + (j + 1) * logStep);
+
+                    int a = Array.BinarySearch(freqFull, fa);
+                    if (a < 0) a = ~a;
+                    int b = Array.BinarySearch(freqFull, fb);
+                    if (b < 0) b = ~b;
+
+                    if (a < i0) a = i0;
+                    if (b > i1) b = i1;
+                    if (b <= a) b = Math.Min(i1, a + 1);
+
+                    // max dB dans le segment
+                    int kMax = a;
+                    double yMax = yFull[a];
+                    for (int k = a; k < b; k++)
+                    {
+                        double y = yFull[k];
+                        if (y > yMax) { yMax = y; kMax = k; }
+                    }
+
+                    freqOut[j] = freqFull[kMax];
+                    yOut[j] = yMax;
                 }
 
-                freqOut[j] = freqFull[kMax];
-                yOut[j] = yMax;
+                return;
             }
 
-        return;
-    }
-
-    // LIN X : buckets uniformes en index
-    {
-        int nOut = maxPoints;
-        freqOut = new double[nOut];
-        yOut = new double[nOut];
-
-        double step = (double)span / nOut;
-
-        for (int j = 0; j < nOut; j++)
-        {
-            int a = i0 + (int)Math.Floor(j * step);
-            int b = i0 + (int)Math.Floor((j + 1) * step);
-
-            if (a < i0) a = i0;
-            if (b <= a) b = a + 1;
-            if (b > i1) b = i1;
-
-            int kMax = a;
-            double yMax = yFull[a];
-            for (int k = a; k < b; k++)
+            // LIN X : buckets uniformes en index
             {
-                double y = yFull[k];
-                if (y > yMax) { yMax = y; kMax = k; }
+                int nOut = maxPoints;
+                freqOut = new double[nOut];
+                yOut = new double[nOut];
+
+                double step = (double)span / nOut;
+
+                for (int j = 0; j < nOut; j++)
+                {
+                    int a = i0 + (int)Math.Floor(j * step);
+                    int b = i0 + (int)Math.Floor((j + 1) * step);
+
+                    if (a < i0) a = i0;
+                    if (b <= a) b = a + 1;
+                    if (b > i1) b = i1;
+
+                    int kMax = a;
+                    double yMax = yFull[a];
+                    for (int k = a; k < b; k++)
+                    {
+                        double y = yFull[k];
+                        if (y > yMax) { yMax = y; kMax = k; }
+                    }
+
+                    freqOut[j] = freqFull[kMax];
+                    yOut[j] = yMax;
+                }
             }
-
-            freqOut[j] = freqFull[kMax];
-            yOut[j] = yMax;
         }
-    }
-}
 
-// Variante : on a déjà un freqAxis plot (fréquences choisies), on interpole par "nearest bin" dans yFull.
-private static void DecimateForPlotWithGivenFreqAxis(
-    double[] freqFull,
-    double[] yFull,
-    double[] freqPlot,
-    out double[] yPlot)
-{
-    int nIn = Math.Min(freqFull.Length, yFull.Length);
-    yPlot = new double[freqPlot.Length];
+        // Variante : on a déjà un freqAxis plot (fréquences choisies), on interpole par "nearest bin" dans yFull.
+        private static void DecimateForPlotWithGivenFreqAxis(
+            double[] freqFull,
+            double[] yFull,
+            double[] freqPlot,
+            out double[] yPlot)
+        {
+            int nIn = Math.Min(freqFull.Length, yFull.Length);
+            yPlot = new double[freqPlot.Length];
 
-    for (int j = 0; j < freqPlot.Length; j++)
-    {
-        double f = freqPlot[j];
-        int k = Array.BinarySearch(freqFull, f);
-        if (k < 0) k = ~k;
-        if (k >= nIn) k = nIn - 1;
-        yPlot[j] = yFull[k];
-    }
-}
+            for (int j = 0; j < freqPlot.Length; j++)
+            {
+                double f = freqPlot[j];
+                int k = Array.BinarySearch(freqFull, f);
+                if (k < 0) k = ~k;
+                if (k >= nIn) k = nIn - 1;
+                yPlot[j] = yFull[k];
+            }
+        }
 
         //
         /// Alimente SpectrumControl avec des stats temporelles (issues du core acquisition/analysis),
@@ -4571,7 +4604,7 @@ private static void DecimateForPlotWithGivenFreqAxis(
 
                     ValueDb = v;
                 };
-            }           
+            }
         }
 
         //
@@ -5024,66 +5057,123 @@ private static void DecimateForPlotWithGivenFreqAxis(
             // Si on a sauté vers MEASURES_AND_TEXT (état transitoire invalide), cette ligne n'est jamais atteinte.
             chartSpectrum.Series.Clear();
 
-            // --- Overlays ---
-            foreach (var slot in _overlays.Slots)
+            // --- Overlays (Library V3) ---
+            OverlayKind activeKind = (mode == "Bode Plot") ? OverlayKind.Bode : OverlayKind.Spectrum;
+
+            // Bornes visibles (axe actuel)
+            double xMin = area.AxisX.Minimum;
+            double xMax = area.AxisX.Maximum;
+
+            // Troncature au Nyquist courant si SR connu
+            //double nyquist = (_sampleRate > 0) ? (_sampleRate / 2.0) : double.PositiveInfinity;
+            double xMaxNyq = Math.Min(xMax, nyquist);
+
+            // En LOG, on évite <= 0 Hz
+            if (useLog)
+                xMin = Math.Max(xMin, 1.0);
+
+            for (int ovIndex = 0; ovIndex < _overlayCache.Count; ovIndex++)
             {
-                if (!slot.Enabled || slot.Data == null)
+                var ov = _overlayCache[ovIndex];
+                if (!ov.Visible)
                     continue;
 
-                if (_sampleRate > 0 && slot.Data.SampleRate != _sampleRate)
+                var data = ov.Data;
+                if (data == null)
                     continue;
 
-                if (showLeft)
+                // Un overlay ne s’affiche que si son type correspond à la vue
+                if (data.Kind != activeKind)
+                    continue;
+
+                // Couleur: réutilise la palette "slot" (index modulo)
+                var ovColor = GetOverlaySlotColor(ovIndex % OverlayManager.MaxOverlays);
+
+                // Helper local: ajoute des points sans interpolation, en respectant xMin/xMaxNyq
+                void AddPoints(ChartSeries series, double[] fx, double[] y)
                 {
-                    var ov = slot.Data.LeftDbFs ?? slot.Data.RightDbFs;
-                    if (ov != null)
+                    int n = Math.Min(fx.Length, y.Length);
+                    for (int i = 0; i < n; i++)
                     {
-                        var s = new ChartSeries($"OV{slot.Index + 1}_L");
-                        s.ChartType = SeriesChartType.FastLine;
-                        s.ChartArea = "SpectrumArea";
-                        s.Color = GetOverlaySlotColor(slot.Index);
-                        s.BorderDashStyle = ChartDashStyle.Dot;
-                        s.BorderWidth = _colors.OverlayWidth;
+                        double f = fx[i];
+                        if (useLog && f <= 0) continue;
+                        if (f < xMin) continue;
+                        if (f > xMaxNyq) break;
 
-                        var ovLeft = slot.Data.LeftDbFs;
-                        if (ovLeft != null)
-                        {
-                            var fx = slot.Data.FreqHz;
-                            int n = Math.Min(fx.Length, ovLeft.Length);
-
-                            for (int i = startIndex; i < n; i++)
-                                s.Points.AddXY(fx[i], useDbvPlot ? (ovLeft[i] + _levelCalOffsetDbLeft) : ovLeft[i]);
-                        }
-                        chartSpectrum.Series.Add(s);
+                        series.Points.AddXY(f, y[i]);
                     }
                 }
 
-                if (showRight)
+                if (activeKind == OverlayKind.Spectrum)
                 {
-                    var ov = slot.Data.RightDbFs ?? slot.Data.LeftDbFs;
-                    if (ov != null)
+                    if (showLeft && data.LeftDbFs != null && data.FreqHz != null)
                     {
-                        var s = new ChartSeries($"OV{slot.Index + 1}_R");
+                        var s = new ChartSeries($"OV{ovIndex + 1}_L");
                         s.ChartType = SeriesChartType.FastLine;
                         s.ChartArea = "SpectrumArea";
-                        s.Color = GetOverlaySlotColor(slot.Index);
+                        s.Color = ovColor;
                         s.BorderDashStyle = ChartDashStyle.Dot;
                         s.BorderWidth = _colors.OverlayWidth;
 
-                        var ovRight = slot.Data.RightDbFs;
-                        if (ovRight != null)
-                        {
-                            var fx = slot.Data.FreqHz;
-                            int n = Math.Min(fx.Length, ovRight.Length);
+                        // dBV mode = offset de calibration, comme le tracé live
+                        var y = useDbvPlot
+                            ? data.LeftDbFs.Select(v => v + _levelCalOffsetDbLeft).ToArray()
+                            : data.LeftDbFs;
 
-                            for (int i = startIndex; i < n; i++)
-                                s.Points.AddXY(fx[i], useDbvPlot ? (ovRight[i] + _levelCalOffsetDbRight) : ovRight[i]);
-                        }             
-
+                        AddPoints(s, data.FreqHz, y);
                         chartSpectrum.Series.Add(s);
+                    }
+
+                    if (showRight && data.RightDbFs != null && data.FreqHz != null)
+                    {
+                        var s = new ChartSeries($"OV{ovIndex + 1}_R");
+                        s.ChartType = SeriesChartType.FastLine;
+                        s.ChartArea = "SpectrumArea";
+                        s.Color = ovColor;
+                        s.BorderDashStyle = ChartDashStyle.Dot;
+                        s.BorderWidth = _colors.OverlayWidth;
+
+                        var y = useDbvPlot
+                            ? data.RightDbFs.Select(v => v + _levelCalOffsetDbRight).ToArray()
+                            : data.RightDbFs;
+
+                        AddPoints(s, data.FreqHz, y);
+                        chartSpectrum.Series.Add(s);
+                    }
+                }
+                else // Bode
+                {
+                    // Gain
+                    if (data.GainDb != null && data.FreqHz != null)
+                    {
+                        var sGain = new ChartSeries($"OV{ovIndex + 1}_Gain");
+                        sGain.ChartType = SeriesChartType.FastLine;
+                        sGain.ChartArea = "SpectrumArea";
+                        sGain.Color = ovColor;
+                        sGain.BorderDashStyle = ChartDashStyle.Dot;
+                        sGain.BorderWidth = _colors.OverlayWidth;
+
+                        AddPoints(sGain, data.FreqHz, data.GainDb);
+                        chartSpectrum.Series.Add(sGain);
+                    }
+
+                    // Phase (sur Y2) : suit le même enable que la phase live
+                    if (_frfPhaseEnabled && data.PhaseDeg != null && data.FreqHz != null)
+                    {
+                        var sPh = new ChartSeries($"OV{ovIndex + 1}_Phase");
+                        sPh.ChartType = SeriesChartType.FastLine;
+                        sPh.ChartArea = "SpectrumArea";
+                        sPh.YAxisType = AxisType.Secondary;
+                        sPh.Color = ovColor;
+                        sPh.BorderDashStyle = ChartDashStyle.Dot;
+                        sPh.BorderWidth = _colors.OverlayWidth;
+
+                        AddPoints(sPh, data.FreqHz, data.PhaseDeg);
+                        chartSpectrum.Series.Add(sPh);
                     }
                 }
             }
+
 
             // Courbe gauche
             if (showLeft && plotFx != null && plotL != null)
@@ -5261,11 +5351,11 @@ private static void DecimateForPlotWithGivenFreqAxis(
             }
             else
             {
-                lblLeftRms.Text = "RMS:";               
+                lblLeftRms.Text = "RMS:";
                 lblLeftPeak.Text = "Peak:";
                 if (lblLeftRmsV != null) lblLeftRmsV.Text = "";
                 if (lblLeftPeakV != null) lblLeftPeakV.Text = "";
-                
+
             }
 
             // --- Stats temporelles : RIGHT ---
@@ -5359,10 +5449,10 @@ private static void DecimateForPlotWithGivenFreqAxis(
             SetVoltLabelsVisible(showLeftVolts, showRightVolts);
 
 
-            // =========================
-            //   MESURES ANALYTIQUES
-            // =========================
-            MEASURES_AND_TEXT:
+        // =========================
+        //   MESURES ANALYTIQUES
+        // =========================
+        MEASURES_AND_TEXT:
             ChannelMetrics? mL = null;
             ChannelMetrics? mR = null;
 
@@ -5466,7 +5556,7 @@ private static void DecimateForPlotWithGivenFreqAxis(
                     // THD OFF => F0 uniquement (rapide)
                     // Bande d'analyse F0 : on respecte l'axe courant (custom ou auto)
                     // + on évite de descendre trop bas par défaut (rumble/offset)
-                    
+
 
                     // Bande d’analyse = bande affichée (cohérente avec LIN/LOG + limites custom)
                     double f0Min = Math.Max(useLog ? 1.0 : 0.0, fMin);
@@ -5594,7 +5684,7 @@ private static void DecimateForPlotWithGivenFreqAxis(
                     // THD OFF => F0 uniquement (rapide)
                     // Bande d'analyse F0 : on respecte l'axe courant (custom ou auto)
                     // + on évite de descendre trop bas par défaut (rumble/offset)
-                    
+
                     // Bande d’analyse = bande affichée (cohérente avec LIN/LOG + limites custom)
                     double f0Min = Math.Max(useLog ? 1.0 : 0.0, fMin);
                     double f0Max = fMax;
@@ -5759,7 +5849,7 @@ private static void DecimateForPlotWithGivenFreqAxis(
             // On vide les séries
             chartSpectrum.Series.Clear();
 
-                       // On remet les labels de stats
+            // On remet les labels de stats
             lblLeftRms.Text = "RMS:";
             lblLeftPeak.Text = "Peak:";
             lblRightRms.Text = "";
@@ -5774,6 +5864,233 @@ private static void DecimateForPlotWithGivenFreqAxis(
             lastTimeLeft = null;
             lastTimeRight = null;
         }
+        //
+        // =====================
+        // Overlays V3 - Library
+        // =====================
+
+        private OverlayFile ReadOverlayFromDisk(string filePath)
+        {
+            var json = File.ReadAllText(filePath);
+            var dto = JsonSerializer.Deserialize<OverlayFile>(json, _overlayJsonOptions);
+            if (dto == null)
+                throw new InvalidDataException("Overlay invalide: JSON vide ou non conforme.");
+
+            if (dto.Version != OverlayFile.CurrentVersion)
+                throw new InvalidDataException($"Overlay invalide: Version={dto.Version}, attendu V{OverlayFile.CurrentVersion}.");
+
+            return dto;
+        }
+
+        /// <summary>
+        /// Recharge la bibliothèque interne en cache mémoire.
+        /// Par défaut, tout overlay chargé est visible.
+        /// </summary>
+        private void OverlayLibraryReloadCache()
+        {
+            // Conserver les visibles actuels par FilePath
+            var prevVisible = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in _overlayCache)
+                prevVisible[c.Entry.FilePath] = c.Visible;
+
+            _overlayCache.Clear();
+
+            var entries = _overlayLibrary.LoadAll();
+            foreach (var e in entries)
+            {
+                try
+                {
+                    var data = ReadOverlayFromDisk(e.FilePath);
+
+                    bool visible = true;
+                    if (prevVisible.TryGetValue(e.FilePath, out var v))
+                        visible = v;
+
+                    _overlayCache.Add(new CachedOverlay(e, data, visible));
+                }
+                catch
+                {
+                    // ignore: overlay corrompu / non lisible
+                }
+            }
+
+            // Tri: plus récent en premier (déjà trié côté OverlayLibrary, mais on garde une sécurité)
+            _overlayCache.Sort((a, b) => b.Entry.CreatedUtc.CompareTo(a.Entry.CreatedUtc));
+        }
+
+
+        /// <summary>
+        /// Liste pour UI (future fenêtre Overlays).
+        /// </summary>
+        public List<OverlayEntry> OverlayLibraryGetEntries()
+        {
+            // Retourne la liste "UI-friendly" (métadonnées)
+            return _overlayCache.Select(c => c.Entry).ToList();
+        }
+
+        /// <summary>
+        /// Visible/masqué (future fenêtre Overlays).
+        /// </summary>
+        public void OverlayLibrarySetVisible(string filePath, bool visible)
+        {
+            var c = _overlayCache.FirstOrDefault(x => string.Equals(x.Entry.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+            if (c != null)
+            {
+                c.Visible = visible;
+                UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
+            }
+        }
+
+        /// <summary>
+        /// Capture la vue active (Spectrum ou Bode) et l’ajoute dans la bibliothèque.
+        /// - Points décimés (plot)
+        /// - Visible par défaut
+        /// </summary>
+        public OverlayEntry OverlayLibraryCaptureActiveView()
+        {
+            if (_plotFreqAxis == null || _plotFreqAxis.Length == 0)
+                throw new InvalidOperationException("Pas de données plot (FreqHz) à capturer.");
+
+            string mode = comboChannel.SelectedItem as string ?? "L+R";
+
+            bool isBode = (mode == "Bode Plot");
+
+            // Contexte (info)
+            bool removeDc = false;                 // RemoveDC commenté dans ton UI actuellement
+            string window = lastWindow.ToString(); // info fenêtre
+            int sr = _sampleRate;
+            int fftSize = lastFftSize;
+
+            if (isBode)
+            {
+                // Bode: gain + phase requis
+                if (_plotLeftSpectrum == null || _plotLeftSpectrum.Length == 0)
+                    throw new InvalidOperationException("Pas de Gain (plot) à capturer.");
+                if (_plotFrfPhaseDeg == null || _plotFrfPhaseDeg.Length == 0)
+                    throw new InvalidOperationException("Pas de Phase (plot) à capturer.");
+
+                // Longueur cohérente
+                int n = Math.Min(_plotFreqAxis.Length, Math.Min(_plotLeftSpectrum.Length, _plotFrfPhaseDeg.Length));
+                var fx = _plotFreqAxis.Take(n).ToArray();
+                var gain = _plotLeftSpectrum.Take(n).ToArray();
+                var phase = _plotFrfPhaseDeg.Take(n).ToArray();
+
+                var dto = new OverlayFile
+                {
+                    Version = OverlayFile.CurrentVersion,
+                    Name = "Overlay", // le nom final est géré par AddCapturedOverlay(fileNameBase)
+                    CreatedUtc = DateTime.UtcNow,
+                    Kind = OverlayKind.Bode,
+
+                    SampleRate = sr,
+                    FftSize = fftSize,
+                    Window = window,
+                    RemoveDc = removeDc,
+
+                    FreqHz = fx,
+                    GainDb = gain,
+                    PhaseDeg = phase
+                };
+
+                var entry = _overlayLibrary.AddCapturedOverlay(dto, $"Overlay_{DateTime.Now:yyyy-MM-dd HH-mm-ss}");
+
+                // Mise à jour cache (visible par défaut)
+                OverlayLibraryReloadCache();
+                UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
+
+                return entry;
+            }
+            else
+            {
+                // Spectrum: on capture ce qui est affiché
+                // - si mode Left: Left uniquement
+                // - si mode Right: Right uniquement
+                // - si mode L+R: les deux
+                bool captureLeft = (mode == "Left" || mode == "L+R") && _plotLeftSpectrum != null;
+                bool captureRight = (mode == "Right" || mode == "L+R") && _plotRightSpectrum != null;
+
+                if (!captureLeft && !captureRight)
+                    throw new InvalidOperationException("Pas de spectre plot à capturer (Left/Right).");
+
+                int n = _plotFreqAxis.Length;
+                if (captureLeft) n = Math.Min(n, _plotLeftSpectrum!.Length);
+                if (captureRight) n = Math.Min(n, _plotRightSpectrum!.Length);
+
+                var fx = _plotFreqAxis.Take(n).ToArray();
+
+                var dto = new OverlayFile
+                {
+                    Version = OverlayFile.CurrentVersion,
+                    Name = "Overlay",
+                    CreatedUtc = DateTime.UtcNow,
+                    Kind = OverlayKind.Spectrum,
+
+                    SampleRate = sr,
+                    FftSize = fftSize,
+                    Window = window,
+                    RemoveDc = removeDc,
+
+                    FreqHz = fx,
+                    LeftDbFs = captureLeft ? _plotLeftSpectrum!.Take(n).ToArray() : null,
+                    RightDbFs = captureRight ? _plotRightSpectrum!.Take(n).ToArray() : null
+                };
+
+                var entry = _overlayLibrary.AddCapturedOverlay(dto, $"Overlay_{DateTime.Now:yyyy-MM-dd HH-mm-ss}");
+
+                OverlayLibraryReloadCache();
+                UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
+
+                return entry;
+            }
+        }
+        //
+        public OverlayEntry OverlayLibraryImport(string sourcePath)
+        {
+            var entry = _overlayLibrary.ImportFromFile(sourcePath);
+            OverlayLibraryReloadCache();
+            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
+            return entry;
+        }
+
+        public void OverlayLibraryExport(string libraryFilePath, string targetPath)
+        {
+            var c = _overlayCache.FirstOrDefault(x => string.Equals(x.Entry.FilePath, libraryFilePath, StringComparison.OrdinalIgnoreCase));
+            if (c == null) throw new FileNotFoundException("Overlay introuvable dans le cache.", libraryFilePath);
+
+            _overlayLibrary.ExportToFile(c.Entry, targetPath);
+        }
+
+        public void OverlayLibraryDelete(string libraryFilePath)
+        {
+            var c = _overlayCache.FirstOrDefault(x => string.Equals(x.Entry.FilePath, libraryFilePath, StringComparison.OrdinalIgnoreCase));
+            if (c == null) return;
+
+            _overlayLibrary.Delete(c.Entry);
+
+            OverlayLibraryReloadCache();
+            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
+        }
+
+        public OverlayEntry OverlayLibraryRename(string libraryFilePath, string newName)
+        {
+            var c = _overlayCache.FirstOrDefault(x => string.Equals(x.Entry.FilePath, libraryFilePath, StringComparison.OrdinalIgnoreCase));
+            if (c == null) throw new FileNotFoundException("Overlay introuvable dans le cache.", libraryFilePath);
+
+            var updated = _overlayLibrary.Rename(c.Entry, newName);
+
+            OverlayLibraryReloadCache();
+            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
+
+            return updated;
+        }
+        //
+        public OverlayKind OverlayGetActiveKind()
+        {
+            string mode = comboChannel.SelectedItem as string ?? "L+R";
+            bool isBode = (mode.IndexOf("bode", StringComparison.OrdinalIgnoreCase) >= 0);
+            return isBode ? OverlayKind.Bode : OverlayKind.Spectrum;
+        }
+
         //
         public void OverlayLoad(int slotIndex, string filePath)
         {
@@ -5803,7 +6120,7 @@ private static void DecimateForPlotWithGivenFreqAxis(
         {
             if (freqAxis == null || currentLeftSpectrum == null || _sampleRate <= 0 || lastFftSize <= 0)
                 throw new InvalidOperationException("Pas de spectre courant à sauvegarder.");
-                        
+
             bool removeDc = false;                 // RemoveDC est commenté dans ton UI actuellement
             string window = lastWindow.ToString(); // Conserver l'info de fenêtre
 
@@ -5887,8 +6204,23 @@ private static void DecimateForPlotWithGivenFreqAxis(
 
             UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
         }
+        //
+        private void OpenOverlaysWindow()
+        {
+            if (_overlaysForm == null || _overlaysForm.IsDisposed)
+                _overlaysForm = new OverlaysForm(this);
 
+            _overlaysForm.Show(FindForm());
+            _overlaysForm.BringToFront();
+            _overlaysForm.Activate();
+        }
+        //
+        private void btnOverlay_Click(object sender, EventArgs e)
+        {
+            OpenOverlaysWindow();
+        }
 
+        //
         private void LblLeftMeas_Click(object sender, EventArgs e)
         {
 
@@ -6450,7 +6782,7 @@ private static void DecimateForPlotWithGivenFreqAxis(
 
                 g.Restore(saved);
             }
-            
+
             try
             {
 
@@ -6792,5 +7124,9 @@ private static void DecimateForPlotWithGivenFreqAxis(
 
         }
 
+        private void chkPeakHold_CheckedChanged(object sender, EventArgs e)
+        {
+
+        }
     }
 }

@@ -265,7 +265,7 @@ namespace AudioHexViewer
     /// <summary>
     /// Métadonnées prêtes pour affichage UI (liste des overlays).
     /// </summary>
-    internal sealed class OverlayEntry
+    public sealed class OverlayEntry
     {
         public string FilePath { get; }
         public string Name { get; }

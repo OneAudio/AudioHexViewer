@@ -20,6 +20,7 @@
             label2 = new Label();
             label1 = new Label();
             lblAvgProgress = new Label();
+            btnOverlay = new Button();
             chkPeakHold = new CheckBox();
             btnResetPeakHold = new Button();
             chkEnableThd = new CheckBox();
@@ -86,6 +87,7 @@
             panelTop.Controls.Add(label2);
             panelTop.Controls.Add(label1);
             panelTop.Controls.Add(lblAvgProgress);
+            panelTop.Controls.Add(btnOverlay);
             panelTop.Controls.Add(chkPeakHold);
             panelTop.Controls.Add(btnResetPeakHold);
             panelTop.Controls.Add(chkEnableThd);
@@ -152,20 +154,31 @@
             lblAvgProgress.TabIndex = 14;
             lblAvgProgress.Text = "label1";
             // 
+            // btnOverlay
+            // 
+            btnOverlay.Location = new Point(455, 40);
+            btnOverlay.Name = "btnOverlay";
+            btnOverlay.Size = new Size(60, 23);
+            btnOverlay.TabIndex = 17;
+            btnOverlay.Text = "Overlay";
+            btnOverlay.UseVisualStyleBackColor = true;
+            btnOverlay.Click += btnOverlay_Click;
+            // 
             // chkPeakHold
             // 
             chkPeakHold.Appearance = Appearance.Button;
-            chkPeakHold.Location = new Point(487, 16);
+            chkPeakHold.Location = new Point(521, 16);
             chkPeakHold.Name = "chkPeakHold";
             chkPeakHold.Size = new Size(60, 23);
             chkPeakHold.TabIndex = 17;
             chkPeakHold.Text = "PEAK H";
             chkPeakHold.TextAlign = ContentAlignment.MiddleCenter;
             chkPeakHold.UseVisualStyleBackColor = true;
+            chkPeakHold.CheckedChanged += chkPeakHold_CheckedChanged;
             // 
             // btnResetPeakHold
             // 
-            btnResetPeakHold.Location = new Point(487, 40);
+            btnResetPeakHold.Location = new Point(521, 40);
             btnResetPeakHold.Name = "btnResetPeakHold";
             btnResetPeakHold.Size = new Size(60, 23);
             btnResetPeakHold.TabIndex = 18;
@@ -177,7 +190,7 @@
             // chkEnableThd
             // 
             chkEnableThd.Appearance = Appearance.Button;
-            chkEnableThd.Location = new Point(563, 17);
+            chkEnableThd.Location = new Point(587, 17);
             chkEnableThd.Name = "chkEnableThd";
             chkEnableThd.Size = new Size(60, 23);
             chkEnableThd.TabIndex = 30;
@@ -188,7 +201,7 @@
             // 
             // btnThdSettings
             // 
-            btnThdSettings.Location = new Point(563, 39);
+            btnThdSettings.Location = new Point(587, 39);
             btnThdSettings.Name = "btnThdSettings";
             btnThdSettings.Size = new Size(60, 23);
             btnThdSettings.TabIndex = 31;
@@ -211,7 +224,7 @@
             // lblWindow
             // 
             lblWindow.AutoSize = true;
-            lblWindow.Location = new Point(126, 21);
+            lblWindow.Location = new Point(115, 20);
             lblWindow.Name = "lblWindow";
             lblWindow.Size = new Size(68, 15);
             lblWindow.TabIndex = 2;
@@ -220,7 +233,7 @@
             // comboWindow
             // 
             comboWindow.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboWindow.Location = new Point(126, 39);
+            comboWindow.Location = new Point(115, 39);
             comboWindow.Name = "comboWindow";
             comboWindow.Size = new Size(130, 23);
             comboWindow.TabIndex = 3;
@@ -237,7 +250,7 @@
             // comboAveraging
             // 
             comboAveraging.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboAveraging.Location = new Point(280, 40);
+            comboAveraging.Location = new Point(263, 39);
             comboAveraging.Name = "comboAveraging";
             comboAveraging.Size = new Size(105, 23);
             comboAveraging.TabIndex = 5;
@@ -271,7 +284,7 @@
             // comboChannel
             // 
             comboChannel.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboChannel.Location = new Point(17, 39);
+            comboChannel.Location = new Point(15, 40);
             comboChannel.Name = "comboChannel";
             comboChannel.Size = new Size(85, 23);
             comboChannel.TabIndex = 7;
@@ -756,5 +769,7 @@
         private Label lblFftTicker;
         private Button btnPhiEnable;
         private Button btnPhiUnwrap;
+        private Button btnOverlay;
+
     }
 }

@@ -13,7 +13,7 @@ namespace AudioHexViewer
     ///     * Spectrum : LeftDbFs[] / RightDbFs[] (dBFS)
     ///     * Bode     : GainDb[] / PhaseDeg[] (dB, degrés)
     /// </summary>
-    internal sealed class OverlayFile
+    public sealed class OverlayFile
     {
         public const int CurrentVersion = 3;
 
@@ -48,7 +48,7 @@ namespace AudioHexViewer
         public double[]? PhaseDeg { get; set; }
     }
 
-    internal enum OverlayKind
+    public enum OverlayKind
     {
         Spectrum = 0,
         Bode = 1
