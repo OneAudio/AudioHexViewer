@@ -23,6 +23,7 @@ namespace AudioHexViewer
         private readonly JsonSerializerOptions _jsonOptions;
 
         public string LibraryDirectory => _libraryDir;
+        public int SlotNumber { get; }
 
         public OverlayLibrary(string? libraryDir = null)
         {
@@ -272,14 +273,17 @@ namespace AudioHexViewer
         public OverlayKind Kind { get; }
         public DateTime CreatedUtc { get; }
         public int SampleRate { get; }
+        public int SlotNumber { get; }
 
-        private OverlayEntry(string filePath, string name, OverlayKind kind, DateTime createdUtc, int sampleRate)
+
+        private OverlayEntry(string filePath, string name, OverlayKind kind, DateTime createdUtc, int sampleRate, int slotNumber)
         {
             FilePath = filePath;
             Name = name;
             Kind = kind;
             CreatedUtc = createdUtc;
             SampleRate = sampleRate;
+            SlotNumber = slotNumber;
         }
 
         public static OverlayEntry FromFile(string filePath, OverlayFile dto)
@@ -289,7 +293,8 @@ namespace AudioHexViewer
                 string.IsNullOrWhiteSpace(dto.Name) ? Path.GetFileNameWithoutExtension(filePath) : dto.Name,
                 dto.Kind,
                 dto.CreatedUtc,
-                dto.SampleRate
+                dto.SampleRate,
+                dto.SlotNumber
             );
         }
     }

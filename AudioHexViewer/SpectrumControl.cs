@@ -5873,6 +5873,18 @@ namespace AudioHexViewer
         // =====================
         // Overlays V3 - Library
         // =====================
+        //
+        public System.Drawing.Color OverlayGetSlotColor1Based(int slotNumber)
+        {
+            // slotNumber attendu: 1..8
+            int idx0 = slotNumber - 1;
+            if (idx0 < 0 || idx0 >= OverlayManager.MaxOverlays)
+                idx0 = 0;
+
+            return GetOverlaySlotColor(idx0);
+        }
+
+        //
         private int OverlayLibraryGetNextFreeSlotNumber()
         {
             // Slots utilisés = ceux présents dans la bibliothèque (quel que soit Kind)

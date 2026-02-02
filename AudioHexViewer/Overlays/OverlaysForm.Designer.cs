@@ -7,8 +7,10 @@
         private System.Windows.Forms.Button btnImport;
         private System.Windows.Forms.Button btnExport;
         private System.Windows.Forms.Button btnDelete;
-        private System.Windows.Forms.CheckedListBox checkedListOverlays;
+        private System.Windows.Forms.ListView listOverlays; 
         private System.Windows.Forms.Button btnClose;
+        private System.Windows.Forms.ImageList imgOverlayColors;
+
 
         protected override void Dispose(bool disposing)
         {
@@ -23,7 +25,6 @@
             this.btnImport = new System.Windows.Forms.Button();
             this.btnExport = new System.Windows.Forms.Button();
             this.btnDelete = new System.Windows.Forms.Button();
-            this.checkedListOverlays = new System.Windows.Forms.CheckedListBox();
             this.btnClose = new System.Windows.Forms.Button();
             this.SuspendLayout();
             // 
@@ -67,19 +68,31 @@
             this.btnDelete.UseVisualStyleBackColor = true;
             this.btnDelete.Click += new System.EventHandler(this.btnDelete_Click);
             // 
-            // checkedListOverlays
+            // listOverlays
             // 
-            this.checkedListOverlays.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom)
+            this.listOverlays = new System.Windows.Forms.ListView();
+            this.imgOverlayColors = new System.Windows.Forms.ImageList();
+            this.imgOverlayColors.ImageSize = new System.Drawing.Size(14, 14);
+            this.imgOverlayColors.ColorDepth = System.Windows.Forms.ColorDepth.Depth32Bit;
+            this.listOverlays.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom)
             | System.Windows.Forms.AnchorStyles.Left)
             | System.Windows.Forms.AnchorStyles.Right)));
-            this.checkedListOverlays.CheckOnClick = true;
-            this.checkedListOverlays.FormattingEnabled = true;
-            this.checkedListOverlays.Location = new System.Drawing.Point(12, 47);
-            this.checkedListOverlays.Name = "checkedListOverlays";
-            this.checkedListOverlays.Size = new System.Drawing.Size(378, 274);
-            this.checkedListOverlays.TabIndex = 4;
-            this.checkedListOverlays.ItemCheck += new System.Windows.Forms.ItemCheckEventHandler(this.checkedListOverlays_ItemCheck);
-            this.checkedListOverlays.DoubleClick += new System.EventHandler(this.checkedListOverlays_DoubleClick);
+            this.listOverlays.CheckBoxes = true;
+            this.listOverlays.FullRowSelect = true;
+            this.listOverlays.HideSelection = false;
+            this.listOverlays.Location = new System.Drawing.Point(12, 47);
+            this.listOverlays.MultiSelect = true;
+            this.listOverlays.Name = "listOverlays";
+            this.listOverlays.Size = new System.Drawing.Size(378, 274);
+            this.listOverlays.TabIndex = 4;
+            this.listOverlays.UseCompatibleStateImageBehavior = false;
+            this.listOverlays.View = System.Windows.Forms.View.Details;
+            this.listOverlays.Columns.Add("Nom", 240);
+            this.listOverlays.Columns.Add("Type", 70);
+            this.listOverlays.Columns.Add("SR", 60);
+            this.listOverlays.ItemChecked += new System.Windows.Forms.ItemCheckedEventHandler(this.listOverlays_ItemChecked);
+            this.listOverlays.DoubleClick += new System.EventHandler(this.listOverlays_DoubleClick);
+            this.listOverlays.SmallImageList = this.imgOverlayColors;
             // 
             // btnClose
             // 
@@ -97,7 +110,7 @@
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(402, 371);
             this.Controls.Add(this.btnClose);
-            this.Controls.Add(this.checkedListOverlays);
+            this.Controls.Add(this.listOverlays);
             this.Controls.Add(this.btnDelete);
             this.Controls.Add(this.btnExport);
             this.Controls.Add(this.btnImport);

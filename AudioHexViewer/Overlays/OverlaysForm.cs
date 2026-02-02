@@ -16,6 +16,7 @@ namespace AudioHexViewer
         {
             _owner = owner ?? throw new ArgumentNullException(nameof(owner));
             InitializeComponent();
+            InitColorIcons();
             RefreshList();
         }
 
@@ -24,33 +25,95 @@ namespace AudioHexViewer
             _isRefreshing = true;
             try
             {
-                checkedListOverlays.Items.Clear();
+                listOverlays.BeginUpdate();
+                listOverlays.Items.Clear();
                 _entries.Clear();
 
                 var entries = _owner.OverlayLibraryGetEntries();
-
-                // On liste tout (Spectrum + Bode). L'affichage réel dépendra du Kind et de la vue active.
                 _entries.AddRange(entries);
 
                 foreach (var e in _entries)
                 {
-                    // Affichage minimal: juste le nom (comme ta spec)
-                    checkedListOverlays.Items.Add(e.Name, isChecked: true);
+                    // Tag = index dans _entries (stable pendant la durée d’affichage)
+                    string key = (e.SlotNumber >= 1 && e.SlotNumber <= OverlayManager.MaxOverlays) ? $"slot{e.SlotNumber}" : "slot0";
+                    var item = new ListViewItem(e.Name);
+                    item.ImageKey = key;
+                    // Colonne "Type"
+                    item.SubItems.Add(KindToShortText(e.Kind));
+                    // Colonne "SR"
+                    item.SubItems.Add(e.SampleRate > 0 ? e.SampleRate.ToString() : "");
+                    // Binding
+                    item.Tag = e;
+                    // Visible par défaut dans l'UI (l'état réel est piloté via SetVisible au check/uncheck)
+                    item.Checked = true;
+
+                    listOverlays.Items.Add(item);
+
                 }
             }
             finally
             {
+                listOverlays.EndUpdate();
                 _isRefreshing = false;
             }
         }
-
-        private OverlayEntry? GetSelectedEntry()
+        //
+        //
+        private List<OverlayEntry> GetSelectedEntries()
         {
-            int idx = checkedListOverlays.SelectedIndex;
-            if (idx < 0 || idx >= _entries.Count) return null;
-            return _entries[idx];
+            var selected = new List<OverlayEntry>();
+
+            foreach (ListViewItem it in listOverlays.SelectedItems)
+            {
+                if (it.Tag is OverlayEntry e)
+                    selected.Add(e);
+            }
+
+            return selected;
         }
 
+        private OverlayEntry? GetSingleSelectedEntryOrNull()
+        {
+            var list = GetSelectedEntries();
+            return list.Count == 1 ? list[0] : null;
+        }
+        //
+        private void InitColorIcons()
+        {
+            imgOverlayColors.Images.Clear();
+
+            // 8 slots (1..8)
+            for (int slot = 1; slot <= OverlayManager.MaxOverlays; slot++)
+            {
+                var c = _owner.OverlayGetSlotColor1Based(slot);
+                var bmp = CreateColorDotBitmap(c, 14, 14);
+                imgOverlayColors.Images.Add($"slot{slot}", bmp);
+            }
+
+            // fallback
+            imgOverlayColors.Images.Add("slot0", CreateColorDotBitmap(System.Drawing.Color.Gray, 14, 14));
+        }
+
+        private static System.Drawing.Bitmap CreateColorDotBitmap(System.Drawing.Color color, int w, int h)
+        {
+            var bmp = new System.Drawing.Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (var g = System.Drawing.Graphics.FromImage(bmp))
+            using (var b = new System.Drawing.SolidBrush(color))
+            using (var p = new System.Drawing.Pen(System.Drawing.Color.FromArgb(220, 0, 0, 0), 1f))
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                g.Clear(System.Drawing.Color.Transparent);
+
+                // petit rond centré
+                int d = Math.Min(w, h) - 2;
+                var rect = new System.Drawing.Rectangle(1, 1, d, d);
+                g.FillEllipse(b, rect);
+                g.DrawEllipse(p, rect);
+            }
+            return bmp;
+        }
+
+        //
         private void btnCapture_Click(object sender, EventArgs e)
         {
             try
@@ -70,13 +133,15 @@ namespace AudioHexViewer
             {
                 ofd.Filter = "Overlay (*.overlay.json)|*.overlay.json|JSON (*.json)|*.json|All files (*.*)|*.*";
                 ofd.Title = "Importer un overlay";
+                ofd.Multiselect = true;
 
                 if (ofd.ShowDialog(this) != DialogResult.OK)
                     return;
 
                 try
                 {
-                    _owner.OverlayLibraryImport(ofd.FileName);
+                    foreach (var file in ofd.FileNames)
+                        _owner.OverlayLibraryImport(file);
                     RefreshList();
                 }
                 catch (Exception ex)
@@ -88,49 +153,103 @@ namespace AudioHexViewer
 
         private void btnExport_Click(object sender, EventArgs e)
         {
-            var entry = GetSelectedEntry();
-            if (entry == null) return;
+            var selection = GetSelectedEntries();
+            if (selection.Count == 0) return;
 
-            using (var sfd = new SaveFileDialog())
+            // Export 1 overlay -> SaveFileDialog (choix fichier)
+            if (selection.Count == 1)
             {
-                // Nom par défaut: <NomOverlay>.overlay.json
-                var baseName = MakeSafeFileName(entry.Name);
-                sfd.FileName = baseName + ".overlay.json";
-                sfd.Filter = "Overlay (*.overlay.json)|*.overlay.json|JSON (*.json)|*.json|All files (*.*)|*.*";
-                sfd.Title = "Exporter l'overlay";
+                var entry = selection[0];
 
-                if (sfd.ShowDialog(this) != DialogResult.OK)
+                using (var sfd = new SaveFileDialog())
+                {
+                    var baseName = MakeSafeFileName(entry.Name);
+                    sfd.FileName = baseName + ".overlay.json";
+                    sfd.Filter = "Overlay (*.overlay.json)|*.overlay.json|JSON (*.json)|*.json|All files (*.*)|*.*";
+                    sfd.Title = "Exporter l'overlay";
+
+                    if (sfd.ShowDialog(this) != DialogResult.OK)
+                        return;
+
+                    try
+                    {
+                        _owner.OverlayLibraryExport(entry.FilePath, sfd.FileName);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(this, ex.Message, "Export overlay", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+
+                return;
+            }
+
+            // Export multiple -> FolderBrowserDialog (choix dossier)
+            using (var fbd = new FolderBrowserDialog())
+            {
+                fbd.Description = "Choisir le dossier d'export des overlays";
+                if (fbd.ShowDialog(this) != DialogResult.OK)
                     return;
 
                 try
                 {
-                    _owner.OverlayLibraryExport(entry.FilePath, sfd.FileName);
+                    foreach (var entry in selection)
+                    {
+                        var baseName = MakeSafeFileName(entry.Name);
+                        var target = Path.Combine(fbd.SelectedPath, baseName + ".overlay.json");
+                        // Eviter d'écraser: si existe, on ajoute (2), (3)...
+                        target = GetUniquePath(target);
+
+                        _owner.OverlayLibraryExport(entry.FilePath, target);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(this, ex.Message, "Export overlay", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(this, ex.Message, "Export overlay (multiple)", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }
+        //
+        private static string GetUniquePath(string desiredPath)
+        {
+            if (!File.Exists(desiredPath))
+                return desiredPath;
 
+            var dir = Path.GetDirectoryName(desiredPath);
+            if (string.IsNullOrWhiteSpace(dir))
+                return desiredPath;
+
+            var baseName = Path.GetFileNameWithoutExtension(desiredPath);
+            var ext = Path.GetExtension(desiredPath);
+
+            for (int i = 2; i < 10000; i++)
+            {
+                var candidate = Path.Combine(dir, $"{baseName} ({i}){ext}");
+                if (!File.Exists(candidate))
+                    return candidate;
+            }
+
+            return desiredPath;
+        }
+        //
         private void btnDelete_Click(object sender, EventArgs e)
         {
-            var entry = GetSelectedEntry();
-            if (entry == null) return;
+            var selection = GetSelectedEntries();
+            if (selection.Count == 0) return;
 
-            var res = MessageBox.Show(
-                this,
-                $"Supprimer définitivement l'overlay \"{entry.Name}\" ?\r\n(Ceci efface le fichier de la bibliothèque.)",
-                "Supprimer overlay",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
+            string msg = selection.Count == 1
+                ? $"Supprimer définitivement l'overlay \"{selection[0].Name}\" ?\r\n(Ceci efface le fichier de la bibliothèque.)"
+                : $"Supprimer définitivement {selection.Count} overlays sélectionnés ?\r\n(Ceci efface les fichiers de la bibliothèque.)";
 
+            var res = MessageBox.Show(this, msg, "Supprimer overlay(s)", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
             if (res != DialogResult.Yes)
                 return;
 
             try
             {
-                _owner.OverlayLibraryDelete(entry.FilePath);
+                foreach (var entry in selection)
+                    _owner.OverlayLibraryDelete(entry.FilePath);
+
                 RefreshList();
             }
             catch (Exception ex)
@@ -139,32 +258,28 @@ namespace AudioHexViewer
             }
         }
 
+
         private void btnClose_Click(object sender, EventArgs e)
         {
             Close();
         }
 
-        private void checkedListOverlays_ItemCheck(object sender, ItemCheckEventArgs e)
+        private void listOverlays_ItemChecked(object sender, ItemCheckedEventArgs e)
         {
             if (_isRefreshing) return;
 
-            // Important: ItemCheck se déclenche avant que l'état soit appliqué
-            BeginInvoke((Action)(() =>
+            if (e.Item.Tag is OverlayEntry entry)
             {
-                if (e.Index < 0 || e.Index >= _entries.Count) return;
-                var entry = _entries[e.Index];
-                bool visible = checkedListOverlays.GetItemChecked(e.Index);
-
-                _owner.OverlayLibrarySetVisible(entry.FilePath, visible);
-            }));
+                _owner.OverlayLibrarySetVisible(entry.FilePath, e.Item.Checked);
+            }
         }
 
-        private void checkedListOverlays_DoubleClick(object sender, EventArgs e)
+
+        private void listOverlays_DoubleClick(object sender, EventArgs e)
         {
-            var entry = GetSelectedEntry();
+            var entry = GetSingleSelectedEntryOrNull();
             if (entry == null) return;
 
-            // Double-clic = renommer
             string? newName = SimpleInputDialog.Show(this, "Renommer overlay", "Nom :", entry.Name);
             if (string.IsNullOrWhiteSpace(newName)) return;
 
@@ -178,7 +293,17 @@ namespace AudioHexViewer
                 MessageBox.Show(this, ex.Message, "Renommer overlay", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-
+        //
+        private static string KindToShortText(OverlayKind kind)
+        {
+            switch (kind)
+            {
+                case OverlayKind.Spectrum: return "Spectrum";
+                case OverlayKind.Bode: return "Bode";
+                default: return kind.ToString();
+            }
+        }
+        //
         private static string MakeSafeFileName(string name)
         {
             var invalid = Path.GetInvalidFileNameChars();
