@@ -5087,7 +5087,12 @@ namespace AudioHexViewer
                     continue;
 
                 // Couleur: réutilise la palette "slot" (index modulo)
-                var ovColor = GetOverlaySlotColor(ovIndex % OverlayManager.MaxOverlays);
+                int slotIndex = (data.SlotNumber >= 1 && data.SlotNumber <= OverlayManager.MaxOverlays)
+                    ? (data.SlotNumber - 1)
+                    : (ovIndex % OverlayManager.MaxOverlays);
+
+                var ovColor = GetOverlaySlotColor(slotIndex);
+
 
                 // Helper local: ajoute des points sans interpolation, en respectant xMin/xMaxNyq
                 void AddPoints(ChartSeries series, double[] fx, double[] y)
@@ -5868,6 +5873,24 @@ namespace AudioHexViewer
         // =====================
         // Overlays V3 - Library
         // =====================
+        private int OverlayLibraryGetNextFreeSlotNumber()
+        {
+            // Slots utilisés = ceux présents dans la bibliothèque (quel que soit Kind)
+            bool[] used = new bool[OverlayManager.MaxOverlays + 1]; // index 1..8
+
+            foreach (var c in _overlayCache)
+            {
+                int s = c.Data != null ? c.Data.SlotNumber : 0;
+                if (s >= 1 && s <= OverlayManager.MaxOverlays)
+                    used[s] = true;
+            }
+
+            for (int s = 1; s <= OverlayManager.MaxOverlays; s++)
+                if (!used[s]) return s;
+
+            throw new InvalidOperationException($"Tous les slots overlays (1..{OverlayManager.MaxOverlays}) sont déjà utilisés.");
+        }
+
 
         private OverlayFile ReadOverlayFromDisk(string filePath)
         {
@@ -5951,6 +5974,9 @@ namespace AudioHexViewer
             if (_plotFreqAxis == null || _plotFreqAxis.Length == 0)
                 throw new InvalidOperationException("Pas de données plot (FreqHz) à capturer.");
 
+            int slot = OverlayLibraryGetNextFreeSlotNumber();
+            string defaultName = $"Overlay_{slot}";
+
             string mode = comboChannel.SelectedItem as string ?? "L+R";
 
             bool isBode = (mode == "Bode Plot");
@@ -5978,7 +6004,8 @@ namespace AudioHexViewer
                 var dto = new OverlayFile
                 {
                     Version = OverlayFile.CurrentVersion,
-                    Name = "Overlay", // le nom final est géré par AddCapturedOverlay(fileNameBase)
+                    Name = defaultName, // sera renommé par la bibliothèque
+                    SlotNumber = slot, // info
                     CreatedUtc = DateTime.UtcNow,
                     Kind = OverlayKind.Bode,
 
@@ -5992,7 +6019,7 @@ namespace AudioHexViewer
                     PhaseDeg = phase
                 };
 
-                var entry = _overlayLibrary.AddCapturedOverlay(dto, $"Overlay_{DateTime.Now:yyyy-MM-dd HH-mm-ss}");
+                var entry = _overlayLibrary.AddCapturedOverlay(dto, $"{defaultName}_{DateTime.Now:yyyy-MM-dd HH-mm-ss}");
 
                 // Mise à jour cache (visible par défaut)
                 OverlayLibraryReloadCache();
@@ -6021,7 +6048,8 @@ namespace AudioHexViewer
                 var dto = new OverlayFile
                 {
                     Version = OverlayFile.CurrentVersion,
-                    Name = "Overlay",
+                    Name = defaultName,
+                    SlotNumber = slot,
                     CreatedUtc = DateTime.UtcNow,
                     Kind = OverlayKind.Spectrum,
 
@@ -6035,7 +6063,7 @@ namespace AudioHexViewer
                     RightDbFs = captureRight ? _plotRightSpectrum!.Take(n).ToArray() : null
                 };
 
-                var entry = _overlayLibrary.AddCapturedOverlay(dto, $"Overlay_{DateTime.Now:yyyy-MM-dd HH-mm-ss}");
+                var entry = _overlayLibrary.AddCapturedOverlay(dto, $"{defaultName}_{DateTime.Now:yyyy-MM-dd HH-mm-ss}");   
 
                 OverlayLibraryReloadCache();
                 UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);

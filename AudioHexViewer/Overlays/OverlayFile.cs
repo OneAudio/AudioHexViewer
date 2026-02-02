@@ -22,11 +22,14 @@ namespace AudioHexViewer
         public string Name { get; set; } = "Overlay";
         public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 
-        /// <summary>
+        
         /// Type de la capture (détermine sur quelle vue l'overlay est affichable).
-        /// </summary>
         [JsonConverter(typeof(JsonStringEnumConverter))]
         public OverlayKind Kind { get; set; } = OverlayKind.Spectrum;
+
+        /// Numéro de slot (1..8) pour conserver une couleur stable.
+        public int SlotNumber { get; set; }
+
 
         // Contexte (informatif, non utilisé pour filtrer strictement l'affichage)
         public int SampleRate { get; set; }

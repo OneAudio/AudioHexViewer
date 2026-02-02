@@ -5,6 +5,10 @@ Le 21/01/2026
 
 1 - Revoir le mode de fonctionnement des overlay.( bouton comme  les curseurs à voir..)
 
+Ajouter fonction "clear" du spectre affiché avec le bouton clear de la moyenne ?
+Ajouter dans la boite Color la choix du type de trait pour les 8 overlays.
+Faire apparaitre la couleur des overlay devant le nom de la courbe dans le dialogue overlay ?
+
 2 - Ajouter une fonction de moyennage cohérente (synchrone) pour les mesures de THD 
 
 3 - Pour le mode FRF (Bode Plot), le moyennage serait à revoir...
