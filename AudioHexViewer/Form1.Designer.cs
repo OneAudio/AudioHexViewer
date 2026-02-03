@@ -455,7 +455,6 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuOpenCal;
         private ToolStripMenuItem menuOpenRecordsFolder;
         private ToolStripMenuItem alwaysOnTopToolStripMenuItem;
-        private SplitContainer splitMain;
         private Panel panelTop;
         private Label label7;
         private Label label6;

@@ -22,29 +22,5 @@ namespace AudioHexViewer.Properties {
                 return defaultInstance;
             }
         }
-        
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("")]
-        public string OverlayPaths {
-            get {
-                return ((string)(this["OverlayPaths"]));
-            }
-            set {
-                this["OverlayPaths"] = value;
-            }
-        }
-        
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("")]
-        public string OverlayEnabled {
-            get {
-                return ((string)(this["OverlayEnabled"]));
-            }
-            set {
-                this["OverlayEnabled"] = value;
-            }
-        }
     }
 }

@@ -350,8 +350,6 @@ namespace AudioHexViewer
 
         private readonly SpectrumPostProcessor _post = new SpectrumPostProcessor();
 
-        private readonly OverlayManager _overlays = new OverlayManager();
-
         // ===== Overlays V3 (bibliothèque interne) =====
         // Cache en mémoire pour éviter de relire les .overlay.json à chaque rafraîchissement du chart.
         private readonly OverlayLibrary _overlayLibrary = new OverlayLibrary();
@@ -399,10 +397,6 @@ namespace AudioHexViewer
         // --- Exponential averaging (magnitude-domain) ---
         private bool _avgIsExponential = false;
         private double _avgExpAlpha = 0.0;             // ex: 0.94
-        private bool _expAvgPrimed = false;
-        private double[]? _expAvgLinL = null;
-        private double[]? _expAvgLinR = null;
-
 
         // Spectres courants & axe fréquence
         private double[]? currentLeftSpectrum;
@@ -3798,10 +3792,6 @@ namespace AudioHexViewer
             _post.ResetAveragingState();
             _post.ResetFrfState();
 
-            _expAvgPrimed = false;
-            _expAvgLinL = null;
-            _expAvgLinR = null;
-
             if (_avgIsExponential)
                 UpdateAvgProgressUi(0, 0);
             else
@@ -6156,118 +6146,10 @@ namespace AudioHexViewer
         }
 
         //
-        public void OverlayLoad(int slotIndex, string filePath)
-        {
-            _overlays.LoadIntoSlot(slotIndex, filePath);
-            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
-        }
-
-        public void OverlayClear(int slotIndex)
-        {
-            _overlays.ClearSlot(slotIndex);
-            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
-        }
-
-        public void OverlaySetEnabled(int slotIndex, bool enabled)
-        {
-            _overlays.Slots[slotIndex].Enabled = enabled;
-            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
-        }
-
-        public bool OverlayIsLoaded(int slotIndex) => _overlays.Slots[slotIndex].Data != null;
-        public bool OverlayIsEnabled(int slotIndex) => _overlays.Slots[slotIndex].Enabled;
-
         // Mémorise la fenêtre choisie hors FRF, pour la restaurer quand on sort du mode Bode Plot.
         private int _windowIndexBeforeFrf = -1;
 
-        public void OverlaySave(int slotIndex, string filePath, string name)
-        {
-            if (freqAxis == null || currentLeftSpectrum == null || _sampleRate <= 0 || lastFftSize <= 0)
-                throw new InvalidOperationException("Pas de spectre courant à sauvegarder.");
-
-            bool removeDc = false;                 // RemoveDC est commenté dans ton UI actuellement
-            string window = lastWindow.ToString(); // Conserver l'info de fenêtre
-
-            _overlays.SaveToFile(
-                filePath,
-                name,
-                _sampleRate,
-                lastFftSize,
-                window,
-                removeDc,
-                _plotFreqAxis!,
-                _plotLeftSpectrum,
-                _plotRightSpectrum);
-
-            _overlays.LoadIntoSlot(slotIndex, filePath);                 // <-- charge dans le slot
-            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);    // <-- redraw immédiat
-
-        }
-        //
-        public (bool loaded, bool enabled, string name, string? filePath, bool compatible) OverlayGetStatus(int slotIndex)
-        {
-            var s = _overlays.Slots[slotIndex];
-            bool loaded = (s.Data != null);
-            bool enabled = s.Enabled;
-
-            string name = loaded ? s.Name : $"Overlay {slotIndex + 1}";
-            string? filePath = s.FilePath;
-
-            bool compatible = true;
-            if (loaded && s.Data != null)
-                if (_sampleRate <= 0)
-                    compatible = true;          // SR inconnu => ne pas marquer incompatible
-                else
-                    compatible = (s.Data.SampleRate == _sampleRate);
-
-
-
-            return (loaded, enabled, name, filePath, compatible);
-        }
-
-        public (string? filePath, bool enabled)[] OverlayExportState()
-        {
-            var state = new (string? filePath, bool enabled)[OverlayManager.MaxOverlays];
-            for (int i = 0; i < OverlayManager.MaxOverlays; i++)
-            {
-                var s = _overlays.Slots[i];
-                state[i] = (s.FilePath, s.Enabled);
-            }
-            return state;
-        }
-
-        public void OverlayImportState((string? filePath, bool enabled)[] state)
-        {
-            if (state == null) return;
-
-            int n = Math.Min(state.Length, OverlayManager.MaxOverlays);
-            for (int i = 0; i < n; i++)
-            {
-                var (path, enabled) = state[i];
-
-                _overlays.ClearSlot(i);
-
-                if (!string.IsNullOrWhiteSpace(path) && System.IO.File.Exists(path))
-                {
-                    try
-                    {
-                        _overlays.LoadIntoSlot(i, path);
-                        _overlays.Slots[i].Enabled = enabled;
-                    }
-                    catch
-                    {
-                        // ignore: fichier invalide ou lecture impossible
-                        _overlays.ClearSlot(i);
-                    }
-                }
-                else
-                {
-                    _overlays.Slots[i].Enabled = enabled;
-                }
-            }
-
-            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
-        }
+        
         //
         private void OpenOverlaysWindow()
         {
@@ -6935,16 +6817,7 @@ namespace AudioHexViewer
         ref VoltUnit vrmsState, ref VoltUnit vpkState, ref VoltUnit vdcState)
 
         {
-            if (baseMeas == null) baseMeas = string.Empty;
-
-            // Format simple et robuste : mV sous 1V, sinon V.
-            static string FormatV(double v)
-            {
-                double av = Math.Abs(v);
-                if (av < 1.0)
-                    return (v * 1000.0).ToString("0.###") + " mV";
-                return v.ToString("0.###") + " V";
-            }
+            if (baseMeas == null) baseMeas = string.Empty;            
 
             var sb = new System.Text.StringBuilder();
 

@@ -71,7 +71,6 @@ namespace AudioHexViewer
         // Hauteur minimale de la fentre
         private int _minWidth;
         private int _minHeightNoGraphs;
-        private int _minHeightWithGraphs;
         // Dsactivation temporaire du redimensionnement
         private FormBorderStyle _borderStyleWithGraphs;
         //private bool _borderStyleSaved;
@@ -110,8 +109,6 @@ namespace AudioHexViewer
 
         private readonly ConcurrentQueue<SpectrumFrame> _sfftFrames = new ConcurrentQueue<SpectrumFrame>();
         private SpectrumFrame? _lastFrameUi; // dernier frame affiché
-
-        private long _uiFramesShown = 0;
         private long _uiFramesDrained = 0;
         private readonly System.Diagnostics.Stopwatch _uiSw = System.Diagnostics.Stopwatch.StartNew();
         private double _uiLastRateT = 0;
@@ -155,8 +152,6 @@ namespace AudioHexViewer
         private long _lastAnalysisAbsEnd = 0;
 
         // Pour le cas N > Buffer : accumulation dans une “fenêtre FFT” logique (taille N)
-        private StereoRingBuffer? _fftWindow;  // capacité = N (peut être > buffer)
-        private long _windowFeedAbsIndex = 0;  // dernier index absolu déjà injecté dans _fftWindow
 
 
         // --- Fenêtre d'analyse commune Histogram + Spectrum ---
@@ -223,7 +218,6 @@ namespace AudioHexViewer
 
         private HistogramControl? histogramControl;
         private SpectrumControl? spectrumControl;
-        private ToolStripMenuItem? menuOverlay;
         private ToolStripMenuItem? menuColors;
 
         private bool _spectrumRunning;
@@ -775,7 +769,6 @@ namespace AudioHexViewer
         private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
         {
             SaveSessionSettingsSilently();
-            SaveOverlayState();
         }
         //
         private void InitAnalysisUi()
@@ -940,9 +933,7 @@ namespace AudioHexViewer
 
                 _lastAnalysisAbsEnd = 0;
 
-                // La fenêtre logique FFT (N) sera recréée à la demande dans UpdateAnalysisFrame()
-                _fftWindow = null;
-                _windowFeedAbsIndex = 0;
+                
             }
         }
         //
@@ -954,8 +945,6 @@ namespace AudioHexViewer
                 else _audioRing.Clear(resetAbsIndex: true);
 
                 _lastAnalysisAbsEnd = 0;
-                _fftWindow = null;
-                _windowFeedAbsIndex = 0;
             }
         }
 
@@ -1289,8 +1278,7 @@ namespace AudioHexViewer
             InitDataView();
 
             InitAnalysisUi();
-
-            InitOverlayMenu();
+           
             InitColorsMenu();
 
             //this.WindowState = FormWindowState.Maximized; // Plein cran au dmarrage
@@ -1634,146 +1622,11 @@ namespace AudioHexViewer
             SaveSessionSettingsSilently();
         }
 
-        //
-        private void InitOverlayMenu()
-        {
-            menuOverlay = new ToolStripMenuItem("Overlay");
-
-            // 8 slots
-            for (int i = 0; i < OverlayManager.MaxOverlays; i++)
-            {
-                var slot = new ToolStripMenuItem($"Slot {i + 1}");
-                slot.Tag = i;
-
-                var miLoad = new ToolStripMenuItem("Load…");
-                miLoad.Tag = ("load", i);
-                miLoad.Click += OverlayMenu_Click;
-                SaveOverlayState();
-
-                var miSave = new ToolStripMenuItem("Save…");
-                miSave.Tag = ("save", i);
-                miSave.Click += OverlayMenu_Click;
-                SaveOverlayState();
-
-                var miEnabled = new ToolStripMenuItem("Enabled");
-                miEnabled.CheckOnClick = true;
-                miEnabled.Checked = true;
-                miEnabled.Tag = ("enabled", i);
-                miEnabled.CheckedChanged += OverlayMenu_CheckedChanged;
-
-                var miClear = new ToolStripMenuItem("Clear");
-                miClear.Tag = ("clear", i);
-                miClear.Click += OverlayMenu_Click;
-                SaveOverlayState();
-
-                miEnabled.Name = $"ov_enabled_{i}";
-                slot.Name = $"ov_slot_{i}";
-                slot.Text = $"Slot {i + 1}";
-
-                slot.DropDownItems.Add(miLoad);
-                slot.DropDownItems.Add(miSave);
-                slot.DropDownItems.Add(new ToolStripSeparator());
-                slot.DropDownItems.Add(miEnabled);
-                slot.DropDownItems.Add(miClear);
-
-                menuOverlay.DropDownItems.Add(slot);
-            }
-            menuOverlay.DropDownItems.Add(new ToolStripSeparator());
-
-            var miClearAll = new ToolStripMenuItem("Clear all…");
-            miClearAll.Click += OverlayClearAll_Click;
-            menuOverlay.DropDownItems.Add(miClearAll);
-
-
-            // Ajouter au menu principal (top-level)
-            menuStrip1.Items.Add(menuOverlay);
-            UpdateOverlayMenuCaptions();
-
-        }
-        //
-        private void SaveOverlayState()
-        {
-            if (spectrumControl == null) return;
-
-            var st = spectrumControl.OverlayExportState();
-
-            var paths = new string[OverlayManager.MaxOverlays];
-            var ens = new string[OverlayManager.MaxOverlays];
-
-            for (int i = 0; i < OverlayManager.MaxOverlays; i++)
-            {
-                paths[i] = st[i].filePath ?? "";
-                ens[i] = st[i].enabled ? "1" : "0";
-            }
-
-            Properties.Settings.Default.OverlayPaths = string.Join("|", paths);
-            Properties.Settings.Default.OverlayEnabled = string.Join("|", ens);
-            Properties.Settings.Default.Save();
-        }
+        //        
         //
         //
-        private void OverlayMenu_Click(object? sender, EventArgs e)
-        {
-            if (sender is not ToolStripMenuItem mi || mi.Tag is not ValueTuple<string, int> tag)
-                return;
-
-            var (action, idx) = tag;
-
-            if (spectrumControl == null)
-            {
-                MessageBox.Show("Le panneau Spectrum n'est pas initialisé.", "Overlay");
-                return;
-            }
-
-            try
-            {
-                if (action == "load")
-                {
-                    using var ofd = new OpenFileDialog();
-                    ofd.Filter = "Overlay JSON (*.json)|*.json|All files (*.*)|*.*";
-                    if (ofd.ShowDialog(this) == DialogResult.OK)
-                        spectrumControl.OverlayLoad(idx, ofd.FileName);
-                    var st = spectrumControl.OverlayGetStatus(idx);
-                    if (st.loaded && !st.compatible)
-                        MessageBox.Show("Overlay chargé mais incompatible avec la FFT courante (SampleRate ou N différent). Il ne sera pas affiché.", "Overlay");
-                    UpdateOverlayMenuCaptions();
-                }
-                else if (action == "save")
-                {
-                    using var sfd = new SaveFileDialog();
-                    sfd.Filter = "Overlay JSON (*.json)|*.json|All files (*.*)|*.*";
-                    sfd.FileName = $"overlay_slot{idx + 1}.json";
-                    if (sfd.ShowDialog(this) == DialogResult.OK)
-                        spectrumControl.OverlaySave(idx, sfd.FileName, $"Overlay {idx + 1}");
-                    UpdateOverlayMenuCaptions();
-                }
-                else if (action == "clear")
-                {
-                    spectrumControl.OverlayClear(idx);
-                    UpdateOverlayMenuCaptions();
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message, "Overlay", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
-        private void OverlayMenu_CheckedChanged(object? sender, EventArgs e)
-        {
-            if (sender is not ToolStripMenuItem mi || mi.Tag is not ValueTuple<string, int> tag)
-                return;
-
-            var (action, idx) = tag;
-            if (action != "enabled") return;
-
-            if (spectrumControl == null)
-                return;
-
-            spectrumControl.OverlaySetEnabled(idx, mi.Checked);
-            UpdateOverlayMenuCaptions();
-
-        }
+        //
+       
         //
         private void ApplyAnalysisSettings(SessionSettings s)
         {
@@ -2297,7 +2150,6 @@ namespace AudioHexViewer
 
                 UpdateDeviceInfo();
                 UpdateDeviceSummary();
-                UpdateOverlayMenuCaptions();
             }
             catch (Exception ex)
             {
@@ -2373,194 +2225,7 @@ namespace AudioHexViewer
 
             UpdateDeviceInfo();
             UpdateDeviceSummary();
-            UpdateOverlayMenuCaptions();
         }
-
-
-        //private void btnStart_Click(object sender, EventArgs e)
-        //{
-        //    // Si on n'est PAS en train de capturer -> on dmarre (mode READ -> RUN)
-        //    if (capture == null)
-        //    {
-        //        if (comboDevices.SelectedItem is not MMDevice dev)
-        //        {
-        //            MessageBox.Show("Selectionne un priphrique audio.");
-        //            return;
-        //        }
-
-        //        selectedDevice = dev;
-
-        //        try
-        //        {
-        //            // === ICI : on choisit IN ou OUT ===
-        //            if (!captureOutput)
-        //            {
-        //                // Mode IN : priphrique d'entre (micro / ADC)
-        //                capture = new WasapiCapture(selectedDevice);
-        //            }
-        //            else
-        //            {
-        //                // Mode OUT : priphrique de sortie (loopback)
-        //                capture = new WasapiLoopbackCapture(selectedDevice);
-        //            }
-        //            // ================================
-
-        //            currentFormat = capture.WaveFormat;                                  
-
-        //            if (histogramControl != null && currentFormat != null)
-        //            {
-        //                histogramControl.UpdateSampleRate(currentFormat.SampleRate);
-        //                histogramControl.UpdateHopSamples(analysisHopSamples);
-        //            }
-
-        //            capture.DataAvailable += Capture_DataAvailable;
-        //            capture.RecordingStopped += Capture_RecordingStopped;
-
-        //            // Met  jour le sample rate des modules danalyse
-        //            if (currentFormat != null)
-        //            {
-        //                if (histogramControl != null)
-        //                    histogramControl.UpdateSampleRate(currentFormat.SampleRate);
-        //                histogramControl.UpdateHopSamples(analysisHopSamples);
-        //                if (spectrumControl != null)
-        //                    spectrumControl.UpdateSampleRate(currentFormat.SampleRate);
-        //                spectrumControl.UpdateHopSamples(analysisHopSamples);
-        //            }
-
-
-        //            // Mode continu : pas de squence Once
-        //            //histOnceActive = false;
-        //            //histOnceTargetSamples = 0;
-        //            //histOnceAccumSamples = 0;
-
-        //            // -------------------------------------------
-
-        //            // Dmarrage de la capture audio
-        //            capture.StartRecording();
-
-        //            // Rinitialisation de la pipeline d'analyse
-        //            ResetAnalysisPipeline();                    
-
-        //            // (Étape 5) Démarre la pipeline SFFT (ring + worker) avec N/overlap UI courants
-        //            RestartSfftFromUi();
-
-        //            // --- START test source (après création de _floatRing dans RestartSfftFromUi) ---
-        //            if (currentFormat != null)
-        //            {
-        //                if (_useMetricsRefTest)
-        //                {
-        //                    // Point 2.2 : démarre le signal de référence mesures
-        //                    // (la méthode exacte sera ajoutée dans TestWaves.cs à l'étape suivante)
-        //                    StartMetricsReferenceTestSource(currentFormat.SampleRate);
-        //                }
-        //                else if (_useSineTest)
-        //                {
-        //                    // F9 : sinusoïde simple (comportement actuel)
-        //                    StartSineTestSource(currentFormat.SampleRate, 1000.0, 0.25);
-        //                }
-        //            }
-
-
-        //            // Démarre le générateur de fenêtres d'analyse (Histogram + Spectrum)
-        //            RecomputeHopAndTimer();
-        //            analysisTimer?.Start();
-
-
-        //            // Bouton en mode STOP private void btnRead_Click(object sender, EventArgs e)
-        //            UpdateDeviceInfo();
-        //            UpdateDeviceSummary();
-        //            UpdateOverlayMenuCaptions();
-
-
-        //            // Si l'histogramme existe dj et qu'on est en mode continu,
-        //            // on le dmarre tout de suite en "live"
-        //            //if (histogramControl != null && !chkHistoOnce.Checked)
-        //            //{
-        //            //    histogramControl.StartFromRun(false);  // mode continu
-        //            //}
-        //        }
-        //        catch (Exception ex)
-        //        {
-        //            MessageBox.Show("Erreur lors du demarrage de la capture : " + ex.Message);
-        //            capture = null;
-        //            currentFormat = null;
-        //            UpdateDeviceInfo();
-        //            UpdateDeviceSummary();
-        //        }
-        //    }
-        //    else
-        //    {
-        //        //// Si on est dj en train de capturer -> clique = STOP (on annule aussi un ventuel Once en cours)
-        //        //histOnceActive = false;
-        //        //histOnceTargetSamples = 0;
-        //        //histOnceAccumSamples = 0;
-
-        //        try
-        //        {
-        //            capture.DataAvailable -= Capture_DataAvailable;
-        //            capture.RecordingStopped -= Capture_RecordingStopped;
-        //            capture.StopRecording();
-        //            analysisTimer?.Stop();
-
-        //            // (Étape 5) Stop pipeline SFFT
-        //            if (_sfftWorker != null)
-        //            {
-        //                _sfftWorker.Stop();
-        //                _sfftWorker = null;
-        //            }
-        //            while (_sfftFrames.TryDequeue(out _)) { }
-        //            _lastFrameUi = null;
-        //            StopFftTicker();
-
-        //            lock (analysisLock)
-        //            {
-        //                lastAnalysisLeft = Array.Empty<int>();
-        //                lastAnalysisRight = Array.Empty<int>();
-        //            }
-        //            //analysisCursorStart = 0;
-        //        }
-        //        catch
-        //        {
-        //            // on ignore les erreurs de StopRecording
-        //        }
-
-        //        // On arrte aussi l'histogramme et le spectre s'ils tournent
-        //        if (histogramControl != null)
-        //        {
-        //            histogramControl.StopFromRun();
-        //        }
-
-        //        if (spectrumControl != null)
-        //        {
-        //            spectrumControl.StopFromRun();
-        //        }
-
-        //        capture.Dispose();
-        //        capture = null;
-        //        currentFormat = null;
-
-        //        // --- STOP nouveau ring float ---
-        //        _floatRing = null;
-        //        if (_sfftWorker != null)
-        //        {
-        //            _sfftWorker.Stop();
-        //            _sfftWorker = null;
-        //        }
-
-        //        _sfftStats.SetWorkerState("STOP");
-
-        //        UpdateDeviceInfo();
-        //        UpdateDeviceSummary();
-        //        UpdateOverlayMenuCaptions();
-        //        StopSineTestSource();
-
-
-        //    }
-        //}
-
-
-
-
 
         private void rbInput_CheckedChanged(object? sender, EventArgs e)
         {
@@ -3513,8 +3178,7 @@ namespace AudioHexViewer
                     if (_sfftWorker != null)
                         RestartSfftFromUi();
                 };
-
-                RestoreOverlayState();
+                
                 spectrumControl.Dock = DockStyle.Fill;
                 spectrumControl.SetGlobalSampleSize(analysisSampleSize);
                 spectrumControl.UpdateHopSamples(analysisHopSamples);
@@ -3533,33 +3197,6 @@ namespace AudioHexViewer
             tabAnalysis.SelectedTab = tabSpectrum;
         }
         //
-        private void RestoreOverlayState()
-        {
-            if (spectrumControl == null) return;
-
-            string paths = Properties.Settings.Default.OverlayPaths ?? "";
-            string en = Properties.Settings.Default.OverlayEnabled ?? "";
-
-            var pathParts = paths.Split('|');
-            var enParts = en.Split('|');
-
-            var state = new (string? filePath, bool enabled)[OverlayManager.MaxOverlays];
-
-            for (int i = 0; i < OverlayManager.MaxOverlays; i++)
-            {
-                string? p = (i < pathParts.Length && !string.IsNullOrWhiteSpace(pathParts[i])) ? pathParts[i] : null;
-
-                bool enabled = true;
-                if (i < enParts.Length)
-                    enabled = (enParts[i] == "1" || enParts[i].Equals("true", StringComparison.OrdinalIgnoreCase));
-
-                state[i] = (p, enabled);
-            }
-
-            spectrumControl.OverlayImportState(state);
-            UpdateOverlayMenuCaptions();
-        }
-
         //
         private void Capture_RecordingStopped(object? sender, StoppedEventArgs e)
         {
@@ -3998,81 +3635,6 @@ namespace AudioHexViewer
         {
         }
         //
-        private void UpdateOverlayMenuCaptions()
-        {
-            bool srKnown = (currentFormat != null && capture != null && capture.CaptureState == CaptureState.Capturing);
-
-            if (menuOverlay == null)
-                return;
-
-            for (int i = 0; i < OverlayManager.MaxOverlays; i++)
-            {
-                var slotItem = menuOverlay.DropDownItems[i] as ToolStripMenuItem;
-                if (slotItem == null)
-                    continue;
-
-                if (spectrumControl == null)
-                {
-                    slotItem.Text = $"Slot {i + 1}";
-                    continue;
-                }
-
-                var st = spectrumControl.OverlayGetStatus(i);
-
-                // Texte slot
-                if (!st.loaded)
-                    slotItem.Text = $"Slot {i + 1}";
-                else
-                    if (!srKnown)
-                {
-                    // SR pas encore connu => on n’affiche pas "incompatible"
-                    slotItem.Text = $"Slot {i + 1}: {st.name}";
-                }
-                else
-                {
-                    slotItem.Text = st.compatible
-                        ? $"Slot {i + 1}: {st.name}"
-                        : $"Slot {i + 1}: {st.name} (incompatible)";
-                }
-
-
-                // checkbox Enabled reflète l’état réel
-                foreach (ToolStripItem child in slotItem.DropDownItems)
-                {
-                    if (child is ToolStripMenuItem mi && mi.Tag is ValueTuple<string, int> tag && tag.Item1 == "enabled")
-                    {
-                        mi.Checked = st.enabled;
-                        break;
-                    }
-                }
-            }
-        }
-        //
-        private void OverlayClearAll_Click(object? sender, EventArgs e)
-        {
-            if (spectrumControl == null)
-            {
-                MessageBox.Show(this, "Le panneau Spectrum n'est pas initialisé.", "Overlay");
-                return;
-            }
-
-            var r = MessageBox.Show(
-                this,
-                "Supprimer tous les overlays (slots 1 à 8) ?",
-                "Overlay - Confirmation",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning,
-                MessageBoxDefaultButton.Button2);
-
-            if (r != DialogResult.Yes)
-                return;
-
-            for (int i = 0; i < OverlayManager.MaxOverlays; i++)
-                spectrumControl.OverlayClear(i);
-
-            UpdateOverlayMenuCaptions();
-            SaveOverlayState();
-        }
         //
         //
         private void EnsureReadRunning()
