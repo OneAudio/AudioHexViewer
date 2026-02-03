@@ -5951,9 +5951,7 @@ namespace AudioHexViewer
                 {
                     var data = ReadOverlayFromDisk(e.FilePath);
 
-                    bool visible = true;
-                    if (prevVisible.TryGetValue(e.FilePath, out var v))
-                        visible = v;
+                    bool visible = _overlayLibrary.GetOverlayVisible(e.FilePath, defaultValue: true);
 
                     _overlayCache.Add(new CachedOverlay(e, data, visible));
                 }
@@ -5986,10 +5984,20 @@ namespace AudioHexViewer
             if (c != null)
             {
                 c.Visible = visible;
+
+                // Persist
+                _overlayLibrary.SetOverlayVisible(c.Entry.FilePath, visible);
+
                 UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
             }
         }
+        //
+        public bool OverlayLibraryGetVisible(string libraryFilePath)
+        {
+            return _overlayLibrary.GetOverlayVisible(libraryFilePath, defaultValue: true);
+        }
 
+        //
         /// <summary>
         /// Capture la vue active (Spectrum ou Bode) et l’ajoute dans la bibliothèque.
         /// - Points décimés (plot)
@@ -6049,6 +6057,7 @@ namespace AudioHexViewer
 
                 // Mise à jour cache (visible par défaut)
                 OverlayLibraryReloadCache();
+                _overlayLibrary.SetOverlayVisible(entry.FilePath, true);
                 UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
 
                 return entry;
@@ -6102,6 +6111,7 @@ namespace AudioHexViewer
         {
             var entry = _overlayLibrary.ImportFromFile(sourcePath);
             OverlayLibraryReloadCache();
+            _overlayLibrary.SetOverlayVisible(entry.FilePath, true);
             UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
             return entry;
         }
@@ -6120,6 +6130,7 @@ namespace AudioHexViewer
             if (c == null) return;
 
             _overlayLibrary.Delete(c.Entry);
+            _overlayLibrary.RemoveOverlayVisibility(libraryFilePath);
 
             OverlayLibraryReloadCache();
             UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);

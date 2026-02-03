@@ -24,6 +24,60 @@ namespace AudioHexViewer
 
         public string LibraryDirectory => _libraryDir;
         public int SlotNumber { get; }
+        private string VisibilityListPath => Path.Combine(_libraryDir, "_overlay_visibility.txt");
+
+        private Dictionary<string, bool> LoadVisibilityMap()
+        {
+            var map = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+            try
+            {
+                if (!File.Exists(VisibilityListPath))
+                    return map;
+
+                foreach (var line in File.ReadAllLines(VisibilityListPath))
+                {
+                    var s = (line ?? "").Trim();
+                    if (s.Length == 0) continue;
+
+                    int sep = s.LastIndexOf('|');
+                    if (sep <= 0 || sep >= s.Length - 1) continue;
+
+                    string fileName = s.Substring(0, sep).Trim();
+                    string flag = s.Substring(sep + 1).Trim();
+
+                    if (fileName.Length == 0) continue;
+
+                    bool visible = (flag == "1" || flag.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    map[fileName] = visible;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return map;
+        }
+
+        private void SaveVisibilityMap(Dictionary<string, bool> map)
+        {
+            try
+            {
+                Directory.CreateDirectory(_libraryDir);
+                var lines = map
+                    .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                    .Select(kv => $"{kv.Key}|{(kv.Value ? "1" : "0")}")
+                    .ToArray();
+
+                File.WriteAllLines(VisibilityListPath, lines);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
 
         public OverlayLibrary(string? libraryDir = null)
         {
@@ -36,7 +90,43 @@ namespace AudioHexViewer
             };
             _jsonOptions.Converters.Add(new JsonStringEnumConverter());
         }
+        //
+        public bool GetOverlayVisible(string libraryFilePath, bool defaultValue = true)
+        {
+            var fileName = Path.GetFileName(libraryFilePath);
+            if (string.IsNullOrWhiteSpace(fileName))
+                return defaultValue;
 
+            var map = LoadVisibilityMap();
+            if (map.TryGetValue(fileName, out var v))
+                return v;
+
+            return defaultValue;
+        }
+
+        public void SetOverlayVisible(string libraryFilePath, bool visible)
+        {
+            var fileName = Path.GetFileName(libraryFilePath);
+            if (string.IsNullOrWhiteSpace(fileName))
+                return;
+
+            var map = LoadVisibilityMap();
+            map[fileName] = visible;
+            SaveVisibilityMap(map);
+        }
+
+        public void RemoveOverlayVisibility(string libraryFilePath)
+        {
+            var fileName = Path.GetFileName(libraryFilePath);
+            if (string.IsNullOrWhiteSpace(fileName))
+                return;
+
+            var map = LoadVisibilityMap();
+            if (map.Remove(fileName))
+                SaveVisibilityMap(map);
+        }
+
+        //
         /// <summary>
         /// Charge tous les overlays présents dans la bibliothèque.
         /// Les fichiers illisibles / invalides sont ignorés (mais on remonte une trace via exceptions si tu préfères plus strict).

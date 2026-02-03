@@ -51,8 +51,9 @@ namespace AudioHexViewer
                         item.SubItems.Add("");
                     // Binding
                     item.Tag = e;
-                    // Visible par défaut dans l'UI (l'état réel est piloté via SetVisible au check/uncheck)
-                    item.Checked = true;
+                    
+                    item.Checked = _owner.OverlayLibraryGetVisible(e.FilePath);
+
 
                     listOverlays.Items.Add(item);
 
