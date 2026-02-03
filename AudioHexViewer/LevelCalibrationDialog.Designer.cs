@@ -1,4 +1,5 @@
-﻿using System.Drawing;
+﻿#nullable enable
+using System.Drawing;
 using System.Windows.Forms;
 
 namespace AudioHexViewer
@@ -166,3 +167,4 @@ namespace AudioHexViewer
         private Button ResetCAL;
     }
 }
+#nullable restore

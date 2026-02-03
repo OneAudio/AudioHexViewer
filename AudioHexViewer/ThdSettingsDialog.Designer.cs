@@ -1,4 +1,5 @@
-﻿using System.ComponentModel;
+﻿#nullable enable
+using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -224,3 +225,4 @@ namespace AudioHexViewer
         }
     }
 }
+#nullable restore

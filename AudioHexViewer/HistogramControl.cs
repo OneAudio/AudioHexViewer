@@ -73,8 +73,6 @@ namespace AudioHexViewer
             public string? MainDataFormat { get; set; }    // Valeur de comboDisplayMode ("Float", "Voltage 
         }
 
-        private static HistogramSettings? cachedSettings;
-
         public delegate (int[] Left, int[] Right) SampleProvider(int sampleCount);
 
         private readonly SampleProvider? _provider;
@@ -126,6 +124,7 @@ namespace AudioHexViewer
         //
         public AudioHexViewer.HistogramSettings GetHistogramSettingsSnapshot()
         {
+            
             return new AudioHexViewer.HistogramSettings
             {
                 AC = ChkAC.Checked,
@@ -278,41 +277,7 @@ namespace AudioHexViewer
             lastRangeLsb = RangeLsbOptions[idxRangeDefault];
             lastBinLsb = BinLsbOptions[idxBinDefault];
             LastUsedWindowSamples = SampleWindowOptions[idxWinDefault];
-
-            if (cachedSettings != null)
-            {
-                var s = cachedSettings;
-
-                // Channel
-                if (comboChannel.Items.Contains(s.Channel))
-                    comboChannel.SelectedItem = s.Channel;
-                else
-                    comboChannel.SelectedItem = "Both";
-
-                // AC
-                ChkAC.Checked = s.AC;
-
-                // Range / Bin via ComboBox
-                int rangeLsb = s.RangeLsb < 1 ? 1 : s.RangeLsb;
-                int binLsb = s.BinLsb < 1 ? 1 : s.BinLsb;
-
-                int idxRange = FindClosestIndex(RangeLsbOptions, rangeLsb);
-                int idxBin = FindClosestIndex(BinLsbOptions, binLsb);
-
-                comboRangeLsb.SelectedIndex = idxRange;
-                comboBinLsb.SelectedIndex = idxBin;
-
-                lastRangeLsb = RangeLsbOptions[idxRange];
-                lastBinLsb = BinLsbOptions[idxBin];
-
-                // Fenêtre (samples)
-                int winSamples = s.RecordSamples;
-                if (winSamples <= 0)
-                    winSamples = defaultWin;
-
-                int idxWin = FindClosestIndex(SampleWindowOptions, winSamples);
-                LastUsedWindowSamples = SampleWindowOptions[idxWin];
-            }
+                       
 
             UpdateWindowInfo();
             ResetStatsLabels();

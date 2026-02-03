@@ -72,7 +72,6 @@ namespace AudioHexViewer
         private int _minWidth;
         private int _minHeightNoGraphs;
         // Dsactivation temporaire du redimensionnement
-        private FormBorderStyle _borderStyleWithGraphs;
         //private bool _borderStyleSaved;
 
         private SessionSettings _session = SessionSettingsManager.LoadOrNull() ?? new SessionSettings();
@@ -1035,9 +1034,6 @@ namespace AudioHexViewer
                 analysisTimer.Tick += (s, e) => UpdateAnalysisFrame();
             }
 
-            int intervalMs = 100;
-            if (currentFormat != null && currentFormat.SampleRate > 0)
-
             // ROBUST FIX: timer UI = cadence d'affichage, pas cadence d'acquisition
             analysisTimer.Interval = 20; // 50 Hz UI (ajuste si besoin: 10..50 ms)
 
@@ -1253,6 +1249,17 @@ namespace AudioHexViewer
         public Form1()
         {
             InitializeComponent();
+
+            levelFontRegular = new Font(this.Font, FontStyle.Regular);
+            levelFontBold = new Font(this.Font, FontStyle.Bold);
+
+            // Libération propre
+            this.FormClosed += (_, __) =>
+            {
+                levelFontRegular.Dispose();
+                levelFontBold.Dispose();
+            };
+
 
             _dataViewForm = new DataViewForm();
             _dataViewForm.Hide();
