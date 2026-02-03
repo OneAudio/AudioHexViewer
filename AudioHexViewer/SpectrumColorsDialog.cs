@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using System.Windows.Forms.DataVisualization.Charting;
 
 namespace AudioHexViewer
 {
@@ -57,6 +58,21 @@ namespace AudioHexViewer
             nudFftWidth.ValueChanged += (_, __) => _colors.FftWidth = (int)nudFftWidth.Value;
             nudPkWidth.ValueChanged += (_, __) => _colors.PeakHoldWidth = (int)nudPkWidth.Value;
             nudOvWidth.ValueChanged += (_, __) => _colors.OverlayWidth = (int)nudOvWidth.Value;
+
+            // Overlay line style choices (mapped to ChartDashStyle)
+            cmbOvStyle.Items.Clear();
+            cmbOvStyle.Items.Add(ChartDashStyle.Solid);
+            cmbOvStyle.Items.Add(ChartDashStyle.Dash);
+            cmbOvStyle.Items.Add(ChartDashStyle.Dot);
+            cmbOvStyle.Items.Add(ChartDashStyle.DashDot);
+            cmbOvStyle.Items.Add(ChartDashStyle.DashDotDot);
+
+            cmbOvStyle.SelectedIndexChanged += (_, __) =>
+            {
+                if (cmbOvStyle.SelectedItem is ChartDashStyle s)
+                    _colors.OverlayDashStyle = (int)s;
+            };
+
 
             btnSetDefault.Click += (_, __) =>
             {
@@ -135,6 +151,14 @@ namespace AudioHexViewer
             nudFftWidth.Value = ClampToRange(_colors.FftWidth);
             nudPkWidth.Value = ClampToRange(_colors.PeakHoldWidth);
             nudOvWidth.Value = ClampToRange(_colors.OverlayWidth);
+
+            // Ovl Style
+            var style = (ChartDashStyle)_colors.OverlayDashStyle;
+            if (!Enum.IsDefined(typeof(ChartDashStyle), style))
+                style = ChartDashStyle.Dot;
+
+            cmbOvStyle.SelectedItem = style;
+
         }
 
 
@@ -211,7 +235,8 @@ namespace AudioHexViewer
 
                 LabelMajorArgb = src.LabelMajorArgb,
                 LabelMinorArgb = src.LabelMinorArgb,
-                InfoTextArgb = src.InfoTextArgb
+                InfoTextArgb = src.InfoTextArgb,
+                OverlayDashStyle = src.OverlayDashStyle
             };
 
             if (src.OverlaySlotArgb != null)

@@ -50,7 +50,8 @@ namespace AudioHexViewer
         private Button btnOv8;
         private Label lblOvWidth;
         private NumericUpDown nudOvWidth;
-
+        private Label lblOvStyle;
+        private ComboBox cmbOvStyle;
         private Label lblGridMaj;
         private Button btnGridMaj;
         private Label lblGridMin;
@@ -209,10 +210,10 @@ this.tlpOverlays.AutoSizeMode = AutoSizeMode.GrowAndShrink;
 this.tlpOverlays.Padding = new Padding(4, 6, 4, 4);
 
 this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label L
-this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 46F)); // value L (swatch / nud)
+this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70F)); // value L (swatch / nud)
 this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 0F));  // spacer
 this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label R
-this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 46F)); // value R (swatch / nud)
+this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70F)); // value R (swatch / nud)
 this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 0F));  // spacer
 
 
@@ -245,6 +246,13 @@ this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
 
             this.nudOvWidth = new NumericUpDown();
             SetupWidthNud(this.nudOvWidth);
+            this.lblOvStyle = MakeLabel("Ovl Style");
+
+            this.cmbOvStyle = new ComboBox();
+            this.cmbOvStyle.DropDownStyle = ComboBoxStyle.DropDownList;
+            this.cmbOvStyle.Dock = DockStyle.Fill;
+            this.cmbOvStyle.Margin = new Padding(0, 2, 0, 2);
+
 
             this.tlpOverlays.Controls.Add(this.lblOv1, 0, 0);
 this.tlpOverlays.Controls.Add(this.btnOv1, 1, 0);
@@ -269,11 +277,15 @@ this.tlpOverlays.Controls.Add(this.btnOv8, 4, 3);
 // Thickness (one setting for all overlays)
 this.tlpOverlays.Controls.Add(this.lblOvWidth, 0, 4);
 this.tlpOverlays.Controls.Add(this.nudOvWidth, 1, 4);
+// Overlay line style (one setting for all overlays)
+this.tlpOverlays.Controls.Add(this.lblOvStyle, 3, 4);
+this.tlpOverlays.Controls.Add(this.cmbOvStyle, 4, 4);
+
 
 // Same alignment trick as above
 this.grpOverlays.Controls.Add(this.tlpOverlays);
 
-            // --- Chart table: 6 cols (labelL, swatchL, nudL, labelR, swatchR, nudR) ---
+// --- Chart table: 6 cols (labelL, swatchL, nudL, labelR, swatchR, nudR) ---
 this.tlpChart.ColumnCount = 6;
 this.tlpChart.RowCount = 3;
 this.tlpChart.Dock = DockStyle.Fill;

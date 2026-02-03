@@ -187,6 +187,24 @@ namespace AudioHexViewer
             return Color.FromArgb(_colors.OverlayArgb);
         }
         //
+        private ChartDashStyle GetOverlayDashStyle()
+        {
+            var v = (ChartDashStyle)_colors.OverlayDashStyle;
+            if (!Enum.IsDefined(typeof(ChartDashStyle), v))
+                return ChartDashStyle.Dot; // comportement par défaut actuel
+            return v;
+        }
+
+        //
+        private ChartDashStyle GetOverlayLineStyle()
+        {
+            var v = (ChartDashStyle)_colors.OverlayDashStyle;
+            if (!Enum.IsDefined(typeof(ChartDashStyle), v))
+                return ChartDashStyle.Dot;
+            return v;
+        }
+
+        //
         private sealed class ExportRenderContext
         {
             public string? HeaderTitle { get; init; }
@@ -5104,11 +5122,11 @@ namespace AudioHexViewer
                     if (showLeft && data.LeftDbFs != null && data.FreqHz != null)
                     {
                         var s = new ChartSeries($"OV{ovIndex + 1}_L");
-                        s.ChartType = SeriesChartType.FastLine;
+                        s.ChartType = SeriesChartType.Line;
                         s.ChartArea = "SpectrumArea";
                         s.Color = ovColor;
-                        s.BorderDashStyle = ChartDashStyle.Dot;
                         s.BorderWidth = _colors.OverlayWidth;
+                        s.BorderDashStyle = GetOverlayDashStyle();
 
                         // dBV mode = offset de calibration, comme le tracé live
                         var y = useDbvPlot
@@ -5122,10 +5140,12 @@ namespace AudioHexViewer
                     if (showRight && data.RightDbFs != null && data.FreqHz != null)
                     {
                         var s = new ChartSeries($"OV{ovIndex + 1}_R");
-                        s.ChartType = SeriesChartType.FastLine;
+                        s.ChartType = SeriesChartType.Line;
                         s.ChartArea = "SpectrumArea";
                         s.Color = ovColor;
-                        s.BorderDashStyle = ChartDashStyle.Dot;
+                        s.BorderWidth = _colors.OverlayWidth;
+                        s.BorderDashStyle = GetOverlayDashStyle();
+
                         s.BorderWidth = _colors.OverlayWidth;
 
                         var y = useDbvPlot
@@ -5142,10 +5162,10 @@ namespace AudioHexViewer
                     if (data.GainDb != null && data.FreqHz != null)
                     {
                         var sGain = new ChartSeries($"OV{ovIndex + 1}_Gain");
-                        sGain.ChartType = SeriesChartType.FastLine;
+                        sGain.ChartType = SeriesChartType.Line;
                         sGain.ChartArea = "SpectrumArea";
                         sGain.Color = ovColor;
-                        sGain.BorderDashStyle = ChartDashStyle.Dot;
+                        sGain.BorderDashStyle = GetOverlayDashStyle();
                         sGain.BorderWidth = _colors.OverlayWidth;
 
                         AddPoints(sGain, data.FreqHz, data.GainDb);
@@ -5156,11 +5176,11 @@ namespace AudioHexViewer
                     if (_frfPhaseEnabled && data.PhaseDeg != null && data.FreqHz != null)
                     {
                         var sPh = new ChartSeries($"OV{ovIndex + 1}_Phase");
-                        sPh.ChartType = SeriesChartType.FastLine;
+                        sPh.ChartType = SeriesChartType.Line;
                         sPh.ChartArea = "SpectrumArea";
                         sPh.YAxisType = AxisType.Secondary;
                         sPh.Color = ovColor;
-                        sPh.BorderDashStyle = ChartDashStyle.Dot;
+                        sPh.BorderDashStyle = GetOverlayDashStyle();
                         sPh.BorderWidth = _colors.OverlayWidth;
 
                         AddPoints(sPh, data.FreqHz, data.PhaseDeg);

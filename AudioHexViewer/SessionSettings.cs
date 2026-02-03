@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.IO;
 using System.Text.Json;
+using System.Windows.Forms.DataVisualization.Charting;
 
 
 namespace AudioHexViewer
@@ -127,6 +128,9 @@ public sealed class SpectrumColorSettings
     // Nouveau: une couleur par slot (Overlay1=Slot1, ... Overlay8=Slot8)
     public int[] OverlaySlotArgb { get; set; } = DefaultOverlayRainbowArgb();
     public int OverlayWidth { get; set; } = 1;              // 1..3
+    
+    // Style de ligne des overlays (ChartDashStyle)
+    public int OverlayDashStyle { get; set; } = (int)ChartDashStyle.Dot;
 
     // --- Chart (fond / grilles / labels) ---
     // Grille Major (compat: ancien GridArgb)
