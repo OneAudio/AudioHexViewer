@@ -7,7 +7,6 @@ Le 21/01/2026
 
 Ajouter fonction "clear" du spectre affiché avec le bouton clear de la moyenne ?
 Ajouter dans la boite Color la choix du type de trait pour les 8 overlays.
-Faire apparaitre la couleur des overlay devant le nom de la courbe dans le dialogue overlay ?
 
 2 - Ajouter une fonction de moyennage cohérente (synchrone) pour les mesures de THD 
 

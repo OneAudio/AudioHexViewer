@@ -44,11 +44,16 @@ namespace AudioHexViewer
         public List<OverlayEntry> LoadAll()
         {
             Directory.CreateDirectory(_libraryDir);
+            var hidden = LoadHiddenFileNames();
 
             var entries = new List<OverlayEntry>();
 
             foreach (var path in Directory.EnumerateFiles(_libraryDir, "*.overlay.json", SearchOption.TopDirectoryOnly))
             {
+                var fileName = Path.GetFileName(path);
+                if (hidden.Contains(fileName))
+                continue;
+
                 try
                 {
                     var overlay = ReadOverlayFile(path);
@@ -66,7 +71,73 @@ namespace AudioHexViewer
             entries.Sort((a, b) => b.CreatedUtc.CompareTo(a.CreatedUtc));
             return entries;
         }
+        //
+        private string HiddenListPath => Path.Combine(_libraryDir, "_hidden_overlays.txt");
 
+        private HashSet<string> LoadHiddenFileNames()
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            try
+            {
+                if (!File.Exists(HiddenListPath))
+                    return set;
+
+                foreach (var line in File.ReadAllLines(HiddenListPath))
+                {
+                    var s = (line ?? "").Trim();
+                    if (s.Length == 0) continue;
+                    set.Add(s);
+                }
+            }
+            catch
+            {
+                // ignore : si fichier illisible, on ne bloque pas
+            }
+
+            return set;
+        }
+        //
+        public void UnhideFromList(string libraryFilePath)
+        {
+            if (string.IsNullOrWhiteSpace(libraryFilePath)) return;
+
+            var fileName = Path.GetFileName(libraryFilePath);
+            if (string.IsNullOrWhiteSpace(fileName)) return;
+
+            var hidden = LoadHiddenFileNames();
+            if (hidden.Remove(fileName))
+                SaveHiddenFileNames(hidden);
+        }
+
+        //
+        public void HideFromList(string libraryFilePath)
+        {
+            if (string.IsNullOrWhiteSpace(libraryFilePath)) return;
+
+            var fileName = Path.GetFileName(libraryFilePath);
+            if (string.IsNullOrWhiteSpace(fileName)) return;
+
+            var hidden = LoadHiddenFileNames();
+            if (hidden.Add(fileName))
+                SaveHiddenFileNames(hidden);
+        }
+
+        //
+        private void SaveHiddenFileNames(HashSet<string> hidden)
+        {
+            try
+            {
+                Directory.CreateDirectory(_libraryDir);
+                File.WriteAllLines(HiddenListPath, hidden.OrderBy(x => x).ToArray());
+            }
+            catch
+            {
+                // ignore : on évite de casser l’app si on ne peut pas écrire
+            }
+        }
+
+        ///
         /// <summary>
         /// Ajoute un overlay déjà construit en mémoire (typiquement une capture de la vue active).
         /// Écrit immédiatement sur disque dans la bibliothèque.
@@ -108,17 +179,25 @@ namespace AudioHexViewer
 
             Directory.CreateDirectory(_libraryDir);
 
-            var baseName = Path.GetFileNameWithoutExtension(sourcePath);
-            if (baseName.EndsWith(".overlay", StringComparison.OrdinalIgnoreCase))
-                baseName = baseName[..^".overlay".Length];
+            // Nom de destination = nom du fichier importé (sans (2)/(3) automatique)
+            var baseName = Path.GetFileName(sourcePath);
 
-            var safeBase = MakeSafeFileName(string.IsNullOrWhiteSpace(baseName) ? "Overlay" : baseName);
-            var destPath = GetUniquePath(Path.Combine(_libraryDir, safeBase + ".overlay.json"));
+            // Si l'utilisateur importe un .json générique, on force l'extension .overlay.json
+            if (!baseName.EndsWith(".overlay.json", StringComparison.OrdinalIgnoreCase))
+            {
+                var noExt = Path.GetFileNameWithoutExtension(baseName);
+                baseName = noExt + ".overlay.json";
+            }
+
+            var destPath = Path.Combine(_libraryDir, baseName);
+
 
             // On ré-écrit (plutôt qu'un File.Copy brut) pour normaliser le JSON (indentation, enum string, etc.)
             WriteOverlayFile(destPath, overlay);
-
+            // Si l'overlay avait été "Remove" auparavant, on le ré-affiche explicitement.
+            UnhideFromList(destPath);
             return OverlayEntry.FromFile(destPath, overlay);
+
         }
 
         /// <summary>

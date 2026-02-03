@@ -5874,6 +5874,30 @@ namespace AudioHexViewer
         // Overlays V3 - Library
         // =====================
         //
+        public void OverlayLibraryUnhideFromList(string libraryFilePath)
+        {
+            _overlayLibrary.UnhideFromList(libraryFilePath);
+            OverlayLibraryReloadCache();
+            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
+        }
+
+        //
+        public void OverlayLibraryRemoveFromList(string libraryFilePath)
+        {
+            // On masque d'abord l'overlay dans l'affichage live
+            OverlayLibrarySetVisible(libraryFilePath, false);
+
+            _overlayLibrary.HideFromList(libraryFilePath);
+            OverlayLibraryReloadCache();
+            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
+        }
+
+        public string OverlayLibraryGetFolderPath()
+        {
+            return _overlayLibrary.LibraryDirectory;
+        }
+
+        //
         public System.Drawing.Color OverlayGetSlotColor1Based(int slotNumber)
         {
             // slotNumber attendu: 1..8

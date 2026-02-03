@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
+using System.Diagnostics;
+
 
 namespace AudioHexViewer
 {
@@ -42,6 +44,11 @@ namespace AudioHexViewer
                     item.SubItems.Add(KindToShortText(e.Kind));
                     // Colonne "SR"
                     item.SubItems.Add(e.SampleRate > 0 ? e.SampleRate.ToString() : "");
+                    // Range (fmin...fmax)
+                    if (TryGetRangeFromOverlayFile(e.FilePath, out var fmin, out var fmax))
+                        item.SubItems.Add(FormatRange(fmin, fmax));
+                    else
+                        item.SubItems.Add("");
                     // Binding
                     item.Tag = e;
                     // Visible par défaut dans l'UI (l'état réel est piloté via SetVisible au check/uncheck)
@@ -58,6 +65,44 @@ namespace AudioHexViewer
             }
         }
         //
+        private bool TryGetRangeFromOverlayFile(string filePath, out double fmin, out double fmax)
+        {
+            fmin = 0;
+            fmax = 0;
+
+            try
+            {
+                // On lit via SpectrumControl pour garder la même logique de parsing/options
+                // (ReadOverlayFromDisk est private, donc on lit simple ici)
+                var json = File.ReadAllText(filePath);
+                var dto = System.Text.Json.JsonSerializer.Deserialize<OverlayFile>(json, new System.Text.Json.JsonSerializerOptions
+                {
+                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                });
+
+                if (dto?.FreqHz == null || dto.FreqHz.Length == 0)
+                    return false;
+
+                fmin = dto.FreqHz[0];
+                fmax = dto.FreqHz[dto.FreqHz.Length - 1];
+
+                // sécurité si l'axe n'est pas trié
+                if (fmax < fmin)
+                {
+                    double mn = dto.FreqHz.Min();
+                    double mx = dto.FreqHz.Max();
+                    fmin = mn;
+                    fmax = mx;
+                }
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         //
         private List<OverlayEntry> GetSelectedEntries()
         {
@@ -140,8 +185,47 @@ namespace AudioHexViewer
 
                 try
                 {
+                    string libraryDir = _owner.OverlayLibraryGetFolderPath();
+
                     foreach (var file in ofd.FileNames)
+                    {
+                        string baseName = Path.GetFileName(file);
+
+                        // Si import .json générique -> on force ".overlay.json"
+                        if (!baseName.EndsWith(".overlay.json", StringComparison.OrdinalIgnoreCase))
+                            baseName = Path.GetFileNameWithoutExtension(baseName) + ".overlay.json";
+
+                        string destPath = Path.Combine(libraryDir, baseName);
+
+                        // CAS IMPORTANT: l'utilisateur "importe" un fichier qui est déjà dans le dossier overlays.
+                        // Dans ce cas, on ne copie pas, on ne demande pas confirmation.
+                        // On veut surtout le "ré-afficher" s'il était masqué (Remove).
+                        string srcFull = Path.GetFullPath(file);
+                        string dstFull = Path.GetFullPath(destPath);
+
+                        if (string.Equals(srcFull, dstFull, StringComparison.OrdinalIgnoreCase))
+                        {
+                            _owner.OverlayLibraryUnhideFromList(destPath);
+                            continue;
+                        }
+
+                        // Si un fichier existe déjà, on demande confirmation avant overwrite
+                        if (File.Exists(destPath))
+                        {
+                            var r = MessageBox.Show(
+                                this,
+                                $"Un overlay nommé \"{baseName}\" existe déjà dans la bibliothèque.\r\nVoulez-vous l'écraser ?",
+                                "Import overlay",
+                                MessageBoxButtons.YesNo,
+                                MessageBoxIcon.Question);
+
+                            if (r != DialogResult.Yes)
+                                continue;
+                        }
+
                         _owner.OverlayLibraryImport(file);
+                    }
+
                     RefreshList();
                 }
                 catch (Exception ex)
@@ -150,6 +234,8 @@ namespace AudioHexViewer
                 }
             }
         }
+
+
 
         private void btnExport_Click(object sender, EventArgs e)
         {
@@ -257,8 +343,42 @@ namespace AudioHexViewer
                 MessageBox.Show(this, ex.Message, "Suppression overlay", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+        //
+        private void btnRemove_Click(object sender, EventArgs e)
+        {
+            var selection = GetSelectedEntries();
+            if (selection.Count == 0) return;         
 
+            try
+            {
+                foreach (var entry in selection)
+                    _owner.OverlayLibraryRemoveFromList(entry.FilePath);
 
+                RefreshList();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Remove overlay", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+        //
+        private void btnOpenFolder_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                var dir = _owner.OverlayLibraryGetFolderPath();
+                if (!Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+
+                Process.Start("explorer.exe", dir);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Overlay folder", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        //
         private void btnClose_Click(object sender, EventArgs e)
         {
             Close();
@@ -293,6 +413,21 @@ namespace AudioHexViewer
                 MessageBox.Show(this, ex.Message, "Renommer overlay", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+        //
+        private static string FormatFreq(double hz)
+        {
+            if (hz >= 1000.0)
+                return (hz / 1000.0).ToString(hz >= 10000.0 ? "0" : "0.#") + "kHz";
+            return hz.ToString(hz >= 100.0 ? "0" : "0.#") + "Hz";
+        }
+
+        private static string FormatRange(double fmin, double fmax)
+        {
+            if (fmin < 0) fmin = 0;
+            if (fmax < 0) fmax = 0;
+            return $"{FormatFreq(fmin)}...{FormatFreq(fmax)}";
+        }
+
         //
         private static string KindToShortText(OverlayKind kind)
         {
