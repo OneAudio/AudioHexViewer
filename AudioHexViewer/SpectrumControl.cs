@@ -1696,7 +1696,7 @@ namespace AudioHexViewer
                 UpdateOverlayInfo();
 
                 // IMPORTANT: en FRF (L/R) on masque le panneau stats -> on récupère toute la largeur
-                ApplyChartStatsMargin(chartSpectrum, invalidate: true, reservedScale: IsFrfMode() ? 0f : 1f);
+                ApplyChartStatsMargin(chartSpectrum, invalidate: true, reservedScale: 1f);
 
                 SyncCursorUiFromModel(); // met à jour les libellés Auto/Gain/Phase ou Auto/Left/Right
                 ApplyFrfPhiButtonsUi(); // montre/masque les boutons φ selon IsFrfMode()
@@ -2636,8 +2636,9 @@ namespace AudioHexViewer
             int w = chart.ClientSize.Width;
             if (w <= 0) return;
 
-            // En mode FRF (Bode Plot), on a supprimé le panneau stats => pas de marge réservée.
-            int reserved = IsFrfMode() ? 0 : ChartStatsWidthPx;
+            // Panneau Stats : on réserve toujours une zone à droite, y compris en mode FRF (Bode Plot).
+            // Important : l’axe Y2 (phase) reste dans le ChartArea ; le panneau est dessiné dans la zone réservée (hors plot).
+            int reserved = ChartStatsWidthPx;
 
 
             // Si la fenêtre devient petite : on réduit la marge stats pour garder un plot utilisable
@@ -2683,7 +2684,18 @@ namespace AudioHexViewer
 
             var cr = chart.ClientRectangle;
 
-            float panelLeft = plot.Right + 8f;
+            // Rectangle EXTERNE de la ChartArea (inclut les axes/labels, dont l’axe Y2 phase)
+            var pos = area.Position;
+            RectangleF outer = new RectangleF(
+                cr.Width * pos.X / 100f,
+                cr.Height * pos.Y / 100f,
+                cr.Width * pos.Width / 100f,
+                cr.Height * pos.Height / 100f
+            );
+
+            // IMPORTANT : on part du bord droit EXTERNE de la ChartArea pour ne pas recouvrir les labels de l’axe Y2 (phase)
+            float panelLeft = outer.Right + 8f;
+
             float panelRight = cr.Right - 6f;
             if (panelRight - panelLeft < 120f) return;
 
@@ -2798,12 +2810,22 @@ namespace AudioHexViewer
                 return y;
             }
 
-            // Affichage sections LEFT / RIGHT si activées
-            if (_statsShowLeft)
-                y = DrawSection("LEFT", FftLeftColor, _rowsLeft);
+            // En mode FRF (Bode Plot) : un seul panneau, destiné aux mesures spécifiques FRF.
+            // On réutilise la section LEFT (même rendu) mais avec un titre dédié.
+            if (IsFrfMode())
+            {
+                y = DrawSection("BODE", FftLeftColor, _rowsLeft);
+            }
+            else
+            {
+                // Affichage sections LEFT / RIGHT si activées
+                if (_statsShowLeft)
+                    y = DrawSection("LEFT", FftLeftColor, _rowsLeft);
 
-            if (_statsShowRight)
-                y = DrawSection("RIGHT", FftRightColor, _rowsRight);
+                if (_statsShowRight)
+                    y = DrawSection("RIGHT", FftRightColor, _rowsRight);
+            }
+
 
             g.Restore(saved);
         }
@@ -6760,12 +6782,8 @@ namespace AudioHexViewer
 
             try
             {
-
-                // Stats panel (tableau) affichée uniquement en UI si non FRF
-                if (!IsFrfMode())
-                {
-                    DrawChartStatsPanel(e.ChartGraphics.Graphics, chart, area); // Stats panel (tableau)
-                }
+                // Panneau Stats (tableau) : affiché dans tous les modes, y compris FRF/Bode.
+                DrawChartStatsPanel(e.ChartGraphics.Graphics, chart, area);
 
                 // Export only
                 if (isExport)
@@ -7027,9 +7045,6 @@ namespace AudioHexViewer
         //
         private void ApplyChartStatsMargin(Chart chart, bool invalidate, float reservedScale)
         {
-            if (IsFrfMode())
-                reservedScale = 0f;
-
             var area = chart.ChartAreas.FirstOrDefault(a => a.Name == "SpectrumArea");
             if (area == null) return;
 
