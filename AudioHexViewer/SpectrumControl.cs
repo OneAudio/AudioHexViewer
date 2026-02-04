@@ -835,15 +835,34 @@ namespace AudioHexViewer
         public SpectrumControl()
         {
             InitializeComponent();
+
+
             EnsureVoltLayoutInit();
             InitChartAppearance();
-            this.Load += (_, __) => ApplyChartStatsMargin();
+            this.Load += (_, __) =>
+            {
+                // 1) Première passe : réserve la place (ok même si layout pas final)
+                ApplyChartStatsMargin();
+
+                // 2) Deuxième passe après layout Windows : indispensable pour que le panneau s’affiche dès le démarrage en Bode
+                if (IsHandleCreated)
+                {
+                    BeginInvoke(new Action(() =>
+                    {
+                        ApplyChartStatsMargin();
+                        RebuildStatsRowsFromLabels();   // pour éviter un panneau “vide” selon l’état des labels
+                        chartSpectrum.Invalidate();
+                    }));
+                }
+            };
+
             chartSpectrum.Resize += (_, __) => ApplyChartStatsMargin();
             InitializeUiOptions();
             ApplyThdSettings(_thdUi);
             UpdateRunButtonAppearance();
             InitOverlayAnnotation();
             OverlayLibraryReloadCache();
+
 
             // "Axis" button in the bottom-left corner of the chart (UI helper).
             // Keeps the existing right-click access to the same dialog.
@@ -2732,7 +2751,7 @@ namespace AudioHexViewer
             using var fmtRight = new StringFormat { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Near };
             using var fmtRightMeas = (StringFormat)fmtRight.Clone();
             fmtRightMeas.FormatFlags |= StringFormatFlags.MeasureTrailingSpaces;
-
+                        
             float DrawSection(string title, Color titleColor, List<StatRow> rows)
             {
                 // Titre centré
@@ -2760,54 +2779,107 @@ namespace AudioHexViewer
                     if (sz.Width > maxLabelW) maxLabelW = sz.Width;
                 }
                 float valueLeft = xL + maxLabelW + 12f; // séparation label -> valeur
+                var topRows = rows.Where(r => !r.IsBottomGroup).ToList();
+                var bottomRows = rows.Where(r => r.IsBottomGroup).ToList();
 
-                for (int i = 0; i < rows.Count; i++)
+
+                void RenderRows(List<StatRow> rr)
                 {
-                    var r = rows[i];
-
-                    if (r.IsSeparator)
+                    for (int i = 0; i < rr.Count; i++)
                     {
-                        g.DrawLine(penSep, rect.X + pad, y + 4f, rect.Right - pad, y + 4f);
-                        y += 12f;
-                        continue;
+                        var r = rr[i];
+
+                        if (r.IsSeparator)
+                        {
+                            g.DrawLine(penSep, rect.X + pad, y + 4f, rect.Right - pad, y + 4f);
+                            y += 12f;
+                            continue;
+                        }
+
+                        // Ligne "titre" centrée (utilisée pour Cursor 1/2/Delta en Bode)
+                        if (r.Emphasis == StatEmphasis.Medium && string.IsNullOrEmpty(r.Value))
+                        {
+                            var titleRect = new RectangleF(rect.X + pad, y, rect.Width - 2 * pad, fontStrong.GetHeight(g));
+                            g.DrawString(r.Label, fontStrong, brushText, titleRect, fmtCenter);
+                            y += titleRect.Height + 6f;
+                            continue;
+                        }
+
+                        Font fLabel = r.Emphasis == StatEmphasis.Strong ? fontBold : fontBase;
+                        Font fVal =
+                            r.Emphasis == StatEmphasis.Strong ? fontStrong :
+                            r.Emphasis == StatEmphasis.Medium ? fontBold :
+                            fontBase;
+
+                        // Label
+                        g.DrawString(r.Label, fLabel, brushLabel, xL, y);
+
+                        // Hauteur de ligne maîtrisée
+                        float rowHeight = Math.Max(fLabel.GetHeight(g), fVal.GetHeight(g));
+                        var valueRect = new RectangleF(valueLeft, y, (rect.Right - pad) - valueLeft, rowHeight);
+
+                        // Highlight EXACT (sans empiéter verticalement)
+                        if (r.Emphasis == StatEmphasis.Strong)
+                        {
+                            using var fmtRange = (StringFormat)fmtRightMeas.Clone();
+                            fmtRange.SetMeasurableCharacterRanges(new[] { new CharacterRange(0, r.Value.Length) });
+
+                            var regions = g.MeasureCharacterRanges(r.Value, fVal, valueRect, fmtRange);
+                            var bounds = regions[0].GetBounds(g);
+
+                            bounds.Inflate(4f, 0.5f);
+
+                            using var fill = new SolidBrush(Color.FromArgb(18, 30, 144, 255));
+                            g.FillRectangle(fill, bounds);
+                        }
+
+                        // Valeur (alignée à droite)
+                        g.DrawString(r.Value, fVal, brushText, valueRect, fmtRight);
+
+                        y += rowHeight + 4f;
                     }
-
-                    Font fLabel = r.Emphasis == StatEmphasis.Strong ? fontBold : fontBase;
-                    Font fVal =
-                        r.Emphasis == StatEmphasis.Strong ? fontStrong :
-                        r.Emphasis == StatEmphasis.Medium ? fontBold :
-                        fontBase;
-
-                    // Label
-                    g.DrawString(r.Label, fLabel, brushLabel, xL, y);
-
-                    // Hauteur de ligne maîtrisée
-                    float rowHeight = Math.Max(fLabel.GetHeight(g), fVal.GetHeight(g));
-                    var valueRect = new RectangleF(valueLeft, y, (rect.Right - pad) - valueLeft, rowHeight);
-
-                    // Highlight EXACT (sans empiéter verticalement)
-                    if (r.Emphasis == StatEmphasis.Strong)
-                    {
-                        using var fmtRange = (StringFormat)fmtRightMeas.Clone();
-                        fmtRange.SetMeasurableCharacterRanges(new[] { new CharacterRange(0, r.Value.Length) });
-
-                        var regions = g.MeasureCharacterRanges(r.Value, fVal, valueRect, fmtRange);
-                        var bounds = regions[0].GetBounds(g);
-
-                        bounds.Inflate(4f, 0.5f);
-
-                        using var fill = new SolidBrush(Color.FromArgb(18, 30, 144, 255));
-                        g.FillRectangle(fill, bounds);
-                    }
-
-                    // Valeur (alignée à droite)
-                    g.DrawString(r.Value, fVal, brushText, valueRect, fmtRight);
-
-                    y += rowHeight + 4f;
                 }
 
+                float EstimateHeight(List<StatRow> rr)
+                {
+                    float h = 0f;
+                    for (int i = 0; i < rr.Count; i++)
+                    {
+                        var r = rr[i];
+                        if (r.IsSeparator) { h += 12f; continue; }
+
+                        if (r.Emphasis == StatEmphasis.Medium && string.IsNullOrEmpty(r.Value))
+                        {
+                            h += fontStrong.GetHeight(g) + 6f;
+                            continue;
+                        }
+
+                        h += fontBase.GetHeight(g) + 4f;
+                    }
+                    return h;
+                }
+
+                // 1) Render du haut (min/max etc.)
+                RenderRows(topRows);
+                float yAfterTop = y;
+
+                // 2) Render du bas collé au bas du panneau (curseurs/delta)
+                if (bottomRows.Count > 0)
+                {
+                    float hBottom = EstimateHeight(bottomRows);
+                    float yBottomStart = rect.Bottom - pad - hBottom;
+
+                    if (yBottomStart < yAfterTop)
+                        yBottomStart = yAfterTop;
+
+                    y = yBottomStart;
+                    RenderRows(bottomRows);
+                }
+
+                // y final (pour section suivante)
                 y += 10f;
                 return y;
+
             }
 
             // En mode FRF (Bode Plot) : un seul panneau, destiné aux mesures spécifiques FRF.
@@ -6814,6 +6886,9 @@ namespace AudioHexViewer
 
             // Nouveau : ligne de séparation visuelle
             public bool IsSeparator { get; init; } = false;
+
+            public bool IsBottomGroup { get; init; } = false;
+
         }
 
 
@@ -6879,9 +6954,9 @@ namespace AudioHexViewer
             var gain = _plotLeftSpectrum;          // en mode Bode Plot, LEFT = Gain (dB)
             var phi = _plotFrfPhaseDeg;            // Phase (°) si activée
 
-            static string FmtHz(double v) => double.IsNaN(v) ? "—" : v.ToString("0.##");
-            static string FmtDb(double v) => double.IsNaN(v) ? "—" : v.ToString("0.##") + " dB";
-            static string FmtDeg(double v) => double.IsNaN(v) ? "—" : v.ToString("0.##") + " °";
+            static string FmtHz(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " Hz");
+            static string FmtDb(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " dB");
+            static string FmtDeg(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " °");
 
             // --- Min/Max visibles ---
             double gMin = double.NaN, gMax = double.NaN;
@@ -6901,36 +6976,44 @@ namespace AudioHexViewer
 
             dst.Add(new StatRow { Label = "Gain min", Value = FmtDb(gMin), Emphasis = StatEmphasis.Strong });
             dst.Add(new StatRow { Label = "Gain max", Value = FmtDb(gMax), Emphasis = StatEmphasis.Strong });
-            dst.Add(new StatRow { Label = "Phi min", Value = hasPhi ? FmtDeg(pMin) : "—", Emphasis = StatEmphasis.Strong });
-            dst.Add(new StatRow { Label = "Phi max", Value = hasPhi ? FmtDeg(pMax) : "—", Emphasis = StatEmphasis.Strong });
+            dst.Add(new StatRow { Label = "φ min", Value = hasPhi ? FmtDeg(pMin) : "—", Emphasis = StatEmphasis.Strong });
+            dst.Add(new StatRow { Label = "φ max", Value = hasPhi ? FmtDeg(pMax) : "—", Emphasis = StatEmphasis.Strong });
+
 
             dst.Add(new StatRow { IsSeparator = true });
 
             // --- Curseurs ---
             void AddCursorBlock(string title, bool visible, double f, double y, bool usesY2)
             {
-                dst.Add(new StatRow { Label = title, Value = "", Emphasis = StatEmphasis.Medium });
+                dst.Add(new StatRow { Label = "Frequency", Value = visible ? FmtHz(f) : "—", IsBottomGroup = true });
 
-                dst.Add(new StatRow { Label = "F (Hz)", Value = visible ? FmtHz(f) : "—" });
-                dst.Add(new StatRow { Label = "Valeur", Value = visible ? (usesY2 ? FmtDeg(y) : FmtDb(y)) : "—" });
+                string what = usesY2 ? "φ" : "Gain";
+                dst.Add(new StatRow { Label = what, Value = visible ? (usesY2 ? FmtDeg(y) : FmtDb(y)) : "—", IsBottomGroup = true });
+
             }
 
             bool c1On = _cursorMarkLVisible && !double.IsNaN(_cursorMarkLFreq);
             bool c2On = _cursorMarkRVisible && !double.IsNaN(_cursorMarkRFreq);
 
-            AddCursorBlock("Curseur 1", c1On, _cursorMarkLFreq, _cursorMarkLDb, _cursorMarkLUsesY2);
-            dst.Add(new StatRow { IsSeparator = true });
+            // --- Cursor 1---
+            dst.Add(new StatRow { Label = "Cursor 1", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true });
 
-            AddCursorBlock("Curseur 2", c2On, _cursorMarkRFreq, _cursorMarkRDb, _cursorMarkRUsesY2);
-            dst.Add(new StatRow { IsSeparator = true });
+            AddCursorBlock("Cursor 1", c1On, _cursorMarkLFreq, _cursorMarkLDb, _cursorMarkLUsesY2);
+            dst.Add(new StatRow { IsSeparator = true, IsBottomGroup = true });
+
+            // --- Cursor 2 ---
+            dst.Add(new StatRow { Label = "Cursor 2", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true });
+
+            AddCursorBlock("Cursor 2", c2On, _cursorMarkRFreq, _cursorMarkRDb, _cursorMarkRUsesY2);
+            dst.Add(new StatRow { IsSeparator = true, IsBottomGroup = true });
 
             // --- Delta ---
-            dst.Add(new StatRow { Label = "Delta", Value = "", Emphasis = StatEmphasis.Medium });
+            dst.Add(new StatRow { Label = "Delta", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true });
 
             if (c1On && c2On)
             {
                 double df = Math.Abs(_cursorMarkRFreq - _cursorMarkLFreq);
-                dst.Add(new StatRow { Label = "F (Hz)", Value = FmtHz(df) });
+                dst.Add(new StatRow { Label = "Frequency", Value = FmtHz(df) , IsBottomGroup = true });
 
                 // Delta valeur seulement si mêmes unités (même axe)
                 if (_cursorMarkLUsesY2 == _cursorMarkRUsesY2)
@@ -6938,19 +7021,20 @@ namespace AudioHexViewer
                     double dy = _cursorMarkRDb - _cursorMarkLDb;
                     dst.Add(new StatRow
                     {
-                        Label = "Valeur",
-                        Value = _cursorMarkLUsesY2 ? (dy.ToString("0.##") + " °") : (dy.ToString("0.##") + " dB")
+                        Label = _cursorMarkLUsesY2 ? "φ" : "Gain",
+                        Value = _cursorMarkLUsesY2 ? (dy.ToString("0.##") + " °") : (dy.ToString("0.##") + " dB"), IsBottomGroup = true
+
                     });
                 }
                 else
                 {
-                    dst.Add(new StatRow { Label = "Valeur", Value = "—" });
+                    dst.Add(new StatRow { Label = "Gain/φ", Value = "—", IsBottomGroup = true });
                 }
             }
             else
             {
-                dst.Add(new StatRow { Label = "F (Hz)", Value = "—" });
-                dst.Add(new StatRow { Label = "Valeur", Value = "—" });
+                dst.Add(new StatRow { Label = "Frequency", Value = "—", IsBottomGroup = true });
+                dst.Add(new StatRow { Label = "Gain/φ", Value = "—", IsBottomGroup = true });
             }
         }
 
