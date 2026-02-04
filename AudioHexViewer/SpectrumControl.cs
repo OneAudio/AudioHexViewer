@@ -2781,6 +2781,9 @@ namespace AudioHexViewer
                 float valueLeft = xL + maxLabelW + 12f; // séparation label -> valeur
                 var topRows = rows.Where(r => !r.IsBottomGroup).ToList();
                 var bottomRows = rows.Where(r => r.IsBottomGroup).ToList();
+                bool enteredBottomGroup = false;
+                using var penSepStrong = new Pen(Color.FromArgb(170, 200, 200, 200), 1.4f);
+
 
 
                 void RenderRows(List<StatRow> rr)
@@ -2788,6 +2791,15 @@ namespace AudioHexViewer
                     for (int i = 0; i < rr.Count; i++)
                     {
                         var r = rr[i];
+
+                        // Séparation visuelle entre mesures globales (haut) et curseurs (bas)
+                        if (!enteredBottomGroup && r.IsBottomGroup)
+                        {
+                            enteredBottomGroup = true;
+                            g.DrawLine(penSepStrong, rect.X + pad, y + 6f, rect.Right - pad, y + 6f);
+                            y += 6f; // 
+                        }
+
 
                         if (r.IsSeparator)
                         {
@@ -6942,6 +6954,36 @@ namespace AudioHexViewer
                 lblRightRms?.Text,
                 lblRightPeak?.Text,
                 rightMeas);
+
+            // ------------------------------
+            // Curseurs dans les panneaux (hors Bode)
+            // Règles:
+            // 1) L+R : afficher QUE si fenêtre maximisée ET THD désactivé
+            // 2) Left/Right : afficher si THD désactivé, SAUF si fenêtre maximisée => toujours afficher
+            // ------------------------------
+            bool thdEnabled = (chkEnableThd?.Checked == true);
+            bool isMaximized = (this.FindForm()?.WindowState == FormWindowState.Maximized);
+
+            string mode = SelectedChannelMode;
+
+            bool showCursors =
+                mode.Equals("L+R", StringComparison.OrdinalIgnoreCase)
+                    ? (isMaximized && !thdEnabled)
+                    : (mode.Equals("Left", StringComparison.OrdinalIgnoreCase) || mode.Equals("Right", StringComparison.OrdinalIgnoreCase))
+                        ? (isMaximized || !thdEnabled)
+                        : false;
+
+            if (showCursors)
+            {
+                // On utilise le même rendu/placement que Bode (IsBottomGroup + titres centrés).
+                // IMPORTANT : en L+R, on ajoute le bloc UNE SEULE FOIS dans la section du bas (RIGHT),
+                // sinon 2 blocs "bottom" se marchent dessus.
+                if (mode.Equals("Left", StringComparison.OrdinalIgnoreCase))
+                    AppendCursorStatsBlock(_rowsLeft, "Level");
+                else
+                    AppendCursorStatsBlock(_rowsRight, "Level");
+            }
+
         }
         //
         //
@@ -6976,8 +7018,8 @@ namespace AudioHexViewer
 
             dst.Add(new StatRow { Label = "Gain min", Value = FmtDb(gMin), Emphasis = StatEmphasis.Strong });
             dst.Add(new StatRow { Label = "Gain max", Value = FmtDb(gMax), Emphasis = StatEmphasis.Strong });
-            dst.Add(new StatRow { Label = "φ min", Value = hasPhi ? FmtDeg(pMin) : "—", Emphasis = StatEmphasis.Strong });
-            dst.Add(new StatRow { Label = "φ max", Value = hasPhi ? FmtDeg(pMax) : "—", Emphasis = StatEmphasis.Strong });
+            dst.Add(new StatRow { Label = "φ min", Value = hasPhi ? FmtDeg(pMin) : "---", Emphasis = StatEmphasis.Strong });
+            dst.Add(new StatRow { Label = "φ max", Value = hasPhi ? FmtDeg(pMax) : "---", Emphasis = StatEmphasis.Strong });
 
 
             dst.Add(new StatRow { IsSeparator = true });
@@ -7008,12 +7050,12 @@ namespace AudioHexViewer
             dst.Add(new StatRow { IsSeparator = true, IsBottomGroup = true });
 
             // --- Delta ---
-            dst.Add(new StatRow { Label = "Delta", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true });
+            dst.Add(new StatRow { Label = "Δ Delta", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true });
 
             if (c1On && c2On)
             {
                 double df = Math.Abs(_cursorMarkRFreq - _cursorMarkLFreq);
-                dst.Add(new StatRow { Label = "Frequency", Value = FmtHz(df) , IsBottomGroup = true });
+                dst.Add(new StatRow { Label = "ΔFrequency", Value = FmtHz(df) , IsBottomGroup = true });
 
                 // Delta valeur seulement si mêmes unités (même axe)
                 if (_cursorMarkLUsesY2 == _cursorMarkRUsesY2)
@@ -7021,20 +7063,20 @@ namespace AudioHexViewer
                     double dy = _cursorMarkRDb - _cursorMarkLDb;
                     dst.Add(new StatRow
                     {
-                        Label = _cursorMarkLUsesY2 ? "φ" : "Gain",
+                        Label = _cursorMarkLUsesY2 ? "Δφ" : "ΔGain",
                         Value = _cursorMarkLUsesY2 ? (dy.ToString("0.##") + " °") : (dy.ToString("0.##") + " dB"), IsBottomGroup = true
 
                     });
                 }
                 else
                 {
-                    dst.Add(new StatRow { Label = "Gain/φ", Value = "—", IsBottomGroup = true });
+                    dst.Add(new StatRow { Label = "ΔGain/Δφ", Value = "—", IsBottomGroup = true });
                 }
             }
             else
             {
-                dst.Add(new StatRow { Label = "Frequency", Value = "—", IsBottomGroup = true });
-                dst.Add(new StatRow { Label = "Gain/φ", Value = "—", IsBottomGroup = true });
+                dst.Add(new StatRow { Label = "ΔFrequency", Value = "—", IsBottomGroup = true });
+                dst.Add(new StatRow { Label = "ΔGain/Δφ", Value = "—", IsBottomGroup = true });
             }
         }
 
@@ -7071,7 +7113,51 @@ namespace AudioHexViewer
 
             return sb.ToString();
         }
+        //
+        private void AppendCursorStatsBlock(List<StatRow> dst, string valueLabel)
+        {
+            static string FmtHz(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " Hz");
+            static string FmtDb(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " dB");
 
+            void AddCursorLines(bool visible, double f, double yDb)
+            {
+                dst.Add(new StatRow { Label = "Frequency", Value = visible ? FmtHz(f) : "—", IsBottomGroup = true });
+                dst.Add(new StatRow { Label = valueLabel, Value = visible ? FmtDb(yDb) : "—", IsBottomGroup = true });
+            }
+
+            bool c1On = _cursorMarkLVisible && !double.IsNaN(_cursorMarkLFreq);
+            bool c2On = _cursorMarkRVisible && !double.IsNaN(_cursorMarkRFreq);
+
+            // --- Cursor 1 ---
+            dst.Add(new StatRow { Label = "Cursor 1", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true });
+            AddCursorLines(c1On, _cursorMarkLFreq, _cursorMarkLDb);
+            dst.Add(new StatRow { IsSeparator = true, IsBottomGroup = true });
+
+            // --- Cursor 2 ---
+            dst.Add(new StatRow { Label = "Cursor 2", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true });
+            AddCursorLines(c2On, _cursorMarkRFreq, _cursorMarkRDb);
+            dst.Add(new StatRow { IsSeparator = true, IsBottomGroup = true });
+
+            // --- Delta ---
+            dst.Add(new StatRow { Label = "ΔDelta", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true });
+
+            if (c1On && c2On)
+            {
+                double df = Math.Abs(_cursorMarkRFreq - _cursorMarkLFreq);
+                double dy = _cursorMarkRDb - _cursorMarkLDb;
+
+                dst.Add(new StatRow { Label = "ΔFrequency", Value = FmtHz(df), IsBottomGroup = true });
+                dst.Add(new StatRow { Label = "ΔF"+valueLabel, Value = FmtDb(dy), IsBottomGroup = true });
+            }
+            else
+            {
+                dst.Add(new StatRow { Label = "ΔFrequency", Value = "—", IsBottomGroup = true });
+                dst.Add(new StatRow { Label = "ΔF"+valueLabel, Value = "—", IsBottomGroup = true });
+            }
+        }
+
+
+        //
 
         private static void BuildRowsForChannel(List<StatRow> dst, string? rms, string? peak, string? meas)
         {

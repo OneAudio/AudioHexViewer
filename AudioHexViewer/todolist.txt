@@ -3,18 +3,11 @@ Chose à faire :
 Le 04/02/2026
 -------------
 
-1 - Remettre le panneau de mesures de droite en mode FRF.
-    On pourra y ajouter les mesures suivantes :
-    -> Gain min (dB), Gain max (dB), Phi min (°); Phi max (°), Curseurs 1,2 et Delta
+1 - Ajouter une fonction de moyennage cohérente (synchrone) pour les mesures de THD 
 
-2 - Déplacer les valeurs des curseurs  en bas du tableau de droite si la fenêtre
-    est en plein écran et qu'une voie est active ou mode FRF.
+2 - Prévoir la normalisation de gain/phase (calibration) pour le mode FRF.(plus tard)
 
-3 - Ajouter une fonction de moyennage cohérente (synchrone) pour les mesures de THD 
-
-5 - Prévoir la normalisation de gain/phase (calibration) pour le mode FRF.(plus tard)
-
-6 - Ajouter le module qui permet de prendre le contre du SR.
+3 - Ajouter le module qui permet de prendre le contre du SR.
 
 
 
