@@ -33,6 +33,9 @@ namespace AudioHexViewer
         private readonly DateTime[] lastChangeRight = new DateTime[24];
         private readonly TimeSpan bitStabilityThreshold = TimeSpan.FromSeconds(0.4);
 
+        private string _lastAllFormatsLeft = "";
+        private string _lastAllFormatsRight = "";
+
         // Saturation par voie
         private DateTime? lastSatLeft = null;
         private DateTime? lastSatRight = null;
@@ -224,7 +227,7 @@ namespace AudioHexViewer
 
         // Limitation de frquence pour la mise  jour des textes (pour viter le scintillement)
         private DateTime lastTextDump = DateTime.MinValue;
-        private readonly TimeSpan textDumpInterval = TimeSpan.FromMilliseconds(0); // ~5 fps
+        private readonly TimeSpan textDumpInterval = TimeSpan.FromMilliseconds(200); // ~2 fps
 
         private SessionSettings? _loadedSessionSettings;
 
@@ -3011,11 +3014,22 @@ namespace AudioHexViewer
                 // On ne met  jour le texte que si l'intervalle est coul
                 if (updateText)
                 {
-                    txtLeft.Text = leftText.ToString();
-                    txtRight.Text = rightText.ToString();
+                    var newLeft = leftText.ToString();
+                    if (!string.Equals(newLeft, _lastAllFormatsLeft, StringComparison.Ordinal))
+                    {
+                        _lastAllFormatsLeft = newLeft;
+                        txtLeft.Text = newLeft;
+                        ColorBinaryXs(txtLeft, "Binary (24b)");
+                    }
 
-                    ColorBinaryXs(txtLeft, "Binary (24b)");
-                    ColorBinaryXs(txtRight, "Binary (24b)");
+                    var newRight = rightText.ToString();
+                    if (!string.Equals(newRight, _lastAllFormatsRight, StringComparison.Ordinal))
+                    {
+                        _lastAllFormatsRight = newRight;
+                        txtRight.Text = newRight;
+                        ColorBinaryXs(txtRight, "Binary (24b)");
+                    }
+
                 }
 
                 // Bargraphs dBFS
@@ -3316,6 +3330,26 @@ namespace AudioHexViewer
             _dataViewForm!.lblRightMainValue.Text = rightText;
         }
         //
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+        private const int WM_SETREDRAW = 0x000B;
+
+        private static void BeginNoRedraw(Control c)
+        {
+            if (c.IsHandleCreated) SendMessage(c.Handle, WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
+        }
+
+        private static void EndNoRedraw(Control c)
+        {
+            if (c.IsHandleCreated)
+            {
+                SendMessage(c.Handle, WM_SETREDRAW, new IntPtr(1), IntPtr.Zero);
+                c.Invalidate();
+                c.Update();
+            }
+        }
+
         //
         private void ColorBinaryXs(RichTextBox rtb, string binaryLabel)
         {
@@ -3340,6 +3374,7 @@ namespace AudioHexViewer
             Color oldColor = rtb.SelectionColor;
 
             rtb.SuspendLayout();
+            BeginNoRedraw(rtb);
 
             for (int i = bitsStart; i < lineEnd; i++)
             {
@@ -3356,6 +3391,7 @@ namespace AudioHexViewer
                     rtb.SelectionColor = rtb.ForeColor;
                 }
             }
+            EndNoRedraw(rtb);
 
             rtb.ResumeLayout();
 
