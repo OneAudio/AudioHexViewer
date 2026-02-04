@@ -6825,6 +6825,16 @@ namespace AudioHexViewer
             _rowsLeft.Clear();
             _rowsRight.Clear();
 
+            // Mode Bode Plot : panneau dédié (pas les mesures audio classiques)
+            if (SelectedChannelMode.Equals("Bode Plot", StringComparison.OrdinalIgnoreCase))
+            {
+                _rowsLeft.Clear();
+                _rowsRight.Clear();
+
+                BuildRowsForBodePlot(_rowsLeft);   // on n’utilise que la section "BODE" (LEFT)
+                return;
+            }
+
             string leftMeas = InjectVoltsLines(
                 lblLeftMeas?.Text,
                 _levelCalValidLeft,
@@ -6858,7 +6868,93 @@ namespace AudioHexViewer
                 lblRightPeak?.Text,
                 rightMeas);
         }
+        //
+        //
+        private void BuildRowsForBodePlot(List<StatRow> dst)
+        {
+            dst.Clear();
 
+            // Sources "plot" (déjà décimées pour affichage, et limitées à la zone visible)
+            var fx = _plotFreqAxis;
+            var gain = _plotLeftSpectrum;          // en mode Bode Plot, LEFT = Gain (dB)
+            var phi = _plotFrfPhaseDeg;            // Phase (°) si activée
+
+            static string FmtHz(double v) => double.IsNaN(v) ? "—" : v.ToString("0.##");
+            static string FmtDb(double v) => double.IsNaN(v) ? "—" : v.ToString("0.##") + " dB";
+            static string FmtDeg(double v) => double.IsNaN(v) ? "—" : v.ToString("0.##") + " °";
+
+            // --- Min/Max visibles ---
+            double gMin = double.NaN, gMax = double.NaN;
+            if (gain != null && gain.Length > 0)
+            {
+                gMin = gain.Min();
+                gMax = gain.Max();
+            }
+
+            double pMin = double.NaN, pMax = double.NaN;
+            bool hasPhi = _frfPhaseEnabled && phi != null && phi.Length > 0;
+            if (hasPhi)
+            {
+                pMin = phi.Min();
+                pMax = phi.Max();
+            }
+
+            dst.Add(new StatRow { Label = "Gain min", Value = FmtDb(gMin), Emphasis = StatEmphasis.Strong });
+            dst.Add(new StatRow { Label = "Gain max", Value = FmtDb(gMax), Emphasis = StatEmphasis.Strong });
+            dst.Add(new StatRow { Label = "Phi min", Value = hasPhi ? FmtDeg(pMin) : "—", Emphasis = StatEmphasis.Strong });
+            dst.Add(new StatRow { Label = "Phi max", Value = hasPhi ? FmtDeg(pMax) : "—", Emphasis = StatEmphasis.Strong });
+
+            dst.Add(new StatRow { IsSeparator = true });
+
+            // --- Curseurs ---
+            void AddCursorBlock(string title, bool visible, double f, double y, bool usesY2)
+            {
+                dst.Add(new StatRow { Label = title, Value = "", Emphasis = StatEmphasis.Medium });
+
+                dst.Add(new StatRow { Label = "F (Hz)", Value = visible ? FmtHz(f) : "—" });
+                dst.Add(new StatRow { Label = "Valeur", Value = visible ? (usesY2 ? FmtDeg(y) : FmtDb(y)) : "—" });
+            }
+
+            bool c1On = _cursorMarkLVisible && !double.IsNaN(_cursorMarkLFreq);
+            bool c2On = _cursorMarkRVisible && !double.IsNaN(_cursorMarkRFreq);
+
+            AddCursorBlock("Curseur 1", c1On, _cursorMarkLFreq, _cursorMarkLDb, _cursorMarkLUsesY2);
+            dst.Add(new StatRow { IsSeparator = true });
+
+            AddCursorBlock("Curseur 2", c2On, _cursorMarkRFreq, _cursorMarkRDb, _cursorMarkRUsesY2);
+            dst.Add(new StatRow { IsSeparator = true });
+
+            // --- Delta ---
+            dst.Add(new StatRow { Label = "Delta", Value = "", Emphasis = StatEmphasis.Medium });
+
+            if (c1On && c2On)
+            {
+                double df = Math.Abs(_cursorMarkRFreq - _cursorMarkLFreq);
+                dst.Add(new StatRow { Label = "F (Hz)", Value = FmtHz(df) });
+
+                // Delta valeur seulement si mêmes unités (même axe)
+                if (_cursorMarkLUsesY2 == _cursorMarkRUsesY2)
+                {
+                    double dy = _cursorMarkRDb - _cursorMarkLDb;
+                    dst.Add(new StatRow
+                    {
+                        Label = "Valeur",
+                        Value = _cursorMarkLUsesY2 ? (dy.ToString("0.##") + " °") : (dy.ToString("0.##") + " dB")
+                    });
+                }
+                else
+                {
+                    dst.Add(new StatRow { Label = "Valeur", Value = "—" });
+                }
+            }
+            else
+            {
+                dst.Add(new StatRow { Label = "F (Hz)", Value = "—" });
+                dst.Add(new StatRow { Label = "Valeur", Value = "—" });
+            }
+        }
+
+        //
         // Injecte les lignes Vrms/Vpeak/Vdc au début des mesures existantes
         private string InjectVoltsLines(string baseMeas, bool calValid, double? vrms, double? vpk, double? vdc,
         ref VoltUnit vrmsState, ref VoltUnit vpkState, ref VoltUnit vdcState)
