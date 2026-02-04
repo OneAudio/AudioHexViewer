@@ -70,14 +70,10 @@
             lblLeftPeakV = new Label();
             chkCursorL = new CheckBox();
             chkCursorR = new CheckBox();
-            panelStats = new Panel();
             panelTop.SuspendLayout();
             tlpCursors.SuspendLayout();
             tlpPhi.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)chartSpectrum).BeginInit();
-            grpRightStats.SuspendLayout();
-            grpLeftStats.SuspendLayout();
-            panelStats.SuspendLayout();
             SuspendLayout();
             // 
             // panelTop
@@ -673,25 +669,11 @@
             chkCursorR.Size = new Size(71, 19);
             chkCursorR.TabIndex = 16;
             chkCursorR.Text = "Cursor R";
-            // 
-            // panelStats
-            // 
-            panelStats.Controls.Add(chkCursorR);
-            panelStats.Controls.Add(chkCursorL);
-            panelStats.Controls.Add(grpLeftStats);
-            panelStats.Controls.Add(grpRightStats);
-            panelStats.Dock = DockStyle.Fill;
-            panelStats.Location = new Point(0, 70);
-            panelStats.Name = "panelStats";
-            panelStats.Padding = new Padding(8);
-            panelStats.Size = new Size(1138, 480);
-            panelStats.TabIndex = 0;
-            // 
+            //             
             // SpectrumControl
             // 
             BorderStyle = BorderStyle.FixedSingle;
             Controls.Add(chartSpectrum);
-            Controls.Add(panelStats);
             Controls.Add(panelTop);
             Name = "SpectrumControl";
             Size = new Size(1138, 550);
@@ -700,10 +682,6 @@
             tlpCursors.ResumeLayout(false);
             tlpPhi.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)chartSpectrum).EndInit();
-            grpRightStats.ResumeLayout(false);
-            grpLeftStats.ResumeLayout(false);
-            panelStats.ResumeLayout(false);
-            panelStats.PerformLayout();
             ResumeLayout(false);
         }
 
@@ -731,7 +709,6 @@
         private Label lblAvgProgress;
         private CheckBox chkPeakHold;
         private Button btnResetPeakHold;
-        public Panel panelStats;
         private CheckBox chkCursorR;
         private CheckBox chkCursorL;
         private GroupBox grpLeftStats;

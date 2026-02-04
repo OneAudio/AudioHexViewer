@@ -36,7 +36,7 @@ namespace AudioHexViewer
 
 
         
-        /// Crée la barre curseurs (C1/C2) dans panelStats, en bas à droite sous grpRightStats.
+        
         /// Appelée depuis le constructeur SpectrumControl() après InitializeComponent().        
         private void InitCursorBarUi()
         {

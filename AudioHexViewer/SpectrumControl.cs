@@ -836,8 +836,6 @@ namespace AudioHexViewer
         {
             InitializeComponent();
             EnsureVoltLayoutInit();
-            // Étape 1 : on garde le SplitContainer mais on masque la zone Stats (Panel2)
-            panelStats.Visible = false; // panel stats n'est plus utilisé visuellement
             InitChartAppearance();
             this.Load += (_, __) => ApplyChartStatsMargin();
             chartSpectrum.Resize += (_, __) => ApplyChartStatsMargin();
