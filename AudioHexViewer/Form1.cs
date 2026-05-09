@@ -18,11 +18,13 @@ namespace AudioHexViewer
 
     {
         // --- CHAMPS PRIVS ---
-        private WasapiCapture? capture;   // pour la capture audio
+        private IWaveIn? capture;   // WasapiCapture (shared) ou ExclusiveWasapiCapture
         private MMDevice? selectedDevice; // priphrique audio choisi
         private WaveFormat? currentFormat;
 
-        
+        // Format demandé explicitement par l'utilisateur (null = auto / Windows Shared Mode)
+        private WaveFormat? _requestedCaptureFormat = null;
+
 
 
 
@@ -805,7 +807,7 @@ namespace AudioHexViewer
             spectrumControl?.UpdateHopSamples(analysisHopSamples);
 
             // (Étape 5) Restart immédiat du worker SFFT si la capture tourne
-            if (capture != null && capture.CaptureState == CaptureState.Capturing)
+            if (capture != null && ((capture as WasapiCapture)?.CaptureState ?? CaptureState.Capturing) == CaptureState.Capturing)
             {
                 RestartSfftFromUi();
             }
@@ -813,6 +815,14 @@ namespace AudioHexViewer
         }
         //
         private readonly int[] _sampleSizeOptions = new[] { 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304 };
+
+        // Sample rates proposés dans le menu Sample Rate
+        private readonly int[] _sampleRateOptions = new[]
+        {
+            44100, 48000, 88200, 96000,
+            176400, 192000, 352800, 384000,
+            705600, 768000
+        };
 
         // Options REW-style (en samples)
         private readonly int[] _bufferOptions = new[] { 16 * 1024, 32 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024 };
@@ -1019,7 +1029,7 @@ namespace AudioHexViewer
             spectrumControl?.UpdateHopSamples(analysisHopSamples);
 
             // (Étape 5) Restart immédiat du worker SFFT si la capture tourne
-            if (capture != null && capture.CaptureState == CaptureState.Capturing)
+            if (capture != null && ((capture as WasapiCapture)?.CaptureState ?? CaptureState.Capturing) == CaptureState.Capturing)
             {
                 RestartSfftFromUi();
             }
@@ -1041,7 +1051,7 @@ namespace AudioHexViewer
             analysisTimer.Interval = 20; // 50 Hz UI (ajuste si besoin: 10..50 ms)
 
             // Le timer ne tourne que quand la capture est active
-            if (capture != null && capture.CaptureState == CaptureState.Capturing)
+            if (capture != null && ((capture as WasapiCapture)?.CaptureState ?? CaptureState.Capturing) == CaptureState.Capturing)
                 analysisTimer.Start();
             else
                 analysisTimer.Stop();
@@ -1360,6 +1370,8 @@ namespace AudioHexViewer
             UpdateOverlapMenuChecks();
             InitBufferMenu();
             UpdateBufferMenuChecks();
+            InitSampleRateMenu();
+            UpdateSampleRateMenuChecks();
 
             this.FormClosing += Form1_FormClosing;
         }
@@ -1802,6 +1814,138 @@ namespace AudioHexViewer
             return $"{paddedLabel} : {value}";
         }
         //
+        // ================================================================
+        // NÉGOCIATION DU FORMAT EXCLUSIF (inspiré de SRatetest2)
+        // ================================================================
+
+        /// <summary>
+        /// Teste, pour un SR donné, les formats courants (32/24/16 bits, plain et extensible)
+        /// et retourne le premier accepté par le driver en mode Exclusif.
+        /// Retourne null si aucun n'est supporté.
+        /// </summary>
+        private static WaveFormat? FindSupportedExclusiveFormat(MMDevice device, int sampleRate)
+        {
+            var ac = device.AudioClient;
+            var mode = AudioClientShareMode.Exclusive;
+
+            WaveFormat[] candidates = new WaveFormat[]
+            {
+                new WaveFormat(sampleRate, 32, 2),
+                new WaveFormatExtensible(sampleRate, 32, 2),
+                new WaveFormat(sampleRate, 24, 2),
+                new WaveFormatExtensible(sampleRate, 24, 2),
+                new WaveFormat(sampleRate, 16, 2),
+                new WaveFormatExtensible(sampleRate, 16, 2),
+            };
+
+            foreach (var wf in candidates)
+            {
+                try
+                {
+                    if (ac.IsFormatSupported(mode, wf))
+                        return wf;
+                }
+                catch { /* certains drivers lèvent une exception au lieu de retourner false */ }
+            }
+
+            return null;
+        }
+
+        // ================================================================
+        // FIN NÉGOCIATION FORMAT
+        // ================================================================
+        //
+        // ================================================================
+        // SAMPLE RATE MENU (Exclusive Mode)
+        // ================================================================
+
+        private void InitSampleRateMenu()
+        {
+            if (menuSampleRate == null) return;
+
+            menuSampleRate.DropDownItems.Clear();
+
+            // Première entrée : mode Auto (Windows Shared Mode, SR imposé par Windows)
+            var autoItem = new ToolStripMenuItem("Auto (Windows)")
+            {
+                Tag = 0,
+                Checked = (_requestedCaptureFormat == null)
+            };
+            autoItem.Click += (s, e) =>
+            {
+                _requestedCaptureFormat = null;
+                UpdateSampleRateMenuChecks();
+            };
+            menuSampleRate.DropDownItems.Add(autoItem);
+
+            menuSampleRate.DropDownItems.Add(new ToolStripSeparator());
+
+            // Une entrée par sample rate
+            foreach (int sr in _sampleRateOptions)
+            {
+                string label = sr < 1000
+                    ? $"{sr} Hz"
+                    : $"{sr / 1000.0:0.###} kHz";
+
+                var item = new ToolStripMenuItem(label)
+                {
+                    Tag = sr
+                };
+
+                item.Click += (s, e) =>
+                {
+                    if (s is not ToolStripMenuItem clicked) return;
+                    int chosen = (int)clicked.Tag!;
+                    // WaveFormatExtensible requis pour le mode Exclusif
+                    // Le constructeur 3-args règle automatiquement le sous-type IEEE Float pour 32 bits
+                    _requestedCaptureFormat = new WaveFormatExtensible(chosen, 32, 2);
+                    UpdateSampleRateMenuChecks();
+                };
+
+                menuSampleRate.DropDownItems.Add(item);
+            }
+        }
+
+        private void UpdateSampleRateMenuChecks()
+        {
+            if (menuSampleRate == null) return;
+
+            int currentSr = _requestedCaptureFormat?.SampleRate ?? 0;
+
+            foreach (ToolStripItem rawItem in menuSampleRate.DropDownItems)
+            {
+                if (rawItem is not ToolStripMenuItem item) continue;
+
+                int tag = (item.Tag is int t) ? t : -1;
+
+                if (tag == 0)
+                    item.Checked = (_requestedCaptureFormat == null); // Auto
+                else
+                    item.Checked = (tag == currentSr);
+            }
+        }
+
+        /// <summary>
+        /// Vérifie si le format demandé est supporté par le driver en mode Exclusif.
+        /// Retourne false en cas d'erreur (driver non compatible, device absent, etc.)
+        /// </summary>
+        private static bool IsFormatSupportedExclusive(MMDevice device, WaveFormat format)
+        {
+            try
+            {
+                var client = device.AudioClient;
+                return client.IsFormatSupported(AudioClientShareMode.Exclusive, format);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // ================================================================
+        // FIN SAMPLE RATE MENU
+        // ================================================================
+        //
         private void UpdateDeviceSummary()
         {
             //if (lblDeviceSummary == null)
@@ -2096,18 +2240,42 @@ namespace AudioHexViewer
 
             try
             {
-                // === ICI : on choisit IN ou OUT ===
+                // === Choix IN / OUT + Exclusif si SR explicite demandé ===
                 if (!captureOutput)
                 {
-                    // Mode IN : priphrique d'entre (micro / ADC)
-                    capture = new WasapiCapture(selectedDevice);
+                    if (_requestedCaptureFormat != null)
+                    {
+                        // Négocie le format réel supporté par ce driver pour ce SR
+                        int requestedSr = _requestedCaptureFormat.SampleRate;
+                        WaveFormat? actualFormat = FindSupportedExclusiveFormat(selectedDevice, requestedSr);
+
+                        if (actualFormat == null)
+                        {
+                            MessageBox.Show(
+                                $"Le SR {requestedSr / 1000.0:0.###} kHz n'est pas supporté en mode\n" +
+                                "Exclusif par ce périphérique (aucun format 32/24/16 bits accepté).\n\n" +
+                                "Choisis 'Auto (Windows)' dans le menu Sample Rate.",
+                                "Format non supporté",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Warning);
+                            capture = null;
+                            return;
+                        }
+
+                        capture = new ExclusiveWasapiCapture(selectedDevice, actualFormat);
+                    }
+                    else
+                    {
+                        // Mode Auto : Shared Mode standard, SR imposé par Windows
+                        capture = new WasapiCapture(selectedDevice, useEventSync: false, audioBufferMillisecondsLength: 100);
+                    }
                 }
                 else
                 {
-                    // Mode OUT : priphrique de sortie (loopback)
+                    // Mode OUT : loopback — toujours Shared, SR du renderer Windows
                     capture = new WasapiLoopbackCapture(selectedDevice);
                 }
-                // ================================
+                // ============================================================
 
                 currentFormat = capture.WaveFormat;
 
@@ -2163,7 +2331,29 @@ namespace AudioHexViewer
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Erreur lors du demarrage de la capture : " + ex.Message);
+                // Décodage des erreurs WASAPI les plus fréquentes
+                string errMsg;
+                switch (unchecked((uint)ex.HResult))
+                {
+                    case 0x88890008: // AUDCLNT_E_UNSUPPORTED_FORMAT
+                        errMsg = $"Format non supporté par le driver en mode Exclusif.\n" +
+                                 $"({_requestedCaptureFormat?.SampleRate / 1000.0:0.###} kHz / 32 bits Float)\n\n" +
+                                 "Solution : choisir 'Auto' dans le menu Sample Rate, ou essayer un autre SR.";
+                        break;
+                    case 0x88890001: // AUDCLNT_E_ALREADY_INITIALIZED
+                    case 0x88890014: // AUDCLNT_E_DEVICE_IN_USE
+                        errMsg = "Le périphérique est déjà utilisé par une autre application en mode Exclusif.\n\n" +
+                                 "Ferme REW, le panneau Son de Windows, ou toute autre appli audio, puis réessaie.";
+                        break;
+                    case 0x88890004: // AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED
+                        errMsg = "Taille de buffer incompatible avec ce driver en mode Exclusif.\n" +
+                                 "Essaie un autre SR ou repasse en mode Auto.";
+                        break;
+                    default:
+                        errMsg = $"Erreur lors du démarrage de la capture :\n{ex.Message}\n(HRESULT: 0x{ex.HResult:X8})";
+                        break;
+                }
+                MessageBox.Show(errMsg, "Erreur capture", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 capture = null;
                 currentFormat = null;
 
@@ -2779,6 +2969,15 @@ namespace AudioHexViewer
                         tmpL[i] = BitConverter.ToSingle(buffer, p); p += 4;
                         tmpR[i] = BitConverter.ToSingle(buffer, p); p += 4;
                     }
+
+                    //for (int i = 0; i < frameCount; i++)
+                    //{
+                    //    int idxFrame = i * bytesPerFrame;   // bytesPerFrame = currentFormat.Channels * 4
+
+                    //    tmpL[i] = BitConverter.ToSingle(buffer, idxFrame);       // ch0
+                    //    tmpR[i] = BitConverter.ToSingle(buffer, idxFrame + 4);   // ch1
+                    //}
+
 
                     // Push uniquement la partie utile [0..frameCount)
                     _floatRing.PushBlock(tmpL.AsSpan(0, frameCount), tmpR.AsSpan(0, frameCount));

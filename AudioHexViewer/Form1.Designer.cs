@@ -45,6 +45,7 @@ namespace AudioHexViewer
             menuSampleSize = new ToolStripMenuItem();
             menuOverlap = new ToolStripMenuItem();
             menuBuffer = new ToolStripMenuItem();
+            menuSampleRate = new ToolStripMenuItem();
             exportToolStripMenuItem = new ToolStripMenuItem();
             menuExportPng = new ToolStripMenuItem();
             panelTop = new Panel();
@@ -86,7 +87,7 @@ namespace AudioHexViewer
             // menuStrip1
             // 
             menuStrip1.AutoSize = false;
-            menuStrip1.Items.AddRange(new ToolStripItem[] { menuDeviceInfo, menuHelp, menuData, menuSampleSize, menuOverlap, menuBuffer, exportToolStripMenuItem });
+            menuStrip1.Items.AddRange(new ToolStripItem[] { menuDeviceInfo, menuHelp, menuData, menuSampleSize, menuOverlap, menuBuffer, menuSampleRate, exportToolStripMenuItem });
             menuStrip1.Location = new Point(0, 0);
             menuStrip1.Name = "menuStrip1";
             menuStrip1.Size = new Size(1138, 25);
@@ -180,6 +181,13 @@ namespace AudioHexViewer
             menuBuffer.Name = "menuBuffer";
             menuBuffer.Size = new Size(51, 21);
             menuBuffer.Text = "Buffer";
+            // 
+            // menuSampleRate
+            // 
+            menuSampleRate.Alignment = ToolStripItemAlignment.Right;
+            menuSampleRate.Name = "menuSampleRate";
+            menuSampleRate.Size = new Size(83, 21);
+            menuSampleRate.Text = "Sample rate";
             // 
             // exportToolStripMenuItem
             // 
@@ -481,6 +489,7 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuSampleSize;
         private ToolStripMenuItem menuOverlap;
         private ToolStripMenuItem menuBuffer;
+        private ToolStripMenuItem menuSampleRate;
         private ToolStripMenuItem exportToolStripMenuItem;
         private ToolStripMenuItem menuExportPng;
         internal Label lblLeftLevelMain;

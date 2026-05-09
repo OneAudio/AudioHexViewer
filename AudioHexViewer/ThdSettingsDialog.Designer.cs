@@ -70,7 +70,7 @@ namespace AudioHexViewer
             // 
             nudFlow.DecimalPlaces = 1;
             nudFlow.Location = new Point(100, 15);
-            nudFlow.Maximum = new decimal(new int[] { 384000, 0, 0, 0 });
+            nudFlow.Maximum = new decimal(new int[] { 768000, 0, 0, 0 });
             nudFlow.Name = "nudFlow";
             nudFlow.Size = new Size(96, 23);
             nudFlow.TabIndex = 2;
@@ -99,7 +99,7 @@ namespace AudioHexViewer
             nudFhigh.DecimalPlaces = 1;
             nudFhigh.Increment = new decimal(new int[] { 10, 0, 0, 0 });
             nudFhigh.Location = new Point(100, 60);
-            nudFhigh.Maximum = new decimal(new int[] { 384000, 0, 0, 0 });
+            nudFhigh.Maximum = new decimal(new int[] { 768000, 0, 0, 0 });
             nudFhigh.Name = "nudFhigh";
             nudFhigh.Size = new Size(96, 23);
             nudFhigh.TabIndex = 5;
