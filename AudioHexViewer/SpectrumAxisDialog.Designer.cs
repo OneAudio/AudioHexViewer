@@ -157,6 +157,8 @@
             // 
             numFMin.Location = new Point(80, 7);
             numFMin.Maximum = new decimal(new int[] { 1000000, 0, 0, 0 });
+            numFMin.DecimalPlaces = 3;
+            numFMin.Increment = new decimal(new int[] { 1, 0, 0, 131072 }); // 0.001
             numFMin.Name = "numFMin";
             numFMin.Size = new Size(90, 23);
             numFMin.TabIndex = 1;

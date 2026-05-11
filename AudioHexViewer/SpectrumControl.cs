@@ -719,6 +719,9 @@ namespace AudioHexViewer
         //
         // Échelle des labels secondaires X et Y (95% de la taille normale)
         private const float MinorLabelScale = 0.9f;
+        /// <summary>Plancher absolu de fréquence en mode log (évite log(0)).
+        /// Permet d'afficher jusqu'à ~0,001 Hz si la résolution FFT le permet.</summary>
+        private const double LogXAbsMinHz = 1e-6;
 
         private static int CountTrailingZeros(int value)
         {
@@ -2290,7 +2293,7 @@ namespace AudioHexViewer
             // fréquence sous la souris (conversion log-friendly)
             double f = GetFrequencyFromMouseX(e.X);
 
-            if (useLog && f < 1.0) f = 1.0;
+            if (useLog && f <= 0.0) f = LogXAbsMinHz;
             if (!useLog && f < 0.0) f = 0.0;
 
             int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
@@ -2617,7 +2620,7 @@ namespace AudioHexViewer
 
             for (int i = 0; i < axis.Length; i++)
             {
-                if (axis[i] >= 1.0)
+                if (axis[i] > 0.0)
                     return i;
             }
             return 0;
@@ -3653,10 +3656,10 @@ namespace AudioHexViewer
             // (recalcule l'index à partir de la fréquence mémorisée)
             if (useLog)
             {
-                if (_cursorFreqL < 1.0) _cursorFreqL = 1.0;
-                if (_cursorFreqR < 1.0) _cursorFreqR = 1.0;
-                if (_cursorTargetHzL < 1.0) _cursorTargetHzL = 1.0;
-                if (_cursorTargetHzR < 1.0) _cursorTargetHzR = 1.0;
+                if (_cursorFreqL <= 0.0) _cursorFreqL = LogXAbsMinHz;
+                if (_cursorFreqR <= 0.0) _cursorFreqR = LogXAbsMinHz;
+                if (_cursorTargetHzL <= 0.0) _cursorTargetHzL = LogXAbsMinHz;
+                if (_cursorTargetHzR <= 0.0) _cursorTargetHzR = LogXAbsMinHz;
 
             }
 
@@ -4256,7 +4259,7 @@ namespace AudioHexViewer
             // LOG X : buckets uniformes en log10(f)
             if (useLogX)
             {
-                if (fMin <= 0) fMin = 1.0;
+                if (fMin <= 0) fMin = LogXAbsMinHz;
                 if (fMax <= fMin) fMax = fMin * 10.0;
 
                 int nOut = maxPoints;
@@ -4722,6 +4725,13 @@ namespace AudioHexViewer
         //
         private static string FormatHzK(double hz)
         {
+            if (hz < 1.0)
+            {
+                // Sous 1 Hz : affiche en mHz si < 1 Hz, ou directement si >= 0.1
+                if (hz >= 0.1) return hz.ToString("0.##");
+                if (hz >= 0.01) return hz.ToString("0.###");
+                return hz.ToString("G3"); // ex. 1E-4 pour de très basses fréquences
+            }
             if (hz >= 1000.0)
                 return (hz / 1000.0).ToString("0.#") + "k";
             return hz.ToString("0");
@@ -4739,8 +4749,8 @@ namespace AudioHexViewer
 
             if (useLog)
             {
-                // LOG => min strictement > 0
-                fMin = Math.Max(1.0, fMin);
+                // LOG => min strictement > 0 (accepte sub-1Hz)
+                fMin = Math.Max(LogXAbsMinHz, fMin);
                 if (fMax <= fMin) fMax = fMin * 10.0;
             }
             else
@@ -4781,7 +4791,7 @@ namespace AudioHexViewer
                 if (spectrum.Length != fx.Length || spectrum.Length < 3) return null;
 
                 // bornes utiles
-                double minPhys = useLog ? 1.0 : 0.0;
+                double minPhys = useLog ? LogXAbsMinHz : 0.0;
                 if (fMinHz < minPhys) fMinHz = minPhys;
                 if (fMaxHz <= fMinHz) return null;
 
@@ -4830,9 +4840,9 @@ namespace AudioHexViewer
             if (useLog)
             {
                 if (freqAxis != null && freqAxis.Length > startIndex)
-                    fMinAuto = Math.Max(freqAxis[startIndex], 1.0);
+                    fMinAuto = Math.Max(freqAxis[startIndex], LogXAbsMinHz);
                 else
-                    fMinAuto = 1.0;
+                    fMinAuto = LogXAbsMinHz;
 
                 area.AxisX.IsMarginVisible = false;   // évite le “padding” à gauche
             }
@@ -4851,7 +4861,7 @@ namespace AudioHexViewer
             ApplyAxisXModeSafe(area, useLog, fMin, fMax);
 
             // Sécurités de base
-            double xMinPhys = useLog ? 1.0 : 0.0;
+            double xMinPhys = useLog ? LogXAbsMinHz : 0.0;
             if (fMin < xMinPhys) fMin = xMinPhys;
             double nyquist = _sampleRate / 2.0;
 
@@ -4865,7 +4875,7 @@ namespace AudioHexViewer
             if (useLog)
             {
                 if (double.IsNaN(fMin) || fMin <= 0.0)
-                    fMin = 1.0;
+                    fMin = LogXAbsMinHz;
                 if (double.IsNaN(fMax) || fMax <= fMin)
                     fMax = fMin * 10.0;
             }
@@ -5039,12 +5049,12 @@ namespace AudioHexViewer
             if (useLog)
             {
                 if (area.AxisX.Minimum <= 0)
-                    area.AxisX.Minimum = 1.0;
+                    area.AxisX.Minimum = LogXAbsMinHz;
                 if (area.AxisX.Maximum <= area.AxisX.Minimum)
                     area.AxisX.Maximum = area.AxisX.Minimum * 10.0;
 
                 double minDecade = Math.Pow(10.0, Math.Floor(Math.Log10(area.AxisX.Minimum)));
-                area.AxisX.Minimum = Math.Max(1.0, minDecade);
+                area.AxisX.Minimum = Math.Max(LogXAbsMinHz, minDecade);
 
                 if (area.AxisX.Maximum <= area.AxisX.Minimum)
                     area.AxisX.Maximum = area.AxisX.Minimum * 10.0;

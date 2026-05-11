@@ -42,6 +42,9 @@ namespace AudioHexViewer
             menuData = new ToolStripMenuItem();
             menuShowAllFormats = new ToolStripMenuItem();
             menuDataView = new ToolStripMenuItem();
+            menuDebugInfo = new ToolStripMenuItem();
+            panelDebugInfo = new Panel();
+            lblDebugInfo = new Label();
             menuSampleSize = new ToolStripMenuItem();
             menuOverlap = new ToolStripMenuItem();
             menuBuffer = new ToolStripMenuItem();
@@ -142,7 +145,7 @@ namespace AudioHexViewer
             // menuData
             // 
             menuData.Alignment = ToolStripItemAlignment.Right;
-            menuData.DropDownItems.AddRange(new ToolStripItem[] { menuShowAllFormats, menuDataView });
+            menuData.DropDownItems.AddRange(new ToolStripItem[] { menuShowAllFormats, menuDataView, menuDebugInfo });
             menuData.Name = "menuData";
             menuData.Size = new Size(44, 21);
             menuData.Text = "View";
@@ -160,6 +163,14 @@ namespace AudioHexViewer
             menuDataView.Size = new Size(188, 22);
             menuDataView.Text = "DataView";
             menuDataView.Click += menuDataView_Click;
+            // 
+            // menuDebugInfo
+            // 
+            menuDebugInfo.CheckOnClick = true;
+            menuDebugInfo.Name = "menuDebugInfo";
+            menuDebugInfo.Size = new Size(188, 22);
+            menuDebugInfo.Text = "Debug info";
+            menuDebugInfo.Click += menuDebugInfo_Click;
             // 
             // menuSampleSize
             // 
@@ -223,6 +234,28 @@ namespace AudioHexViewer
             panelTop.Name = "panelTop";
             panelTop.Size = new Size(1138, 73);
             panelTop.TabIndex = 38;
+            // 
+            // panelDebugInfo  (barre de debug sous panelTop, cachée par défaut)
+            // 
+            panelDebugInfo.Controls.Add(lblDebugInfo);
+            panelDebugInfo.Dock = DockStyle.Top;
+            panelDebugInfo.Name = "panelDebugInfo";
+            panelDebugInfo.Size = new Size(1138, 18);
+            panelDebugInfo.BackColor = Color.FromArgb(25, 25, 25);
+            panelDebugInfo.Visible = false;
+            panelDebugInfo.TabIndex = 39;
+            // 
+            // lblDebugInfo
+            // 
+            lblDebugInfo.Dock = DockStyle.Fill;
+            lblDebugInfo.Font = new Font("Consolas", 8.25F);
+            lblDebugInfo.ForeColor = Color.FromArgb(144, 238, 144);  // LightGreen
+            lblDebugInfo.BackColor = Color.Transparent;
+            lblDebugInfo.Name = "lblDebugInfo";
+            lblDebugInfo.Text = "";
+            lblDebugInfo.AutoEllipsis = false;
+            lblDebugInfo.AutoSize = false;
+            lblDebugInfo.TextAlign = ContentAlignment.MiddleLeft;
             // 
             // lblRightLevelMain
             // 
@@ -436,6 +469,7 @@ namespace AudioHexViewer
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(1138, 749);
             Controls.Add(tabAnalysis);
+            Controls.Add(panelDebugInfo);
             Controls.Add(panelTop);
             Controls.Add(menuStrip1);
             Controls.Add(label5);
@@ -484,6 +518,9 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuData;
         private ToolStripMenuItem menuShowAllFormats;
         private ToolStripMenuItem menuDataView;
+        private ToolStripMenuItem menuDebugInfo;
+        private Panel panelDebugInfo;
+        private Label lblDebugInfo;
         private System.Windows.Forms.RichTextBox txtLeft;
         private System.Windows.Forms.RichTextBox txtRight;
         private ToolStripMenuItem menuSampleSize;

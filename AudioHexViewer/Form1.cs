@@ -124,6 +124,7 @@ namespace AudioHexViewer
         private long            _diagLogFftIndex;        // numéro séquentiel de FFT dans le log
         private long            _diagLogAbsEndPrev = -1; // AbsEnd de la FFT précédente
         private long            _diagDropForLog;         // drops depuis la dernière FFT loguée
+        private string          _lastDebugBarText = "";  // dernier texte de la barre debug (pour le log F8)
         // ─────────────────────────────────────────────────────────────────────
 
         // --- Test source: sine 1 kHz -> écrit dans _floatRing à la place de la carte son ---
@@ -1194,23 +1195,22 @@ namespace AudioHexViewer
                         ? $" AbsEnd={_lastFrameUi.AbsEnd}"
                         : $" AbsWrite={snap.AbsWrite}";
 
-                    // --- Barre de titre debug minimaliste ---
-                    // Objectif : uniquement la perf "réelle" et une éventuelle erreur.
-                    // (Le reste est déjà visible ailleurs dans l'UI.)
-                    string err = snap.LastError ?? "";
-                    string errStr = "";
+                    // --- Barre de debug (lblDebugInfo) + titre de fenêtre ---
+                    // Le titre n'affiche plus les infos de debug (évite la troncature Windows).
+                    // Toutes les infos sont dans la barre interne, activée via View > Debug info.
+                    string fullErr = (snap.LastError ?? "").Replace("\r", " ").Replace("\n", " ");
+                    string fullErrStr = string.IsNullOrWhiteSpace(fullErr) ? "" : $" | ERR: {fullErr}";
+                    _lastDebugBarText =
+                        $"FFT/s act={snap.FftPerSec:F1} | FFT={snap.FftAvgMs:F3} ms{fullErrStr}";
 
-                    if (!string.IsNullOrWhiteSpace(err))
-                    {
-                        // Évite un titre énorme si exception/stacktrace
-                        const int MaxErrLen = 80;
-                        err = err.Replace("\r", " ").Replace("\n", " ");
-                        if (err.Length > MaxErrLen) err = err.Substring(0, MaxErrLen) + "…";
-                        errStr = $" | ERR: {err}";
-                    }
+                    // Titre de fenêtre : nom de l'appli uniquement (stable, jamais tronqué)
+                    if (this.Text != "AudioHexViewer")
+                        this.Text = "AudioHexViewer";
 
-                    this.Text =
-                        $"AudioHexViewer | FFT/s act={snap.FftPerSec:F1} | FFT={snap.FftAvgMs:F3} ms{errStr}";
+                    // Mise à jour de la barre debug interne — uniquement si le texte a changé
+                    // (évite le clignotement causé par une réaffectation inutile)
+                    if (panelDebugInfo.Visible && lblDebugInfo.Text != _lastDebugBarText)
+                        lblDebugInfo.Text = _lastDebugBarText;
 
                     _uiLastRateT = t;
                 }
@@ -1465,6 +1465,19 @@ namespace AudioHexViewer
 
             _dataViewForm!.Show();
             _dataViewForm.BringToFront();
+        }
+
+        /// <summary>
+        /// View > Debug info : affiche/cache la barre de debug interne (sans troncature).
+        /// </summary>
+        private void menuDebugInfo_Click(object? sender, EventArgs e)
+        {
+            bool visible = menuDebugInfo.Checked;
+            panelDebugInfo.Visible = visible;
+            if (!visible)
+                lblDebugInfo.Text = "";
+            else
+                lblDebugInfo.Text = _lastDebugBarText; // affiche immédiatement le dernier texte connu
         }
 
         //
@@ -2512,7 +2525,7 @@ namespace AudioHexViewer
                     _diagLogWriter.WriteLine("# Anomalie   = UI_DRAIN si drain>1 normal | HOP⚠(REEL) si vrai gap | DROP si perte");
                     _diagLogWriter.WriteLine("#");
                     _diagLogWriter.WriteLine(
-                        "Timestamp;FFT#;AbsEnd;HopActuel;HopAttendu;HopErreur_ms;Drained;Drops;LockWait_ms;FrmSkipped;Anomalie");
+                        "Timestamp;FFT#;AbsEnd;HopActuel;HopAttendu;HopErreur_ms;Drained;Drops;LockWait_ms;FrmSkipped;Anomalie;FftPerSec;FftAvgMs;DebugBarInfo");
 
                     // Reset des compteurs spécifiques au log
                     _diagLogFftIndex    = 0;
@@ -2605,7 +2618,10 @@ namespace AudioHexViewer
                     $"{drops};" +
                     $"{lockWaitMs:F3};" +
                     $"{framesSkipped};" +
-                    $"{anomalie}");
+                    $"{anomalie};" +
+                    $"{snap.FftPerSec:F2};" +
+                    $"{snap.FftAvgMs:F3};" +
+                    $"{_lastDebugBarText.Replace(';', '|')}");
 
                 // Flush toutes les 20 FFTs pour ne pas perdre de données
                 // sans sur-solliciter le disque (20 FFTs ≈ 6s à 3 FFT/s)
@@ -4166,6 +4182,12 @@ namespace AudioHexViewer
 
         private void Form1_Load(object sender, EventArgs e)
         {
+            // Double-buffering sur la barre de debug pour supprimer tout clignotement résiduel
+            typeof(Panel)
+                .GetProperty("DoubleBuffered",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                ?.SetValue(panelDebugInfo, true);
+
             LoadUiSettingsFromSettingsFiles();
 
             if (_loadedSessionSettings != null)

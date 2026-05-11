@@ -1,13 +1,10 @@
 Chose à faire :
 --------------
-Le 04/02/2026
+Le 11/05/2026
 -------------
 
-1 - Ajouter une fonction de moyennage cohérente (synchrone) pour les mesures de THD 
-
-2 - Prévoir la normalisation de gain/phase (calibration) pour le mode FRF.(plus tard)
-
-3 - Ajouter le module qui permet de prendre le contre du SR.
+ - Ajouter une fonction de moyennage cohérente (synchrone) pour les mesures de THD 
+ - Prévoir la normalisation de gain/phase (calibration) pour le mode FRF.(plus tard)
 
 
 
@@ -34,19 +31,5 @@ d) Ajouter le dessin d'un loie normale sursposé à l'histogramme (option case �
 
  - Pour le mode FRF (Bode Plot), le moyennage serait à revoir...
 
- Mes réponses :
-
-Q1: Non, je n'ai pas ERR: Window miss quand la FFT devient incorrecte, regarde l'image jointe  de ce que j'obtiens.
-
-Q2: Oui. Le problème semble être pire en mode auto (non exlusif) avec les même réglages (mêmes FS, N et pas d'overlap).
-
-Q3: Voir image jointe  (pour Fs=768kHz, N=1Mpts et pas d'overlap -> 0.7 FFT/s et FFT=122ms).
-
-La valeur du nombre de FFT/s ne varie pas lorsque le problème survient.
-
-Q4: C'est difficile à dire, il apparait de toute façon très vitre lorsque N est grand.
-
-Les différents fichiers demandés sont en pièces jointes, si tu veux la totalité du projet dis le moi.
-
-
+ 
 
