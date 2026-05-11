@@ -9,6 +9,7 @@ using System.IO;// ...
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 
 
 
@@ -89,17 +90,41 @@ namespace AudioHexViewer
 
         private readonly object _recordLock = new object();
 
-        // Ring buffer “REW-like” pour les derniers échantillons audio (capacité = menu Buffer)
-        private StereoRingBuffer? _audioRing;
-        private readonly object _audioRingLock = new object();
-
         // =============================================================
-        // NOUVEAU PIPELINE (étape 1) : Ring buffer float stéréo [-1..1]
-        // - En parallèle de l'ancien _audioRing (int24) pour l'instant
-        // - Vérité temporelle = AbsWrite (index absolu en samples par canal)
+        // Pipeline float stéréo [-1..1]
+        // _audioRing (StereoRingBuffer int24) supprimé : était écrit mais jamais lu.
         // =============================================================
         private RingBufferStereoFloat? _floatRing;
+
+        // ── Canal de découplage : thread de capture → ProcessBuffer ──────────
+        // Le thread de capture (ExclusiveWasapi, période 10 ms) ne doit faire
+        // QUE copier les bytes dans ce canal et revenir à WaitOne immédiatement.
+        // ProcessBuffer, qui peut dépasser 10 ms, s'exécute sur _processTask.
+        private Channel<(byte[] Buffer, int Count)>? _captureChannel;
+        private Task? _processTask;
+        private CancellationTokenSource? _processCts;
+        // ─────────────────────────────────────────────────────────────────────
+
+        // ── Diagnostic débit audio ─────────────────────────────────────
+        private long _diagSamplesReceived;
+        private long _diagSamplesExpected;
+        private DateTime _diagLastTime = DateTime.MinValue;
+        private double _diagDeficitMs;         // déficit cumulé en ms
+        private long _diagDropCount; // paquets perdus (canal plein, DropNewest) — reset toutes les 2s
+        // ─────────────────────────────────────────────────────────────
         private readonly SfftStats _sfftStats = new SfftStats();
+
+        // ── Logger de diagnostic FFT (F8) ────────────────────────────────────
+        // Une ligne CSV par FFT produite. Détecte les discontinuités via HopActuel
+        // vs HopAttendu : tout écart > 1ms indique un gap dans les données audio.
+        private volatile bool   _diagLogEnabled;
+        private StreamWriter?   _diagLogWriter;
+        private string?         _diagLogPath;
+        private readonly object _diagLogLock    = new object();
+        private long            _diagLogFftIndex;        // numéro séquentiel de FFT dans le log
+        private long            _diagLogAbsEndPrev = -1; // AbsEnd de la FFT précédente
+        private long            _diagDropForLog;         // drops depuis la dernière FFT loguée
+        // ─────────────────────────────────────────────────────────────────────
 
         // --- Test source: sine 1 kHz -> écrit dans _floatRing à la place de la carte son ---
         private bool _useSineTest = false;
@@ -154,6 +179,14 @@ namespace AudioHexViewer
 
         // Index absolu de fin de la dernière fenêtre d’analyse produite (pour hop/overlap)
         private long _lastAnalysisAbsEnd = 0;
+
+        // \u2500\u2500 Buffers snapshot pré-alloués (supprime 32 MB LOH à chaque tick UI) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        // UpdateAnalysisFrame allouait new int[N]×2 par appel \u2192 GC Gen2 STW
+        // \u2192 pauses 0.7-2s \u2192 SfftWorker suspendu > 1 hop \u2192 TryReadWindow miss \u2192 saut FFT.
+        // Ces tableaux sont réalloués uniquement si N change (rare, sur changement de config).
+        private int[] _analysisSnapshotL = Array.Empty<int>();
+        private int[] _analysisSnapshotR = Array.Empty<int>();
+        // \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
         // Pour le cas N > Buffer : accumulation dans une “fenêtre FFT” logique (taille N)
 
@@ -370,6 +403,12 @@ namespace AudioHexViewer
         //
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            if (keyData == Keys.F8)
+            {
+                ToggleDiagLog();
+                return true;
+            }
+
             if (keyData == Keys.F9)
             {
                 _useSineTest = !_useSineTest;
@@ -557,8 +596,9 @@ namespace AudioHexViewer
             }
 
             // 3) Redimensionner / recréer le ring buffer (cohérent avec N)
-            // règle safe : max(2s, 2*N)
-            int ringCapacity = Math.Max(fs * 2, fftSize * 2);
+            // Règle : max(6s, 6*N) pour absorber les pics de latence FFT
+            // À 768kHz N=1M : 6×1M = 6M samples = ~48 Mo — acceptable
+            int ringCapacity = Math.Max(fs * 6, fftSize * 6);
             _floatRing = new RingBufferStereoFloat(ringCapacity);
 
             // 4) Vider la queue pour éviter mélange ancien/nouveau N
@@ -938,26 +978,12 @@ namespace AudioHexViewer
 
             analysisBufferSize = bufferSize;
 
-            lock (_audioRingLock)
-            {
-                if (_audioRing == null) _audioRing = new StereoRingBuffer(analysisBufferSize);
-                else _audioRing.Resize(analysisBufferSize, reset: true);
-
-                _lastAnalysisAbsEnd = 0;
-
-                
-            }
+            _lastAnalysisAbsEnd = 0;
         }
         //
         private void ResetAnalysisPipeline()
         {
-            lock (_audioRingLock)
-            {
-                if (_audioRing == null) _audioRing = new StereoRingBuffer(analysisBufferSize);
-                else _audioRing.Clear(resetAbsIndex: true);
-
-                _lastAnalysisAbsEnd = 0;
-            }
+            _lastAnalysisAbsEnd = 0;
         }
 
         //
@@ -1198,6 +1224,9 @@ namespace AudioHexViewer
                 _lastFrameUi?.Dispose();
                 _lastFrameUi = last;
 
+                // Log de diagnostic : une ligne par FFT produite (si F8 actif)
+                if (_diagLogEnabled)
+                    WriteDiagLogLine(_lastFrameUi, drained);
 
                 // Throttle: on draine toujours, mais on n'affiche qu'à 10 Hz max
                 double tNow = _uiSw.Elapsed.TotalSeconds;
@@ -1222,31 +1251,61 @@ namespace AudioHexViewer
 
             int hop = analysisHopSamples > 0 ? analysisHopSamples : N;
 
-            int[] left = new int[N];
-            int[] right = new int[N];
+            // ── Réutilisation des buffers snapshot pré-alloués ────────────────
+            // Évite new int[N]×2 à chaque tick UI → plus de GC Gen2 STW pendant
+            // les premières secondes qui causaient les sauts de hop dans SfftWorker.
+            // Réallocation uniquement si N change (changement de config par l'user).
+            if (_analysisSnapshotL.Length != N)
+            {
+                _analysisSnapshotL = new int[N];
+                _analysisSnapshotR = new int[N];
+            }
+            int[] left  = _analysisSnapshotL;
+            int[] right = _analysisSnapshotR;
+            // ─────────────────────────────────────────────────────────────────
 
             long absEnd;
 
-            // ROBUST FIX: on lit directement la fenêtre d'analyse alimentée par ProcessBuffer
+            // ── Phase 1 : validation sous lock (microsecondes) ───────────────
+            // On ne fait QUE vérifier la disponibilité et calculer snapStart.
+            // La copie (jusqu'à 32 MB à N=4M) se fait HORS lock en Phase 2.
+            int snapStart;
             lock (_analysisWindowLock)
             {
                 EnsureAnalysisWindowCapacity_NoLock(N);
 
-                if (!TrySnapshotAnalysisWindowLast_NoLock(N, left, right, out absEnd))
-                    return;
+                if (_analysisWinCount < N) return;        // pas encore assez de données
 
-                // Hop/overlap: ne publier que si on a assez de nouveaux samples
+                absEnd = _analysisWinAbsWrite;
+
+                // Hop/overlap : ne publier que si assez de nouveaux samples
                 if (_lastAnalysisAbsEnd != 0 && (absEnd - _lastAnalysisAbsEnd) < hop)
                     return;
 
                 _lastAnalysisAbsEnd = absEnd;
 
-                // Alimente SpectrumControl avec des stats temporelles (RMS/Peak FS) pour CAL V + mesures.
-                // IMPORTANT: on le fait même si on n'affiche pas la FFT à ce tick (throttle UI).
-                if (spectrumControl != null)
-                    spectrumControl.FeedExternalTimeStats24(left, right);
-
+                // Index de départ de la fenêtre dans le ring circulaire
+                snapStart = _analysisWinWrite - N;
+                if (snapStart < 0) snapStart += _analysisWinCap;
             }
+            // ── Phase 2 : copie SANS lock ─────────────────────────────────────
+            // Pendant cette copie, le writer (_processTask) peut avancer de
+            // quelques milliers de samples au plus, écrasant les slots les PLUS
+            // ANCIENS du ring. Or _analysisWinCap == N : au pire ~0,1% des samples
+            // en tête de fenêtre sont légèrement désynchronisés. Imperceptible
+            // pour les calculs VU/RMS/peak. Gain : lock tenu ~1µs au lieu de ~5ms.
+            int firstPart = Math.Min(N, _analysisWinCap - snapStart);
+            Array.Copy(_analysisWinL, snapStart, left,  0,         firstPart);
+            Array.Copy(_analysisWinR, snapStart, right, 0,         firstPart);
+            if (firstPart < N)
+            {
+                Array.Copy(_analysisWinL, 0, left,  firstPart, N - firstPart);
+                Array.Copy(_analysisWinR, 0, right, firstPart, N - firstPart);
+            }
+
+            // Stats temporelles (VU, RMS, peak, Vdc, calibration) — hors lock
+            if (spectrumControl != null)
+                spectrumControl.FeedExternalTimeStats24(left, right);
 
             // Publie la nouvelle frame d'analyse (pour SpectrumControl + histogramme)
             lock (analysisLock)
@@ -2304,8 +2363,47 @@ namespace AudioHexViewer
                     }
                 }
 
+                // ── Mode GC bas-latence pendant la capture ────────────────────────
+                // SustainedLowLatency interdit les GC Gen2 sauf urgence mémoire.
+                // Sans ça, les allocations LOH répétées (buffers snapshot, etc.)
+                // déclenchent des pauses STW de 0.7-2s qui suspendent SfftWorker
+                // pendant plus d'un hop → TryReadWindow miss → sauts de FFT.
+                System.Runtime.GCSettings.LatencyMode =
+                    System.Runtime.GCLatencyMode.SustainedLowLatency;
+                // ─────────────────────────────────────────────────────────────────
+
                 // Démarrage capture audio
                 capture.StartRecording();
+
+                // ── Canal de découplage capture → ProcessBuffer ──────────────────
+                // Créé APRÈS StartRecording pour ne pas perdre les premiers callbacks.
+                // BoundedCapacity=8 → ~80ms de tampon.
+                // DropNewest (≠ DropOldest) : quand le canal est plein, on rejette
+                // le NOUVEAU paquet entrant (TryWrite retourne false) plutôt que
+                // d'éjecter l'ancien. Avantage : on peut COMPTER les drops via la
+                // valeur de retour de TryWrite → visible dans le diagnostic titre.
+                _processCts?.Cancel();
+                _processCts?.Dispose();
+                _processCts = new CancellationTokenSource();
+                _captureChannel = Channel.CreateBounded<(byte[], int)>(
+                    new BoundedChannelOptions(8)
+                    {
+                        FullMode     = BoundedChannelFullMode.DropNewest,
+                        SingleReader = true,
+                        SingleWriter = true
+                    });
+
+                var procToken = _processCts.Token;
+                _processTask = Task.Run(async () =>
+                {
+                    await foreach (var (buf, count) in
+                        _captureChannel.Reader.ReadAllAsync(procToken))
+                    {
+                        try   { ProcessBuffer(buf, count); }
+                        finally { ArrayPool<byte>.Shared.Return(buf); }
+                    }
+                }, procToken);
+                // ─────────────────────────────────────────────────────────────────
 
                 // Réinitialisation pipeline d'analyse
                 ResetAnalysisPipeline();
@@ -2362,6 +2460,177 @@ namespace AudioHexViewer
             }
         }
 
+        // ═══════════════════════════════════════════════════════════════════════
+        // LOGGER DE DIAGNOSTIC FFT  (F8 pour activer/désactiver)
+        // ═══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Active ou désactive le logger CSV (F8). Une ligne par FFT produite.
+        /// Fichier créé dans Mes Documents : AudioHexViewer_Diag_YYYYMMDD_HHmmss.csv
+        /// </summary>
+        private void ToggleDiagLog()
+        {
+            lock (_diagLogLock)
+            {
+                if (_diagLogEnabled)
+                {
+                    // ── Arrêt du log ──────────────────────────────────────────
+                    _diagLogEnabled = false;
+                    _diagLogWriter?.Flush();
+                    _diagLogWriter?.Close();
+                    _diagLogWriter = null;
+
+                    string path = _diagLogPath ?? "(inconnu)";
+                    BeginInvoke((Action)(() =>
+                        MessageBox.Show($"Log arrêté.\nFichier : {path}",
+                            "Diagnostic Log", MessageBoxButtons.OK, MessageBoxIcon.Information)));
+                }
+                else
+                {
+                    // ── Démarrage du log ──────────────────────────────────────
+                    string folder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                    _diagLogPath   = Path.Combine(folder,
+                        $"AudioHexViewer_Diag_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+
+                    _diagLogWriter = new StreamWriter(_diagLogPath, append: false,
+                        encoding: Encoding.UTF8) { AutoFlush = false };
+
+                    // En-tête lisible
+                    var snap   = _sfftStats.Snapshot();
+                    string mode = (_requestedCaptureFormat != null) ? "Exclusif" : "Shared";
+                    _diagLogWriter.WriteLine("# AudioHexViewer - Log de diagnostic FFT");
+                    _diagLogWriter.WriteLine($"# Démarré   : {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
+                    _diagLogWriter.WriteLine($"# SR={snap.SampleRate} Hz | N={snap.FftSize} | " +
+                                             $"Hop={snap.Hop} | Overlap={snap.Overlap01 * 100:F1}% | Mode={mode}");
+                    _diagLogWriter.WriteLine("#");
+                    _diagLogWriter.WriteLine("# HopActuel  = AbsEnd[n] - AbsEnd[n-1]");
+                    _diagLogWriter.WriteLine("# HopErreur  = HopActuel - HopAttendu  (>0 = gap = discontinuité)");
+                    _diagLogWriter.WriteLine("# Drained    = frames drainés par l'UI ce tick (>1 = drain multiple, normal)");
+                    _diagLogWriter.WriteLine("# Drops      = paquets audio perdus (canal plein) depuis FFT précédente");
+                    _diagLogWriter.WriteLine("# LockWait   = attente max sur _floatRing depuis FFT précédente");
+                    _diagLogWriter.WriteLine("# FrmSkipped = FramesSkipped cumulé SfftWorker (vrais TryReadWindow miss)");
+                    _diagLogWriter.WriteLine("# Anomalie   = UI_DRAIN si drain>1 normal | HOP⚠(REEL) si vrai gap | DROP si perte");
+                    _diagLogWriter.WriteLine("#");
+                    _diagLogWriter.WriteLine(
+                        "Timestamp;FFT#;AbsEnd;HopActuel;HopAttendu;HopErreur_ms;Drained;Drops;LockWait_ms;FrmSkipped;Anomalie");
+
+                    // Reset des compteurs spécifiques au log
+                    _diagLogFftIndex    = 0;
+                    _diagLogAbsEndPrev  = -1;
+                    Interlocked.Exchange(ref _diagDropForLog, 0);
+                    _floatRing?.ResetLockStats();
+
+                    _diagLogEnabled = true;
+
+                    string path = _diagLogPath;
+                    BeginInvoke((Action)(() =>
+                        MessageBox.Show($"Log démarré.\nFichier : {path}\n\nF8 pour arrêter.",
+                            "Diagnostic Log", MessageBoxButtons.OK, MessageBoxIcon.Information)));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Écrit une ligne CSV pour la FFT dont la frame est <paramref name="frame"/>.
+        /// Appelé depuis le thread UI (UpdateAnalysisFrame) à chaque nouvelle FFT.
+        /// </summary>
+        private void WriteDiagLogLine(SpectrumFrame frame, int drained)
+        {
+            if (!_diagLogEnabled) return; // check rapide sans lock
+
+            lock (_diagLogLock)
+            {
+                if (!_diagLogEnabled || _diagLogWriter == null) return;
+
+                _diagLogFftIndex++;
+
+                long absEnd      = frame.AbsEnd;
+                int  sr          = frame.SampleRate;
+                var  snap        = _sfftStats.Snapshot();
+                long hopAttendu  = snap.Hop;
+
+                // Drops depuis la FFT précédente (reset atomique)
+                long drops = Interlocked.Exchange(ref _diagDropForLog, 0);
+
+                // Hop réellement observé entre deux FFTs consécutives.
+                // Pour la 1ère FFT (_diagLogAbsEndPrev < 0), on ne peut pas calculer
+                // de hop : on marque INIT et on ignore l'erreur (faux positif FFT#1).
+                bool isFirstFft = (_diagLogAbsEndPrev < 0);
+                long hopActuel = isFirstFft
+                    ? hopAttendu                 // force hopActuel = hopAttendu → HopErreur = 0
+                    : absEnd - _diagLogAbsEndPrev;
+
+                // Erreur en ms (>0 = samples manquants = gap)
+                double hopErreurMs = (sr > 0 && !isFirstFft)
+                    ? (hopActuel - hopAttendu) * 1000.0 / sr
+                    : 0.0;
+
+                // LockWait depuis la FFT précédente puis reset
+                double lockWaitMs = _floatRing?.LockWaitMaxMs ?? 0.0;
+                _floatRing?.ResetLockStats();
+
+                // FramesSkipped dans SfftWorker (vrais TryReadWindow miss ou frames suspects)
+                long framesSkipped = _sfftStats.Snapshot().FramesSkipped;
+
+                // ── Détection d'anomalie réelle ───────────────────────────────────
+                // drained=2 + HopActuel=2×hop = drain UI normal (SfftWorker OK)
+                // drained=1 + HopActuel=2×hop = VRAI gap (résync SfftWorker)
+                // → anomalie seulement si HopActuel > drained×HopAttendu
+                string anomalie;
+                if (isFirstFft)
+                {
+                    anomalie = "INIT";
+                }
+                else
+                {
+                    anomalie = "";
+                    if (drops > 0)
+                        anomalie += $"DROP={drops} ";
+                    if (!isFirstFft && hopActuel > (long)drained * hopAttendu + hopAttendu / 2)
+                        anomalie += "HOP⚠(REEL) ";
+                    else if (drained > 1)
+                        anomalie += $"UI_DRAIN={drained} ";
+                    if (anomalie.Length == 0)
+                        anomalie = "OK";
+                }
+
+                _diagLogWriter.WriteLine(
+                    $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff};" +
+                    $"{_diagLogFftIndex};" +
+                    $"{absEnd};" +
+                    $"{hopActuel};" +
+                    $"{hopAttendu};" +
+                    $"{hopErreurMs:F2};" +
+                    $"{drained};" +
+                    $"{drops};" +
+                    $"{lockWaitMs:F3};" +
+                    $"{framesSkipped};" +
+                    $"{anomalie}");
+
+                // Flush toutes les 20 FFTs pour ne pas perdre de données
+                // sans sur-solliciter le disque (20 FFTs ≈ 6s à 3 FFT/s)
+                if (_diagLogFftIndex % 20 == 0)
+                    _diagLogWriter.Flush();
+
+                _diagLogAbsEndPrev = absEnd;
+            }
+        }
+
+        /// <summary>Arrête proprement le log si actif (appelé par StopCapture).</summary>
+        private void CloseDiagLog()
+        {
+            lock (_diagLogLock)
+            {
+                if (!_diagLogEnabled) return;
+                _diagLogEnabled = false;
+                _diagLogWriter?.Flush();
+                _diagLogWriter?.Close();
+                _diagLogWriter = null;
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+
         /// <summary>
         /// Arrête la capture audio + pipeline d'analyse si active.
         /// Remplace l'ancien bouton STOP.
@@ -2376,6 +2645,20 @@ namespace AudioHexViewer
                 capture.DataAvailable -= Capture_DataAvailable;
                 capture.RecordingStopped -= Capture_RecordingStopped;
                 capture.StopRecording();
+
+                // ── Arrêt propre du canal de découplage ──────────────────────────
+                // 1. Signaler au Writer qu'aucun nouveau paquet n'arrivera.
+                //    ReadAllAsync() dans _processTask se terminera naturellement.
+                // 2. Attendre max 2s que _processTask vide les paquets en attente.
+                // 3. Libérer CancellationTokenSource.
+                _captureChannel?.Writer.TryComplete();
+                try { _processTask?.Wait(2000); } catch { /* task déjà terminée ou annulée */ }
+                _captureChannel = null;
+                _processTask    = null;
+                _processCts?.Cancel();
+                _processCts?.Dispose();
+                _processCts = null;
+                // ─────────────────────────────────────────────────────────────────
 
                 analysisTimer?.Stop();
 
@@ -2422,6 +2705,13 @@ namespace AudioHexViewer
             _sfftStats.SetWorkerState("STOP");
 
             StopSineTestSource();
+
+            // Fermeture propre du log de diagnostic si actif
+            CloseDiagLog();
+
+            // Restauration du mode GC normal (Interactive) après la capture
+            System.Runtime.GCSettings.LatencyMode =
+                System.Runtime.GCLatencyMode.Interactive;
 
             UpdateDeviceInfo();
             UpdateDeviceSummary();
@@ -2842,12 +3132,27 @@ namespace AudioHexViewer
         //
         private void Capture_DataAvailable(object? sender, WaveInEventArgs e)
         {
-            // En mode test, on laisse la capture tourner (pour l’instant),
-            // mais on IGNORE ses buffers pour éviter tout mélange carte son + signal test.
-            if (_useSineTest || _useMetricsRefTest)
-                return;
+            // En mode test, la carte son est ignorée.
+            if (_useSineTest || _useMetricsRefTest) return;
 
-            ProcessBuffer(e.Buffer, e.BytesRecorded);
+            // ── DÉCOUPLAGE : thread de capture → canal ───────────────────────
+            // Ce handler s’exécute sur le thread de capture WASAPI (période 10 ms).
+            // Il ne doit faire QUE copier les bytes et retourner immédiatement.
+            //
+            // ExclusiveWasapiCapture réutilise _outputBytes au prochain callback :
+            // on loue un buffer ArrayPool (zéro GC), puis on le rend dans
+            // la Task consommatrice (bloc finally dans _processTask).
+            byte[] rented = ArrayPool<byte>.Shared.Rent(e.BytesRecorded);
+            Buffer.BlockCopy(e.Buffer, 0, rented, 0, e.BytesRecorded);
+
+            if (_captureChannel?.Writer.TryWrite((rented, e.BytesRecorded)) != true)
+            {
+                // Canal plein (ProcessBuffer trop lent) ou fermé → paquet perdu
+                Interlocked.Increment(ref _diagDropCount);
+                Interlocked.Increment(ref _diagDropForLog); // compteur séparé pour le log FFT
+                ArrayPool<byte>.Shared.Return(rented);
+            }
+            // ─────────────────────────────────────────────────────────────────
         }
 
         //dbut de ProcessBuffer
@@ -2981,8 +3286,45 @@ namespace AudioHexViewer
 
                     // Push uniquement la partie utile [0..frameCount)
                     _floatRing.PushBlock(tmpL.AsSpan(0, frameCount), tmpR.AsSpan(0, frameCount));
-
                     _sfftStats.SetAbsWrite(_floatRing.AbsWrite);
+
+                    // ── Diagnostic débit ──────────────────────────────────────────
+                    var diagNow = DateTime.UtcNow;
+                    if (_diagLastTime == DateTime.MinValue) _diagLastTime = diagNow;
+
+                    _diagSamplesReceived += frameCount;
+                    double diagElapsed = (diagNow - _diagLastTime).TotalSeconds;
+
+                    if (diagElapsed >= 2.0 && currentFormat != null)
+                    {
+                        _diagSamplesExpected = (long)(currentFormat.SampleRate * diagElapsed);
+                        long deficit = _diagSamplesExpected - _diagSamplesReceived;
+                        _diagDeficitMs = deficit * 1000.0 / currentFormat.SampleRate;
+
+                        // Drops dans cette fenêtre de 2s : Exchange remet le compteur à zéro
+                        // atomiquement, évitant toute perte de compte entre lecture et reset.
+                        long dropsWindow = Interlocked.Exchange(ref _diagDropCount, 0);
+
+                        string lockInfo = _floatRing != null
+                            ? $" | LockWait max={_floatRing.LockWaitMaxMs:F2}ms avg={_floatRing.LockWaitAvgMs:F3}ms n={_floatRing.LockWaitCount}"
+                            : "";
+
+                        string dropInfo = dropsWindow > 0
+                            ? $" | DROP={dropsWindow} pkt ⚠"
+                            : " | DROP=0 ✓";
+
+                        string diagMsg = $"DIAG: reçu={_diagSamplesReceived} attendu={_diagSamplesExpected} " +
+                                         $"déficit={deficit} ({_diagDeficitMs:F1}ms){lockInfo}{dropInfo}";
+
+                        System.Diagnostics.Debug.WriteLine(diagMsg);
+                        _sfftStats.SetLastError(diagMsg);  // visible dans la barre de titre
+
+                        // Reset pour la prochaine fenêtre de 2s
+                        _diagSamplesReceived = 0;
+                        _diagLastTime = diagNow;
+                        _floatRing?.ResetLockStats();
+                    }
+                    // ─────────────────────────────────────────────────────────────
                 }
                 finally
                 {
@@ -2995,13 +3337,23 @@ namespace AudioHexViewer
                                 
             }
 
-            // 1) Toujours alimenter le ring buffer REW-like
+            // ── Passe unique : fenêtre d'analyse + VU peak + REC ────────────────────
+            // Supprimé : _audioRing (StereoRingBuffer int24) — jamais lu hors de ProcessBuffer.
+            // Optimisé : _analysisWindowLock acquis UNE fois (et non N fois per-sample).
+            //            _recordLock acquis UNE fois après la boucle (flush en batch).
+            // ───────────────────────────────────────────────────────────────────────────
             List<RecordFrame>? recordSnapshotToSave = null;
+            int peakLeftAbs  = 0;
+            int peakRightAbs = 0;
 
-            lock (_audioRingLock)
+            // Collecte REC locale sans lock dans la boucle
+            List<RecordFrame>? localRec = null;
+            bool recWasActive;
+            lock (_recordLock) { recWasActive = isRecordingOneSecond; }
+
+            lock (_analysisWindowLock)
             {
-                if (_audioRing == null)
-                    _audioRing = new StereoRingBuffer(analysisBufferSize);
+                EnsureAnalysisWindowCapacity_NoLock(analysisSampleSize);
 
                 for (int i = 0; i < frameCount; i++)
                 {
@@ -3018,96 +3370,49 @@ namespace AudioHexViewer
                     if (R > Max24Pos) R = Max24Pos;
                     if (R < Min24Neg) R = Min24Neg;
 
-                    // 1) Ring buffer audio (toujours)
-                    _audioRing.WriteSample(L, R);
+                    // Fenêtre d'analyse (FeedExternalTimeStats24 + histogramme)
+                    FeedAnalysisWindowSample_NoLock(L, R);
 
-                    // ROBUST FIX: on alimente la fenêtre d'analyse sur le thread audio
-                    lock (_analysisWindowLock)
+                    // VU peak (fusionné ici — supprime la 2e boucle redondante)
+                    int absL = L < 0 ? -L : L;
+                    int absR = R < 0 ? -R : R;
+                    if (absL > peakLeftAbs)  peakLeftAbs  = absL;
+                    if (absR > peakRightAbs) peakRightAbs = absR;
+
+                    // REC : accumulation locale
+                    if (recWasActive)
                     {
-                        // S'assure que la fenêtre correspond à la taille FFT/histo en cours
-                        EnsureAnalysisWindowCapacity_NoLock(analysisSampleSize);
-
-                        // Push du sample dans la fenêtre circulaire
-                        FeedAnalysisWindowSample_NoLock(L, R);
+                        localRec ??= new List<RecordFrame>(frameCount);
+                        localRec.Add(new RecordFrame { Left = L, Right = R });
                     }
+                }
+            }
 
-                    // 2) Enregistrement REC (si actif)
-                    if (recordSnapshotToSave == null) // si déjà terminé dans ce callback, on n'ajoute plus
+            // Flush REC avec une seule acquisition de _recordLock
+            if (localRec != null)
+            {
+                lock (_recordLock)
+                {
+                    if (isRecordingOneSecond)
                     {
-                        bool shouldAdd;
-                        int needed;
-                        lock (_recordLock)
+                        foreach (var recFr in localRec)
                         {
-                            shouldAdd = isRecordingOneSecond;
-                            needed = recordSamplesNeeded;
+                            if (recordSamplesCollected >= recordSamplesNeeded) break;
+                            recordBuffer.Add(recFr);
+                            recordSamplesCollected++;
                         }
-
-                        if (shouldAdd)
+                        if (recordSamplesCollected >= recordSamplesNeeded)
                         {
-                            lock (_recordLock)
-                            {
-                                if (isRecordingOneSecond && recordSamplesCollected < recordSamplesNeeded)
-                                {
-                                    recordBuffer.Add(new RecordFrame { Left = L, Right = R });
-                                    recordSamplesCollected++;
-
-                                    if (recordSamplesCollected >= recordSamplesNeeded)
-                                    {
-                                        // Stop immédiat (plus aucun ajout après)
-                                        isRecordingOneSecond = false;
-
-                                        // Snapshot immuable pour sauvegarde UI
-                                        recordSnapshotToSave = new List<RecordFrame>(recordBuffer);
-                                    }
-                                }
-                            }
-
-                            // (on ne fait rien ici avec justFinished; on déclenchera la sauvegarde après la boucle)
+                            isRecordingOneSecond = false;
+                            recordSnapshotToSave = new List<RecordFrame>(recordBuffer);
                         }
                     }
                 }
             }
 
-            // Si l'enregistrement vient de se terminer, on sauvegarde côté UI (pas sur thread audio)
+            // Sauvegarde CSV déclenchée côté UI
             if (recordSnapshotToSave != null)
-            {
-                BeginInvoke((Action)(() =>
-                {
-                    SaveRecordingToCsv(recordSnapshotToSave);
-                }));
-            }
-            //
-            // ---------- Calcul du niveau crte sur ce buffer (pour les VU) ----------
-            int bytesPerFrameAll = currentFormat.Channels * 4;
-            int totalFrames = bytesRecorded / bytesPerFrameAll;
-
-            int peakLeftAbs = 0;
-            int peakRightAbs = 0;
-
-            for (int i = 0; i < totalFrames; i++)
-            {
-                int idx = i * bytesPerFrameAll;
-
-                float lf = BitConverter.ToSingle(buffer, idx);
-                float rf = BitConverter.ToSingle(buffer, idx + 4);
-
-                float sL = lf * Max24;
-                float sR = rf * Max24;
-
-                int L = (int)Math.Truncate(sL);
-                int R = (int)Math.Truncate(sR);
-
-                if (L > Max24Pos) L = Max24Pos;
-                if (L < Min24Neg) L = Min24Neg;
-                if (R > Max24Pos) R = Max24Pos;
-                if (R < Min24Neg) R = Min24Neg;
-
-                int absL = Math.Abs(L);
-                int absR = Math.Abs(R);
-
-                if (absL > peakLeftAbs) peakLeftAbs = absL;
-                if (absR > peakRightAbs) peakRightAbs = absR;
-            }
+                BeginInvoke((Action)(() => SaveRecordingToCsv(recordSnapshotToSave)));
 
             // Conversion en dBFS
             double dbLeft, dbRight;

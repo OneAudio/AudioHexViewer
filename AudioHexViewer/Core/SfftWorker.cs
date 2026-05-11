@@ -272,7 +272,19 @@ namespace AudioHexViewer.Core
             if (_task != null) return;
 
             _cts = new CancellationTokenSource();
-            _task = Task.Run(() => RunLoop(_cts.Token));
+            var ct = _cts.Token;
+
+            // LongRunning : thread dédié (pas le thread pool) → pas de délai scheduler
+            // AboveNormal : priorité > UI (Normal) mais < WASAPI (Highest)
+            // Objectif : garantir que SfftWorker reprend la main en < 15ms après
+            // un Thread.Sleep(1), ce qui laisse >65ms de marge par hop à 384kHz/4Mpts.
+            _task = new Task(() =>
+            {
+                Thread.CurrentThread.Priority = ThreadPriority.AboveNormal;
+                Thread.CurrentThread.Name = "SfftWorker";
+                RunLoop(ct);
+            }, ct, TaskCreationOptions.LongRunning);
+            _task.Start();
         }
 
         public void Stop()
@@ -363,6 +375,37 @@ namespace AudioHexViewer.Core
                     bool ok = _ring.TryReadWindow(absStart, _fftSize, _winL, _winR);
                     if (ok)
                     {
+                        // ── Diagnostic intégrité données ──────────────────────────────
+                        // Sondage rapide : on vérifie 1 sample sur 256 (N/256 opérations)
+                        int zeroCount = 0;
+                        int jumpCount = 0;
+                        int checkStep = Math.Max(1, _fftSize / 256);
+                        float prevSample = _winL[0];
+                        float sumAbs = 0f;
+
+                        for (int ci = 0; ci < _fftSize; ci += checkStep)
+                        {
+                            float s = _winL[ci];
+                            sumAbs += Math.Abs(s);
+                            if (s == 0.0f) zeroCount++;
+                            if (ci > 0 && Math.Abs(s - prevSample) > 0.5f) jumpCount++;
+                            prevSample = s;
+                        }
+
+                        int checkCount = _fftSize / checkStep;
+                        float avgAbs = sumAbs / checkCount;
+                        float zeroFrac = (float)zeroCount / checkCount;
+                        bool suspicious = zeroFrac > 0.01f || jumpCount > 2;
+
+                        // Le frame est TOUJOURS calculé et publié, même si suspect.
+                        // jumpCount > 2 est non-fiable : déclenche sur des signaux normaux
+                        // (hauts niveaux, harmoniques, DC offset). On se contente de loguer.
+                        if (suspicious)
+                            _stats.SetLastError(
+                                $"INTEG: zeros={zeroFrac:P1} sauts={jumpCount} avgAbs={avgAbs:F5}  " +
+                                $"[absStart={absStart}]");
+                        // ─────────────────────────────────────────────────────────────
+
                         // Mesure temps CPU de cette frame FFT (window fill + FFT + normalisation + enqueue)
                         long t0 = Stopwatch.GetTimestamp();
 
@@ -374,17 +417,14 @@ namespace AudioHexViewer.Core
                         int half = N / 2;
 
                         // Remplissage des buffers FFT réutilisés (uniquement voies actives)
-                        // NOTE: on évite la voie inactive => gain CPU direct (boucle + FFT)
                         for (int i = 0; i < N; i++)
                         {
                             double wcoef = _window[i];
-
                             if (doL)
                             {
                                 double wl = _winL[i] * wcoef;
                                 _fftL[i] = new MathNet.Numerics.Complex32((float)wl, 0f);
                             }
-
                             if (doR)
                             {
                                 double wr = _winR[i] * wcoef;
@@ -396,7 +436,6 @@ namespace AudioHexViewer.Core
                         if (doL) Fourier.Forward(_fftL, FourierOptions.Matlab);
                         if (doR) Fourier.Forward(_fftR, FourierOptions.Matlab);
 
-                        // Bins complexes poolés UNIQUEMENT si nécessaires
                         MathNet.Numerics.Complex32[]? binsL = null;
                         MathNet.Numerics.Complex32[]? binsR = null;
 
@@ -405,52 +444,59 @@ namespace AudioHexViewer.Core
 
                         try
                         {
-                            // Normalisation amplitude (inchangée)
                             float scale2 = (float)(2.0 / _windowSum);
                             float scale1 = (float)(1.0 / _windowSum);
 
                             for (int k = 0; k <= half; k++)
                             {
                                 float s = (k == 0 || k == half) ? scale1 : scale2;
-
                                 if (binsL != null) binsL[k] = _fftL[k] * s;
                                 if (binsR != null) binsR[k] = _fftR[k] * s;
                             }
 
-                            // Publication frame (LeftBins/RightBins peuvent être null)
                             int fs = _stats.Snapshot().SampleRate;
-
                             var frame = new SpectrumFrame(fs, N, _nextHopEndAbs, binsL, binsR, _freqAxis, ReturnBins);
                             _outQueue.Enqueue(frame);
 
                             _stats.IncFramesComputed();
 
-                            // Fin mesure (µs)
                             long t1 = Stopwatch.GetTimestamp();
                             long us = (long)((t1 - t0) * (1_000_000.0 / Stopwatch.Frequency));
                             _stats.ReportFftTimeUs(us);
 
-                            // Ownership transféré à la frame => ne pas rendre ici
                             binsL = null;
                             binsR = null;
                         }
                         finally
                         {
-                            // Si exception avant enqueue, rendre au pool seulement ce qui a été loué
                             if (binsL != null) ReturnBins(binsL);
                             if (binsR != null) ReturnBins(binsR);
                         }
-                    }
-
-
+                    } // fin if (ok)
                     else
                     {
-                        // Fenêtre écrasée / incohérente
+                        // Fenêtre écrasée : le write pointer a dépassé absStart
                         _stats.IncFramesSkipped();
                         _stats.SetLastError($"Window miss: [{absStart}..{_nextHopEndAbs}) w={w}");
+
+                        // RESYNC : sans ça, le worker avance hop par hop pendant que
+                        // le writer continue → cascade de miss irrécupérable.
+                        // On saute directement au write pointer actuel (arrondi au hop sup)
+                        // pour retrouver la synchro en une seule miss au lieu de des centaines.
+                        long hopsToSkip = (w - _nextHopEndAbs + _hop - 1) / _hop;
+                        if (hopsToSkip > 0)
+                        {
+                            _nextHopEndAbs += hopsToSkip * _hop;
+                            _stats.SetNextEndAbs(_nextHopEndAbs);
+                        }
+                        else
+                        {
+                            _nextHopEndAbs += _hop; // avance minimale de sécurité
+                        }
+                        continue; // retour en tête de boucle, pas de double avance
                     }
 
-                    // Avance exactement d'un hop
+                    // Avance exactement d'un hop (cas normal : ok == true)
                     _nextHopEndAbs += _hop;
                     _stats.SetNextEndAbs(_nextHopEndAbs);
                     _stats.SetProgress01(0.0); // on repart pour le hop suivant
