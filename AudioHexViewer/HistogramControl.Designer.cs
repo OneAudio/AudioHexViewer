@@ -25,6 +25,9 @@ namespace AudioHexViewer
             comboBinLsb    = new ComboBox();
             ChkAC          = new CheckBox();
             ChkGauss       = new CheckBox();
+            ChkMarkers     = new CheckBox();
+            comboSigma     = new ComboBox();
+            ChkNorm        = new CheckBox();
             btnRun         = new Button();
 
             ((System.ComponentModel.ISupportInitialize)chartHistogram).BeginInit();
@@ -41,6 +44,8 @@ namespace AudioHexViewer
                 lblRangePow, comboRangeLsb,
                 lblBinPow, comboBinLsb,
                 ChkAC, ChkGauss,
+                ChkMarkers, comboSigma,
+                ChkNorm,
                 btnRun
             });
 
@@ -93,6 +98,27 @@ namespace AudioHexViewer
             ChkGauss.Location  = new Point(655, 26);
             ChkGauss.CheckedChanged += ChkGauss_CheckedChanged;
 
+            // ChkMarkers — active les lignes verticales ±nσ sur le graphique
+            ChkMarkers.AutoSize  = true;
+            ChkMarkers.Text      = "Marqueurs";
+            ChkMarkers.Location  = new Point(762, 26);
+            ChkMarkers.CheckedChanged += ChkMarkers_CheckedChanged;
+
+            // comboSigma — choisit jusqu'à quel niveau σ afficher les marqueurs
+            comboSigma.DropDownStyle     = ComboBoxStyle.DropDownList;
+            comboSigma.FormattingEnabled = true;
+            comboSigma.Items.AddRange(new object[] { "±1σ", "±2σ", "±3σ" });
+            comboSigma.SelectedIndex = 2;          // défaut : ±3σ
+            comboSigma.Location = new Point(860, 24);
+            comboSigma.Size     = new Size(62, 23);
+            comboSigma.SelectedIndexChanged += ComboSigma_SelectedIndexChanged;
+
+            // ChkNorm — normalise l'histogramme en densité de probabilité (PDF)
+            ChkNorm.AutoSize  = true;
+            ChkNorm.Text      = "Normalisé";
+            ChkNorm.Location  = new Point(935, 26);
+            ChkNorm.CheckedChanged += ChkNorm_CheckedChanged;
+
 
             // btnRun — mêmes dimensions que SpectrumControl.btnRun
             btnRun.FlatStyle = FlatStyle.Flat;
@@ -133,6 +159,9 @@ namespace AudioHexViewer
         private ComboBox comboBinLsb;
         private CheckBox ChkAC;
         private CheckBox ChkGauss;
+        private CheckBox ChkMarkers;
+        private ComboBox comboSigma;
+        private CheckBox ChkNorm;
         private Button   btnRun;
     }
 }

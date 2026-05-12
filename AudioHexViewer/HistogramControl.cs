@@ -67,25 +67,28 @@ namespace AudioHexViewer
 
         private System.Windows.Forms.Timer? liveTimer;
         private bool isLive;
+        private bool _isNormalized;   // true quand ChkNorm est coché (mode PDF)
 
         // Stats pour PostPaint
         private readonly struct StatsData
         {
             public readonly int    Count;
-            public readonly int    DcLsb;
+            public readonly int    DcLsb;     // moyenne brute des samples (toujours calculée)
             public readonly double RmsLsb;
-            public readonly double SigmaLsb;  // σ réel des valeurs affichées (≠ RMS quand μ≠0)
-            public readonly double MeanLsb;   // μ des valeurs affichées (0 en AC, offset DC en DC)
+            public readonly double SigmaLsb;  // σ réel des valeurs affichées
+            public readonly double MeanLsb;   // μ des valeurs affichées (≈0 en AC, offset en DC)
+            public readonly double DnlMax;    // max |DNL| vs modèle gaussien (en LSB)
             public readonly int    Min, Max;
             public readonly bool   HasData;
 
-            // P-P calculé à la demande
             public int PeakToPeak => HasData ? Max - Min : 0;
 
-            public StatsData(int count, int dc, double rms, double sigma, double mean, int min, int max)
+            public StatsData(int count, int dc, double rms, double sigma, double mean,
+                             double dnlMax, int min, int max)
             {
-                Count    = count; DcLsb   = dc;
+                Count    = count; DcLsb    = dc;
                 RmsLsb   = rms;   SigmaLsb = sigma; MeanLsb = mean;
+                DnlMax   = dnlMax;
                 Min      = min;   Max      = max;
                 HasData  = count > 0;
             }
@@ -467,6 +470,10 @@ namespace AudioHexViewer
         private void ComboChannel_SelectedIndexChanged(object sender, EventArgs e) => RebuildHistogram();
         private void ChkAC_CheckedChanged(object sender, EventArgs e)             => RebuildHistogram();
         private void ChkGauss_CheckedChanged(object sender, EventArgs e)          => RebuildHistogram();
+        private void ChkNorm_CheckedChanged(object sender, EventArgs e)           => RebuildHistogram();
+        // Marqueurs σ : pas de recalcul des données, simple rafraîchissement du PostPaint
+        private void ChkMarkers_CheckedChanged(object sender, EventArgs e)        => chartHistogram.Invalidate();
+        private void ComboSigma_SelectedIndexChanged(object sender, EventArgs e)  => chartHistogram.Invalidate();
 
         private void ComboRangeLsb_SelectedIndexChanged(object sender, EventArgs e)
         { lastRangeLsb = GetRangeLsb(); RebuildHistogram(); }
@@ -498,10 +505,11 @@ namespace AudioHexViewer
             bool wantLeft  = mode is "Left"  or "Both";
             bool wantRight = mode is "Right" or "Both";
 
-            // DC offsets
+            // DC (moyenne brute) — toujours calculé depuis les samples bruts pour un affichage
+            // correct que la case "Mode AC" soit cochée ou non.
             int dcL = 0, dcR = 0;
-            if (ac && wantLeft  && leftSamples.Length  > 0) { long s = 0; foreach (int v in leftSamples)  s += v; dcL = (int)Math.Round(s / (double)leftSamples.Length);  }
-            if (ac && wantRight && rightSamples.Length > 0) { long s = 0; foreach (int v in rightSamples) s += v; dcR = (int)Math.Round(s / (double)rightSamples.Length); }
+            if (wantLeft  && leftSamples.Length  > 0) { long s = 0; foreach (int v in leftSamples)  s += v; dcL = (int)Math.Round(s / (double)leftSamples.Length); }
+            if (wantRight && rightSamples.Length > 0) { long s = 0; foreach (int v in rightSamples) s += v; dcR = (int)Math.Round(s / (double)rightSamples.Length); }
 
             // Adaptation binWidth si portée trop grande
             if (lsbRange > 1024)
@@ -552,7 +560,6 @@ namespace AudioHexViewer
             // ── Calcul stats LEFT ────────────────────────────────────────────
             double lMean  = lCnt > 0 ? (double)lSum / lCnt : 0.0;
             double lRms   = lCnt > 0 ? Math.Sqrt(lSumSq / (double)lCnt) : 0.0;
-            // σ = sqrt(E[va²] - μ²) — diffère de RMS seulement en mode DC (μ≠0)
             double lSigma = lCnt > 0 ? Math.Sqrt(Math.Max(0.0, lSumSq / (double)lCnt - lMean * lMean)) : 0.0;
 
             // ── Calcul stats RIGHT ───────────────────────────────────────────
@@ -560,25 +567,59 @@ namespace AudioHexViewer
             double rRms   = rCnt > 0 ? Math.Sqrt(rSumSq / (double)rCnt) : 0.0;
             double rSigma = rCnt > 0 ? Math.Sqrt(Math.Max(0.0, rSumSq / (double)rCnt - rMean * rMean)) : 0.0;
 
+            // ── DNL (Differential Non-Linearity) vs modèle gaussien ──────────
+            // DNL(i) = |count(i)/expected(i) - 1|  → max sur les bins significatifs
+            // expected(i) calculé depuis G(μ, σ) mesuré. Valable en mode binWidth=1 (code par code)
+            // ou approximatif pour binWidth>1 (non-linéarité moyennée sur plusieurs codes).
+            static double ComputeDnlMax(int[]? bins, int n, double mu, double sigma,
+                                        int range, int bw)
+            {
+                if (bins == null || n <= 0 || sigma < 1e-6) return 0.0;
+                int    bc        = bins.Length;
+                double scale     = (double)n * bw / (sigma * Math.Sqrt(2.0 * Math.PI));
+                double inv2s2    = 0.5 / (sigma * sigma);
+                double threshold = Math.Max(3.0, n * 0.0005); // au moins 3 samples ou 0.05 %
+                double maxDnl    = 0.0;
+                for (int i = 0; i < bc; i++)
+                {
+                    double xi       = -range + (i + 0.5) * bw;
+                    double expected = scale * Math.Exp(-(xi - mu) * (xi - mu) * inv2s2);
+                    if (expected < threshold) continue;
+                    double dnl = Math.Abs(bins[i] / expected - 1.0);
+                    if (dnl > maxDnl) maxDnl = dnl;
+                }
+                return maxDnl;
+            }
+
+            double lDnl = ComputeDnlMax(binsLeft,  lCnt, lMean, lSigma, lsbRange, binWidth);
+            double rDnl = ComputeDnlMax(binsRight, rCnt, rMean, rSigma, lsbRange, binWidth);
+
             _statsLeft  = lCnt > 0
-                ? new StatsData(lCnt, dcL, lRms, lSigma, lMean, lMin, lMax)
-                : new StatsData(0, dcL, 0, 0, 0, 0, 0);
+                ? new StatsData(lCnt, dcL, lRms, lSigma, lMean, lDnl, lMin, lMax)
+                : new StatsData(0, dcL, 0, 0, 0, 0, 0, 0);
             _statsRight = rCnt > 0
-                ? new StatsData(rCnt, dcR, rRms, rSigma, rMean, rMin, rMax)
-                : new StatsData(0, dcR, 0, 0, 0, 0, 0);
+                ? new StatsData(rCnt, dcR, rRms, rSigma, rMean, rDnl, rMin, rMax)
+                : new StatsData(0, dcR, 0, 0, 0, 0, 0, 0);
+
+            // ── Normalisation PDF ───────────────────────────────────────────
+            // Quand ChkNorm est coché, chaque bin est divisé par (N·binWidth) → densité en 1/LSB.
+            bool isNorm = ChkNorm.Checked;
+            _isNormalized = isNorm;
 
             // Séries — couleurs issues de SpectrumColorSettings
             chartHistogram.Series.Clear();
             if (binsLeft != null)
             {
+                double normF = isNorm && lCnt > 0 ? 1.0 / ((double)lCnt * binWidth) : 1.0;
                 var s = new Series("Left") { ChartType = SeriesChartType.Column, ChartArea = "HistogramArea", Color = BarLeftColor };
-                for (int i = 0; i < binCount; i++) s.Points.AddXY(-lsbRange + i * binWidth + binWidth / 2, binsLeft[i]);
+                for (int i = 0; i < binCount; i++) s.Points.AddXY(-lsbRange + i * binWidth + binWidth / 2, binsLeft[i] * normF);
                 chartHistogram.Series.Add(s);
             }
             if (binsRight != null)
             {
+                double normF = isNorm && rCnt > 0 ? 1.0 / ((double)rCnt * binWidth) : 1.0;
                 var s = new Series("Right") { ChartType = SeriesChartType.Column, ChartArea = "HistogramArea", Color = BarRightColor };
-                for (int i = 0; i < binCount; i++) s.Points.AddXY(-lsbRange + i * binWidth + binWidth / 2, binsRight[i]);
+                for (int i = 0; i < binCount; i++) s.Points.AddXY(-lsbRange + i * binWidth + binWidth / 2, binsRight[i] * normF);
                 chartHistogram.Series.Add(s);
             }
 
@@ -588,12 +629,15 @@ namespace AudioHexViewer
             // N = count en fenêtre, bw = binWidth → le pic correspond au count max attendu.
             if (ChkGauss.Checked)
             {
-                void AddGaussSeries(string name, StatsData d, Color baseColor, int[] bins)
+                void AddGaussSeries(string name, StatsData d, Color baseColor)
                 {
                     if (!d.HasData || d.SigmaLsb < 1e-6) return;
-                    double mu    = d.MeanLsb;
-                    double sigma = d.SigmaLsb;
-                    double scale = d.Count * binWidth / (sigma * Math.Sqrt(2.0 * Math.PI));
+                    double mu     = d.MeanLsb;
+                    double sigma  = d.SigmaLsb;
+                    // En mode normalisé (PDF) : scale = 1/(σ√2π).  Sinon : N·bw/(σ√2π).
+                    double scale  = isNorm
+                        ? 1.0 / (sigma * Math.Sqrt(2.0 * Math.PI))
+                        : d.Count * binWidth / (sigma * Math.Sqrt(2.0 * Math.PI));
                     double inv2s2 = 1.0 / (2.0 * sigma * sigma);
 
                     // Points calculés sur une grille 4× plus fine que les bins → courbe lisse
@@ -621,8 +665,8 @@ namespace AudioHexViewer
                     chartHistogram.Series.Add(gs);
                 }
 
-                if (binsLeft  != null) AddGaussSeries("GaussLeft",  _statsLeft,  BarLeftColor,  binsLeft);
-                if (binsRight != null) AddGaussSeries("GaussRight", _statsRight, BarRightColor, binsRight);
+                if (binsLeft  != null) AddGaussSeries("GaussLeft",  _statsLeft,  BarLeftColor);
+                if (binsRight != null) AddGaussSeries("GaussRight", _statsRight, BarRightColor);
             }
 
             // Axe X
@@ -633,13 +677,12 @@ namespace AudioHexViewer
             double xStep = lsbRange / 8.0;
             area.AxisX.Interval = xStep <= 0 ? 1 : xStep;
 
-            // Axe Y : fixer explicitement min/max/interval
-            // (en mode auto, Chart ne ré-expose pas les valeurs calculées → NaN → DrawCustomYLabels fail)
-            int maxCount = 0;
-            if (binsLeft  != null) foreach (int c in binsLeft)  if (c > maxCount) maxCount = c;
-            if (binsRight != null) foreach (int c in binsRight) if (c > maxCount) maxCount = c;
+            // Axe Y : max calculé depuis les valeurs réellement tracées (normalisées ou brutes)
+            double maxYValue = 0;
+            if (binsLeft  != null) { double nf = isNorm && lCnt > 0 ? 1.0 / ((double)lCnt * binWidth) : 1.0; foreach (int c in binsLeft)  { double v = c * nf; if (v > maxYValue) maxYValue = v; } }
+            if (binsRight != null) { double nf = isNorm && rCnt > 0 ? 1.0 / ((double)rCnt * binWidth) : 1.0; foreach (int c in binsRight) { double v = c * nf; if (v > maxYValue) maxYValue = v; } }
 
-            var (yMax, yInterval) = ComputeNiceYScale(maxCount);
+            var (yMax, yInterval) = ComputeNiceYScale(maxYValue);
             area.AxisY.Minimum  = 0;
             area.AxisY.Maximum  = yMax;
             area.AxisY.Interval = yInterval;
@@ -689,6 +732,62 @@ namespace AudioHexViewer
 
             var panelRect = RectangleF.FromLTRB(pLeft, pTop, pRight, pBot);
 
+            // ── Marqueurs ±nσ sur le plot ────────────────────────────────────
+            if (ChkMarkers.Checked)
+            {
+                int nSigma = Math.Max(1, Math.Min(3, comboSigma.SelectedIndex + 1));
+                string chanMode = comboChannel.SelectedItem as string ?? "Both";
+
+                float innerLeft, innerRight;
+                try
+                {
+                    innerLeft  = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Minimum);
+                    innerRight = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Maximum);
+                }
+                catch { innerLeft = 0; innerRight = aRight; }
+
+                bool doLeft  = _statsLeft.HasData  && chanMode is "Left"  or "Both";
+                bool doRight = _statsRight.HasData && chanMode is "Right" or "Both";
+                bool both    = doLeft && doRight;
+
+                using var markerFont = new Font(
+                    chartHistogram.Font ?? SystemFonts.DefaultFont, FontStyle.Regular);
+
+                void DrawSigmaMarkers(StatsData d, Color col, string pfx)
+                {
+                    if (!d.HasData || d.SigmaLsb < 1e-6) return;
+                    for (int n = 1; n <= nSigma; n++)
+                    {
+                        int alpha = Math.Max(70, 220 - (n - 1) * 65); // 1σ=220, 2σ=155, 3σ=90
+                        using var pen = new Pen(Color.FromArgb(alpha, col), 1f)
+                        {
+                            DashStyle = System.Drawing.Drawing2D.DashStyle.Dash
+                        };
+                        using var lblBrush = new SolidBrush(Color.FromArgb(alpha, col));
+
+                        foreach (int sign in new[] { -1, 1 })
+                        {
+                            double xVal = d.MeanLsb + sign * n * d.SigmaLsb;
+                            float  xPx;
+                            try { xPx = (float)area.AxisX.ValueToPixelPosition(xVal); }
+                            catch { continue; }
+                            if (xPx < innerLeft - 1 || xPx > innerRight + 1) continue;
+
+                            g.DrawLine(pen, xPx, pTop, xPx, pBot);
+
+                            string lbl = both ? $"{pfx}{n}σ" : $"{n}σ";
+                            SizeF  sz  = g.MeasureString(lbl, markerFont);
+                            float  lx  = sign > 0 ? xPx + 2f : xPx - sz.Width - 2f;
+                            lx = Math.Max(innerLeft + 1f, Math.Min(innerRight - sz.Width - 1f, lx));
+                            g.DrawString(lbl, markerFont, lblBrush, lx, pTop + 2f);
+                        }
+                    }
+                }
+
+                if (doLeft)  DrawSigmaMarkers(_statsLeft,  BarLeftColor,  "L");
+                if (doRight) DrawSigmaMarkers(_statsRight, BarRightColor, "R");
+            }
+
             // Fond blanc + bordure gris clair — identique à SpectrumControl.DrawChartStatsPanel
             using (var bg = new SolidBrush(Color.White))
                 g.FillRectangle(bg, panelRect);
@@ -734,16 +833,17 @@ namespace AudioHexViewer
                 if (d.HasData)
                 {
                     Row("Samples", $"{d.Count:N0}");
-                    Row("DC",      $"{d.DcLsb:N0} LSB");
+                    Row("Moy.",    $"{d.DcLsb:N0} LSB");
                     Row("RMS",     $"{d.RmsLsb:N0} LSB", bold: true);
                     Row("Min",     $"{d.Min:N0}");
                     Row("Max",     $"{d.Max:N0}");
                     Row("P-P",     $"{d.PeakToPeak:N0} LSB");
+                    Row("DNL max", d.DnlMax > 0 ? $"{d.DnlMax:F3}" : "—");
                 }
                 else
                 {
                     Row("Samples", "0");
-                    Row("DC",      $"{d.DcLsb:N0} LSB");
+                    Row("Moy.",    $"{d.DcLsb:N0} LSB");
                     Row("RMS",     "—");
                     Row("Min/Max", "—");
                 }
@@ -760,12 +860,12 @@ namespace AudioHexViewer
         // ══════════════════════════════════════════════════════════════════════
         // Calcul de l'échelle Y "propre" (max arrondi + interval)
         // ══════════════════════════════════════════════════════════════════════
-        private static (double yMax, double interval) ComputeNiceYScale(int maxCount)
+        private static (double yMax, double interval) ComputeNiceYScale(double maxValue)
         {
-            if (maxCount <= 0) return (1000, 200);
+            if (maxValue <= 0) return (1000, 200);
 
             // Plafond avec 10 % de marge
-            double raw = maxCount * 1.1;
+            double raw = maxValue * 1.1;
             double mag = Math.Pow(10, Math.Floor(Math.Log10(raw)));
             double norm = raw / mag;
 
@@ -887,11 +987,17 @@ namespace AudioHexViewer
             g.TextRenderingHint = prevHint;
         }
 
-                private static string FormatYCount(double v)
+         private string FormatYLabel(double v)
         {
-            // b) Affichage en unités complètes (10 000 et non 10k)
-            return ((long)Math.Round(v)).ToString("N0");
+            if (_isNormalized)
+                // Mode PDF : valeurs petites (ex. 5.3e-3) → notation scientifique 3 chiffres sig.
+                return v == 0 ? "0" : v.ToString("G3", System.Globalization.CultureInfo.InvariantCulture);
+            else
+                return ((long)Math.Round(v)).ToString("N0");
         }
+
+        // Alias conservé pour la compatibilité des appels depuis DrawCustomYLabels
+        private string FormatYCount(double v) => FormatYLabel(v);
 
         // ══════════════════════════════════════════════════════════════════════
         // Export PNG (inchangé)
