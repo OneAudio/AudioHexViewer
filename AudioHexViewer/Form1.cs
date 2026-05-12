@@ -1232,7 +1232,9 @@ namespace AudioHexViewer
                 double tNow = _uiSw.Elapsed.TotalSeconds;
                 bool canDisplay = (tNow - _uiLastDisplayT) >= UiDisplayPeriodSec;
 
-                if (canDisplay)
+                // N'afficher la FFT QUE si l'onglet Spectrum est en cours (bouton RUN spectrum actif)
+                // => les 2 boutons RUN sont vraiment indépendants
+                if (canDisplay && _spectrumRunning)
                 {
                     spectrumControl.EnableExternalSpectrumMode(true);
 
@@ -1304,7 +1306,8 @@ namespace AudioHexViewer
             }
 
             // Stats temporelles (VU, RMS, peak, Vdc, calibration) — hors lock
-            if (spectrumControl != null)
+            // Guard : on n'alimente le spectre que si son propre RUN est actif
+            if (spectrumControl != null && _spectrumRunning)
                 spectrumControl.FeedExternalTimeStats24(left, right);
 
             // Publie la nouvelle frame d'analyse (pour SpectrumControl + histogramme)
@@ -1695,6 +1698,9 @@ namespace AudioHexViewer
 
             spectrumControl.ApplySpectrumColorSettings(dlg.SelectedColors);
 
+            // Propagation des couleurs à l'onglet Histogramme (fond, grilles, labels, barres L/R)
+            histogramControl?.ApplySpectrumColorSettings(dlg.SelectedColors);
+
             // Keep settings in sync (used when re-applying settings later + for persistence)
             if (_loadedSessionSettings != null)
             {
@@ -1809,7 +1815,13 @@ namespace AudioHexViewer
                 histogramControl.ApplyHistogramSettings(_loadedSessionSettings.Histogram);
 
             if (spectrumControl != null)
+            {
                 spectrumControl.ApplySpectrumSettings(_loadedSessionSettings.Spectrum);
+
+                // Synchroniser les couleurs de l'histogramme avec celles du spectre
+                var loadedColors = _loadedSessionSettings.Spectrum?.Colors ?? SpectrumColorSettings.Defaults();
+                histogramControl?.ApplySpectrumColorSettings(loadedColors);
+            }
         }
 
         //
@@ -2700,6 +2712,10 @@ namespace AudioHexViewer
             }
 
             // Arrête aussi histogram + spectre s'ils tournent
+            // On remet les flags à false AVANT StopFromRun pour éviter toute réentrance
+            _histogramRunning = false;
+            _spectrumRunning  = false;
+
             if (histogramControl != null)
                 histogramControl.StopFromRun();
 
@@ -3727,6 +3743,8 @@ namespace AudioHexViewer
                 if (_loadedSessionSettings != null)
                 {
                     spectrumControl.ApplySpectrumSettings(_loadedSessionSettings.Spectrum);
+                    var initColors = _loadedSessionSettings.Spectrum?.Colors ?? SpectrumColorSettings.Defaults();
+                    histogramControl?.ApplySpectrumColorSettings(initColors);
                 }
 
                 // tabSpectrum est l'onglet du bas
