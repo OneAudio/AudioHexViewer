@@ -363,9 +363,11 @@ namespace AudioHexViewer
             float reservedPct = Math.Max(0f, Math.Min(45f, 100f * reserved / w));
 
             area.Position.Auto = false;
-            // Marge gauche élargie à 9 % pour loger les labels Y dans la zone grise
+            // Marge gauche élargie pour loger les labels Y dans la zone grise.
+            // On utilise 100f (au lieu de 97f) pour que le bord droit de la ChartArea
+            // soit identique à SpectrumControl : right = 100 - reservedPct dans les deux cas.
             const float LeftPct = 11f; // espace pour titre "Count" + labels numériques
-            float width = (97f - LeftPct) - reservedPct;
+            float width = (100f - LeftPct) - reservedPct;
             if (width < 10f) width = 10f;
             area.Position = new ElementPosition(LeftPct, 3f, width, 94f);
 

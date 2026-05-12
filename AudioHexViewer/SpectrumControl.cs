@@ -2916,8 +2916,6 @@ namespace AudioHexViewer
 
             g.Restore(saved);
         }
-        //
-        // Couleurs dynamiques des marqueurs (triangle) selon la voie réellement trackée
         private Color _cursorMarkLColor = Color.DodgerBlue; // C1 (sera mis à jour par ApplyCursorTheme)
         private Color _cursorMarkRColor = Color.OrangeRed;  // C2 (sera mis à jour par ApplyCursorTheme)
 
