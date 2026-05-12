@@ -74,10 +74,21 @@ namespace AudioHexViewer
             public readonly int    Count;
             public readonly int    DcLsb;
             public readonly double RmsLsb;
+            public readonly double SigmaLsb;  // σ réel des valeurs affichées (≠ RMS quand μ≠0)
+            public readonly double MeanLsb;   // μ des valeurs affichées (0 en AC, offset DC en DC)
             public readonly int    Min, Max;
             public readonly bool   HasData;
-            public StatsData(int count, int dc, double rms, int min, int max)
-            { Count = count; DcLsb = dc; RmsLsb = rms; Min = min; Max = max; HasData = count > 0; }
+
+            // P-P calculé à la demande
+            public int PeakToPeak => HasData ? Max - Min : 0;
+
+            public StatsData(int count, int dc, double rms, double sigma, double mean, int min, int max)
+            {
+                Count    = count; DcLsb   = dc;
+                RmsLsb   = rms;   SigmaLsb = sigma; MeanLsb = mean;
+                Min      = min;   Max      = max;
+                HasData  = count > 0;
+            }
         }
         private StatsData _statsLeft;
         private StatsData _statsRight;
@@ -455,6 +466,7 @@ namespace AudioHexViewer
         // ══════════════════════════════════════════════════════════════════════
         private void ComboChannel_SelectedIndexChanged(object sender, EventArgs e) => RebuildHistogram();
         private void ChkAC_CheckedChanged(object sender, EventArgs e)             => RebuildHistogram();
+        private void ChkGauss_CheckedChanged(object sender, EventArgs e)          => RebuildHistogram();
 
         private void ComboRangeLsb_SelectedIndexChanged(object sender, EventArgs e)
         { lastRangeLsb = GetRangeLsb(); RebuildHistogram(); }
@@ -537,8 +549,23 @@ namespace AudioHexViewer
                     }
                 }
 
-            _statsLeft  = lCnt > 0 ? new StatsData(lCnt, dcL, Math.Sqrt(lSumSq / (double)lCnt), lMin, lMax) : new StatsData(0, dcL, 0, 0, 0);
-            _statsRight = rCnt > 0 ? new StatsData(rCnt, dcR, Math.Sqrt(rSumSq / (double)rCnt), rMin, rMax) : new StatsData(0, dcR, 0, 0, 0);
+            // ── Calcul stats LEFT ────────────────────────────────────────────
+            double lMean  = lCnt > 0 ? (double)lSum / lCnt : 0.0;
+            double lRms   = lCnt > 0 ? Math.Sqrt(lSumSq / (double)lCnt) : 0.0;
+            // σ = sqrt(E[va²] - μ²) — diffère de RMS seulement en mode DC (μ≠0)
+            double lSigma = lCnt > 0 ? Math.Sqrt(Math.Max(0.0, lSumSq / (double)lCnt - lMean * lMean)) : 0.0;
+
+            // ── Calcul stats RIGHT ───────────────────────────────────────────
+            double rMean  = rCnt > 0 ? (double)rSum / rCnt : 0.0;
+            double rRms   = rCnt > 0 ? Math.Sqrt(rSumSq / (double)rCnt) : 0.0;
+            double rSigma = rCnt > 0 ? Math.Sqrt(Math.Max(0.0, rSumSq / (double)rCnt - rMean * rMean)) : 0.0;
+
+            _statsLeft  = lCnt > 0
+                ? new StatsData(lCnt, dcL, lRms, lSigma, lMean, lMin, lMax)
+                : new StatsData(0, dcL, 0, 0, 0, 0, 0);
+            _statsRight = rCnt > 0
+                ? new StatsData(rCnt, dcR, rRms, rSigma, rMean, rMin, rMax)
+                : new StatsData(0, dcR, 0, 0, 0, 0, 0);
 
             // Séries — couleurs issues de SpectrumColorSettings
             chartHistogram.Series.Clear();
@@ -555,13 +582,56 @@ namespace AudioHexViewer
                 chartHistogram.Series.Add(s);
             }
 
+            // ── Série Gaussienne G(μ, σ) en overlay ─────────────────────────
+            // Dessinée APRÈS les barres pour passer au premier plan.
+            // Formule : y = (N·bw / (σ·√(2π))) · exp(−(x−μ)²/(2σ²))
+            // N = count en fenêtre, bw = binWidth → le pic correspond au count max attendu.
+            if (ChkGauss.Checked)
+            {
+                void AddGaussSeries(string name, StatsData d, Color baseColor, int[] bins)
+                {
+                    if (!d.HasData || d.SigmaLsb < 1e-6) return;
+                    double mu    = d.MeanLsb;
+                    double sigma = d.SigmaLsb;
+                    double scale = d.Count * binWidth / (sigma * Math.Sqrt(2.0 * Math.PI));
+                    double inv2s2 = 1.0 / (2.0 * sigma * sigma);
+
+                    // Points calculés sur une grille 4× plus fine que les bins → courbe lisse
+                    int    subDiv = Math.Max(1, binWidth / 4);
+                    double step   = Math.Max(1.0, binWidth / (double)Math.Max(1, binWidth / subDiv));
+                    // Mais on se limite à 2 048 points pour rester rapide
+                    int nPts = Math.Min(2048, (int)Math.Ceiling(2.0 * lsbRange / step) + 1);
+                    step = 2.0 * lsbRange / Math.Max(1, nPts - 1);
+
+                    var gs = new Series(name)
+                    {
+                        ChartType      = SeriesChartType.Line,
+                        ChartArea      = "HistogramArea",
+                        Color          = Color.FromArgb(220, baseColor),
+                        BorderWidth    = 2,
+                        BorderDashStyle = ChartDashStyle.Solid,
+                        IsVisibleInLegend = false
+                    };
+                    for (int k = 0; k < nPts; k++)
+                    {
+                        double x = -lsbRange + k * step;
+                        double y = scale * Math.Exp(-((x - mu) * (x - mu)) * inv2s2);
+                        gs.Points.AddXY(x, y);
+                    }
+                    chartHistogram.Series.Add(gs);
+                }
+
+                if (binsLeft  != null) AddGaussSeries("GaussLeft",  _statsLeft,  BarLeftColor,  binsLeft);
+                if (binsRight != null) AddGaussSeries("GaussRight", _statsRight, BarRightColor, binsRight);
+            }
+
             // Axe X
             var area = chartHistogram.ChartAreas["HistogramArea"];
             area.AxisX.Minimum  = -lsbRange;
             area.AxisX.Maximum  =  lsbRange;
             area.AxisX.Crossing = 0.0;  // ligne X à count=0 (bas du graphique)
-            double step = lsbRange / 8.0;
-            area.AxisX.Interval = step <= 0 ? 1 : step;
+            double xStep = lsbRange / 8.0;
+            area.AxisX.Interval = xStep <= 0 ? 1 : xStep;
 
             // Axe Y : fixer explicitement min/max/interval
             // (en mode auto, Chart ne ré-expose pas les valeurs calculées → NaN → DrawCustomYLabels fail)
@@ -668,6 +738,7 @@ namespace AudioHexViewer
                     Row("RMS",     $"{d.RmsLsb:N0} LSB", bold: true);
                     Row("Min",     $"{d.Min:N0}");
                     Row("Max",     $"{d.Max:N0}");
+                    Row("P-P",     $"{d.PeakToPeak:N0} LSB");
                 }
                 else
                 {
