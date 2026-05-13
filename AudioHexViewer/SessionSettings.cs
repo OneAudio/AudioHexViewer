@@ -99,6 +99,13 @@ public sealed class ThdSettings
             // THD en dB ou %
             public ThdUnit Unit { get; set; } = ThdUnit.Db;
 
+            // ── Moyennage cohérent (accumulation complexe des bins FFT) ──────────
+            // Supprime le bruit incohérent de 10·log10(N) dB tout en conservant
+            // la fondamentale et les harmoniques (signaux à phase stable).
+            // Condition : la source doit être fixe en fréquence (oscillateur stable).
+            public bool UseCohAvg { get; set; } = false;
+            public int CohAvgCount { get; set; } = 100; // frames à accumuler par cycle
+
             public enum ThdUnit
             {
                 Db = 0,

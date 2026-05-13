@@ -53,6 +53,235 @@ namespace AudioHexViewer
         private System.Numerics.Complex[]? _frfGxy; // cross-spectrum
         private int _frfFillCount = 0;
 
+        // ════════════════════════════════════════════════════════════════════
+        // Coherent averaging pour THD — suivi de phase mesuré frame-à-frame
+        //
+        // PRINCIPE (v4 — phase tracking)
+        // ────────────────────────────────
+        // Au lieu de calculer la correction analytiquement à partir de f0_estimé
+        // (qui accumule une erreur de phase ε·n → oscillation après quelques secondes),
+        // on MESURE la phase réelle du bin dominant à chaque frame et on accumule
+        // le drift observé directement :
+        //
+        //   Δφ_n  = arg(bins_n[k0]) − arg(bins_{n-1}[k0])   (unwrap ∈ [−π, π])
+        //   Φ_n   = Φ_{n-1} + Δφ_n   (phase cumulée de la fondamentale)
+        //
+        // Correction pour l'harmonique h :  exp(−j·h·Φ_n)
+        //
+        // Avantages :
+        //   • Aucune dépendance à f0_est → zéro erreur d'estimation
+        //   • Fonctionne même si f0 dérive lentement (oscillateur imparfait)
+        //   • API simplifiée : plus besoin de absEnd/fftSize/sampleRate
+        //   • Harmoniques parfaitement alignés pour N quelconque
+        // ════════════════════════════════════════════════════════════════════
+        private System.Numerics.Complex[]? _cohSumL;
+        private System.Numerics.Complex[]? _cohSumR;
+        private bool   _cohHasL;
+        private bool   _cohHasR;
+        private int    _cohCount;
+        private int    _cohTarget;
+
+        // Phase tracking (mis à jour chaque frame)
+        private int    _cohK0;          // bin dominant détecté sur la frame 0 (fixe)
+        private double _cohK0real;      // position fractionnaire du bin (pour le groupage)
+        private double _cohPrevPhase;   // phase mesurée à la frame précédente
+        private double _cohCumPhase;    // phase cumulée de la fondamentale (Φ_n)
+
+        /// <summary>Nombre de frames déjà accumulées dans le cycle courant.</summary>
+        public int CohAvgCount => _cohCount;
+
+        /// <summary>Nombre de frames cible configuré.</summary>
+        public int CohAvgTarget => _cohTarget;
+
+        /// <summary>True si le nombre cible est atteint (l'accumulation continue au-delà).</summary>
+        public bool CohAvgComplete => (_cohTarget > 0 && _cohCount >= _cohTarget);
+
+        // ── Reset ─────────────────────────────────────────────────────────
+        public void ResetCohAvgState()
+        {
+            _cohSumL       = null;
+            _cohSumR       = null;
+            _cohCount      = 0;
+            _cohTarget     = 0;
+            _cohHasL       = false;
+            _cohHasR       = false;
+            _cohK0         = 0;
+            _cohK0real     = 0.0;
+            _cohPrevPhase  = 0.0;
+            _cohCumPhase   = 0.0;
+        }
+
+        /// <summary>
+        /// Accumule les bins complexes d'une frame FFT avec correction de phase
+        /// basée sur le suivi de la phase mesurée du bin fondamental.
+        ///
+        /// Algorithme :
+        ///   Frame 0 : détecte le bin dominant k0 ; initialise le tracking de phase.
+        ///   Frame n : mesure Δφ = arg(bins_n[k0]) − arg(bins_{n-1}[k0])  [unwrappé]
+        ///             accumule Φ += Δφ  (phase cumulée réelle du signal)
+        ///             pour chaque harmonique h : rotation = exp(−j·h·Φ)
+        ///             → somme cohérente exacte, indépendante de f0_estimé
+        /// </summary>
+        public void AccumulateCohAvg(
+            MathNet.Numerics.Complex32[]? leftBins,
+            MathNet.Numerics.Complex32[]? rightBins,
+            int target)
+        {
+            bool hasL = (leftBins  != null);
+            bool hasR = (rightBins != null);
+            int bins  = hasL ? leftBins!.Length : hasR ? rightBins!.Length : 0;
+            if (bins == 0 || target <= 0) return;
+
+            // ── Reset si la configuration a changé ──────────────────────────
+            bool needReset =
+                (_cohSumL == null && hasL) ||
+                (_cohSumR == null && hasR) ||
+                (hasL && _cohSumL != null && _cohSumL.Length != bins) ||
+                (hasR && _cohSumR != null && _cohSumR.Length != bins) ||
+                _cohTarget != target ||
+                _cohHasL   != hasL  ||
+                _cohHasR   != hasR;
+
+            if (needReset)
+            {
+                _cohSumL      = hasL ? new System.Numerics.Complex[bins] : null;
+                _cohSumR      = hasR ? new System.Numerics.Complex[bins] : null;
+                _cohCount     = 0;
+                _cohTarget    = target;
+                _cohHasL      = hasL;
+                _cohHasR      = hasR;
+                _cohK0        = 0;
+                _cohK0real    = 0.0;
+                _cohPrevPhase = 0.0;
+                _cohCumPhase  = 0.0;
+            }
+
+            // ── Canal de référence pour la mesure de phase ──────────────────
+            var refBins = hasL ? leftBins! : rightBins!;
+
+            // ── Frame 0 : initialisation ─────────────────────────────────────
+            if (_cohCount == 0)
+            {
+                // Détecter le bin dominant
+                _cohK0 = CohFindDominantBin(refBins, 1, bins - 2);
+
+                // Position fractionnaire k0_real pour le groupage harmonique
+                _cohK0real = CohInterpolateK0Real(refBins, _cohK0);
+
+                // Phase initiale = référence (Φ_0 = 0)
+                _cohPrevPhase = Math.Atan2(refBins[_cohK0].Imaginary, refBins[_cohK0].Real);
+                _cohCumPhase  = 0.0;
+                // Frame 0 accumulée avec Φ=0 (pas de rotation)
+            }
+            else
+            {
+                // ── Frame n>0 : mesure du drift de phase ─────────────────────
+                double phiNow = Math.Atan2(refBins[_cohK0].Imaginary, refBins[_cohK0].Real);
+
+                // Différence de phase (unwrap dans [−π, π])
+                double deltaPhi = phiNow - _cohPrevPhase;
+                if      (deltaPhi >  Math.PI) deltaPhi -= 2.0 * Math.PI;
+                else if (deltaPhi < -Math.PI) deltaPhi += 2.0 * Math.PI;
+
+                _cohCumPhase  += deltaPhi;
+                _cohPrevPhase  = phiNow;
+            }
+
+            // ── Accumulation avec correction de phase ────────────────────────
+            if (hasL && _cohSumL != null)
+                CohAccumulateChannel(_cohSumL, leftBins!, bins, _cohCumPhase, _cohK0real);
+
+            if (hasR && _cohSumR != null)
+                CohAccumulateChannel(_cohSumR, rightBins!, bins, _cohCumPhase, _cohK0real);
+
+            _cohCount++;
+        }
+
+        // ── Accumulation d'un canal avec correction par groupe harmonique ────
+        private static void CohAccumulateChannel(
+            System.Numerics.Complex[]    sum,
+            MathNet.Numerics.Complex32[] bins,
+            int    binCount,
+            double cumPhase,    // Φ_n : phase cumulée mesurée de la fondamentale
+            double k0real)      // bin fractionnaire pour les limites de groupes
+        {
+            // Groupe harmonique h couvre les bins k ∈ [kLow_h, kHigh_h].
+            // Tous les bins d'un même groupe reçoivent la MÊME rotation.
+            // → 1 seul cos/sin par harmonique, quelle que soit la taille de N.
+            //
+            // Correction : exp(−j·h·Φ_n)
+            // Φ_n est la phase cumulée MESURÉE → exacte, sans erreur d'estimation.
+
+            int kCursor = 0;
+            int h = 1;
+
+            while (kCursor < binCount)
+            {
+                // Limites du groupe h (h=1 part de k=0 pour couvrir les basses fréquences)
+                int kLow  = (h == 1) ? 0 : (int)Math.Round((h - 0.5) * k0real);
+                int kHigh = (int)Math.Round((h + 0.5) * k0real) - 1;
+                kLow  = Math.Max(kCursor, kLow);
+                kHigh = Math.Min(binCount - 1, kHigh);
+
+                if (kLow > kHigh) { h++; continue; }
+
+                // Rotation : exp(−j·h·Φ_n)
+                // cumPhase est borné automatiquement car c'est une somme de Δφ ∈ [−π,π]
+                double angle = -(double)h * cumPhase;
+                double cosA  = Math.Cos(angle);
+                double sinA  = Math.Sin(angle);
+
+                for (int k = kLow; k <= kHigh; k++)
+                {
+                    float re = bins[k].Real;
+                    float im = bins[k].Imaginary;
+                    sum[k] += new System.Numerics.Complex(
+                        re * cosA - im * sinA,
+                        re * sinA + im * cosA);
+                }
+
+                kCursor = kHigh + 1;
+                h++;
+            }
+        }
+
+        // ── Détection du bin dominant (max |bin|²) en excluant DC et Nyquist ─
+        private static int CohFindDominantBin(
+            MathNet.Numerics.Complex32[] bins, int kMin, int kMax)
+        {
+            int    kBest   = kMin;
+            double magBest = 0.0;
+            for (int k = kMin; k <= kMax; k++)
+            {
+                double m = (double)bins[k].Real * bins[k].Real
+                         + (double)bins[k].Imaginary * bins[k].Imaginary;
+                if (m > magBest) { magBest = m; kBest = k; }
+            }
+            return kBest;
+        }
+
+        // ── Interpolation parabolique : position fractionnaire du bin dominant ─
+        // Retourne k0 + δ ∈ [k0−0.5, k0+0.5].
+        // N'a pas besoin de sampleRate/fftSize — sert uniquement au groupage.
+        private static double CohInterpolateK0Real(
+            MathNet.Numerics.Complex32[] bins, int k0)
+        {
+            if (k0 <= 0 || k0 >= bins.Length - 1) return k0;
+
+            double a = (double)bins[k0-1].Real * bins[k0-1].Real
+                     + (double)bins[k0-1].Imaginary * bins[k0-1].Imaginary;
+            double b = (double)bins[k0  ].Real * bins[k0  ].Real
+                     + (double)bins[k0  ].Imaginary * bins[k0  ].Imaginary;
+            double c = (double)bins[k0+1].Real * bins[k0+1].Real
+                     + (double)bins[k0+1].Imaginary * bins[k0+1].Imaginary;
+
+            double denom = a - 2.0 * b + c;
+            if (Math.Abs(denom) < 1e-30) return k0;
+
+            double delta = 0.5 * (a - c) / denom;   // ∈ [−0.5, +0.5]
+            return k0 + delta;
+        }
+
 
         public void ResetAveragingState()
         {
@@ -81,6 +310,54 @@ namespace AudioHexViewer
             _frfFillCount = 0;
             _frfGxx = null;
             _frfGxy = null;
+        }
+
+
+        /// <summary>
+        /// Retourne le spectre dBFS issu du moyennage cohérent courant.
+        /// Peut être appelé avant que le cycle ne soit complet (snapshot intermédiaire).
+        /// Le spectre est calculé par : dBFS[k] = 20·log10( |mean_coh[k]| )
+        /// ce qui est cohérent avec <see cref="ComplexBinsToDbFs"/> dans SpectrumControl.
+        /// </summary>
+        /// <param name="countUsed">Nombre de frames utilisées dans la moyenne.</param>
+        public bool TryGetCohAvgDbFs(
+            out double[]? leftDb,
+            out double[]? rightDb,
+            out int countUsed)
+        {
+            countUsed = _cohCount;
+            leftDb  = null;
+            rightDb = null;
+
+            if (_cohCount == 0) return false;
+
+            double invN = 1.0 / _cohCount;
+
+            if (_cohSumL != null)
+            {
+                int n = _cohSumL.Length;
+                leftDb = new double[n];
+                for (int k = 0; k < n; k++)
+                {
+                    double mag = (_cohSumL[k] * invN).Magnitude;
+                    double db  = (mag <= 1e-15) ? -200.0 : 20.0 * Math.Log10(mag);
+                    leftDb[k]  = Math.Max(-200.0, db);
+                }
+            }
+
+            if (_cohSumR != null)
+            {
+                int n = _cohSumR.Length;
+                rightDb = new double[n];
+                for (int k = 0; k < n; k++)
+                {
+                    double mag = (_cohSumR[k] * invN).Magnitude;
+                    double db  = (mag <= 1e-15) ? -200.0 : 20.0 * Math.Log10(mag);
+                    rightDb[k] = Math.Max(-200.0, db);
+                }
+            }
+
+            return true;
         }
 
         public void ResetPeakHoldState()

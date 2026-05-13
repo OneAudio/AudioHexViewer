@@ -663,6 +663,13 @@ namespace AudioHexViewer
 
         private bool _thdMeasuresEnabled = false;
 
+        // ── Spectre issu du dernier cycle de moyennage cohérent (THD) ────────
+        // Mis à jour à chaque fois que CohAvgCount atteint CohAvgTarget.
+        // Utilisé à la place de currentLeftSpectrum/currentRightSpectrum pour
+        // ComputeChannel() quand _thdUi.UseCohAvg est actif.
+        private double[]? _cohAvgLeftDb;
+        private double[]? _cohAvgRightDb;
+
         // --- Étape 2 : panneau stats dans le chart (zone dédiée à droite) ---
         private const int ChartStatsWidthPx = 200;      // largeur du panneau stats
         private const int ChartStatsMinPlotWidthPx = 420; // largeur mini du graphe (évite d’écraser le plot)
@@ -3914,6 +3921,9 @@ namespace AudioHexViewer
         {
             _post.ResetAveragingState();
             _post.ResetFrfState();
+            _post.ResetCohAvgState();
+            _cohAvgLeftDb  = null;
+            _cohAvgRightDb = null;
 
             if (_avgIsExponential)
                 UpdateAvgProgressUi(0, 0);
@@ -4068,6 +4078,38 @@ namespace AudioHexViewer
                 out double[]? outPowR,
                 out int avgFill);
 
+            // ── Moyennage cohérent pour THD ──────────────────────────────────────
+            // Accumule les bins complexes bruts (avant conversion en puissance).
+            // La moyenne complexe réduit le bruit incohérent de 10·log10(N) dB,
+            // ce que le moyennage en puissance (Welch) ne fait pas.
+            // Condition de cohérence : la fréquence source doit être stable entre frames.
+            bool doCohAvg = _thdMeasuresEnabled &&
+                            _thdUi.UseCohAvg &&
+                            !string.Equals(SelectedChannelMode, "Bode Plot",
+                                           StringComparison.OrdinalIgnoreCase);
+
+            if (doCohAvg)
+            {
+                _post.AccumulateCohAvg(frame.LeftBins, frame.RightBins, _thdUi.CohAvgCount);
+
+                // Running average : mise à jour à chaque frame (comportement REW).
+                // L'accumulation continue indéfiniment ; le bouton Clear remet à zéro.
+                // Le plancher de bruit descend de 10·log10(count) dB en continu.
+                _post.TryGetCohAvgDbFs(out var cohRunL, out var cohRunR, out _);
+                if (cohRunL != null) _cohAvgLeftDb  = cohRunL;
+                if (cohRunR != null) _cohAvgRightDb = cohRunR;
+            }
+            else
+            {
+                // Nettoyage si le mode cohérent vient d'être désactivé
+                if (_cohAvgLeftDb != null || _cohAvgRightDb != null)
+                {
+                    _cohAvgLeftDb  = null;
+                    _cohAvgRightDb = null;
+                    _post.ResetCohAvgState();
+                }
+            }
+
             // Conversion POWER -> dB pour l’affichage/peak-hold
             // - Modes classiques : dBFS = 10*log10(power), clamp [-200..0]
             // - Mode "Bode Plot" : gain relatif = 10*log10(P_L/P_R), clamp large [-200..200]
@@ -4107,12 +4149,32 @@ namespace AudioHexViewer
             else
             {
                 // ---- Chemin EXISTANT, INCHANGÉ ----
-                currentLeftSpectrum = (outPowL != null) ? PowerToDbFs(outPowL) : null;
+                currentLeftSpectrum  = (outPowL != null) ? PowerToDbFs(outPowL) : null;
                 currentRightSpectrum = (outPowR != null) ? PowerToDbFs(outPowR) : null;
             }
 
-            // Progression UI : uniquement en mode Count
-            if (mode != SpectrumPostProcessor.AveragingMode.Count || avgTargetCount <= 1)
+            // ── Affichage du spectre cohérent ────────────────────────────────
+            // Quand un cycle complet est disponible, on remplace le spectre Welch
+            // par le spectre cohérent dans le graphe : le plancher de bruit descend
+            // de 10·log10(N) dB, rendant le résultat visuellement visible.
+            if (doCohAvg)
+            {
+                int expBins = frame.FftSize / 2 + 1;
+                if (_cohAvgLeftDb  != null && _cohAvgLeftDb.Length  == expBins)
+                    currentLeftSpectrum  = _cohAvgLeftDb;
+                if (_cohAvgRightDb != null && _cohAvgRightDb.Length == expBins)
+                    currentRightSpectrum = _cohAvgRightDb;
+            }
+
+            // Progression UI :
+            // – Mode cohérent actif  : k/N (k plafonné à N une fois la cible atteinte)
+            // – Mode Count Welch     : k/N (comportement existant)
+            // – Autres               : efface
+            if (doCohAvg)
+                UpdateAvgProgressUi(
+                    Math.Min(_post.CohAvgCount, _thdUi.CohAvgCount),
+                    _thdUi.CohAvgCount);
+            else if (mode != SpectrumPostProcessor.AveragingMode.Count || avgTargetCount <= 1)
                 UpdateAvgProgressUi(0, 0);
             else
                 UpdateAvgProgressUi(avgFill, avgTargetCount);
@@ -5598,7 +5660,17 @@ namespace AudioHexViewer
             {
                 if (doThd && allowThdMeasurementsUi)
                 {
-                    mL = SpectrumMetrics.ComputeChannel(currentLeftSpectrum, _sampleRate, lastFftSize, _metricsOpt);
+                    // En mode cohérent : utilise le spectre moyenné complex (meilleur SNR).
+                    // Guard sur la longueur : si une transition de fftSize vient de se produire,
+                    // _cohAvgLeftDb peut avoir une taille différente → fallback sur currentLeftSpectrum.
+                    int expectedBins = lastFftSize / 2 + 1;
+                    double[]? specL = (_thdUi.UseCohAvg &&
+                                       _cohAvgLeftDb != null &&
+                                       _cohAvgLeftDb.Length == expectedBins)
+                                      ? _cohAvgLeftDb
+                                      : currentLeftSpectrum;
+
+                    mL = SpectrumMetrics.ComputeChannel(specL, _sampleRate, lastFftSize, _metricsOpt);
 
                     if (mL.Valid)
                     {
@@ -5731,7 +5803,14 @@ namespace AudioHexViewer
             {
                 if (doThd && allowThdMeasurementsUi)
                 {
-                    mR = SpectrumMetrics.ComputeChannel(currentRightSpectrum, _sampleRate, lastFftSize, _metricsOpt);
+                    int expectedBins = lastFftSize / 2 + 1;
+                    double[]? specR = (_thdUi.UseCohAvg &&
+                                       _cohAvgRightDb != null &&
+                                       _cohAvgRightDb.Length == expectedBins)
+                                      ? _cohAvgRightDb
+                                      : currentRightSpectrum;
+
+                    mR = SpectrumMetrics.ComputeChannel(specR, _sampleRate, lastFftSize, _metricsOpt);
 
                     if (mR.Valid)
                     {

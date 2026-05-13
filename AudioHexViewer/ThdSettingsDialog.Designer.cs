@@ -25,6 +25,11 @@ namespace AudioHexViewer
         private RadioButton rbDb;
         private RadioButton rbPct;
 
+        private Label lblCohAvg;
+        private CheckBox chkCohAvg;
+        private NumericUpDown nudCohAvgCount;
+        private Label lblCohAvgFrames;
+
         private Button btnOk;
         private Button btnCancel;
 
@@ -49,11 +54,16 @@ namespace AudioHexViewer
             lblUnit = new Label();
             rbDb = new RadioButton();
             rbPct = new RadioButton();
+            lblCohAvg = new Label();
+            chkCohAvg = new CheckBox();
+            nudCohAvgCount = new NumericUpDown();
+            lblCohAvgFrames = new Label();
             btnOk = new Button();
             btnCancel = new Button();
             ((ISupportInitialize)nudFlow).BeginInit();
             ((ISupportInitialize)nudFhigh).BeginInit();
             ((ISupportInitialize)nudHarms).BeginInit();
+            ((ISupportInitialize)nudCohAvgCount).BeginInit();
             SuspendLayout();
             // 
             // chkHPF
@@ -174,7 +184,7 @@ namespace AudioHexViewer
             // btnOk
             // 
             btnOk.DialogResult = DialogResult.OK;
-            btnOk.Location = new Point(161, 206);
+            btnOk.Location = new Point(161, 241);
             btnOk.Name = "btnOk";
             btnOk.Size = new Size(90, 27);
             btnOk.TabIndex = 13;
@@ -185,12 +195,51 @@ namespace AudioHexViewer
             // btnCancel
             // 
             btnCancel.DialogResult = DialogResult.Cancel;
-            btnCancel.Location = new Point(29, 206);
+            btnCancel.Location = new Point(29, 241);
             btnCancel.Name = "btnCancel";
             btnCancel.Size = new Size(90, 27);
             btnCancel.TabIndex = 14;
             btnCancel.Text = "Cancel";
             btnCancel.UseVisualStyleBackColor = true;
+            // 
+            // lblCohAvg
+            // 
+            lblCohAvg.AutoSize = true;
+            lblCohAvg.Location = new Point(9, 189);
+            lblCohAvg.Name = "lblCohAvg";
+            lblCohAvg.Size = new Size(85, 15);
+            lblCohAvg.TabIndex = 15;
+            lblCohAvg.Text = "Coherent avg";
+            // 
+            // chkCohAvg
+            // 
+            chkCohAvg.AutoSize = true;
+            chkCohAvg.Location = new Point(110, 187);
+            chkCohAvg.Name = "chkCohAvg";
+            chkCohAvg.Size = new Size(59, 19);
+            chkCohAvg.TabIndex = 16;
+            chkCohAvg.Text = "Active";
+            chkCohAvg.UseVisualStyleBackColor = true;
+            // 
+            // nudCohAvgCount
+            // 
+            nudCohAvgCount.Location = new Point(177, 185);
+            nudCohAvgCount.Minimum = new decimal(new int[] { 2, 0, 0, 0 });
+            nudCohAvgCount.Maximum = new decimal(new int[] { 10000, 0, 0, 0 });
+            nudCohAvgCount.Increment = new decimal(new int[] { 10, 0, 0, 0 });
+            nudCohAvgCount.Name = "nudCohAvgCount";
+            nudCohAvgCount.Size = new Size(55, 23);
+            nudCohAvgCount.TabIndex = 17;
+            nudCohAvgCount.Value = new decimal(new int[] { 100, 0, 0, 0 });
+            // 
+            // lblCohAvgFrames
+            // 
+            lblCohAvgFrames.AutoSize = true;
+            lblCohAvgFrames.Location = new Point(237, 189);
+            lblCohAvgFrames.Name = "lblCohAvgFrames";
+            lblCohAvgFrames.Size = new Size(40, 15);
+            lblCohAvgFrames.TabIndex = 18;
+            lblCohAvgFrames.Text = "frames";
             // 
             // ThdSettingsDialog
             // 
@@ -209,6 +258,10 @@ namespace AudioHexViewer
             Controls.Add(lblUnit);
             Controls.Add(rbDb);
             Controls.Add(rbPct);
+            Controls.Add(lblCohAvg);
+            Controls.Add(chkCohAvg);
+            Controls.Add(nudCohAvgCount);
+            Controls.Add(lblCohAvgFrames);
             Controls.Add(btnOk);
             Controls.Add(btnCancel);
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -217,9 +270,11 @@ namespace AudioHexViewer
             Name = "ThdSettingsDialog";
             StartPosition = FormStartPosition.CenterParent;
             Text = "THD Settings";
+            ClientSize = new Size(287, 280);
             ((ISupportInitialize)nudFlow).EndInit();
             ((ISupportInitialize)nudFhigh).EndInit();
             ((ISupportInitialize)nudHarms).EndInit();
+            ((ISupportInitialize)nudCohAvgCount).EndInit();
             ResumeLayout(false);
             PerformLayout();
         }

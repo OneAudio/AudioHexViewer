@@ -31,6 +31,10 @@ namespace AudioHexViewer
             rbDb.Checked = (Result.Unit == SpectrumSettings.ThdSettings.ThdUnit.Db);
             rbPct.Checked = !rbDb.Checked;
 
+            // Moyennage cohérent
+            chkCohAvg.Checked = Result.UseCohAvg;
+            nudCohAvgCount.Value = Math.Min(Math.Max(Result.CohAvgCount, 2), 10000);
+
             AcceptButton = btnOk;
             CancelButton = btnCancel;
         }
@@ -47,7 +51,9 @@ namespace AudioHexViewer
                 ShowHarmonicsValues = chkShowHarms.Checked,
                 Unit = rbPct.Checked
                     ? SpectrumSettings.ThdSettings.ThdUnit.Percent
-                    : SpectrumSettings.ThdSettings.ThdUnit.Db
+                    : SpectrumSettings.ThdSettings.ThdUnit.Db,
+                UseCohAvg    = chkCohAvg.Checked,
+                CohAvgCount  = (int)nudCohAvgCount.Value,
             };
         }
     }
