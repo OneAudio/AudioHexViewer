@@ -27,8 +27,7 @@ namespace AudioHexViewer
 
         private Label lblCohAvg;
         private CheckBox chkCohAvg;
-        private NumericUpDown nudCohAvgCount;
-        private Label lblCohAvgFrames;
+        private Label lblCohAvgHint;
 
         private Button btnOk;
         private Button btnCancel;
@@ -56,14 +55,12 @@ namespace AudioHexViewer
             rbPct = new RadioButton();
             lblCohAvg = new Label();
             chkCohAvg = new CheckBox();
-            nudCohAvgCount = new NumericUpDown();
-            lblCohAvgFrames = new Label();
+            lblCohAvgHint = new Label();
             btnOk = new Button();
             btnCancel = new Button();
             ((ISupportInitialize)nudFlow).BeginInit();
             ((ISupportInitialize)nudFhigh).BeginInit();
             ((ISupportInitialize)nudHarms).BeginInit();
-            ((ISupportInitialize)nudCohAvgCount).BeginInit();
             SuspendLayout();
             // 
             // chkHPF
@@ -184,7 +181,7 @@ namespace AudioHexViewer
             // btnOk
             // 
             btnOk.DialogResult = DialogResult.OK;
-            btnOk.Location = new Point(161, 241);
+            btnOk.Location = new Point(161, 216);
             btnOk.Name = "btnOk";
             btnOk.Size = new Size(90, 27);
             btnOk.TabIndex = 13;
@@ -195,7 +192,7 @@ namespace AudioHexViewer
             // btnCancel
             // 
             btnCancel.DialogResult = DialogResult.Cancel;
-            btnCancel.Location = new Point(29, 241);
+            btnCancel.Location = new Point(29, 216);
             btnCancel.Name = "btnCancel";
             btnCancel.Size = new Size(90, 27);
             btnCancel.TabIndex = 14;
@@ -221,25 +218,15 @@ namespace AudioHexViewer
             chkCohAvg.Text = "Active";
             chkCohAvg.UseVisualStyleBackColor = true;
             // 
-            // nudCohAvgCount
+            // lblCohAvgHint
             // 
-            nudCohAvgCount.Location = new Point(177, 185);
-            nudCohAvgCount.Minimum = new decimal(new int[] { 2, 0, 0, 0 });
-            nudCohAvgCount.Maximum = new decimal(new int[] { 10000, 0, 0, 0 });
-            nudCohAvgCount.Increment = new decimal(new int[] { 10, 0, 0, 0 });
-            nudCohAvgCount.Name = "nudCohAvgCount";
-            nudCohAvgCount.Size = new Size(55, 23);
-            nudCohAvgCount.TabIndex = 17;
-            nudCohAvgCount.Value = new decimal(new int[] { 100, 0, 0, 0 });
-            // 
-            // lblCohAvgFrames
-            // 
-            lblCohAvgFrames.AutoSize = true;
-            lblCohAvgFrames.Location = new Point(237, 189);
-            lblCohAvgFrames.Name = "lblCohAvgFrames";
-            lblCohAvgFrames.Size = new Size(40, 15);
-            lblCohAvgFrames.TabIndex = 18;
-            lblCohAvgFrames.Text = "frames";
+            lblCohAvgHint.AutoSize = true;
+            lblCohAvgHint.Location = new Point(178, 189);
+            lblCohAvgHint.Name = "lblCohAvgHint";
+            lblCohAvgHint.Size = new Size(95, 15);
+            lblCohAvgHint.TabIndex = 17;
+            lblCohAvgHint.ForeColor = System.Drawing.SystemColors.GrayText;
+            lblCohAvgHint.Text = "(uses Avg count)";
             // 
             // ThdSettingsDialog
             // 
@@ -260,8 +247,7 @@ namespace AudioHexViewer
             Controls.Add(rbPct);
             Controls.Add(lblCohAvg);
             Controls.Add(chkCohAvg);
-            Controls.Add(nudCohAvgCount);
-            Controls.Add(lblCohAvgFrames);
+            Controls.Add(lblCohAvgHint);
             Controls.Add(btnOk);
             Controls.Add(btnCancel);
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -270,11 +256,10 @@ namespace AudioHexViewer
             Name = "ThdSettingsDialog";
             StartPosition = FormStartPosition.CenterParent;
             Text = "THD Settings";
-            ClientSize = new Size(287, 280);
+            ClientSize = new Size(287, 255);
             ((ISupportInitialize)nudFlow).EndInit();
             ((ISupportInitialize)nudFhigh).EndInit();
             ((ISupportInitialize)nudHarms).EndInit();
-            ((ISupportInitialize)nudCohAvgCount).EndInit();
             ResumeLayout(false);
             PerformLayout();
         }

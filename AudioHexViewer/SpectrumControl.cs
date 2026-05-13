@@ -1129,6 +1129,7 @@ namespace AudioHexViewer
             _metricsOpt.MaxHarmonics = countExclFund + 1;
 
             // Pas de recalcul FFT ici : le spectre vient du nouveau core (FeedExternalSpectrum).
+            UpdateOverlayInfo();   // rafraîchit "Coherent Avg:" si UseCohAvg a changé
             RebuildStatsRowsFromLabels();
             chartSpectrum.Invalidate();
 
@@ -1139,7 +1140,7 @@ namespace AudioHexViewer
         {
             _thdMeasuresEnabled = enabled;
 
-            // Force un rafraîchissement affichage (sans recalcul lourd immédiat)
+            UpdateOverlayInfo();   // rafraîchit "Coherent Avg:" / "Avg:" dans la ligne d'info
             RebuildStatsRowsFromLabels();
             chartSpectrum.Invalidate();
         }
@@ -1502,14 +1503,21 @@ namespace AudioHexViewer
             };
 
             // --- Averaging ---
-            // IMPORTANT:
-            // - avgTargetCount = moyenne par comptage (2..128)
-            // - _avgIsExponential/_avgExpAlpha = moyenne exponentielle
-            // Le texte d'info doit refléter le mode réellement actif.
+            // Quand la moyenne cohérente est active, on le mentionne explicitement.
+            bool cohAvgActive = _thdMeasuresEnabled && _thdUi.UseCohAvg;
             string avgText;
-            if (_avgIsExponential)
+            if (cohAvgActive)
             {
-                // Format UI : "Avg: Exp 0.94" (alpha en invariant pour rester stable)
+                // "Coherent Avg: N"  ou  "Coherent Avg: Exp α"
+                if (_avgIsExponential)
+                    avgText = $"Coherent Avg: Exp {_avgExpAlpha.ToString("0.##", CultureInfo.InvariantCulture)}";
+                else
+                    avgText = avgTargetCount <= 1
+                        ? "Coherent Avg: 1"
+                        : $"Coherent Avg: {avgTargetCount}";
+            }
+            else if (_avgIsExponential)
+            {
                 avgText = $"Avg: Exp {_avgExpAlpha.ToString("0.##", CultureInfo.InvariantCulture)}";
             }
             else
@@ -4064,9 +4072,19 @@ namespace AudioHexViewer
                 return;
             }
 
+            // ── Cohérent actif ? (calculé avant le Welch pour le bypass CPU) ─────
+            bool doCohAvg = _thdMeasuresEnabled &&
+                            _thdUi.UseCohAvg &&
+                            !string.Equals(SelectedChannelMode, "Bode Plot",
+                                           StringComparison.OrdinalIgnoreCase);
+
             // Averaging (POWER) : Count / Exponential / None
+            // Quand la moyenne cohérente est active, le Welch n'est ni affiché ni
+            // utilisé pour le THD → on passe None pour éviter le calcul inutile.
             SpectrumPostProcessor.AveragingMode mode;
-            if (_avgIsExponential)
+            if (doCohAvg)
+                mode = SpectrumPostProcessor.AveragingMode.None;
+            else if (_avgIsExponential)
                 mode = SpectrumPostProcessor.AveragingMode.Exponential;
             else if (avgTargetCount <= 1)
                 mode = SpectrumPostProcessor.AveragingMode.None;
@@ -4080,17 +4098,11 @@ namespace AudioHexViewer
 
             // ── Moyennage cohérent pour THD ──────────────────────────────────────
             // Accumule les bins complexes bruts (avant conversion en puissance).
-            // La moyenne complexe réduit le bruit incohérent de 10·log10(N) dB,
-            // ce que le moyennage en puissance (Welch) ne fait pas.
-            // Condition de cohérence : la fréquence source doit être stable entre frames.
-            bool doCohAvg = _thdMeasuresEnabled &&
-                            _thdUi.UseCohAvg &&
-                            !string.Equals(SelectedChannelMode, "Bode Plot",
-                                           StringComparison.OrdinalIgnoreCase);
-
+            // La moyenne complexe réduit le bruit incohérent de 10·log10(N) dB.
+            // Le nombre de frames cible est pris dans la combo "Averaging" de l'UI.
             if (doCohAvg)
             {
-                _post.AccumulateCohAvg(frame.LeftBins, frame.RightBins, _thdUi.CohAvgCount);
+                _post.AccumulateCohAvg(frame.LeftBins, frame.RightBins, avgTargetCount);
 
                 // Running average : mise à jour à chaque frame (comportement REW).
                 // L'accumulation continue indéfiniment ; le bouton Clear remet à zéro.
@@ -4172,8 +4184,8 @@ namespace AudioHexViewer
             // – Autres               : efface
             if (doCohAvg)
                 UpdateAvgProgressUi(
-                    Math.Min(_post.CohAvgCount, _thdUi.CohAvgCount),
-                    _thdUi.CohAvgCount);
+                    Math.Min(_post.CohAvgCount, avgTargetCount),
+                    avgTargetCount);
             else if (mode != SpectrumPostProcessor.AveragingMode.Count || avgTargetCount <= 1)
                 UpdateAvgProgressUi(0, 0);
             else

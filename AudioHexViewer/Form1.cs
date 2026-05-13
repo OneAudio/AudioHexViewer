@@ -1742,10 +1742,18 @@ namespace AudioHexViewer
             // 3) Buffer (sans dépendance forte, on le fait après)
             SetAnalysisBufferSize(s.Analysis.BufferSize);
 
+            // 4) Sample rate demandé (0 = Auto)
+            int savedSr = s.Analysis.RequestedSampleRate;
+            if (savedSr > 0)
+                _requestedCaptureFormat = new NAudio.Wave.WaveFormatExtensible(savedSr, 32, 2);
+            else
+                _requestedCaptureFormat = null;   // Auto
+
             // Si tu as des fonctions de refresh du menu, appelle-les ici
             UpdateSampleSizeMenuChecks();
             UpdateOverlapMenuChecks();
             UpdateBufferMenuChecks();
+            UpdateSampleRateMenuChecks();
 
             if (histogramControl != null)
             {
@@ -1842,9 +1850,10 @@ namespace AudioHexViewer
             s.Ui.MainDataFormat = _dataViewForm!.comboDisplayMode.SelectedItem as string;
 
             // Analysis (valeurs actuelles, même si on ne les applique pas encore)
-            s.Analysis.BufferSize = analysisBufferSize;
-            s.Analysis.Overlap = analysisOverlap;
-            s.Analysis.SampleSize = analysisSampleSize;
+            s.Analysis.BufferSize  = analysisBufferSize;
+            s.Analysis.Overlap     = analysisOverlap;
+            s.Analysis.SampleSize  = analysisSampleSize;
+            s.Analysis.RequestedSampleRate = _requestedCaptureFormat?.SampleRate ?? 0;
 
             if (histogramControl != null)
                 s.Histogram = histogramControl.GetHistogramSettingsSnapshot();

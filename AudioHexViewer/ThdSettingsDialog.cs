@@ -33,7 +33,6 @@ namespace AudioHexViewer
 
             // Moyennage cohérent
             chkCohAvg.Checked = Result.UseCohAvg;
-            nudCohAvgCount.Value = Math.Min(Math.Max(Result.CohAvgCount, 2), 10000);
 
             AcceptButton = btnOk;
             CancelButton = btnCancel;
@@ -53,7 +52,6 @@ namespace AudioHexViewer
                     ? SpectrumSettings.ThdSettings.ThdUnit.Percent
                     : SpectrumSettings.ThdSettings.ThdUnit.Db,
                 UseCohAvg    = chkCohAvg.Checked,
-                CohAvgCount  = (int)nudCohAvgCount.Value,
             };
         }
     }

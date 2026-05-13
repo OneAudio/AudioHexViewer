@@ -26,9 +26,15 @@ namespace AudioHexViewer
 
     public sealed class AnalysisSettings
     {
-        public int BufferSize { get; set; } = 128 * 1024;
-        public double Overlap { get; set; } = 0.0;
-        public int SampleSize { get; set; } = 131072;
+        public int BufferSize  { get; set; } = 128 * 1024;
+        public double Overlap  { get; set; } = 0.0;
+        public int SampleSize  { get; set; } = 131072;
+
+        /// <summary>
+        /// Sample rate demandé en mode Exclusif (Hz).
+        /// 0 = Auto (Windows Shared Mode, valeur par défaut).
+        /// </summary>
+        public int RequestedSampleRate { get; set; } = 0;
     }
 
     public sealed class HistogramSettings
@@ -100,11 +106,8 @@ public sealed class ThdSettings
             public ThdUnit Unit { get; set; } = ThdUnit.Db;
 
             // ── Moyennage cohérent (accumulation complexe des bins FFT) ──────────
-            // Supprime le bruit incohérent de 10·log10(N) dB tout en conservant
-            // la fondamentale et les harmoniques (signaux à phase stable).
-            // Condition : la source doit être fixe en fréquence (oscillateur stable).
+            // Le nombre de frames est pris dans la combo "Averaging" de l'analyseur.
             public bool UseCohAvg { get; set; } = false;
-            public int CohAvgCount { get; set; } = 100; // frames à accumuler par cycle
 
             public enum ThdUnit
             {
