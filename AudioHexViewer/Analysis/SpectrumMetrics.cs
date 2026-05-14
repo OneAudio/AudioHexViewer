@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace AudioHexViewer
@@ -240,11 +240,6 @@ namespace AudioHexViewer
             }
 
 
-            if (kSpur >= 0 && pSpur > 0.0)
-            {
-                spurDb = 10.0 * Math.Log10(pSpur);
-                spurHz = BinToFreq(kSpur, sampleRate, fftSize);
-            }
 
             // 8) Ratios et dB
             bool valid = (pFund > 0.0);

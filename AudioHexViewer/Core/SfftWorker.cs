@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -82,7 +82,7 @@ namespace AudioHexViewer.Core
 
         
         public SfftWorker(RingBufferStereoFloat ring, SfftStats stats, int sampleRate, int fftSize, int hop,
-        object windowTypeObj, ConcurrentQueue<SpectrumFrame> outQueue)
+        WindowType windowType, ConcurrentQueue<SpectrumFrame> outQueue)
 
 
 
@@ -108,164 +108,15 @@ namespace AudioHexViewer.Core
 
             _outQueue = outQueue ?? throw new ArgumentNullException(nameof(outQueue));
 
-            // Fenêtre : dépend de la sélection UI (Windowing)
-            _window = BuildWindow(_fftSize, windowTypeObj, out _windowSum);
+            // Fenêtre : via WindowFactory (cache partagé, zéro allocation en chemin chaud)
+            var winEntry = WindowFactory.Get(windowType, _fftSize);
+            _window    = winEntry.Coeffs;
+            _windowSum = winEntry.Sum;
 
             // Axe fréquence
             _freqAxis = AudioHexViewer.SpectrumAnalyzer.BuildFreqAxis(_sampleRate, _fftSize);
 
         }
-        // 7-term Blackman-Harris window
-        private static double[] BuildBlackmanHarris7(int N, out double sum)
-        {
-            sum = 0.0;
-            var win = new double[N];
-            if (N <= 1)
-            {
-                if (N == 1) { win[0] = 1.0; sum = 1.0; }
-                return win;
-            }
-
-            // mêmes coefficients que SpectrumAnalyzer.BlackmanHarris7
-            const double a0 = 0.27105140069342;
-            const double a1 = 0.43329793923448;
-            const double a2 = 0.21812299954311;
-            const double a3 = 0.06592544638803;
-            const double a4 = 0.01081174209837;
-            const double a5 = 0.00077658482522;
-            const double a6 = 0.00001388721735;
-
-            double denom = N - 1;
-            for (int n = 0; n < N; n++)
-            {
-                double w = 2.0 * System.Math.PI * n / denom;
-                double v = a0
-                         - a1 * System.Math.Cos(w)
-                         + a2 * System.Math.Cos(2.0 * w)
-                         - a3 * System.Math.Cos(3.0 * w)
-                         + a4 * System.Math.Cos(4.0 * w)
-                         - a5 * System.Math.Cos(5.0 * w)
-                         + a6 * System.Math.Cos(6.0 * w);
-
-                win[n] = v;
-                sum += v;
-            }
-
-            return win;
-        }
-        //
-        // 4-term Blackman-Harris window
-        private static double[] BuildBlackmanHarris4(int N, out double sum)
-        {
-            sum = 0.0;
-            var win = new double[N];
-            if (N <= 1)
-            {
-                if (N == 1) { win[0] = 1.0; sum = 1.0; }
-                return win;
-            }
-
-            // Coefficients BH4 (4-term Blackman-Harris, "classic" Nuttall / BH4)
-            // w[n] = a0 - a1 cos(w) + a2 cos(2w) - a3 cos(3w)
-            const double a0 = 0.35875;
-            const double a1 = 0.48829;
-            const double a2 = 0.14128;
-            const double a3 = 0.01168;
-
-            double denom = N - 1;
-            for (int n = 0; n < N; n++)
-            {
-                double w = 2.0 * System.Math.PI * n / denom;
-                double v = a0
-                         - a1 * System.Math.Cos(w)
-                         + a2 * System.Math.Cos(2.0 * w)
-                         - a3 * System.Math.Cos(3.0 * w);
-
-                win[n] = v;
-                sum += v;
-            }
-
-            return win;
-        }
-
-        //
-        private static double[] BuildWindow(int N, object windowTypeObj, out double sum)
-        {
-            string name = windowTypeObj?.ToString() ?? "BlackmanHarris7";
-
-            switch (name)
-            {
-                case "Rectangular":
-                    return BuildRectangular(N, out sum);
-
-                case "Hann":
-                    return BuildHann(N, out sum);
-
-                case "Hamming":
-                    return BuildHamming(N, out sum);
-
-                case "BlackmanHarris4":
-                    return BuildBlackmanHarris4(N, out sum);
-
-                case "BlackmanHarris7":
-                default:
-                    return BuildBlackmanHarris7(N, out sum);
-            }
-
-        }
-
-        private static double[] BuildRectangular(int N, out double sum)
-        {
-            sum = 0.0;
-            var win = new double[N];
-            for (int i = 0; i < N; i++)
-            {
-                win[i] = 1.0;
-                sum += 1.0;
-            }
-            return win;
-        }
-
-        private static double[] BuildHann(int N, out double sum)
-        {
-            sum = 0.0;
-            var win = new double[N];
-            if (N <= 1)
-            {
-                if (N == 1) { win[0] = 1.0; sum = 1.0; }
-                return win;
-            }
-
-            double denom = N - 1;
-            for (int n = 0; n < N; n++)
-            {
-                double v = 0.5 * (1.0 - System.Math.Cos(2.0 * System.Math.PI * n / denom));
-                win[n] = v;
-                sum += v;
-            }
-            return win;
-        }
-
-        private static double[] BuildHamming(int N, out double sum)
-        {
-            sum = 0.0;
-            var win = new double[N];
-            if (N <= 1)
-            {
-                if (N == 1) { win[0] = 1.0; sum = 1.0; }
-                return win;
-            }
-
-            double denom = N - 1;
-            for (int n = 0; n < N; n++)
-            {
-                double v = 0.54 - 0.46 * System.Math.Cos(2.0 * System.Math.PI * n / denom);
-                win[n] = v;
-                sum += v;
-            }
-            return win;
-        }
-
         //
         public void Start()
         {

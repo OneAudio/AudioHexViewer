@@ -614,8 +614,8 @@ namespace AudioHexViewer
 
 
             // 5) Redémarrer le worker avec les bons paramètres
-            var windowTypeObj = spectrumControl?.SelectedWindowType ?? (object)"BlackmanHarris7";
-            _sfftWorker = new SfftWorker(_floatRing, _sfftStats, fs, fftSize, hop, windowTypeObj, _sfftFrames);
+            var windowType = spectrumControl?.SelectedWindowType ?? WindowType.BlackmanHarris7;
+            _sfftWorker = new SfftWorker(_floatRing, _sfftStats, fs, fftSize, hop, windowType, _sfftFrames);
 
             // Applique le mode voie courant dès la création du worker
             ApplyActiveChannelsToWorker(spectrumControl?.SelectedChannelMode ?? "L+R");
