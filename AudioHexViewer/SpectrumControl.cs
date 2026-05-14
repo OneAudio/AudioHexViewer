@@ -1,4 +1,16 @@
-using MathNet.Numerics;
+// ═══════════════════════════════════════════════════════════════════════════
+// SpectrumControl.cs  —  Shell du contrôle + état central + UpdateSpectrumChartAndStats
+//
+// La classe SpectrumControl est découpée en fichiers partiels (Phase 4) :
+//   SpectrumControl.Pipeline.cs   — FeedExternalSpectrum, FeedExternalTimeStats24, Decimate
+//   SpectrumControl.Rendering.cs  — Init chart, axes, thème, dialogs, export
+//   SpectrumControl.PostPaint.cs  — Dessin GDI+ custom (PostPaint, stats panel)
+//   SpectrumControl.Cursors.cs    — Curseurs fréquence + détection de pics
+//   SpectrumControl.Overlays.cs   — Bibliothèque d'overlays
+//   SpectrumControl.Bode.cs       — Mode FRF / Bode Plot
+//   Core/DspMath.cs               — Maths DSP pures (ComplexBinsToDbFs, etc.)
+// ═══════════════════════════════════════════════════════════════════════════
+using AudioHexViewer.Core;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -81,43 +93,6 @@ namespace AudioHexViewer
 
             return (Math.Max(0.0, min), Math.Min(nyq, max));
         }
-        //
-        private (double minDeg, double maxDeg) GetVisiblePhaseRangeDeg_ForFitY2()
-        {
-            // Fit demandé sur données visibles (plot)
-            var phase = _plotFrfPhaseDeg;
-            var fx = _plotFreqAxis;
-
-            // Si pas de phase dispo -> fallback safe
-            if (phase == null || fx == null || phase.Length == 0 || fx.Length != phase.Length)
-                return (-180.0, +180.0);
-
-            var (fMin, fMax) = GetVisibleFreqRangeHz();
-
-            double min = double.PositiveInfinity;
-            double max = double.NegativeInfinity;
-
-            for (int i = 0; i < phase.Length; i++)
-            {
-                double f = fx[i];
-                if (f < fMin || f > fMax) continue;
-
-                double p = phase[i];
-                if (double.IsNaN(p) || double.IsInfinity(p)) continue;
-
-                if (p < min) min = p;
-                if (p > max) max = p;
-            }
-
-            if (!double.IsFinite(min) || !double.IsFinite(max))
-                return (-180.0, +180.0);
-
-            // Spec: Fit borné à +/-180°
-            if (min < -180.0) min = -180.0;
-            if (max > +180.0) max = +180.0;
-
-            return (min, max);
-        }
 
         //
         // --- Unités volts pour l’affichage RMS/Peak ---
@@ -178,14 +153,6 @@ namespace AudioHexViewer
         private Color InfoTextColor => Color.FromArgb(_colors.InfoTextArgb);
 
         // Couleur d’un overlay selon son index de slot
-        private Color GetOverlaySlotColor(int slotIndex)
-        {
-            var arr = _colors.OverlaySlotArgb;
-            if (arr != null && slotIndex >= 0 && slotIndex < arr.Length)
-                return Color.FromArgb(arr[slotIndex]);
-            // fallback compat
-            return Color.FromArgb(_colors.OverlayArgb);
-        }
         //
         private ChartDashStyle GetOverlayDashStyle()
         {
@@ -220,12 +187,6 @@ namespace AudioHexViewer
         public string SelectedChannelMode => comboChannel.SelectedItem as string ?? "L+R";
 
         // FRF / Bode : Right = entrée, Left = sortie
-        private bool IsFrfMode()
-        {
-            var m = SelectedChannelMode ?? "";
-            return m.Equals("L/R", StringComparison.OrdinalIgnoreCase)
-                || m.Equals("Bode Plot", StringComparison.OrdinalIgnoreCase); // si tu l'utilises dans l'UI
-        }
 
         public bool IsLeftChannelActive =>
         SelectedChannelMode == "Left" || SelectedChannelMode == "L+R" || SelectedChannelMode == "Bode Plot";
@@ -250,112 +211,9 @@ namespace AudioHexViewer
             UpdateSpectrumChartAndStats();
         }
 
-        private void ApplyChartTheme()
-        {
-            if (chartSpectrum == null || chartSpectrum.ChartAreas.Count == 0)
-                return;
-
-            // Fond du contrôle Chart (marges / zones hors "plot") : garder la couleur du parent.
-            chartSpectrum.BackColor = chartSpectrum.Parent?.BackColor ?? SystemColors.Control;
-            var area = chartSpectrum.ChartAreas.FindByName("SpectrumArea") ?? chartSpectrum.ChartAreas[0];
-            area.BackColor = BackgroundColor;
-
-            // Grilles X/Y (major+minor). Les intervalles sont réglés ailleurs, ici on ne fait que les couleurs.
-            area.AxisX.MajorGrid.LineColor = GridMajorColor;
-            area.AxisY.MajorGrid.LineColor = GridMajorColor;
-            area.AxisX.MinorGrid.LineColor = GridMinorColor;
-            area.AxisY.MinorGrid.LineColor = GridMinorColor;
-
-            // Couleurs des labels. Note: le Chart WinForms n'a pas de "minor labels" texte distincts,
-            // donc LabelMinor s'applique aux ticks minor.
-            area.AxisX.LabelStyle.ForeColor = LabelMajorColor;
-            area.AxisY.LabelStyle.ForeColor = LabelMajorColor;
-            area.AxisX.TitleForeColor = LabelMajorColor;
-            area.AxisY.TitleForeColor = LabelMajorColor;
-
-            // Axis line + ticks = LabelMajor (minor ticks = LabelMinor)
-            area.AxisX.LineColor = LabelMajorColor;
-            area.AxisY.LineColor = LabelMajorColor;
-            area.AxisX.MajorTickMark.LineColor = LabelMajorColor;
-            //area.AxisY.MajorTickMark.LineColor = LabelMajorColor;
-            area.AxisX.MinorTickMark.LineColor = LabelMinorColor;
-            //area.AxisY.MinorTickMark.LineColor = LabelMinorColor;
-
-            // --------------------------------------------------------------------
-            // Ticks majeurs : réduire leur longueur pour éviter qu’ils “touchent”
-            // nos labels custom (major labels dessinés à la main).
-            // --------------------------------------------------------------------
-            area.AxisY.MajorTickMark.Size = 0.5f;
-            area.AxisY2.MajorTickMark.Size = 0.5f;
-
-            // (Optionnel) si tu veux aussi uniformiser le style :
-            area.AxisY.MajorTickMark.TickMarkStyle = TickMarkStyle.OutsideArea;
-            area.AxisY2.MajorTickMark.TickMarkStyle = TickMarkStyle.OutsideArea;
 
 
-            // Activer les ticks "minor" pour que LabelMinor soit visible (sinon le Chart garde ses défauts).
-            area.AxisX.MinorTickMark.Enabled = false;
-            area.AxisY.MinorTickMark.Enabled = false;
-            area.AxisX.MinorTickMark.Size = 1f;
-            area.AxisY.MinorTickMark.Size = 1f;
 
-
-            // Axes secondaires (au cas où ils seraient activés)
-            area.AxisX2.MajorGrid.LineColor = GridMajorColor;
-            area.AxisY2.MajorGrid.LineColor = GridMajorColor;
-            area.AxisX2.MinorGrid.LineColor = GridMinorColor;
-            area.AxisY2.MinorGrid.LineColor = GridMinorColor;
-            area.AxisX2.LabelStyle.ForeColor = LabelMajorColor;
-            area.AxisY2.LabelStyle.ForeColor = LabelMajorColor;
-            area.AxisX2.LineColor = LabelMajorColor;
-            area.AxisY2.LineColor = LabelMajorColor;
-            area.AxisX2.MajorTickMark.LineColor = LabelMajorColor;
-            area.AxisY2.MajorTickMark.LineColor = LabelMajorColor;
-            area.AxisX2.MinorTickMark.LineColor = LabelMinorColor;
-            area.AxisY2.MinorTickMark.LineColor = LabelMinorColor;
-            // On remplace les labels majeurs du Chart par notre rendu PostPaint (deterministe)
-            area.AxisY2.LabelStyle.ForeColor = Color.Transparent;
-
-
-            chartSpectrum.Invalidate();
-        }
-
-        private void ApplyLogXMinorGridStripLines(Axis axisX)
-        {
-            // Pour un axe logarithmique, MinorGrid du Chart n'est pas exploitable pour avoir les lignes 2..9 par décade.
-            // On les simule avec des StripLines (1 par multiplicateur) en coordonnées log10.
-            axisX.StripLines.Clear();
-
-            for (int mult = 2; mult <= 9; mult++)
-            {
-                var sl = new StripLine
-                {
-                    Interval = 1.0, // chaque décade
-                    IntervalOffset = Math.Log10(mult), // position 2..9 dans la décade en unités log
-                    StripWidth = 0.0,
-                    BorderColor = GridMinorColor,
-                    BorderDashStyle = ChartDashStyle.Dot,
-                    BorderWidth = 1
-                };
-                axisX.StripLines.Add(sl);
-            }
-        }
-
-
-        private void ApplyCursorTheme()
-        {
-            // Labels d'info des curseurs
-            if (_lblCursorLInfo != null) _lblCursorLInfo.ForeColor = FftLeftColor;
-            if (_lblCursorRInfo != null) _lblCursorRInfo.ForeColor = FftRightColor;
-
-            // Couleurs des marqueurs (triangles) selon voie trackée (valeur par défaut = FFT)
-            _cursorMarkLColor = FftLeftColor;
-            _cursorMarkRColor = FftRightColor;
-
-            // Couleurs des lignes de curseur
-            if (_cursorLineL != null) _cursorLineL.LineColor = Color.FromArgb(180, FftLeftColor);
-            if (_cursorLineR != null) _cursorLineR.LineColor = Color.FromArgb(180, FftRightColor);
-        }
         //
         // 
         //private bool _cursorUiBindDone;
@@ -556,6 +414,51 @@ namespace AudioHexViewer
         private double[]? lastTimeLeft = null;
         private double[]? lastTimeRight = null;
 
+        // ── Optimisation rendu (Phase 5) ──────────────────────────────────────────
+        // Séries pré-allouées : évite new Series() + N×AddXY() par frame.
+        // Initialisées paresseusement à la 1ère frame (EnsureSeriesInited).
+        private Series? _serLeft;
+        private Series? _serRight;
+        private Series? _serPeakLeft;
+        private Series? _serPeakRight;
+        private Series? _serPhase;
+        private bool    _seriesInited;
+
+        // ── Cache axe (Phase 6) ────────────────────────────────────────────────────
+        // Skip les 84 assignments area.Axis* si les paramètres n'ont pas changé.
+        // Réinitialisé quand l'utilisateur change une limite, le SR, ou la taille du chart.
+        private double _axCachedFmin   = double.NaN;
+        private double _axCachedFmax   = double.NaN;
+        private double _axCachedYmin   = double.NaN;
+        private double _axCachedYmax   = double.NaN;
+        private double _axCachedYminor = double.NaN;
+        private bool   _axCachedUseLog = false;
+        private System.Drawing.Size _axCachedChartSize;
+
+        /// <summary>Invalide le cache d'axe — à appeler quand l'utilisateur change
+        /// une limite custom, le mode log/lin, la résolution FFT ou la fréquence d'échantillonnage.</summary>
+        // ── Buffers DSP pré-alloués pour FeedExternalSpectrum (Phase 7) ─────────────
+        // Évite 4 × new double[N/2+1] par frame (jusqu'à 64 MB/frame à 384kHz/N=4M).
+        // Réalloués uniquement si N change (changement de config).
+        private double[]? _binsPowL;   // ComplexBinsToPowerInto output L
+        private double[]? _binsPowR;   // ComplexBinsToPowerInto output R
+        private double[]? _binsDbL;    // PowerToDbFsInto output L (= currentLeftSpectrum)
+        private double[]? _binsDbR;    // PowerToDbFsInto output R (= currentRightSpectrum)
+
+        private static double[] EnsureDspBuf(ref double[]? buf, int n)
+        {
+            if (buf == null || buf.Length != n)
+                buf = new double[n];
+            return buf;
+        }
+
+                internal void InvalidateAxisCache()
+        {
+            _axCachedFmin   = double.NaN;
+            _axCachedYmin   = double.NaN;
+        }
+
+
         private TextAnnotation? _overlayInfoAnno;
 
         // Annotations curseur
@@ -676,20 +579,6 @@ namespace AudioHexViewer
 
         //     
         // Formatage axe Y (dBFS), divisions secondaires
-        private static string FormatDbMinor(double db, double stepMinor)
-        {
-            if (!(stepMinor > 0))
-                return db.ToString("0");
-
-            // Si le pas mineur est entier => entier
-            if (Math.Abs(stepMinor - Math.Round(stepMinor)) < 1e-9)
-                return db.ToString("0");
-
-            // Sinon => décimales cohérentes avec le pas (max 2)
-            int decimals = GetStepDecimals(stepMinor);
-
-            return db.ToString("F" + decimals);
-        }
         //
         // Calcul du rectangle "plot" (interne) en pixels
         private static RectangleF GetPlotRectPixels(Chart chart, ChartArea area)
@@ -730,117 +619,8 @@ namespace AudioHexViewer
         /// Permet d'afficher jusqu'à ~0,001 Hz si la résolution FFT le permet.</summary>
         private const double LogXAbsMinHz = 1e-6;
 
-        private static int CountTrailingZeros(int value)
-        {
-            if (value == 0) return 9; // cas spécial (ne devrait pas arriver ici)
-            int count = 0;
-            while (value % 10 == 0)
-            {
-                count++;
-                value /= 10;
-            }
-            return count;
-        }
         //
         // Choix du meilleur pas exact (sans ajustement de span)
-        private static bool TryChooseBestExactStep(int spanHz, out int segments, out int stepHz)
-        {
-            int[] candidates = { 3, 4, 5, 6, 7, 8, 9, 10 };
-
-            int bestSeg = -1;
-            int bestStep = -1;
-            int bestZeros = -1;
-
-            foreach (int s in candidates)
-            {
-                if (s <= 0) continue;
-                if (spanHz % s != 0) continue;
-
-                int step = spanHz / s;
-                int zeros = CountTrailingZeros(step);
-
-                // priorité 1 : max trailing zeros
-                // tie-break  : step le plus grand (moins chargé)
-                if (zeros > bestZeros || (zeros == bestZeros && step > bestStep))
-                {
-                    bestZeros = zeros;
-                    bestStep = step;
-                    bestSeg = s;
-                }
-            }
-
-            if (bestSeg > 0)
-            {
-                segments = bestSeg;
-                stepHz = bestStep;
-                return true;
-            }
-
-            segments = 0;
-            stepHz = 0;
-            return false;
-        }
-        //
-        private static (int Segments, int StepHz, int SpanAdjustedHz) ChooseBestStepWithSpanAdjustment(int spanHz)
-        {
-            // 1) Si span exact => on prend direct
-            if (TryChooseBestExactStep(spanHz, out int seg, out int step))
-                return (seg, step, spanHz);
-
-            // 2) Sinon, on ajuste span autour de spanHz (recherche locale)
-            // Recherche dans une fenêtre raisonnable +/- 2000 Hz (modifiable)
-            const int searchRadius = 2000;
-
-            int bestSeg = 0;
-            int bestStep = 0;
-            int bestSpanAdj = spanHz;
-            int bestZeros = -1;
-            int bestDelta = int.MaxValue;
-
-            for (int delta = 1; delta <= searchRadius; delta++)
-            {
-                // On teste spanHz - delta puis spanHz + delta (symétrique)
-                int[] spansToTry = { spanHz - delta, spanHz + delta };
-
-                foreach (int candidateSpan in spansToTry)
-                {
-                    if (candidateSpan <= 0) continue;
-
-                    if (TryChooseBestExactStep(candidateSpan, out int s, out int st))
-                    {
-                        int zeros = CountTrailingZeros(st);
-
-                        // priorité 1 : max trailing zeros
-                        // priorité 2 : delta minimal (span ajusté le plus proche)
-                        // tie-break : step le plus grand
-                        if (zeros > bestZeros ||
-                            (zeros == bestZeros && delta < bestDelta) ||
-                            (zeros == bestZeros && delta == bestDelta && st > bestStep))
-                        {
-                            bestZeros = zeros;
-                            bestDelta = delta;
-                            bestSeg = s;
-                            bestStep = st;
-                            bestSpanAdj = candidateSpan;
-                        }
-                    }
-                }
-
-                // petit early-exit : si on trouve 4 zéros (ex 10000), c'est déjà excellent
-                if (bestZeros >= 4)
-                    break;
-            }
-
-            // fallback absolu (ne devrait pas arriver) : 6 segments
-            if (bestSeg == 0)
-            {
-                bestSeg = 6;
-                bestStep = Math.Max(1, spanHz / bestSeg);
-                bestSpanAdj = bestStep * bestSeg;
-            }
-
-            return (bestSeg, bestStep, bestSpanAdj);
-        }
 
         public SpectrumControl()
         {
@@ -918,98 +698,8 @@ namespace AudioHexViewer
         /// Initialise un spectre "vide" (niveau plancher) pour forcer le rendu du graphe au démarrage.
         /// UI only : ne touche pas au worker FFT.
         /// </summary>
-        private void InitializeEmptySpectrumDisplay()
-        {
-            // Ne pas écraser un état déjà alimenté (cas rare : designer / reload)
-            if (freqAxis != null && (currentLeftSpectrum != null || currentRightSpectrum != null))
-                return;
 
-            // Valeurs "safe" pour permettre un premier rendu (axes/grille),
-            // remplacées dès la première FeedExternalSpectrum().
-            if (lastFftSize <= 0)
-                lastFftSize = 65536; // valeur présente dans FftSizeOptions
-            if (_sampleRate <= 0)
-                _sampleRate = 44100; // fallback, remplacé par le vrai sample rate ensuite
 
-            int bins = (lastFftSize / 2) + 1;
-
-            freqAxis = new double[bins];
-
-            currentLeftSpectrum = new double[bins];
-            currentRightSpectrum = new double[bins];
-
-            for (int i = 0; i < bins; i++)
-            {
-                freqAxis[i] = i * (double)_sampleRate / lastFftSize;
-
-                // Plancher d'affichage (les deux voies) pour éviter une zone blanche
-                // si l'utilisateur démarre sur "Right" ou "L+R" avant la 1ère acquisition.
-                currentLeftSpectrum[i] = -200.0;
-                currentRightSpectrum[i] = -200.0;
-            }
-
-            // IMPORTANT : le tracé (Chart) utilise désormais les tableaux "PLOT" (_plot*)
-            // construits par BuildPlotDataFromFull(). Au démarrage, sans première frame FFT,
-            // ces tableaux n'existent pas encore => graphe vide.
-            // On construit donc aussi la version décimée ici, uniquement pour forcer un rendu
-            // initial (axes/grille + courbes au plancher), sans toucher au worker FFT.
-            BuildPlotDataFromFull();
-
-            UpdateWindowInfo();
-            UpdateOverlayInfo();
-            UpdateSpectrumChartAndStats();
-        }
-
-        //
-        private void EnsureVoltLayoutInit()
-        {
-            if (_voltLayoutInit) return;
-            // Ces contrôles existent même si la zone Stats est masquée / déplacée par le layout du host.
-            _leftMeasOrigLoc = lblLeftMeas.Location;
-            _leftMeasOrigSize = lblLeftMeas.Size;
-            _rightMeasOrigLoc = lblRightMeas.Location;
-            _rightMeasOrigSize = lblRightMeas.Size;
-            _voltLayoutInit = true;
-        }
-
-        private void SetVoltLabelsVisible(bool showLeft, bool showRight)
-        {
-            EnsureVoltLayoutInit();
-
-            // LEFT
-            if (lblLeftRmsV != null && lblLeftPeakV != null)
-            {
-                lblLeftRmsV.Visible = showLeft;
-                lblLeftPeakV.Visible = showLeft;
-                if (showLeft)
-                {
-                    lblLeftMeas.Location = new System.Drawing.Point(_leftMeasOrigLoc.X, _leftMeasOrigLoc.Y + 46);
-                    lblLeftMeas.Size = new System.Drawing.Size(_leftMeasOrigSize.Width, Math.Max(20, _leftMeasOrigSize.Height - 46));
-                }
-                else
-                {
-                    lblLeftMeas.Location = _leftMeasOrigLoc;
-                    lblLeftMeas.Size = _leftMeasOrigSize;
-                }
-            }
-
-            // RIGHT
-            if (lblRightRmsV != null && lblRightPeakV != null)
-            {
-                lblRightRmsV.Visible = showRight;
-                lblRightPeakV.Visible = showRight;
-                if (showRight)
-                {
-                    lblRightMeas.Location = new System.Drawing.Point(_rightMeasOrigLoc.X, _rightMeasOrigLoc.Y + 46);
-                    lblRightMeas.Size = new System.Drawing.Size(_rightMeasOrigSize.Width, Math.Max(20, _rightMeasOrigSize.Height - 46));
-                }
-                else
-                {
-                    lblRightMeas.Location = _rightMeasOrigLoc;
-                    lblRightMeas.Size = _rightMeasOrigSize;
-                }
-            }
-        }
 
         private static double OffsetDbFromGain(double gainVrmsPerFs)
         {
@@ -1240,98 +930,6 @@ namespace AudioHexViewer
 
             return (min, max);
         }
-        //
-        private void ChartSpectrum_FormatNumber(object sender, FormatNumberEventArgs e)
-        {
-            // On ne touche qu’aux labels d’axes
-            if (e.ElementType != ChartElementType.AxisLabels)
-                return;
-
-            // Heuristique fiable dans TON graphe :
-            // - Axe Y = valeurs négatives (dBFS)
-            // - Axe X = fréquences >= 0
-            double v = e.Value;
-
-            // --- IMPORTANT (FRF/Phase) -------------------------------------------------
-            // Le handler FormatNumber ne sait pas sur quel axe il travaille.
-            // Donc si l'axe X est en log, il masque tous les labels positifs non "decades".
-            // Problème : l'axe Phase (Y2) contient des valeurs positives (+90, +180) => masquées.
-            // On détecte ici les labels typiques de la phase et on bypass le filtrage log.
-            // ---------------------------------------------------------------------------
-            if (IsFrfMode())
-            {
-                // Labels phase attendus : multiples de 90° dans une plage raisonnable.
-                // (évite d'impacter l'axe X : ses decades sont 1,10,100,1k,...)
-                const double eps = 1e-9;
-                bool isPhaseTick =
-                    (v >= -360.0 && v <= 360.0) &&
-                    (Math.Abs((v / 90.0) - Math.Round(v / 90.0)) < eps);
-
-                if (isPhaseTick)
-                {
-                    // format simple, sans "Hz", sans "k", etc.
-                    e.LocalizedValue = v.ToString("0", CultureInfo.InvariantCulture);
-                    return;
-                }
-            }
-
-            // --- En LOG : ne garder que les décades 1,10,100,1k,10k,100k... ---
-            if (_xAxisIsLog && v > 0.0)
-            {
-                double p = Math.Log10(v);
-                double pr = Math.Round(p);
-
-                // tolérance : accepte uniquement v ~= 10^n
-                double decade = Math.Pow(10.0, pr);
-                if (Math.Abs(v - decade) > decade * 1e-6)
-                {
-                    e.LocalizedValue = ""; // cache les labels intermédiaires (2,3,4,... ou 19.99)
-                    return;
-                }
-
-                // ici c’est une décade => on affiche proprement (1,10,100,1k,...)
-                e.LocalizedValue = FormatHzK(decade);
-                return;
-            }
-
-            if (v >= 1000.0)
-            {
-                double k = v / 1000.0;
-
-                // 1k, 2k, 10k, 20k... (et 1.5k si un jour ça arrive)
-                bool isInt = Math.Abs(k - Math.Round(k)) < 1e-9;
-                e.LocalizedValue = isInt ? $"{k:0}k" : $"{k:0.#}k";
-            }
-            else if (v >= 0.0)
-            {
-                e.LocalizedValue = $"{v:0}";
-            }
-            else
-            {
-                // Axe Y (dBFS) : afficher des décimales si le pas (major) n'est pas entier
-                int decimals = GetStepDecimals(_currentYMajor);
-                e.LocalizedValue = v.ToString("F" + decimals);
-            }
-
-        }
-        //
-        private static int GetStepDecimals(double step)
-        {
-            if (!(step > 0))
-                return 0;
-
-            // si step est un entier (à epsilon près) -> 0 décimales
-            if (Math.Abs(step - Math.Round(step)) < 1e-9)
-                return 0;
-
-            // sinon on limite à 2 décimales (puisque tu arrondis minor à 2 décimales)
-            // Ex: 12.5 -> 1 décimale, 12.25 -> 2 décimales
-            double s10 = step * 10.0;
-            if (Math.Abs(s10 - Math.Round(s10)) < 1e-9)
-                return 1;
-
-            return 2;
-        }
 
         //
 
@@ -1367,207 +965,9 @@ namespace AudioHexViewer
             UpdateWindowInfo();
             UpdateOverlayInfo();
         }
-        //
-        private void UpdateAvgProgressUi(int k, int n)
-        {
-            if (lblAvgProgress == null) return;
-
-            if (n <= 1) lblAvgProgress.Text = "";
-            else lblAvgProgress.Text = $"{k}/{n}";
-        }
-        //
-        private void UpdateWindowInfo()
-        {
-            if (_sampleRate <= 0 || lastFftSize <= 0)
-            {
-                lblWindowInfo.Text = "";
-                return;
-            }
-
-            double sec = (double)lastFftSize / _sampleRate;
-            lblWindowInfo.Text = $"≈ {sec:F2} s";
-        }
-
-        private void BtnResetAvg_Click(object? sender, EventArgs e)
-        {
-            ResetAveragingState();
-
-            // Pas de recalcul immédiat ici : on attend la prochaine frame externe
-            chartSpectrum.Invalidate();
-        }
 
 
-        // 
-        private void InitChartAppearance()
-        {
-            var areas = chartSpectrum.ChartAreas;
-            if (areas.Count == 0)
-            {
-                var area = new ChartArea("SpectrumArea");
-                chartSpectrum.ChartAreas.Add(area);
-            }
 
-            chartSpectrum.Series.Clear();
-
-            var area0 = chartSpectrum.ChartAreas[0];
-            area0.Name = "SpectrumArea";
-            area0.AxisX.Title = "Frequency (Hz)";
-            area0.AxisY.Title = "Level (dBFS)";
-            area0.AxisY.Minimum = -200;
-            area0.AxisY.Maximum = 0;
-
-
-            ApplyChartTheme();
-        }
-        //
-        private void InitOverlayAnnotation()
-        {
-            // éviter de créer plusieurs fois
-            if (_overlayInfoAnno != null)
-                return;
-
-            // Vérifier qu'on a bien un ChartArea
-            if (chartSpectrum.ChartAreas.Count == 0)
-                return;
-
-            // Si une annotation du même nom existe déjà (designer / reload), on la réutilise
-            const string annoName = "OverlayInfo";
-            foreach (var a in chartSpectrum.Annotations)
-            {
-                if (a is TextAnnotation ta && ta.Name == annoName)
-                {
-                    _overlayInfoAnno = ta;
-                    return;
-                }
-            }
-
-            var anno = new TextAnnotation
-            {
-                Name = annoName,
-                Text = "",
-                Visible = false,
-
-                // Très important : coordonnées relatives (0..100)
-                IsSizeAlwaysRelative = true,
-
-                // On clippe à la zone SpectrumArea pour éviter qu'il déborde
-                ClipToChartArea = "SpectrumArea",
-
-                // Style
-                BackColor = Color.FromArgb(160, 230, 230, 230),
-                ForeColor = Color.FromArgb(230, 30, 30, 30),
-                Font = new Font("Segoe UI", 9f, FontStyle.Regular),
-
-                // Alignement du texte dans le bloc
-                Alignment = ContentAlignment.TopRight
-            };
-
-            chartSpectrum.Annotations.Add(anno);
-            _overlayInfoAnno = anno;
-        }
-        //
-        private void UpdateOverlayInfo()
-        {
-            if (_overlayInfoAnno == null)
-                return;
-
-            if (_sampleRate <= 0 || lastFftSize <= 0)
-            {
-                _TopInfoLine = "";
-                _overlayInfoAnno.Visible = false;
-                chartSpectrum.Invalidate();
-                return;
-            }
-
-            // ---- Texte ----
-            string srText = _sampleRate >= 1000
-                ? $"{_sampleRate / 1000.0:F0} kHz"
-                : $"{_sampleRate} Hz";
-
-            int N = lastFftSize;
-
-            int hop = (_hopSamples > 0) ? _hopSamples : N;
-            hop = Math.Max(1, Math.Min(hop, N));
-            double overlapPct = 100.0 * (1.0 - (double)hop / N);
-            if (overlapPct < 0) overlapPct = 0;
-
-            // --- FFT Window ---
-            string winText = lastWindow switch
-            {
-                WindowType.Rectangular => "Rect",
-                WindowType.Hann => "Hann",
-                WindowType.Hamming => "Hamming",
-                WindowType.BlackmanHarris4 => "Blackman-Harris4",
-                WindowType.BlackmanHarris7 => "Blackman-Harris7",
-                _ => "?"
-            };
-
-            // --- Averaging ---
-            // Quand la moyenne cohérente est active, on le mentionne explicitement.
-            bool cohAvgActive = _thdMeasuresEnabled && _thdUi.UseCohAvg;
-            string avgText;
-            if (cohAvgActive)
-            {
-                // "Coherent Avg: N"  ou  "Coherent Avg: Exp α"
-                if (_avgIsExponential)
-                    avgText = $"Coherent Avg: Exp {_avgExpAlpha.ToString("0.##", CultureInfo.InvariantCulture)}";
-                else
-                    avgText = avgTargetCount <= 1
-                        ? "Coherent Avg: 1"
-                        : $"Coherent Avg: {avgTargetCount}";
-            }
-            else if (_avgIsExponential)
-            {
-                avgText = $"Avg: Exp {_avgExpAlpha.ToString("0.##", CultureInfo.InvariantCulture)}";
-            }
-            else
-            {
-                avgText = avgTargetCount <= 1
-                    ? "Avg: No"
-                    : $"Avg:{avgTargetCount}";
-            }
-
-            //// --- AC / DC ---
-            //string acdcText = (chkRemoveDC != null && chkRemoveDC.Checked)
-            //    ? "AC mode"
-            //    : "DC mode";
-
-            // --- Ligne finale ---
-            // --- Résolution FFT : ΔF = SR / N ---
-            double df = (double)_sampleRate / N;
-
-            // Format lisible
-            string dfText = (df >= 1000.0)
-                ? $"{df / 1000.0:F2} kHz"
-                : (df >= 10.0 ? $"{df:F1} Hz" : $"{df:F2} Hz");
-
-            // --- Channel mode (pour affichage) ---
-            // --- Channel mode (pour affichage) ---
-            string channelText = SelectedChannelMode switch
-            {
-                "Left" => "Left",
-                "Right" => "Right",
-                "Bode Plot" => "Bode Plot",
-                "L+R" => "Both",
-                _ => SelectedChannelMode // fallback (affiche la valeur brute si inattendue)
-            };
-
-
-            _TopInfoLine =
-                $"Channel:{channelText}    " +
-                $"SR:{srText}    " +
-                $"N={N:N0}    " +
-                $"ΔF={dfText}    " +
-                $"Overlap:{overlapPct:F1}%     " +
-                $"Win:{winText}    " +
-                $"{avgText}    ";
-            //$"{acdcText}";
-
-
-            _overlayInfoAnno.Visible = false;   // on ne l’utilise plus
-            chartSpectrum.Invalidate();         // force un repaint pour voir la ligne mise à jour
-
-        }
         //
         //private void UpdateAcDcButtonText()
         //{
@@ -1576,253 +976,6 @@ namespace AudioHexViewer
         //    chkRemoveDC.Text = chkRemoveDC.Checked ? "AC" : "DC";
         //}
         //
-        private void UpdateLogLinButtonText()
-        {
-            if (chkLogX == null) return;
-            // Convention : Checked = LOG, Unchecked = LIN
-            chkLogX.Text = chkLogX.Checked ? "LOG" : "LIN";
-        }
-        //
-        //
-        private void InitializeUiOptions()
-        {
-            //
-            chkCursorL.CheckedChanged += (s, e) => UpdateCursorVisibility();
-            chkCursorR.CheckedChanged += (s, e) => UpdateCursorVisibility();
-
-            // Window
-            comboWindow.Items.Clear();
-            comboWindow.Items.Add("Rectangular");
-            comboWindow.Items.Add("Hann");
-            comboWindow.Items.Add("Hamming");
-            comboWindow.Items.Add("Blackman-Harris 4");
-            comboWindow.Items.Add("Blackman-Harris  7");
-            comboWindow.SelectedIndex = 0; // Fênêtre par défaut : 0= Rectangulaire
-            comboWindow.SelectedIndexChanged += (s, e) =>
-            {
-                if (_isRestoringSettings)
-                    return;
-
-                var newWin = (WindowType)comboWindow.SelectedIndex;
-                if (newWin == lastWindow)
-                    return;
-
-                lastWindow = newWin;
-                WindowTypeChangedForExternalFft?.Invoke(this, EventArgs.Empty);
-                // IMPORTANT (anti-artifacts)
-                // Changer de fenetre modifie la ponderation des bins.
-                // On reinitialise la moyenne pour eviter des traces visuelles.
-                ResetAveragingState();
-                UpdateOverlayInfo();
-
-            };
-
-
-
-            // Averaging options
-            comboAveraging.Items.Clear();
-            comboAveraging.Items.Add("None");
-
-            int[] av = new[] { 2, 4, 8, 16, 32, 64, 128 };
-            foreach (var a in av) comboAveraging.Items.Add(a.ToString(CultureInfo.InvariantCulture));
-
-            // Exponential options (alpha)
-            comboAveraging.Items.Add("Exponential 0.5");
-            comboAveraging.Items.Add("Exponential 0.75");
-            comboAveraging.Items.Add("Exponential 0.88");
-            comboAveraging.Items.Add("Exponential 0.94");
-            comboAveraging.Items.Add("Exponential 0.97");
-
-            // Default
-            comboAveraging.SelectedIndex = 0;
-
-            comboAveraging.SelectedIndexChanged += (s, e) =>
-            {
-                if (_isRestoringSettings) return;
-
-                string txt = comboAveraging.SelectedItem as string ?? "None";
-
-                _avgIsExponential = false;
-                _avgExpAlpha = 0.0;
-
-                if (txt.StartsWith("Exponential", StringComparison.OrdinalIgnoreCase))
-                {
-                    // format: "Exponential 0.94"
-                    var parts = txt.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length >= 2 &&
-                        double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double a))
-                    {
-                        _avgIsExponential = true;
-                        _avgExpAlpha = a;
-                    }
-
-                    // on garde avgTargetCount à 1 (pas utilisé en mode exp)
-                    avgTargetCount = 1;
-                }
-                else if (txt.Equals("None", StringComparison.OrdinalIgnoreCase))
-                {
-                    avgTargetCount = 1;
-                }
-                else if (int.TryParse(txt, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) && n >= 2)
-                {
-                    avgTargetCount = n;
-                }
-                else
-                {
-                    avgTargetCount = 1;
-                }
-
-                ResetAveragingState();
-                UpdateOverlayInfo();
-
-            };
-
-            ////
-            //// Sélection AC/DC
-            //chkRemoveDC.CheckedChanged += (s, e) =>
-            //{
-            //    if (_isRestoringSettings)
-            //        return;
-
-            //    UpdateAcDcButtonText();
-            //    UpdateOverlayInfo();
-            //};
-
-            //// Initial update
-            //UpdateAcDcButtonText();
-            //UpdateLogLinButtonText();
-
-
-            // Peak-hold
-            if (chkPeakHold != null)
-            {
-                chkPeakHold.Checked = false;
-                // Initial update visuelle
-                UpdateToggleButtonVisual(chkPeakHold);
-
-                chkPeakHold.CheckedChanged += (s, e) =>
-                {
-                    // Quand on active : repartir de zéro pour que le peak-hold soit cohérent
-                    if (chkPeakHold.Checked)
-                        _post.ResetPeakHoldState();
-
-                    // Update visuelle
-                    UpdateToggleButtonVisual(chkPeakHold);
-                    UpdateSpectrumChartAndStats();
-                };
-            }
-
-            // Channel (affichage)
-            comboChannel.Items.Clear();
-            comboChannel.Items.Add("Left");
-            comboChannel.Items.Add("Right");
-            comboChannel.Items.Add("L+R");
-            comboChannel.Items.Add("Bode Plot");
-            comboChannel.SelectedIndex = 2; // Par défaut les 2 voies sont affichées
-
-            comboChannel.SelectedIndexChanged += (s, e) =>
-            {
-                if (_isRestoringSettings)
-                    return;
-
-                // Mise à jour immédiate de l'UI d'unité (même en LIVE)
-                UpdateLevelUnitUi();
-                // F
-                UpdateFrfUiLocks();   // <-- AJOUT
-                // Mise à jour de l'overlay
-                UpdateOverlayInfo();
-
-                // IMPORTANT: en FRF (L/R) on masque le panneau stats -> on récupère toute la largeur
-                ApplyChartStatsMargin(chartSpectrum, invalidate: true, reservedScale: 1f);
-
-                SyncCursorUiFromModel(); // met à jour les libellés Auto/Gain/Phase ou Auto/Left/Right
-                ApplyFrfPhiButtonsUi(); // montre/masque les boutons φ selon IsFrfMode()
-
-
-                // Informe l'extérieur immédiatement (même en LIVE)
-                // => le worker pourra éviter de calculer une voie inutile.
-                ChannelModeChanged?.Invoke(SelectedChannelMode);
-
-                // IMPORTANT :
-                // En mode LIVE on ne force PAS un redraw immédiat, car la voie nouvellement choisie
-                // n'a pas encore son spectre calculé (il arrive au prochain AcquireOnce()).
-                // Forcer un redraw met le Chart en état transitoire (séries vides + log) => exception.
-                if (isLive)
-                    return;
-
-                // Hors live (pause), on peut redessiner ce qu'on a en mémoire
-                UpdateSpectrumChartAndStats();
-            };
-
-
-
-            // Bouton RUN
-            btnRun.Click += (s, e) =>
-            {
-                if (!isLive)
-                {
-                    RunRequested?.Invoke();   // demande à Form1 de lancer READ si besoin
-                    StartFromRun(false);
-                    RunStateChanged?.Invoke(true);
-                }
-                else
-                {
-                    StopFromRun();
-                    RunStateChanged?.Invoke(false);
-                }
-            };
-            // Unité de niveau (FFT) : dBFS / dBV (si calibré)
-            if (comboLevelUnit != null)
-            {
-                comboLevelUnit.Items.Clear();
-                comboLevelUnit.Items.Add("dBFS");
-                comboLevelUnit.Items.Add("dBV");
-                comboLevelUnit.SelectedIndex = 0;
-
-                comboLevelUnit.SelectedIndexChanged += (s, e) =>
-                {
-                    if (_isRestoringSettings)
-                        return;
-
-                    _levelUnit = (comboLevelUnit.SelectedItem as string) ?? "dBFS";
-
-                    // Si on n'a pas la calibration pour le mode courant, on force dBFS
-                    if (_levelUnit == "dBV" && !IsDbvAvailableForCurrentMode())
-                    {
-                        _levelUnit = "dBFS";
-                        comboLevelUnit.SelectedIndex = 0;
-                    }
-
-                    // éviter des limites incohérentes après un changement d'unité
-                    customYMin = null;
-                    customYMax = null;
-
-                    if (!isLive)
-                        UpdateSpectrumChartAndStats();
-                };
-            }
-
-            UpdateLevelUnitUi();
-
-            // Log X axis 
-            if (chkLogX != null)
-            {
-                chkLogX.CheckedChanged += (s, e) =>
-                {
-                    if (_isRestoringSettings)
-                        return;
-
-                    // IMPORTANT (anti-artifacts)
-                    // Le passage LOG <-> LIN change l'echantillonnage visuel de l'axe X
-                    // et peut faire apparaitre un 'ghost' d'une moyenne precedente.
-                    ResetAveragingState();
-
-                    UpdateSpectrumChartAndStats();
-                    UpdateLogLinButtonText();
-                };
-            }
-
-        }
 
         //
         // Reset level calibration (FFT) for both channel
@@ -1895,87 +1048,6 @@ namespace AudioHexViewer
         //
         //
         // Grise/force certains contrôles quand le mode Bode Plot (FRF) est actif.
-        private void UpdateFrfUiLocks()
-        {
-            bool frf = IsFrfMode();
-
-            // 1) THD : griser en FRF
-            if (chkEnableThd != null)
-            {
-                if (frf)
-                    chkEnableThd.Checked = false; // sécurité : on coupe la mesure THD si on arrive en FRF
-                chkEnableThd.Enabled = !frf;
-            }
-            if (btnThdSettings != null)
-            {
-                btnThdSettings.Enabled = !frf;
-            }
-
-            // 2) Windowing : forcer Hann + griser en FRF
-            if (comboWindow == null)
-                return;
-
-            if (frf)
-            {
-                // mémorise la sélection précédente (une seule fois)
-                if (_windowIndexBeforeFrf < 0)
-                    _windowIndexBeforeFrf = comboWindow.SelectedIndex;
-
-                int hannIdx = comboWindow.Items.IndexOf("Hann");
-                if (hannIdx < 0) hannIdx = 1; // fallback “raisonnable” si la liste change
-
-                // Forcer Hann même si on est en live / même si les events sont inhibés :
-                if (comboWindow.SelectedIndex != hannIdx)
-                {
-                    bool prevRestore = _isRestoringSettings;
-                    _isRestoringSettings = true;
-                    try
-                    {
-                        comboWindow.SelectedIndex = hannIdx;
-                    }
-                    finally
-                    {
-                        _isRestoringSettings = prevRestore;
-                    }
-
-                    // IMPORTANT : garder l’état interne cohérent (comme dans ApplySpectrumSettings) :contentReference[oaicite:4]{index=4}
-                    lastWindow = (WindowType)hannIdx;
-
-                    // Mise à jour texte overlay “Win=…” si nécessaire
-                    UpdateWindowInfo();
-                }
-
-                comboWindow.Enabled = false;
-            }
-            else
-            {
-                comboWindow.Enabled = true;
-
-                // Restaurer la fenêtre d’avant FRF (si on l’avait mémorisée)
-                if (_windowIndexBeforeFrf >= 0 && _windowIndexBeforeFrf < comboWindow.Items.Count)
-                {
-                    int restoreIdx = _windowIndexBeforeFrf;
-                    _windowIndexBeforeFrf = -1;
-
-                    if (comboWindow.SelectedIndex != restoreIdx)
-                    {
-                        bool prevRestore = _isRestoringSettings;
-                        _isRestoringSettings = true;
-                        try
-                        {
-                            comboWindow.SelectedIndex = restoreIdx;
-                        }
-                        finally
-                        {
-                            _isRestoringSettings = prevRestore;
-                        }
-
-                        lastWindow = (WindowType)comboWindow.SelectedIndex;
-                        UpdateWindowInfo();
-                    }
-                }
-            }
-        }
 
         //
         // Met à jour l'état de la ComboBox d'unité de niveau (dBFS/dBV)
@@ -2023,360 +1095,13 @@ namespace AudioHexViewer
         }
 
         // Calibrage d'une voie (L ou R) en Vrms connu.
-        private (bool ok, string message) CalibrateLevel(bool isRight, double knownVrms)
-        {
-            if (knownVrms <= 0.0 || double.IsNaN(knownVrms) || double.IsInfinity(knownVrms))
-                return (false, "Valeur Vrms invalide (doit être > 0).");
-
-            // On calibre à partir du RMS AC en FS (DC retiré) — pas depuis le dBFS.
-            double? measuredRmsFs = isRight ? _lastRmsFsRight : _lastRmsFsLeft;
-            if (measuredRmsFs == null || measuredRmsFs.Value <= 0.0)
-                return (false, "Pas de mesure RMS (FS) disponible. Lancez d'abord une acquisition (RUN), puis réessayez.");
-
-            // Gain linéaire : Vrms / FS_rms (AC)
-            double gain = knownVrms / measuredRmsFs.Value;
-
-            // Offset appliqué aux courbes FFT : dBV = dBFS + offset
-            double offset = OffsetDbFromGain(gain);
-
-            if (isRight)
-            {
-                _levelCalValidRight = true;
-                _levelGainVrmsPerFsRight = gain;
-                _levelCalOffsetDbRight = offset;
-            }
-            else
-            {
-                _levelCalValidLeft = true;
-                _levelGainVrmsPerFsLeft = gain;
-                _levelCalOffsetDbLeft = offset;
-            }
-
-            UpdateLevelUnitUi();
-
-            if (!isLive)
-                UpdateSpectrumChartAndStats();
-
-            string chan = isRight ? "R" : "L";
-            double vrmsAt0Dbfs = gain / Math.Sqrt(2.0); // 0 dBFS (peak FS=1) -> Vrms
-            return (true, $"Voie {chan} : RMS_FS(ac) = {measuredRmsFs.Value:F6}. Gain = {gain:G6} Vrms/FS. " +
-                          $"Offset = {offset:+0.00;-0.00;0.00} dB. => 0 dBFS ≈ {vrmsAt0Dbfs:F6} Vrms");
-        }
-
-        //      
-        public void ShowLevelCalibrationDialog(IWin32Window? owner = null)
-        {
-            var dlg = new LevelCalibrationDialog();
-
-            // États init
-            dlg.SetCurrentCalibration(
-                _levelCalValidLeft, _levelCalOffsetDbLeft,
-                _levelCalValidRight, _levelCalOffsetDbRight,
-                _lastRmsDbfsLeft, _lastRmsDbfsRight);
-
-            dlg.CalibrateLeft = (vrms) => CalibrateLevel(false, vrms);
-            dlg.CalibrateRight = (vrms) => CalibrateLevel(true, vrms);
-
-            dlg.ResetCalibration = () =>
-            {
-                ResetLevelCalibration();
-                dlg.SetCurrentCalibration(
-                    _levelCalValidLeft, _levelCalOffsetDbLeft,
-                    _levelCalValidRight, _levelCalOffsetDbRight,
-                    _lastRmsDbfsLeft, _lastRmsDbfsRight);
-            };
-
-            dlg.ShowDialog(this);
 
 
-        }
-
-        //
-        private void UpdateCursorVisibility()
-        {
-            bool onL = chkCursorL != null && chkCursorL.Checked;
-            bool onR = chkCursorR != null && chkCursorR.Checked;
-
-            if (_cursorLineL != null) _cursorLineL.Visible = onL;
-
-            if (_cursorLineR != null) _cursorLineR.Visible = onR;
-
-            if (_lblCursorLInfo != null) _lblCursorLInfo.Visible = onL;
-            if (_lblCursorRInfo != null) _lblCursorRInfo.Visible = onR;
-
-            if (!onL) _cursorMarkLVisible = false;
-            if (!onR) _cursorMarkRVisible = false;
-
-            chartSpectrum.Invalidate();
 
 
-            chartSpectrum.Invalidate();
-        }
-
-        //
-        private void InitCursorInfoLabels()
-        {
-            if (_lblCursorLInfo != null || _lblCursorRInfo != null)
-                return;
-
-            // On les place directement SUR le control Chart (plus simple, pas de Designer)
-            _lblCursorLInfo = new Label
-            {
-                AutoSize = true,
-                Text = "",
-                BackColor = Color.Transparent,          // plus de fond gris
-                ForeColor = FftLeftColor,           // couleur courbe L
-                Font = new Font("Segoe UI", 8.5f),
-                Visible = false
-            };
-
-            _lblCursorRInfo = new Label
-            {
-                AutoSize = true,
-                Text = "",
-                BackColor = Color.Transparent,          // plus de fond gris
-                ForeColor = FftRightColor,            // couleur courbe R
-                Font = new Font("Segoe UI", 8.5f),
-                Visible = false
-            };
-
-            _lblCursorDeltaInfo = new Label
-            {
-                AutoSize = true,
-                Text = "",
-                BackColor = Color.Transparent,
-                ForeColor = Color.Gray,
-                Font = new Font("Segoe UI", 8.5f),
-                Visible = false
-            };
-
-
-            chartSpectrum.Controls.Add(_lblCursorLInfo);
-            chartSpectrum.Controls.Add(_lblCursorRInfo);
-            chartSpectrum.Controls.Add(_lblCursorDeltaInfo);
-            _lblCursorLInfo.BringToFront();
-            _lblCursorRInfo.BringToFront();
-            _lblCursorDeltaInfo.BringToFront();
-
-            chartSpectrum.Resize += (_, __) => PositionCursorInfoLabels();
-        }
-
-        private void PositionCursorInfoLabels()
-        {
-            if (_lblCursorLInfo == null || _lblCursorRInfo == null || _lblCursorDeltaInfo == null)
-                return;
-
-            const int yOffsetFromBottom = 40;   // on revient à 2 lignes
-            const int xOffsetFromRight = 450;
-
-            int y = Math.Max(0, chartSpectrum.ClientSize.Height - yOffsetFromBottom);
-            int xStart = Math.Max(6, chartSpectrum.ClientSize.Width - xOffsetFromRight);
-
-            _lblCursorLInfo.Location = new Point(xStart, y);
-            _lblCursorRInfo.Location = new Point(xStart, y + 16);
-
-            // Delta à droite des 2 lignes
-            int w1 = _lblCursorLInfo.PreferredWidth;
-            int w2 = _lblCursorRInfo.PreferredWidth;
-            int xDelta = xStart + Math.Max(w1, w2) + 14;
-
-            // clamp pour ne pas sortir de la zone chart
-            int maxX = Math.Max(6, chartSpectrum.ClientSize.Width - _lblCursorDeltaInfo.PreferredWidth - 6);
-            if (xDelta > maxX) xDelta = maxX;
-
-            _lblCursorDeltaInfo.Location = new Point(xDelta, y + 8); // centré verticalement
-        }
-        //
-        private void DrawCursorInfoOverlay(Graphics g, Chart chart)
-        {
-            if (_lblCursorLInfo == null || _lblCursorRInfo == null || _lblCursorDeltaInfo == null)
-                return;
-
-            bool anyVisible = _lblCursorLInfo.Visible || _lblCursorRInfo.Visible || _lblCursorDeltaInfo.Visible;
-            if (!anyVisible)
-                return;
-
-            // === SCALE EXPORT ===
-            // chart = clone en export, chartSpectrum = chart UI
-            float s = 1f;
-            if (chartSpectrum != null && chartSpectrum.Width > 0)
-                s = (float)chart.Width / chartSpectrum.Width;
-
-            // Même logique que PositionCursorInfoLabels(), mais scale-aware
-            int yOffsetFromBottom = (int)Math.Round(40f * s);
-            int xOffsetFromRight = (int)Math.Round(450f * s);
-            int lineStep = (int)Math.Round(16f * s);
-            int padDelta = (int)Math.Round(14f * s);
-
-            int y = Math.Max(0, chart.ClientSize.Height - yOffsetFromBottom);
-            int xStart = Math.Max(6, chart.ClientSize.Width - xOffsetFromRight);
-
-            var saved = g.Save();
-            g.ResetClip();
-
-            using var font = new Font("Segoe UI", 8.5f * s, FontStyle.Regular);
-
-            // Lignes C1/C2
-            if (_lblCursorLInfo.Visible && !string.IsNullOrWhiteSpace(_lblCursorLInfo.Text))
-                using (var b = new SolidBrush(_lblCursorLInfo.ForeColor))
-                    g.DrawString(_lblCursorLInfo.Text, font, b, xStart, y);
-
-            if (_lblCursorRInfo.Visible && !string.IsNullOrWhiteSpace(_lblCursorRInfo.Text))
-                using (var b = new SolidBrush(_lblCursorRInfo.ForeColor))
-                    g.DrawString(_lblCursorRInfo.Text, font, b, xStart, y + lineStep);
-
-            // Delta à droite
-            int w1 = (int)g.MeasureString(_lblCursorLInfo.Text ?? "", font).Width;
-            int w2 = (int)g.MeasureString(_lblCursorRInfo.Text ?? "", font).Width;
-            int xDelta = xStart + Math.Max(w1, w2) + padDelta;
-
-            int maxX = Math.Max(6, chart.ClientSize.Width - (int)g.MeasureString(_lblCursorDeltaInfo.Text ?? "", font).Width - 6);
-            if (xDelta > maxX) xDelta = maxX;
-
-            if (_lblCursorDeltaInfo.Visible && !string.IsNullOrWhiteSpace(_lblCursorDeltaInfo.Text))
-                using (var b = new SolidBrush(_lblCursorDeltaInfo.ForeColor))
-                    g.DrawString(_lblCursorDeltaInfo.Text, font, b, xDelta, y + lineStep / 2);
-
-            g.Restore(saved);
-        }
         //
         // ---------------- CURSORS ----------------
-        private void InitCursors()
-        {
-            if (chartSpectrum.ChartAreas.Count == 0)
-                return;
-
-            // Eviter double init
-            if (_cursorLineL != null || _cursorLineR != null)
-                return;
-
-            var area = chartSpectrum.ChartAreas["SpectrumArea"];
-
-            // --- Ligne curseur L ---
-            _cursorLineL = new VerticalLineAnnotation
-            {
-                ClipToChartArea = "SpectrumArea",
-                AxisX = area.AxisX,
-                AxisY = area.AxisY,
-                IsInfinitive = true,
-                LineDashStyle = ChartDashStyle.Dash,
-                LineWidth = 1,
-                LineColor = Color.FromArgb(180, FftLeftColor),
-                Visible = false
-            };
-
-            // --- Ligne curseur R ---
-            _cursorLineR = new VerticalLineAnnotation
-            {
-                ClipToChartArea = "SpectrumArea",
-                AxisX = area.AxisX,
-                AxisY = area.AxisY,
-                IsInfinitive = true,
-                LineDashStyle = ChartDashStyle.Dash,
-                LineWidth = 1,
-                LineColor = Color.FromArgb(180, FftRightColor),
-                Visible = false
-            };
-
-            // --- Triangle curseur L ---
-            // --- Triangle curseur L ---
-
-
-
-            chartSpectrum.Annotations.Add(_cursorLineL);
-            chartSpectrum.Annotations.Add(_cursorLineR);
-
-            // Labels en bas
-            InitCursorInfoLabels();
-
-            UpdateCursorVisibility();
-        }
         //
-        //
-        private void ChartSpectrum_MouseMove(object? sender, MouseEventArgs e)
-        {
-            if (freqAxis == null || freqAxis.Length == 0)
-                return;
-
-            bool onL = (chkCursorL != null && chkCursorL.Checked);
-            bool onR = (chkCursorR != null && chkCursorR.Checked);
-            if (!onL && !onR)
-                return;
-
-            bool useLog = (chkLogX != null && chkLogX.Checked);
-
-            // fréquence sous la souris (conversion log-friendly)
-            double f = GetFrequencyFromMouseX(e.X);
-
-            if (useLog && f <= 0.0) f = LogXAbsMinHz;
-            if (!useLog && f < 0.0) f = 0.0;
-
-            int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
-
-            int idx = FindNearestFreqIndex(freqAxis, f, minIdx);
-            if (idx < 0 || idx >= freqAxis.Length)
-                return;
-
-            bool canMoveL = onL && !_cursorLockedL;
-            bool canMoveR = onR && !_cursorLockedR;
-
-            // Si les deux sont lockés : on rafraîchit juste l'affichage (valeurs suivent le spectre)
-            if (!canMoveL && !canMoveR)
-            {
-                RefreshCursorsFromCurrentSpectrum();
-                return;
-            }
-
-            if (canMoveL && !canMoveR)
-            {
-                //_activeCursor = ActiveCursor.Left;
-                _cursorIdxL = idx;
-                _cursorFreqL = freqAxis[idx];
-                _cursorTargetHzL = _cursorFreqL;
-
-            }
-            else if (!canMoveL && canMoveR)
-            {
-                //_activeCursor = ActiveCursor.Right;
-                _cursorIdxR = idx;
-                _cursorFreqR = freqAxis[idx];
-                _cursorTargetHzR = _cursorFreqR;
-
-            }
-            else
-            {
-                // Les deux peuvent bouger : déplacer celui le plus proche du pointeur
-                var area = chartSpectrum.ChartAreas["SpectrumArea"];
-
-                // Si indices non init, init
-                if (_cursorIdxL < minIdx) { _cursorIdxL = idx; _cursorFreqL = freqAxis[idx]; }
-                if (_cursorIdxR < minIdx) { _cursorIdxR = idx; _cursorFreqR = freqAxis[idx]; }
-
-                double fL = freqAxis[_cursorIdxL];
-                double fR = freqAxis[_cursorIdxR];
-
-                double xL = area.AxisX.ValueToPixelPosition(fL);
-                double xR = area.AxisX.ValueToPixelPosition(fR);
-
-                double dL = Math.Abs(e.X - xL);
-                double dR = Math.Abs(e.X - xR);
-
-                if (dL <= dR)
-                {
-                    //_activeCursor = ActiveCursor.Left;
-                    _cursorIdxL = idx;
-                    _cursorFreqL = freqAxis[idx];
-                }
-                else
-                {
-                    //_activeCursor = ActiveCursor.Right;
-                    _cursorIdxR = idx;
-                    _cursorFreqR = freqAxis[idx];
-                }
-            }
-
-            RefreshCursorsFromCurrentSpectrum();
-        }
         //
         public AudioHexViewer.SpectrumSettings GetSpectrumSettingsSnapshot()
         {
@@ -2544,64 +1269,9 @@ namespace AudioHexViewer
 
         }
 
-        //
-        private void ChartSpectrum_MouseDoubleClick(object? sender, MouseEventArgs e)
-        {
-            if (freqAxis == null || freqAxis.Length == 0) return;
-
-            var area = chartSpectrum.ChartAreas["SpectrumArea"];
-
-            bool c1Enabled = (chkCursorL != null && chkCursorL.Checked);
-            bool c2Enabled = (chkCursorR != null && chkCursorR.Checked);
-
-            // rien à faire si aucun curseur
-            if (!c1Enabled && !c2Enabled) return;
-
-            // distances en pixels
-            double d1 = double.PositiveInfinity;
-            double d2 = double.PositiveInfinity;
-
-            if (c1Enabled && _cursorIdxL >= 0 && _cursorIdxL < freqAxis.Length)
-            {
-                double x1 = area.AxisX.ValueToPixelPosition(freqAxis[_cursorIdxL]);
-                d1 = Math.Abs(e.X - x1);
-            }
-
-            if (c2Enabled && _cursorIdxR >= 0 && _cursorIdxR < freqAxis.Length)
-            {
-                double x2 = area.AxisX.ValueToPixelPosition(freqAxis[_cursorIdxR]);
-                d2 = Math.Abs(e.X - x2);
-            }
-
-            // choisir le plus proche si dans la tolérance
-            bool hitC1 = d1 <= CursorHitTolPx;
-            bool hitC2 = d2 <= CursorHitTolPx;
-
-            if (!hitC1 && !hitC2)
-                return; // <-- IMPORTANT : plus de toggle "loin"
-
-            bool toggleC1 = hitC1 && (!hitC2 || d1 <= d2);
-
-            if (toggleC1)
-            {
-                _cursorLockedL = !_cursorLockedL;
-                _cursorTargetHzL = _cursorFreqL; // sync intention
-            }
-            else
-            {
-                _cursorLockedR = !_cursorLockedR;
-                _cursorTargetHzR = _cursorFreqR; // sync intention
-            }
-
-            RefreshCursorsFromCurrentSpectrum();
-        }
 
 
         // --- Recherche de l’indice de fréquence le plus proche ---
-        private static int FindNearestFreqIndex(double[] axis, double f)
-        {
-            return FindNearestFreqIndex(axis, f, 0);
-        }
 
         // 
         private static int FindNearestFreqIndex(double[] axis, double f, int minIndex)
@@ -2626,44 +1296,9 @@ namespace AudioHexViewer
 
             return (Math.Abs(axis[lo] - f) <= Math.Abs(axis[hi] - f)) ? lo : hi;
         }
+
+
         //
-        private static int GetMinIndexForLog(double[] axis)
-        {
-            // En mode LogX, l’axe n’accepte pas 0 Hz => on prend le premier bin >= 1 Hz
-            if (axis == null || axis.Length == 0)
-                return 0;
-
-            for (int i = 0; i < axis.Length; i++)
-            {
-                if (axis[i] > 0.0)
-                    return i;
-            }
-            return 0;
-        }
-
-
-        private void RefreshCursorAfterRedraw()
-        {
-            if (chartSpectrum.ChartAreas.Count == 0)
-                return;
-
-            var area = chartSpectrum.ChartAreas["SpectrumArea"];
-
-            if (_cursorLineL != null) { _cursorLineL.AxisX = area.AxisX; _cursorLineL.AxisY = area.AxisY; }
-            //if (_cursorTextL != null) { _cursorTextL.AxisX = area.AxisX; _cursorTextL.AxisY = area.AxisY; }
-
-            if (_cursorLineR != null) { _cursorLineR.AxisX = area.AxisX; _cursorLineR.AxisY = area.AxisY; }
-            //if (_cursorTextR != null) { _cursorTextR.AxisX = area.AxisX; _cursorTextR.AxisY = area.AxisY; }
-
-            // IMPORTANT : rafraîchit les valeurs au bin fixé (LOCK) même si la souris ne bouge pas
-            RefreshCursorsFromCurrentSpectrum();
-        }
-        //
-        //
-        private void ApplyChartStatsMargin()
-        {
-            ApplyChartStatsMargin(chartSpectrum, invalidate: true);
-        }
 
         private void ApplyChartStatsMargin(Chart chart, bool invalidate)
         {
@@ -2703,234 +1338,7 @@ namespace AudioHexViewer
         }
 
 
-        private string BuildChartStatsText(bool left)
-        {
-            string rms = left ? (lblLeftRms?.Text ?? "RMS:") : (lblRightRms?.Text ?? "RMS:");
-            string peak = left ? (lblLeftPeak?.Text ?? "Peak:") : (lblRightPeak?.Text ?? "Peak:");
-            string meas = left ? (lblLeftMeas?.Text ?? "—") : (lblRightMeas?.Text ?? "—");
 
-            meas = meas.Replace("\r\n", "\n").Trim();
-
-            return $"{rms}\n{peak}\n{meas}";
-        }
-
-        private void DrawChartStatsPanel(Graphics g, Chart chart, ChartArea area)
-        {
-            var plot = GetPlotRectPixels(chart, area);
-            if (plot.IsEmpty) return;
-
-            var cr = chart.ClientRectangle;
-
-            // Rectangle EXTERNE de la ChartArea (inclut les axes/labels, dont l’axe Y2 phase)
-            var pos = area.Position;
-            RectangleF outer = new RectangleF(
-                cr.Width * pos.X / 100f,
-                cr.Height * pos.Y / 100f,
-                cr.Width * pos.Width / 100f,
-                cr.Height * pos.Height / 100f
-            );
-
-            // IMPORTANT : on part du bord droit EXTERNE de la ChartArea pour ne pas recouvrir les labels de l’axe Y2 (phase)
-            float panelLeft = outer.Right + 8f;
-
-            float panelRight = cr.Right - 6f;
-            if (panelRight - panelLeft < 120f) return;
-
-            var rect = RectangleF.FromLTRB(panelLeft, plot.Top, panelRight, plot.Bottom);
-
-            var saved = g.Save();
-            g.ResetClip();
-
-            // Fond blanc + bordure
-            using (var bg = new SolidBrush(Color.White))
-                g.FillRectangle(bg, rect);
-            using (var pen = new Pen(Color.LightGray, 1f))
-                g.DrawRectangle(pen, rect.X, rect.Y, rect.Width, rect.Height);
-
-            float pad = 8f;
-            float xL = rect.X + pad;
-            float xR = rect.Right - pad;
-
-            // Polices
-            var fontBase = chart.Font;
-            using var fontHeader = new Font(fontBase, FontStyle.Bold);
-            using var fontBold = new Font(fontBase, FontStyle.Bold);
-            using var fontStrong = new Font(fontBase.FontFamily, fontBase.SizeInPoints + 1.5f, FontStyle.Bold);
-            using var brushStrong = new SolidBrush(Color.DimGray);
-            using var fontHarm = new Font(fontBase.FontFamily, Math.Max(6f, fontBase.SizeInPoints - 1.0f), FontStyle.Regular);
-
-            using var brushText = new SolidBrush(Color.DimGray);
-            using var brushLabel = new SolidBrush(Color.DimGray);
-
-            float y = rect.Y + pad;
-
-            using var penSep = new Pen(Color.Gainsboro, 1f);
-            using var fmtCenter = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
-            using var fmtRight = new StringFormat { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Near };
-            using var fmtRightMeas = (StringFormat)fmtRight.Clone();
-            fmtRightMeas.FormatFlags |= StringFormatFlags.MeasureTrailingSpaces;
-                        
-            float DrawSection(string title, Color titleColor, List<StatRow> rows)
-            {
-                // Titre centré
-                var headerRect = new RectangleF(rect.X + pad, y, rect.Width - 2 * pad, fontHeader.GetHeight(g));
-                using (var bTitle = new SolidBrush(titleColor))
-                    g.DrawString(title, fontHeader, bTitle, headerRect, fmtCenter);
-
-                y += headerRect.Height + 4f;
-
-                // Trait sous le titre (largeur table)
-                g.DrawLine(penSep, rect.X + pad, y, rect.Right - pad, y);
-                y += 8f;
-                if (rows.Count == 0)
-                {
-                    g.DrawString("—", fontBase, brushLabel, xL, y);
-                    y += fontBase.GetHeight(g) + 10f;
-                    return y;
-                }
-
-                float maxLabelW = 0f;
-                foreach (var rr in rows)
-                {
-                    Font fLabel = rr.Emphasis == StatEmphasis.Strong ? fontBold : fontBase;
-                    var sz = g.MeasureString(rr.Label, fLabel);
-                    if (sz.Width > maxLabelW) maxLabelW = sz.Width;
-                }
-                float valueLeft = xL + maxLabelW + 12f; // séparation label -> valeur
-                var topRows = rows.Where(r => !r.IsBottomGroup).ToList();
-                var bottomRows = rows.Where(r => r.IsBottomGroup).ToList();
-                bool enteredBottomGroup = false;
-                using var penSepStrong = new Pen(Color.FromArgb(170, 200, 200, 200), 1.4f);
-
-
-
-                void RenderRows(List<StatRow> rr)
-                {
-                    for (int i = 0; i < rr.Count; i++)
-                    {
-                        var r = rr[i];
-
-                        // Séparation visuelle entre mesures globales (haut) et curseurs (bas)
-                        if (!enteredBottomGroup && r.IsBottomGroup)
-                        {
-                            enteredBottomGroup = true;
-                            g.DrawLine(penSepStrong, rect.X + pad, y + 6f, rect.Right - pad, y + 6f);
-                            y += 6f; // 
-                        }
-
-
-                        if (r.IsSeparator)
-                        {
-                            g.DrawLine(penSep, rect.X + pad, y + 4f, rect.Right - pad, y + 4f);
-                            y += 12f;
-                            continue;
-                        }
-
-                        // Ligne "titre" centrée (utilisée pour Cursor 1/2/Delta en Bode)
-                        if (r.Emphasis == StatEmphasis.Medium && string.IsNullOrEmpty(r.Value))
-                        {
-                            var titleRect = new RectangleF(rect.X + pad, y, rect.Width - 2 * pad, fontStrong.GetHeight(g));
-                            g.DrawString(r.Label, fontStrong, brushText, titleRect, fmtCenter);
-                            y += titleRect.Height + 6f;
-                            continue;
-                        }
-
-                        Font fLabel = r.Emphasis == StatEmphasis.Strong ? fontBold : fontBase;
-                        Font fVal =
-                            r.Emphasis == StatEmphasis.Strong ? fontStrong :
-                            r.Emphasis == StatEmphasis.Medium ? fontBold :
-                            fontBase;
-
-                        // Label
-                        g.DrawString(r.Label, fLabel, brushLabel, xL, y);
-
-                        // Hauteur de ligne maîtrisée
-                        float rowHeight = Math.Max(fLabel.GetHeight(g), fVal.GetHeight(g));
-                        var valueRect = new RectangleF(valueLeft, y, (rect.Right - pad) - valueLeft, rowHeight);
-
-                        // Highlight EXACT (sans empiéter verticalement)
-                        if (r.Emphasis == StatEmphasis.Strong)
-                        {
-                            using var fmtRange = (StringFormat)fmtRightMeas.Clone();
-                            fmtRange.SetMeasurableCharacterRanges(new[] { new CharacterRange(0, r.Value.Length) });
-
-                            var regions = g.MeasureCharacterRanges(r.Value, fVal, valueRect, fmtRange);
-                            var bounds = regions[0].GetBounds(g);
-
-                            bounds.Inflate(4f, 0.5f);
-
-                            using var fill = new SolidBrush(Color.FromArgb(18, 30, 144, 255));
-                            g.FillRectangle(fill, bounds);
-                        }
-
-                        // Valeur (alignée à droite)
-                        g.DrawString(r.Value, fVal, brushText, valueRect, fmtRight);
-
-                        y += rowHeight + 4f;
-                    }
-                }
-
-                float EstimateHeight(List<StatRow> rr)
-                {
-                    float h = 0f;
-                    for (int i = 0; i < rr.Count; i++)
-                    {
-                        var r = rr[i];
-                        if (r.IsSeparator) { h += 12f; continue; }
-
-                        if (r.Emphasis == StatEmphasis.Medium && string.IsNullOrEmpty(r.Value))
-                        {
-                            h += fontStrong.GetHeight(g) + 6f;
-                            continue;
-                        }
-
-                        h += fontBase.GetHeight(g) + 4f;
-                    }
-                    return h;
-                }
-
-                // 1) Render du haut (min/max etc.)
-                RenderRows(topRows);
-                float yAfterTop = y;
-
-                // 2) Render du bas collé au bas du panneau (curseurs/delta)
-                if (bottomRows.Count > 0)
-                {
-                    float hBottom = EstimateHeight(bottomRows);
-                    float yBottomStart = rect.Bottom - pad - hBottom;
-
-                    if (yBottomStart < yAfterTop)
-                        yBottomStart = yAfterTop;
-
-                    y = yBottomStart;
-                    RenderRows(bottomRows);
-                }
-
-                // y final (pour section suivante)
-                y += 10f;
-                return y;
-
-            }
-
-            // En mode FRF (Bode Plot) : un seul panneau, destiné aux mesures spécifiques FRF.
-            // On réutilise la section LEFT (même rendu) mais avec un titre dédié.
-            if (IsFrfMode())
-            {
-                y = DrawSection("BODE", FftLeftColor, _rowsLeft);
-            }
-            else
-            {
-                // Affichage sections LEFT / RIGHT si activées
-                if (_statsShowLeft)
-                    y = DrawSection("LEFT", FftLeftColor, _rowsLeft);
-
-                if (_statsShowRight)
-                    y = DrawSection("RIGHT", FftRightColor, _rowsRight);
-            }
-
-
-            g.Restore(saved);
-        }
         private Color _cursorMarkLColor = Color.DodgerBlue; // C1 (sera mis à jour par ApplyCursorTheme)
         private Color _cursorMarkRColor = Color.OrangeRed;  // C2 (sera mis à jour par ApplyCursorTheme)
 
@@ -2948,69 +1356,6 @@ namespace AudioHexViewer
         }
 
 
-        private ResolvedCurve ResolveCurveForCursor(bool isCursor1)
-        {
-            CursorTrackMode mode = isCursor1 ? _c1TrackMode : _c2TrackMode;
-
-            // -----------------------------
-            // Mode FRF / Bode Plot
-            // -----------------------------
-            if (IsFrfMode())
-            {
-                // Disponibilités spécifiques FRF :
-                // - Gain : stocké dans currentLeftSpectrum (dB)
-                // - Phase : stockée dans currentFrfPhaseDeg (deg)
-                bool gainAvail = (currentLeftSpectrum != null);
-
-                // IMPORTANT : “phase dispo pour les curseurs” == la série phase est réellement affichée
-                // (quand tu désactives φ, le chart ne trace la phase que si _plotFrfPhaseDeg != null)
-                bool phaseShown = (_plotFrfPhaseDeg != null);                 // phase visible sur le chart :contentReference[oaicite:1]{index=1}
-                bool phaseAvail = (currentFrfPhaseDeg != null) && phaseShown; // curseurs autorisés sur Phase uniquement si visible
-
-                switch (mode)
-                {
-                    case CursorTrackMode.Left:   // Left == Gain (mapping UI)
-                        return gainAvail ? ResolvedCurve.Gain : ResolvedCurve.None;
-
-                    case CursorTrackMode.Right:  // Right == Phase (mapping UI)
-                                                 // Si la phase est désactivée => on force Gain (si dispo)
-                        return phaseAvail ? ResolvedCurve.Phase : (gainAvail ? ResolvedCurve.Gain : ResolvedCurve.None);
-
-                    default: // Auto
-                             // Si la phase est désactivée => Auto retombe forcément sur Gain
-                        if (gainAvail && phaseAvail)
-                            return isCursor1 ? ResolvedCurve.Gain : ResolvedCurve.Phase; // spec: C1=Gain, C2=Phase
-
-                        if (gainAvail) return ResolvedCurve.Gain;
-                        if (phaseAvail) return ResolvedCurve.Phase;
-                        return ResolvedCurve.None;
-                }
-
-            }
-
-            // -----------------------------
-            // Mode FFT normal (Left/Right)
-            // -----------------------------
-            // "Voie dispo" = affichée ET spectre présent
-            bool leftAvail = _statsShowLeft && currentLeftSpectrum != null;
-            bool rightAvail = _statsShowRight && currentRightSpectrum != null;
-
-            switch (mode)
-            {
-                case CursorTrackMode.Left:
-                    return leftAvail ? ResolvedCurve.Left : ResolvedCurve.None;
-
-                case CursorTrackMode.Right:
-                    return rightAvail ? ResolvedCurve.Right : ResolvedCurve.None;
-
-                default: // Auto
-                    if (leftAvail && rightAvail)
-                        return isCursor1 ? ResolvedCurve.Left : ResolvedCurve.Right;
-                    if (leftAvail) return ResolvedCurve.Left;
-                    if (rightAvail) return ResolvedCurve.Right;
-                    return ResolvedCurve.None;
-            }
-        }
 
 
         private Color CurveColor(ResolvedCurve c)
@@ -3029,324 +1374,16 @@ namespace AudioHexViewer
         }
 
 
-        private static string CurveLetter(ResolvedCurve c)
-        {
-            return c switch
-            {
-                ResolvedCurve.Left => "L",
-                ResolvedCurve.Right => "R",
-                _ => "—"
-            };
-        }
         //
         // Libellé affiché dans l'UI pour indiquer sur quelle "courbe" est le curseur.
         // - Mode normal : L / R
         // - Mode Bode Plot : Gain / Phase
-        private string CursorCurveLabel(ResolvedCurve c)
-        {
-            if (IsFrfMode())
-            {
-                return c switch
-                {
-                    ResolvedCurve.Gain => "Gain",
-                    ResolvedCurve.Phase => phi,
-                    // Tolérance si jamais un ancien chemin envoie Left/Right en FRF
-                    ResolvedCurve.Left => "Gain",
-                    ResolvedCurve.Right => phi,
-                    _ => "—"
-                };
-            }
-
-            return c switch
-            {
-                ResolvedCurve.Left => "L",
-                ResolvedCurve.Right => "R",
-                _ => "—"
-            };
-        }
-
-        //
-        public bool TryGetCursor1FrequencyHz(out double hz)
-        {
-            hz = 0;
-            if (freqAxis == null || freqAxis.Length == 0) return false;
-            int idx = Math.Max(0, Math.Min(_cursorIdxL, freqAxis.Length - 1));
-            hz = freqAxis[idx];
-            return true;
-        }
-
-        public bool TryGetCursor2FrequencyHz(out double hz)
-        {
-            hz = 0;
-            if (freqAxis == null || freqAxis.Length == 0) return false;
-            int idx = Math.Max(0, Math.Min(_cursorIdxR, freqAxis.Length - 1));
-            hz = freqAxis[idx];
-            return true;
-        }
-
-        public void SetCursor1FrequencyHz(double targetHz)
-        {
-            if (freqAxis == null || freqAxis.Length == 0) return;
-
-            bool useLog = (chkLogX != null && chkLogX.Checked);
-            int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
-
-            _cursorTargetHzL = targetHz; // <-- intention
-
-            int idx = FindNearestFreqIndex(freqAxis, targetHz, minIdx);
-            _cursorIdxL = idx;
-            _cursorFreqL = freqAxis[idx];
-
-            // lock auto si placé par dialogue
-            _cursorLockedL = true;
-
-            RefreshCursorsFromCurrentSpectrum();
-        }
-
-        public void SetCursor2FrequencyHz(double targetHz)
-        {
-            if (freqAxis == null || freqAxis.Length == 0) return;
-
-            bool useLog = (chkLogX != null && chkLogX.Checked);
-            int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
-
-            _cursorTargetHzR = targetHz; // <-- intention
-
-            int idx = FindNearestFreqIndex(freqAxis, targetHz, minIdx);
-            _cursorIdxR = idx;
-            _cursorFreqR = freqAxis[idx];
-
-            // lock auto si placé par dialogue
-            _cursorLockedR = true;
-
-            RefreshCursorsFromCurrentSpectrum();
-        }
 
 
-        public bool TryFindPeakFrequencyForCursor1(out double peakHz)
-            => TryFindPeakFrequencyForCursor(isCursor1: true, out peakHz);
-
-        public bool TryFindPeakFrequencyForCursor2(out double peakHz)
-            => TryFindPeakFrequencyForCursor(isCursor1: false, out peakHz);
-
-        // --- NEW: Prev/Next Peak (for buttons "<" and ">") ------------------------------------
-        //
-        // These methods search for the next/previous "prominent peak" relative to the CURRENT
-        // cursor position, using the SAME peak definition as the "Peak" button:
-        //
-        // - Local maximum (3-point test)
-        // - Minimum prominence vs neighbors (±PEAK_PROMINENCE_HALF_WINDOW_BINS)
-        // - Minimum dB above local noise floor (median estimate)
-        //
-        // The search is done within the currently visible X range of the chart.
-        // --------------------------------------------------------------------------------------
-
-        public bool TryFindNextPeakFrequencyForCursor1(out double peakHz)
-            => TryFindAdjacentPeakFrequencyForCursor(isCursor1: true, direction: +1, out peakHz);
-
-        public bool TryFindPreviousPeakFrequencyForCursor1(out double peakHz)
-            => TryFindAdjacentPeakFrequencyForCursor(isCursor1: true, direction: -1, out peakHz);
-
-        public bool TryFindNextPeakFrequencyForCursor2(out double peakHz)
-            => TryFindAdjacentPeakFrequencyForCursor(isCursor1: false, direction: +1, out peakHz);
-
-        public bool TryFindPreviousPeakFrequencyForCursor2(out double peakHz)
-            => TryFindAdjacentPeakFrequencyForCursor(isCursor1: false, direction: -1, out peakHz);
-
-        private bool TryFindAdjacentPeakFrequencyForCursor(bool isCursor1, int direction, out double peakHz)
-        {
-            peakHz = 0;
-
-            if (freqAxis == null || freqAxis.Length == 0) return false;
-            if (direction != -1 && direction != +1) return false;
-
-            // which curve is actually tracked by this cursor?
-            var curve = ResolveCurveForCursor(isCursor1);
-            if (curve == ResolvedCurve.None) return false;
-
-            double[]? spec = null;
-
-            switch (curve)
-            {
-                case ResolvedCurve.Left:
-                    spec = currentLeftSpectrum;
-                    break;
-
-                case ResolvedCurve.Right:
-                    spec = currentRightSpectrum;
-                    break;
-
-                case ResolvedCurve.Gain:
-                    spec = currentLeftSpectrum;      // FRF gain stored here (dB)
-                    break;
-
-                case ResolvedCurve.Phase:
-                    spec = currentFrfPhaseDeg;       // FRF phase (deg)
-                    break;
-            }
-
-            if (spec == null || spec.Length == 0) return false;
-
-            var area = chartSpectrum.ChartAreas["SpectrumArea"];
-
-            // visible X range
-            double fMin = area.AxisX.Minimum;
-            double fMax = area.AxisX.Maximum;
-            if (fMax <= fMin) return false;
-
-            bool useLog = (chkLogX != null && chkLogX.Checked);
-            int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
-
-            int i0 = LowerBound(freqAxis, fMin);
-            int i1 = UpperBound(freqAxis, fMax) - 1;
-
-            i0 = Math.Max(i0, minIdx);
-            i1 = Math.Min(i1, Math.Min(freqAxis.Length - 1, spec.Length - 1));
-            if (i1 <= i0) return false;
-
-            // start from current cursor index, clamped in visible range
-            int cur = isCursor1 ? _cursorIdxL : _cursorIdxR;
-            cur = Math.Max(i0, Math.Min(cur, i1));
-            // ------------------------------------------------------------------
-            // < / > buttons peak navigation based on what is VISIBLE in the chart:
-            //
-            // We intentionally use the *PLOT* arrays (_plot*) because they are exactly
-            // what is displayed (decimated / aligned with current zoom).
-            // => The noise floor we compute matches the visible noise floor.
-            // ------------------------------------------------------------------
-
-            // 0) Choose PLOT arrays according to the curve tracked by this cursor
-            double[]? plotSpec = null;
-            double[]? plotFreq = _plotFreqAxis;
-
-            switch (curve)
-            {
-                case ResolvedCurve.Left:
-                    plotSpec = _plotLeftSpectrum;
-                    break;
-
-                case ResolvedCurve.Right:
-                    plotSpec = _plotRightSpectrum;
-                    break;
-
-                case ResolvedCurve.Gain:
-                    plotSpec = _plotLeftSpectrum; // FRF gain is stored/plot on left
-                    break;
-
-                case ResolvedCurve.Phase:
-                    plotSpec = _plotFrfPhaseDeg;  // phase plot
-                    break;
-            }
-
-            if (plotFreq == null || plotSpec == null || plotFreq.Length == 0 || plotSpec.Length == 0)
-                return false;
-
-            // 1) Current cursor frequency (FULL) -> Hz
-            double curHz = freqAxis[cur];
-
-            // 2) Noise floor = MEDIAN of the VISIBLE plot values
-            // (ignore NaN/Inf)
-            var tmp = new List<double>(plotSpec.Length);
-            for (int i = 0; i < plotSpec.Length; i++)
-            {
-                double v = plotSpec[i];
-                if (double.IsNaN(v) || double.IsInfinity(v)) continue;
-                tmp.Add(v);
-            }
-            if (tmp.Count == 0) return false;
-
-            tmp.Sort();
-            double noiseFloorDb = (tmp.Count & 1) == 1
-                ? tmp[tmp.Count / 2]
-                : 0.5 * (tmp[tmp.Count / 2 - 1] + tmp[tmp.Count / 2]);
-
-            double thresholdDb = noiseFloorDb + _noiseToPeakThresholdDb;
 
 
-            // 3) Build groups of contiguous PLOT points above threshold
-            // and keep one peak per group (max value inside group)
-            var peaksHz = new List<double>();
-
-            bool inGroup = false;
-            double groupTopDb = double.NegativeInfinity;
-            double groupTopHz = 0;
-
-            int n = Math.Min(plotFreq.Length, plotSpec.Length);
-
-            for (int i = 0; i < n; i++)
-            {
-                double v = plotSpec[i];
-                if (double.IsNaN(v) || double.IsInfinity(v)) continue;
-
-                if (v >= thresholdDb)
-                {
-                    if (!inGroup)
-                    {
-                        inGroup = true;
-                        groupTopDb = v;
-                        groupTopHz = plotFreq[i];
-                    }
-                    else if (v > groupTopDb)
-                    {
-                        groupTopDb = v;
-                        groupTopHz = plotFreq[i];
-                    }
-                }
-                else if (inGroup)
-                {
-                    peaksHz.Add(groupTopHz);
-                    inGroup = false;
-                }
-            }
-
-            if (inGroup)
-                peaksHz.Add(groupTopHz);
-
-            if (peaksHz.Count == 0)
-                return false;
-
-            // 4) Select next / previous peak based on frequency (Hz)
-            // (because plot index != full FFT index)
-            double selectedHz = 0;
-            bool found = false;
-
-            if (direction > 0)
-            {
-                // Next: first peak strictly to the right
-                for (int k = 0; k < peaksHz.Count; k++)
-                {
-                    double hz = peaksHz[k];
-                    if (hz > curHz)
-                    {
-                        selectedHz = hz;
-                        found = true;
-                        break;
-                    }
-                }
-            }
-            else
-            {
-                // Prev: last peak strictly to the left
-                for (int k = peaksHz.Count - 1; k >= 0; k--)
-                {
-                    double hz = peaksHz[k];
-                    if (hz < curHz)
-                    {
-                        selectedHz = hz;
-                        found = true;
-                        break;
-                    }
-                }
-            }
-
-            if (!found)
-                return false;
-
-            peakHz = selectedHz;
-            return true;
 
 
-        }
 
 
         // =========================================================================================
@@ -3400,1295 +1437,83 @@ namespace AudioHexViewer
         // ------------------------------------------------------------------
 
 
-        private static double MedianOfRange(double[] data, int i0, int i1)
-        {
-            int n = i1 - i0 + 1;
-            if (n <= 0) return double.NaN;
 
-            var tmp = new double[n];
-            Array.Copy(data, i0, tmp, 0, n);
-            Array.Sort(tmp);
 
-            return (n & 1) == 1
-                ? tmp[n / 2]
-                : 0.5 * (tmp[n / 2 - 1] + tmp[n / 2]);
-        }
 
 
 
-        private static double MedianInclusive(List<double> values)
-        {
-            if (values.Count == 0) return double.NegativeInfinity;
-            values.Sort();
-            int n = values.Count;
-            if ((n & 1) == 1) return values[n / 2];
-            return 0.5 * (values[n / 2 - 1] + values[n / 2]);
-        }
 
 
-        private static bool IsProminentPeak(double[] specDb, int i, int i0, int i1)
-        {
-            // Sécurité indices
-            if (i <= i0 || i >= i1)
-                return false;
 
-            double center = specDb[i];
 
-            // --------------------------------------------------------------------
-            // 1) Max local simple (forme)
-            // --------------------------------------------------------------------
-            if (center < specDb[i - 1] || center < specDb[i + 1])
-                return false;
 
-            // --------------------------------------------------------------------
-            // 2) Prominence par rapport aux "épaules" (hors lobe principal)
-            // --------------------------------------------------------------------
-            int a = Math.Max(i0, i - PEAK_PROMINENCE_HALF_WINDOW_BINS);
-            int b = Math.Min(i1, i + PEAK_PROMINENCE_HALF_WINDOW_BINS);
 
-            double bestShoulder = double.NegativeInfinity;
 
-            for (int k = a; k <= b; k++)
-            {
-                // Exclure le lobe principal
-                if (Math.Abs(k - i) <= PEAK_PROMINENCE_EXCLUDE_BINS)
-                    continue;
 
-                bestShoulder = Math.Max(bestShoulder, specDb[k]);
-            }
 
-            if (double.IsNegativeInfinity(bestShoulder))
-                return false;
 
-            double prominenceDb = center - bestShoulder;
-            if (prominenceDb < PEAK_MIN_PROMINENCE_DB)
-                return false;
 
-            // --------------------------------------------------------------------
-            // 3) Noise floor local (médiane robuste)
-            // --------------------------------------------------------------------
-            int na = Math.Max(i0, i - NOISE_FLOOR_HALF_WINDOW_BINS);
-            int nb = Math.Min(i1, i + NOISE_FLOOR_HALF_WINDOW_BINS);
 
-            var noiseVals = new List<double>(nb - na);
-
-            for (int k = na; k <= nb; k++)
-            {
-                // On exclut la zone du pic lui-même
-                if (Math.Abs(k - i) <= PEAK_PROMINENCE_EXCLUDE_BINS)
-                    continue;
-
-                noiseVals.Add(specDb[k]);
-            }
-
-            if (noiseVals.Count == 0)
-                return false;
-
-            double noiseFloor = MedianInclusive(noiseVals);
-
-            if ((center - noiseFloor) < PEAK_MIN_ABOVE_NOISE_DB)
-                return false;
-
-            // --------------------------------------------------------------------
-            // → Pic valide
-            // --------------------------------------------------------------------
-            return true;
-        }
-
-
-        private bool TryFindPeakFrequencyForCursor(bool isCursor1, out double peakHz)
-        {
-            peakHz = 0;
-
-            if (freqAxis == null || freqAxis.Length == 0) return false;
-
-            // voie réellement trackée
-            var curve = ResolveCurveForCursor(isCursor1);
-            if (curve == ResolvedCurve.None) return false;
-
-            double[]? spec = null;
-
-            switch (curve)
-            {
-                case ResolvedCurve.Left:
-                    spec = currentLeftSpectrum;
-                    break;
-
-                case ResolvedCurve.Right:
-                    spec = currentRightSpectrum;
-                    break;
-
-                case ResolvedCurve.Gain:
-                    spec = currentLeftSpectrum;      // Gain FRF stocké ici (dB)
-                    break;
-
-                case ResolvedCurve.Phase:
-                    spec = currentFrfPhaseDeg;       // Phase FRF (deg)
-                    break;
-            }
-
-            if (spec == null || spec.Length == 0) return false;
-
-            var area = chartSpectrum.ChartAreas["SpectrumArea"];
-
-            // plage visible du graphe (spec demandé)
-            double fMin = area.AxisX.Minimum;
-            double fMax = area.AxisX.Maximum;
-            if (fMax <= fMin) return false;
-
-            bool useLog = (chkLogX != null && chkLogX.Checked);
-            int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
-
-            int i0 = LowerBound(freqAxis, fMin);
-            int i1 = UpperBound(freqAxis, fMax) - 1;
-
-            i0 = Math.Max(i0, minIdx);
-            i1 = Math.Min(i1, Math.Min(freqAxis.Length - 1, spec.Length - 1));
-            if (i1 <= i0) return false;
-
-            // --- Nouveau : cherche le meilleur "pic" (selon critères) ---
-            int best = -1;
-            double bestDb = double.NegativeInfinity;
-
-            // On évite les bords car on teste i-1 / i+1
-            int start = Math.Max(i0 + 1, i0);
-            int end = Math.Min(i1 - 1, i1);
-
-            for (int i = start; i <= end; i++)
-            {
-                // Candidats uniquement si "peak" selon critères robustes
-                if (!IsProminentPeak(spec, i, i0, i1))
-                    continue;
-
-                double db = spec[i];
-                if (db > bestDb)
-                {
-                    bestDb = db;
-                    best = i;
-                }
-            }
-
-            // Fallback : si aucun "pic visible" détecté, on retombe sur le max simple
-            // (pour ne jamais avoir un bouton Peak "muet" sur certains signaux).
-            if (best < 0)
-            {
-                best = i0;
-                bestDb = spec[i0];
-                for (int i = i0 + 1; i <= i1; i++)
-                {
-                    double db = spec[i];
-                    if (db > bestDb)
-                    {
-                        bestDb = db;
-                        best = i;
-                    }
-                }
-            }
-
-            peakHz = freqAxis[best];
-            return true;
-        }
-
-
-        //
-        private static int LowerBound(double[] a, double x)
-        {
-            int lo = 0, hi = a.Length;
-            while (lo < hi)
-            {
-                int mid = (lo + hi) >> 1;
-                if (a[mid] < x) lo = mid + 1;
-                else hi = mid;
-            }
-            return lo;
-        }
-
-        private static int UpperBound(double[] a, double x)
-        {
-            int lo = 0, hi = a.Length;
-            while (lo < hi)
-            {
-                int mid = (lo + hi) >> 1;
-                if (a[mid] <= x) lo = mid + 1;
-                else hi = mid;
-            }
-            return lo;
-        }
-        //
-        private void BtnPhiEnable_Click(object? sender, EventArgs e)
-        {
-            _frfPhaseEnabled = !_frfPhaseEnabled;
-
-            // On ne bloque pas les curseurs Phase même si la courbe est masquée (ton point 1)
-            ApplyFrfPhiButtonsUi();
-            SyncCursorUiFromModel();
-
-            // Force un redraw rapide
-            chartSpectrum.Invalidate();
-        }
-
-        private void BtnPhiUnwrap_Click(object? sender, EventArgs e)
-        {
-            _frfPhaseUnwrap = !_frfPhaseUnwrap; // vert quand unwrap φ (ton point 2)
-            ApplyFrfPhiButtonsUi();
-
-            // Force recalcul display (unwrap change la courbe)
-            chartSpectrum.Invalidate();
-        }
-
-        private void ApplyFrfPhiButtonsUi()
-        {
-            // Visible uniquement en mode FRF (Bode)
-            bool frf = IsFrfMode(); // tu l’as déjà dans le control (utilisé dans le rendu FRF)
-            btnPhiEnable.Visible = frf;
-            btnPhiUnwrap.Visible = frf;
-
-            if (!frf)
-                return;
-
-            // Mini toggle look (même logique que tes carrés C1/C2)
-            btnPhiEnable.BackColor = _frfPhaseEnabled ? Color.LightGreen : SystemColors.Control;
-            btnPhiUnwrap.BackColor = _frfPhaseUnwrap ? Color.LightGreen : SystemColors.Control;
-        }
-
-        //
-        private void RefreshCursorsFromCurrentSpectrum()
-        {
-            if (freqAxis == null || freqAxis.Length == 0)
-                return;
-
-            var area = chartSpectrum.ChartAreas["SpectrumArea"];
-
-            bool onC1 = chkCursorL != null && chkCursorL.Checked; // C1
-            bool onC2 = chkCursorR != null && chkCursorR.Checked; // C2
-
-            bool useLog = (chkLogX != null && chkLogX.Checked);
-            int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
-
-            // --- Garder la fréquence des curseurs constante même si N change ---
-            // (recalcule l'index à partir de la fréquence mémorisée)
-            if (useLog)
-            {
-                if (_cursorFreqL <= 0.0) _cursorFreqL = LogXAbsMinHz;
-                if (_cursorFreqR <= 0.0) _cursorFreqR = LogXAbsMinHz;
-                if (_cursorTargetHzL <= 0.0) _cursorTargetHzL = LogXAbsMinHz;
-                if (_cursorTargetHzR <= 0.0) _cursorTargetHzR = LogXAbsMinHz;
-
-            }
-
-            if (onC1 && _cursorTargetHzL > 0)
-                _cursorIdxL = FindNearestFreqIndex(freqAxis, _cursorTargetHzL, minIdx);
-
-            if (onC2 && _cursorTargetHzR > 0)
-                _cursorIdxR = FindNearestFreqIndex(freqAxis, _cursorTargetHzR, minIdx);
-
-
-            // Sécurise les index (si pas init / hors plage)
-            if (_cursorIdxL < minIdx) _cursorIdxL = minIdx;
-            if (_cursorIdxR < minIdx) _cursorIdxR = minIdx;
-            if (_cursorIdxL >= freqAxis.Length) _cursorIdxL = freqAxis.Length - 1;
-            if (_cursorIdxR >= freqAxis.Length) _cursorIdxR = freqAxis.Length - 1;
-
-            // Résolution voie pour chaque curseur
-            var c1Curve = ResolveCurveForCursor(isCursor1: true);
-            var c2Curve = ResolveCurveForCursor(isCursor1: false);
-
-            void UpdateOne(
-                bool enabled,
-                bool isCursor1,
-                int idx,
-                VerticalLineAnnotation? line,
-                Label? lbl,
-                bool locked,
-                ResolvedCurve curve,
-                ref bool markVisible,
-                ref double markFreq,
-                ref double markDb,
-                ref Color markColor,
-                ref bool markUsesY2)
-            {
-                if (!enabled || line == null || idx < minIdx || idx >= freqAxis.Length)
-                {
-                    if (line != null) line.Visible = false;
-                    if (lbl != null) { lbl.Text = ""; lbl.Visible = false; }
-                    markVisible = false;
-                    return;
-                }
-
-                double f = freqAxis[idx];
-
-                // Ligne verticale : toujours à la bonne fréquence
-                line.X = f;
-                line.Visible = true;
-
-                // Si la voie demandée n'existe pas -> grisé, pas de triangle
-                if (curve == ResolvedCurve.None)
-                {
-                    line.LineColor = Color.FromArgb(180, Color.Gray);
-                    markVisible = false;
-                    markColor = Color.Gray;
-
-                    if (lbl != null)
-                    {
-                        lbl.ForeColor = Color.Gray;
-                        lbl.Text = $"{(isCursor1 ? "C1" : "C2")}({CursorCurveLabel(curve)}): {f:0.##} Hz  --" + (locked ? "  (LOCK)" : "");
-                        lbl.Visible = true;
-                    }
-                    return;
-                }
-
-                // Sélection de la source selon la courbe réellement trackée
-                double[]? spec = null;
-                bool useY2 = false;          // phase => AxisY2
-                string unit = CurrentLevelUnitLabel(); // par défaut (FFT normal)
-
-                switch (curve)
-                {
-                    case ResolvedCurve.Left:
-                        spec = currentLeftSpectrum;
-                        break;
-
-                    case ResolvedCurve.Right:
-                        spec = currentRightSpectrum;
-                        break;
-
-                    case ResolvedCurve.Gain:
-                        spec = currentLeftSpectrum; // Gain FRF stocké ici (déjà en dB)
-                        unit = "dB";
-                        break;
-
-                    case ResolvedCurve.Phase:
-                        spec = currentFrfPhaseDeg;  // Phase FRF
-                        unit = "°";
-                        useY2 = true;
-                        break;
-                }
-
-                if (spec == null || idx >= spec.Length)
-                {
-                    line.LineColor = Color.FromArgb(180, Color.Gray);
-                    markVisible = false;
-                    markColor = Color.Gray;
-                    markUsesY2 = false;
-
-                    if (lbl != null)
-                    {
-                        lbl.ForeColor = Color.Gray;
-                        lbl.Text = $"{(isCursor1 ? "C1" : "C2")}({CurveLetter(curve)}): {f:0.##} Hz  --" + (locked ? "  (LOCK)" : "");
-                        lbl.Visible = true;
-                    }
-                    return;
-                }
-
-                double yVal = spec[idx];
-
-                // IMPORTANT :
-                // - En mode FRF : Gain est déjà en dB => pas de dBV/dBFS
-                // - En mode FFT normal : on conserve la conversion dBFS->dBV si activée
-                if (!IsFrfMode())
-                {
-                    if (UseDbvForCurrentMode())
-                    {
-                        // Ici curve = Left/Right uniquement (normal)
-                        yVal += (curve == ResolvedCurve.Right) ? _levelCalOffsetDbRight : _levelCalOffsetDbLeft;
-                    }
-                }
-
-                var col = CurveColor(curve);
-                line.LineColor = Color.FromArgb(180, col);
-
-                markVisible = true;
-                markFreq = f;
-                markDb = yVal;       // conserve le nom "Db" mais contient Y (dB ou deg) selon la courbe
-                markColor = col;
-                markUsesY2 = useY2;
-
-                if (lbl != null)
-                {
-                    lbl.ForeColor = InfoTextColor;
-                    lbl.Text = $"{(isCursor1 ? "C1" : "C2")}({CursorCurveLabel(curve)}): {f:0.##} Hz  {yVal:0.##} {unit}" + (locked ? "  (LOCK)" : "");
-                    lbl.Visible = true;
-                }
-
-            }
-
-            // C1
-            if (onC1 && _cursorLineL != null)
-            {
-                _cursorFreqL = freqAxis[_cursorIdxL];
-                UpdateOne(onC1, true, _cursorIdxL, _cursorLineL, _lblCursorLInfo, _cursorLockedL, c1Curve,
-                    ref _cursorMarkLVisible, ref _cursorMarkLFreq, ref _cursorMarkLDb, ref _cursorMarkLColor, ref _cursorMarkLUsesY2);
-
-            }
-            else
-            {
-                if (_cursorLineL != null) _cursorLineL.Visible = false;
-                if (_lblCursorLInfo != null) { _lblCursorLInfo.Text = ""; _lblCursorLInfo.Visible = false; }
-                _cursorMarkLVisible = false;
-                _cursorMarkLUsesY2 = false;
-            }
-
-            // C2
-            if (onC2 && _cursorLineR != null)
-            {
-                _cursorFreqR = freqAxis[_cursorIdxR];
-                UpdateOne(onC2, false, _cursorIdxR, _cursorLineR, _lblCursorRInfo, _cursorLockedR, c2Curve,
-                        ref _cursorMarkRVisible, ref _cursorMarkRFreq, ref _cursorMarkRDb, ref _cursorMarkRColor, ref _cursorMarkRUsesY2);
-
-            }
-            else
-            {
-                if (_cursorLineR != null) _cursorLineR.Visible = false;
-                if (_lblCursorRInfo != null) { _lblCursorRInfo.Text = ""; _lblCursorRInfo.Visible = false; }
-                _cursorMarkRVisible = false;
-                _cursorMarkRUsesY2 = false;
-            }
-            //
-            // --- Delta (C2 - C1) ---
-            if (_lblCursorDeltaInfo != null)
-            {
-                // visible seulement si au moins un curseur activé
-                if (!onC1 && !onC2)
-                {
-                    _lblCursorDeltaInfo.Text = "";
-                    _lblCursorDeltaInfo.Visible = false;
-                }
-                else
-                {
-                    _lblCursorDeltaInfo.Visible = true;
-
-                    // seulement si les 2 curseurs ont une valeur amplitude valide
-                    if (_cursorMarkLVisible && _cursorMarkRVisible)
-                    {
-                        double dF = _cursorMarkRFreq - _cursorMarkLFreq; // C2 - C1
-
-                        // Si les curseurs sont sur des courbes différentes (Gain vs Phase) => delta uniquement fréquence
-                        if (_cursorMarkLUsesY2 != _cursorMarkRUsesY2)
-                        {
-                            _lblCursorDeltaInfo.ForeColor = InfoTextColor;
-                            _lblCursorDeltaInfo.Text = $"Δ:  ΔF={dF:0.##} Hz";
-                        }
-                        else
-                        {
-                            double dY = _cursorMarkRDb - _cursorMarkLDb; // Y = dB (Gain) OU deg (Phase)
-
-                            string unit = _cursorMarkLUsesY2 ? "°" : (IsFrfMode() ? "dB" : CurrentLevelUnitLabel());
-
-                            _lblCursorDeltaInfo.ForeColor = InfoTextColor;
-                            _lblCursorDeltaInfo.Text = $"Δ:  ΔF={dF:0.##} Hz   ΔY={dY:0.##} {unit}";
-                        }
-
-                    }
-                    else
-                    {
-                        _lblCursorDeltaInfo.ForeColor = InfoTextColor;
-                        _lblCursorDeltaInfo.Text = "Δ:  —";
-                    }
-                }
-            }
-
-            //
-            PositionCursorInfoLabels();
-            chartSpectrum.Invalidate();
-        }
-
-        //
-        private void UpdateRunButtonAppearance()
-        {
-            if (isLive)
-            {
-                btnRun.Text = "STOP";
-                btnRun.BackColor = Color.Firebrick;
-                btnRun.ForeColor = Color.White;
-            }
-            else
-            {
-                btnRun.Text = "RUN";
-                btnRun.BackColor = Color.SeaGreen;
-                btnRun.ForeColor = Color.White;
-            }
-        }
-
-        public void StartFromRun(bool onceMode)
-        {
-            // SpectrumControl ne démarre plus de calcul FFT.
-            // Il se contente d’afficher les frames externes reçues via FeedExternalSpectrum().
-            _hasEverRun = true;
-            isLive = true;
-            UpdateRunButtonAppearance();
-        }
-
-        public void StopFromRun()
-        {
-            isLive = false;
-            UpdateRunButtonAppearance();
-        }
-
-        //
-        private void ResetAveragingState()
-        {
-            _post.ResetAveragingState();
-            _post.ResetFrfState();
-            _post.ResetCohAvgState();
-            _cohAvgLeftDb  = null;
-            _cohAvgRightDb = null;
-
-            if (_avgIsExponential)
-                UpdateAvgProgressUi(0, 0);
-            else
-                UpdateAvgProgressUi(0, avgTargetCount);
-        }
 
 
         //
         // ---------------- PEAK HOLD ----------------
 
-        private void BtnResetPeakHold_Click(object? sender, EventArgs e)
-        {
-            _post.ResetPeakHoldState();
-            UpdateSpectrumChartAndStats();
-        }
         //
         // --------------------------------------------------------------------
         // External Spectrum Feed (FFT calculée hors UI)
         // --------------------------------------------------------------------
         private bool _useExternalSpectrum = false;
 
-        internal void EnableExternalSpectrumMode(bool enabled)
-        {
-            _useExternalSpectrum = enabled;
-            // Plus de timer FFT interne : rien à stopper ici.
-        }
 
-        //
-        private static double[] ComplexBinsToDbFs(MathNet.Numerics.Complex32[] bins)
-        {
-            int n = bins.Length;
-            var db = new double[n];
 
-            for (int k = 0; k < n; k++)
-            {
-                // magnitude linéaire (amplitude)
-                double mag = bins[k].Magnitude;
-
-                // dBFS (0 dBFS = full-scale)
-                double v = (mag <= 0.0) ? -200.0 : 20.0 * Math.Log10(mag);
-
-                // clamp comme avant
-                if (v < -200.0) v = -200.0;
-                if (v > 0.0) v = 0.0;
-
-                db[k] = v;
-            }
-
-            return db;
-        }
-        //
-        private static double[] ComplexBinsToPower(MathNet.Numerics.Complex32[] bins)
-        {
-            int n = bins.Length;
-            var p = new double[n];
-            for (int k = 0; k < n; k++)
-            {
-                // |bin|^2 = re^2 + im^2  (POWER linéaire)
-                float re = bins[k].Real;
-                float im = bins[k].Imaginary;
-                p[k] = (double)re * re + (double)im * im;
-            }
-            return p;
-        }
-
-        private static double[] PowerToDbFs(double[] power)
-        {
-            int n = power.Length;
-            var db = new double[n];
-
-            for (int k = 0; k < n; k++)
-            {
-                double p = power[k];
-                double v = (p <= 0.0) ? -200.0 : 10.0 * Math.Log10(p); // 10log10(power)
-
-                if (v < -200.0) v = -200.0;
-                if (v > 0.0) v = 0.0;
-
-                db[k] = v;
-            }
-
-            return db;
-        }
         //
         /// <summary>
         /// Convertit un ratio de puissance (Left/Right) en dB : 10*log10(P_L / P_R).
         /// Utilisé par le mode "Bode Plot" (pré-Bode).
         /// </summary>
-        private static double[] PowerRatioToDb(double[] leftPower, double[] rightPower)
-        {
-            int n = Math.Min(leftPower.Length, rightPower.Length);
-            var db = new double[n];
-
-            // Epsilon pour éviter les divisions par 0 -> +Inf
-            const double EPS = 1e-30;
-
-            for (int k = 0; k < n; k++)
-            {
-                double pL = leftPower[k];
-                double pR = rightPower[k];
-                if (pL < EPS) pL = EPS;
-                if (pR < EPS) pR = EPS;
-
-                double v = 10.0 * Math.Log10(pL / pR);
-
-                // Clamp large : ici ce n'est pas du dBFS (peut être positif).
-                if (double.IsNaN(v) || double.IsInfinity(v)) v = 0.0;
-                if (v < -200.0) v = -200.0;
-                if (v > 200.0) v = 200.0;
-
-                db[k] = v;
-            }
-
-            return db;
-        }
 
         //
         //
         // Alimente une frame de spectre externe (calculée hors UI)
-        internal void FeedExternalSpectrum(AudioHexViewer.Core.SpectrumFrame frame)
-        {
-            if (frame == null) return;
-
-            // Important : cette méthode doit être appelée sur le thread UI
-            _useExternalSpectrum = true;
-
-            lastFftSize = frame.FftSize;
-            _sampleRate = frame.SampleRate;
-
-            double[]? powL = (frame.LeftBins != null) ? ComplexBinsToPower(frame.LeftBins) : null;
-            double[]? powR = (frame.RightBins != null) ? ComplexBinsToPower(frame.RightBins) : null;
-
-
-            if (powL == null && powR == null)
-            {
-                ClearSpectrum();
-                return;
-            }
-
-            // ── Cohérent actif ? (calculé avant le Welch pour le bypass CPU) ─────
-            bool doCohAvg = _thdMeasuresEnabled &&
-                            _thdUi.UseCohAvg &&
-                            !string.Equals(SelectedChannelMode, "Bode Plot",
-                                           StringComparison.OrdinalIgnoreCase);
-
-            // Averaging (POWER) : Count / Exponential / None
-            // Quand la moyenne cohérente est active, le Welch n'est ni affiché ni
-            // utilisé pour le THD → on passe None pour éviter le calcul inutile.
-            SpectrumPostProcessor.AveragingMode mode;
-            if (doCohAvg)
-                mode = SpectrumPostProcessor.AveragingMode.None;
-            else if (_avgIsExponential)
-                mode = SpectrumPostProcessor.AveragingMode.Exponential;
-            else if (avgTargetCount <= 1)
-                mode = SpectrumPostProcessor.AveragingMode.None;
-            else
-                mode = SpectrumPostProcessor.AveragingMode.Count;
-
-            _post.ApplyAveragingPower(powL, powR, mode, avgTargetCount, _avgExpAlpha,
-                out double[]? outPowL,
-                out double[]? outPowR,
-                out int avgFill);
-
-            // ── Moyennage cohérent pour THD ──────────────────────────────────────
-            // Accumule les bins complexes bruts (avant conversion en puissance).
-            // La moyenne complexe réduit le bruit incohérent de 10·log10(N) dB.
-            // Le nombre de frames cible est pris dans la combo "Averaging" de l'UI.
-            if (doCohAvg)
-            {
-                _post.AccumulateCohAvg(frame.LeftBins, frame.RightBins, avgTargetCount);
-
-                // Running average : mise à jour à chaque frame (comportement REW).
-                // L'accumulation continue indéfiniment ; le bouton Clear remet à zéro.
-                // Le plancher de bruit descend de 10·log10(count) dB en continu.
-                _post.TryGetCohAvgDbFs(out var cohRunL, out var cohRunR, out _);
-                if (cohRunL != null) _cohAvgLeftDb  = cohRunL;
-                if (cohRunR != null) _cohAvgRightDb = cohRunR;
-            }
-            else
-            {
-                // Nettoyage si le mode cohérent vient d'être désactivé
-                if (_cohAvgLeftDb != null || _cohAvgRightDb != null)
-                {
-                    _cohAvgLeftDb  = null;
-                    _cohAvgRightDb = null;
-                    _post.ResetCohAvgState();
-                }
-            }
-
-            // Conversion POWER -> dB pour l’affichage/peak-hold
-            // - Modes classiques : dBFS = 10*log10(power), clamp [-200..0]
-            // - Mode "Bode Plot" : gain relatif = 10*log10(P_L/P_R), clamp large [-200..200]
-            if (string.Equals(SelectedChannelMode, "Bode Plot", StringComparison.OrdinalIgnoreCase))
-            {
-                // -----------------------------------------------------------------
-                // BODE / FRF (H1)
-                // Right = entrée X, Left = sortie Y
-                // Calcul entièrement délégué au SpectrumPostProcessor
-                // -----------------------------------------------------------------
-
-                if (frame.RightBins != null && frame.LeftBins != null)
-                {
-                    _post.ApplyFrfH1Welch(
-                        frame.RightBins,     // X (entrée)
-                        frame.LeftBins,      // Y (sortie)
-                        mode,                // Averaging mode (EXISTANT)
-                        avgTargetCount,      // Target count (EXISTANT)
-                        _avgExpAlpha,        // Alpha exponentiel (EXISTANT)
-                        out var gainDb,      //  Gain dB (EXISTANT)
-                        out var phaseDeg,    // <-- NOUVEAU (Phase)
-                        out avgFill);        // Fill count UI (EXISTANT)
-
-
-                    currentLeftSpectrum = gainDb;   // une seule courbe (gain)
-                    //currentFrfPhaseDeg = phaseDeg;   // <-- NEW : stocke la phase (FULL) pour le plot / curseurs
-                    currentFrfPhaseDeg = _frfPhaseUnwrap ? UnwrapPhaseDegrees(phaseDeg) : phaseDeg;
-
-                    currentRightSpectrum = null;
-                }
-                else
-                {
-                    currentLeftSpectrum = null;
-                    currentRightSpectrum = null;
-                }
-            }
-            else
-            {
-                // ---- Chemin EXISTANT, INCHANGÉ ----
-                currentLeftSpectrum  = (outPowL != null) ? PowerToDbFs(outPowL) : null;
-                currentRightSpectrum = (outPowR != null) ? PowerToDbFs(outPowR) : null;
-            }
-
-            // ── Affichage du spectre cohérent ────────────────────────────────
-            // Quand un cycle complet est disponible, on remplace le spectre Welch
-            // par le spectre cohérent dans le graphe : le plancher de bruit descend
-            // de 10·log10(N) dB, rendant le résultat visuellement visible.
-            if (doCohAvg)
-            {
-                int expBins = frame.FftSize / 2 + 1;
-                if (_cohAvgLeftDb  != null && _cohAvgLeftDb.Length  == expBins)
-                    currentLeftSpectrum  = _cohAvgLeftDb;
-                if (_cohAvgRightDb != null && _cohAvgRightDb.Length == expBins)
-                    currentRightSpectrum = _cohAvgRightDb;
-            }
-
-            // Progression UI :
-            // – Mode cohérent actif  : k/N (k plafonné à N une fois la cible atteinte)
-            // – Mode Count Welch     : k/N (comportement existant)
-            // – Autres               : efface
-            if (doCohAvg)
-                UpdateAvgProgressUi(
-                    Math.Min(_post.CohAvgCount, avgTargetCount),
-                    avgTargetCount);
-            else if (mode != SpectrumPostProcessor.AveragingMode.Count || avgTargetCount <= 1)
-                UpdateAvgProgressUi(0, 0);
-            else
-                UpdateAvgProgressUi(avgFill, avgTargetCount);
-
-            // Peak-hold : on le calculera sur la version PLOT (décimée) pour éviter un coût O(Nbins) inutile.
-            bool peakEnabled = (chkPeakHold != null && chkPeakHold.Checked);
-
-            // Axe fréquence FULL (servira aux métriques)
-            freqAxis = frame.FreqAxisHz;
-
-            // Construit la version "PLOT" décimée (tracé only), à partir des tableaux dB (FULL).
-            BuildPlotDataFromFull();
-
-            // Peak-hold : calcul uniquement sur les tableaux PLOT (décimés).
-            // => même nombre de points que la courbe affichée, coût CPU maîtrisé.
-            _post.UpdatePeakHold(_plotLeftSpectrum, _plotRightSpectrum, peakEnabled);
-
-            // Peak PLOT = directement l'état du post-processor (mêmes longueurs que _plot*Spectrum)
-            _plotPeakLeft = peakEnabled ? _post.GetPeakLeft() : null;
-            _plotPeakRight = peakEnabled ? _post.GetPeakRight() : null;
-
-            // Puis UI update (stats + chart)
-            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
-
-
-        }
         //
         // Construit les tableaux décimés uniquement pour le tracé (chart).
         // IMPORTANT : les métriques restent calculées sur currentLeftSpectrum/currentRightSpectrum + freqAxis (FULL).
-        private void BuildPlotDataFromFull()
-        {
-            _plotFreqAxis = null;
-            _plotLeftSpectrum = null;
-            _plotRightSpectrum = null;
-            _plotFrfPhaseDeg = null;
-            _plotPeakLeft = null;
-            _plotPeakRight = null;
-
-            if (freqAxis == null) return;
-
-            // Budget points ~ 2 points/pixel, cap pour éviter un surcoût UI
-            var (fMin, fMax) = GetVisibleFreqRangeHz();
-            int px = GetPlotPixelWidth();
-            int budget = Math.Min(4096, Math.Max(512, px * 2)); // Nombre de points max pour le tracé
-            bool useLogX = IsXAxisLog();
-
-            // Courbe principale
-            if (currentLeftSpectrum != null)
-                DecimateForPlot(freqAxis, currentLeftSpectrum, fMin, fMax, budget, useLogX, out _plotFreqAxis, out _plotLeftSpectrum);
-
-            // En mode FRF, on décime aussi la phase sur le MEME axe fréquentiel (_plotFreqAxis)
-            if (currentFrfPhaseDeg != null && _plotFreqAxis != null)
-                DecimateForPlotWithGivenFreqAxis(freqAxis, currentFrfPhaseDeg, _plotFreqAxis, out _plotFrfPhaseDeg);
-
-            // Si left absent mais right présent, on doit quand même sortir un freq axis plot
-            if (_plotFreqAxis == null && currentRightSpectrum != null)
-                DecimateForPlot(freqAxis, currentRightSpectrum, fMin, fMax, budget, useLogX, out _plotFreqAxis, out _plotRightSpectrum);
-
-            // Droite (réutilise le même freq axis si déjà construit)
-            if (currentRightSpectrum != null)
-            {
-                if (_plotFreqAxis == null)
-                    DecimateForPlot(freqAxis, currentRightSpectrum, fMin, fMax, budget, useLogX, out _plotFreqAxis, out _plotRightSpectrum);
-                else
-                    DecimateForPlotWithGivenFreqAxis(freqAxis, currentRightSpectrum, _plotFreqAxis, out _plotRightSpectrum);
-            }
-
-            // Peak-hold : ne PAS traiter ici.
-            // Il est désormais calculé sur les tableaux PLOT dans FeedExternalSpectrum() (après décimation).
-            // Ici, BuildPlotDataFromFull() ne prépare que les courbes PLOT principales.
-            _plotPeakLeft = null;
-            _plotPeakRight = null;
-
-        }
         //
         /// <summary>
         /// Unwrap une phase en degrés supposée "wrapée" (typiquement [-180..180]) en phase continue.
         /// </summary>
-        private static double[] UnwrapPhaseDegrees(double[] wrappedDeg)
-        {
-            if (wrappedDeg.Length == 0) return wrappedDeg;
-
-            var u = new double[wrappedDeg.Length];
-            u[0] = wrappedDeg[0];
-
-            double offset = 0.0;
-            for (int i = 1; i < wrappedDeg.Length; i++)
-            {
-                double prev = wrappedDeg[i - 1];
-                double cur = wrappedDeg[i];
-
-                double d = cur - prev;
-
-                // Corrige les sauts typiques à ±180/±360
-                if (d > 180.0) offset -= 360.0;
-                else if (d < -180.0) offset += 360.0;
-
-                u[i] = cur + offset;
-            }
-
-            return u;
-        }
 
         //
         // Décimation "tracé only" : conserve le max dans chaque bucket.
         // Entrées : freqFull (monotone), yFull (dBFS), plage visible, budget points, mode log/lin.
         // Sorties : freqOut/yOut de taille <= budget.
-        private static void DecimateForPlot(
-            double[] freqFull, double[] yFull,
-            double fMin, double fMax,
-            int maxPoints,
-            bool useLogX,
-            out double[] freqOut,
-            out double[] yOut)
-        {
-            int nIn = Math.Min(freqFull.Length, yFull.Length);
-            if (nIn <= 0) { freqOut = Array.Empty<double>(); yOut = Array.Empty<double>(); return; }
-
-            // bornes indices
-            int i0 = Array.BinarySearch(freqFull, fMin);
-            if (i0 < 0) i0 = ~i0;
-            int i1 = Array.BinarySearch(freqFull, fMax);
-            if (i1 < 0) i1 = ~i1;
-
-            i0 = Math.Max(0, Math.Min(nIn - 1, i0));
-            i1 = Math.Max(i0 + 1, Math.Min(nIn, i1));
-
-            if (maxPoints <= 0) maxPoints = 2000;
-
-            // Pas de décimation si déjà petit : slice
-            int span = i1 - i0;
-            if (span <= maxPoints)
-            {
-                int n = span;
-                freqOut = new double[n];
-                yOut = new double[n];
-                Array.Copy(freqFull, i0, freqOut, 0, n);
-                Array.Copy(yFull, i0, yOut, 0, n);
-                return;
-            }
-
-            // LOG X : buckets uniformes en log10(f)
-            if (useLogX)
-            {
-                if (fMin <= 0) fMin = LogXAbsMinHz;
-                if (fMax <= fMin) fMax = fMin * 10.0;
-
-                int nOut = maxPoints;
-                freqOut = new double[nOut];
-                yOut = new double[nOut];
-
-                double logMin = Math.Log10(fMin);
-                double logMax = Math.Log10(fMax);
-                double logStep = (logMax - logMin) / nOut;
-
-                for (int j = 0; j < nOut; j++)
-                {
-                    double fa = Math.Pow(10.0, logMin + j * logStep);
-                    double fb = Math.Pow(10.0, logMin + (j + 1) * logStep);
-
-                    int a = Array.BinarySearch(freqFull, fa);
-                    if (a < 0) a = ~a;
-                    int b = Array.BinarySearch(freqFull, fb);
-                    if (b < 0) b = ~b;
-
-                    if (a < i0) a = i0;
-                    if (b > i1) b = i1;
-                    if (b <= a) b = Math.Min(i1, a + 1);
-
-                    // max dB dans le segment
-                    int kMax = a;
-                    double yMax = yFull[a];
-                    for (int k = a; k < b; k++)
-                    {
-                        double y = yFull[k];
-                        if (y > yMax) { yMax = y; kMax = k; }
-                    }
-
-                    freqOut[j] = freqFull[kMax];
-                    yOut[j] = yMax;
-                }
-
-                return;
-            }
-
-            // LIN X : buckets uniformes en index
-            {
-                int nOut = maxPoints;
-                freqOut = new double[nOut];
-                yOut = new double[nOut];
-
-                double step = (double)span / nOut;
-
-                for (int j = 0; j < nOut; j++)
-                {
-                    int a = i0 + (int)Math.Floor(j * step);
-                    int b = i0 + (int)Math.Floor((j + 1) * step);
-
-                    if (a < i0) a = i0;
-                    if (b <= a) b = a + 1;
-                    if (b > i1) b = i1;
-
-                    int kMax = a;
-                    double yMax = yFull[a];
-                    for (int k = a; k < b; k++)
-                    {
-                        double y = yFull[k];
-                        if (y > yMax) { yMax = y; kMax = k; }
-                    }
-
-                    freqOut[j] = freqFull[kMax];
-                    yOut[j] = yMax;
-                }
-            }
-        }
 
         // Variante : on a déjà un freqAxis plot (fréquences choisies), on interpole par "nearest bin" dans yFull.
-        private static void DecimateForPlotWithGivenFreqAxis(
-            double[] freqFull,
-            double[] yFull,
-            double[] freqPlot,
-            out double[] yPlot)
-        {
-            int nIn = Math.Min(freqFull.Length, yFull.Length);
-            yPlot = new double[freqPlot.Length];
-
-            for (int j = 0; j < freqPlot.Length; j++)
-            {
-                double f = freqPlot[j];
-                int k = Array.BinarySearch(freqFull, f);
-                if (k < 0) k = ~k;
-                if (k >= nIn) k = nIn - 1;
-                yPlot[j] = yFull[k];
-            }
-        }
 
         //
         /// Alimente SpectrumControl avec des stats temporelles (issues du core acquisition/analysis),
         /// pour calibration et affichage. Format attendu : int 24b signé (même que tes buffers d'analyse).
         /// Cette méthode est UI-only et doit être appelée sur le thread UI.
-        internal void FeedExternalTimeStats24(int[] left24, int[] right24)
-        {
-            const double fullScale = SpectrumAnalyzer.Max24Pos; // 0x7FFFFF
-
-            void ComputeOne(int[] x24, out double? rmsFsAc, out double? peakFs, out double? meanFs)
-            {
-                rmsFsAc = null;
-                peakFs = null;
-                meanFs = null;
-                if (x24 == null || x24.Length == 0) return;
-
-                // Peak (FS) + moyenne (DC)
-                int pk = 0;
-                long sum = 0;
-                for (int i = 0; i < x24.Length; i++)
-                {
-                    int v = x24[i];
-                    int a = Math.Abs(v);
-                    if (a > pk) pk = a;
-                    sum += v;
-                }
-
-                double mean24 = sum / (double)x24.Length;     // DC en unités 24b
-                double mFs = mean24 / fullScale;              // DC en FS [-1..1] typiquement
-                meanFs = mFs;
-
-                // RMS AC (FS) = RMS(sample - mean) / fullScale
-                double sumSq = 0.0;
-                for (int i = 0; i < x24.Length; i++)
-                {
-                    double d = (x24[i] - mean24) / fullScale;
-                    sumSq += d * d;
-                }
-
-                double rms = Math.Sqrt(sumSq / x24.Length);
-                double pkFs = pk / fullScale;
-
-                rmsFsAc = (rms > 0.0) ? rms : null;
-                peakFs = (pkFs > 0.0) ? pkFs : null;
-            }
-
-            ComputeOne(left24, out var rmsL, out var pkL, out var meanL);
-            ComputeOne(right24, out var rmsR, out var pkR, out var meanR);
-
-            _lastRmsFsLeft = rmsL;
-            _lastRmsFsRight = rmsR;
-            _lastPeakFsLeft = pkL;
-            _lastPeakFsRight = pkR;
-
-            // dBFS RMS (déjà utilisé dans le dialogue CAL V)
-            _lastRmsDbfsLeft = (rmsL.HasValue) ? Math.Max(-200.0, 20.0 * Math.Log10(rmsL.Value * Math.Sqrt(2.0))) : null;
-            _lastRmsDbfsRight = (rmsR.HasValue) ? Math.Max(-200.0, 20.0 * Math.Log10(rmsR.Value * Math.Sqrt(2.0))) : null;
-
-            // --- VOLTS (si calibré) ---
-            // Vrms = RMS AC (DC retiré) * gain
-            // Vpeak = peak FS (DC compris) * gain
-            // Vdc = mean FS * gain
-            if (_levelCalValidLeft && _levelGainVrmsPerFsLeft > 0.0)
-            {
-                _lastVrmsVoltsLeft = rmsL.HasValue ? rmsL.Value * _levelGainVrmsPerFsLeft : null;
-                _lastVpkVoltsLeft = pkL.HasValue ? pkL.Value * _levelGainVrmsPerFsLeft : null;
-                _lastVdcVoltsLeft = meanL.HasValue ? meanL.Value * _levelGainVrmsPerFsLeft : null;
-            }
-            else
-            {
-                _lastVrmsVoltsLeft = null;
-                _lastVpkVoltsLeft = null;
-                _lastVdcVoltsLeft = null;
-            }
-
-            if (_levelCalValidRight && _levelGainVrmsPerFsRight > 0.0)
-            {
-                _lastVrmsVoltsRight = rmsR.HasValue ? rmsR.Value * _levelGainVrmsPerFsRight : null;
-                _lastVpkVoltsRight = pkR.HasValue ? pkR.Value * _levelGainVrmsPerFsRight : null;
-                _lastVdcVoltsRight = meanR.HasValue ? meanR.Value * _levelGainVrmsPerFsRight : null;
-            }
-            else
-            {
-                _lastVrmsVoltsRight = null;
-                _lastVpkVoltsRight = null;
-                _lastVdcVoltsRight = null;
-            }
-        }
 
 
         //
-        //
-        private void ChartSpectrum_MouseUp(object? sender, MouseEventArgs e)
-        {
-            if (e.Button == MouseButtons.Right)
-            {
-                ShowAxisDialog();
-            }
-        }
         //
         /// <summary>
         /// Adds a small overlay button "Axis" in the bottom-left corner of the chart.
         /// This is a UI helper to open the Axis Parameters dialog without using right-click.
         /// The right-click behavior remains unchanged.
         /// </summary>
-        private void InitAxisButtonUi()
-        {
-            if (_btnAxis != null)
-                return; // already initialized
-
-            // Parent it to the chart so it stays positioned relative to the graph area.
-            _btnAxis = new Button();
-            _btnAxis.Name = "btnAxis";
-            _btnAxis.Text = "Axis Setup";
-            _btnAxis.AutoSize = true;
-            _btnAxis.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            _btnAxis.Padding = new Padding(8, 2, 8, 2);
-            _btnAxis.FlatStyle = FlatStyle.Flat;
-            _btnAxis.FlatAppearance.BorderSize = 1;
-            _btnAxis.TabStop = false;
-            _btnAxis.Cursor = Cursors.Hand;
-
-            // Keep the button attached to the bottom-left corner of its parent.
-            _btnAxis.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
-
-            // Slightly translucent background (still readable).
-            // Note: WinForms button doesn't support true alpha in all themes, but this is safe.
-            _btnAxis.BackColor = Color.FromArgb(230, SystemColors.Control);
-
-            // Open the same dialog as the existing right-click on the chart.
-            _btnAxis.Click += (_, __) => ShowAxisDialog();
-
-            // Tooltip (optional but nice UX)
-            _toolTipAxis ??= new ToolTip();
-            _toolTipAxis.SetToolTip(_btnAxis, "Axis Parameters");
-
-            chartSpectrum.Controls.Add(_btnAxis);
-            _btnAxis.BringToFront();
-
-            // Initial placement + keep in place on resize.
-            PositionAxisButton();
-            chartSpectrum.Resize += (_, __) => PositionAxisButton();
-        }
 
         /// <summary>
         /// Computes and applies the overlay button position inside the chart.
         /// Uses a fixed margin from the bottom-left corner.
         /// </summary>
-        private void PositionAxisButton()
-        {
-            if (_btnAxis == null)
-                return;
 
-            const int marginPx = 6;
-
-            int x = marginPx;
-            int y = Math.Max(marginPx, chartSpectrum.ClientSize.Height - _btnAxis.Height - marginPx);
-
-            _btnAxis.Location = new Point(x, y);
-            _btnAxis.BringToFront();
-        }
-
-        //
-        private void ShowAxisDialog()
-        {
-            if (chartSpectrum.ChartAreas.Count == 0)
-                return;
-
-            var area = chartSpectrum.ChartAreas["SpectrumArea"];
-
-            // Valeurs actuelles (si custom non null, on les utilise)
-            double yMinCurrent = customYMin ?? area.AxisY.Minimum;
-            double yMaxCurrent = customYMax ?? area.AxisY.Maximum;
-            double fMinCurrent = customFMin ?? area.AxisX.Minimum;   // Hz
-            double fMaxCurrent = customFMax ?? area.AxisX.Maximum;   // Hz
-
-            using (var dlg = new SpectrumAxisDialog())
-            {
-                // Main Y axis unit must be set before injecting YMin/YMax (so the dialog can clamp/round correctly).
-                string modeForUnit = (comboChannel?.SelectedItem as string) ?? "L+R";
-                bool useDbvAxis = UseDbvForMode(modeForUnit);
-
-                if (string.Equals(modeForUnit, "Bode Plot", StringComparison.OrdinalIgnoreCase))
-                    dlg.MainYScale = SpectrumAxisDialog.YScaleMode.DbGain;
-                else if (useDbvAxis)
-                    dlg.MainYScale = SpectrumAxisDialog.YScaleMode.Dbv;
-                else
-                    dlg.MainYScale = SpectrumAxisDialog.YScaleMode.Dbfs;
-
-                // IMPORTANT: set YMax first, then YMin (YMin is derived via the selected range).
-                dlg.YMax = yMaxCurrent;
-                dlg.YMin = yMinCurrent;
-                dlg.FMinHz = fMinCurrent;   // *** en Hz ***
-                dlg.FMaxHz = fMaxCurrent;   // *** en Hz ***
-
-                // Y2 Phase (deg) — uniquement si l'affichage phase est actif
-                bool phaseUiEnabled = IsFrfMode() && _frfPhaseEnabled;
-                dlg.PhaseRangeEnabled = phaseUiEnabled;
-
-                // IMPORTANT : set PhaseMax first, then PhaseMin (PhaseMin is derived via the selected range).
-                dlg.PhaseMaxDeg = customPhaseMax ?? 180.0;
-                dlg.PhaseMinDeg = customPhaseMin ?? -180.0;
-
-
-
-                dlg.SampleRateHz = _sampleRate;
-                // 🔧 Ajuster dynamiquement la borne max de Fmax
-                double fmaxCap = SpectrumAxisDialog.GetAllowedFmax(_sampleRate);
-                dlg.SetFmaxMaximum(fmaxCap);
-
-                dlg.FitYProvider = GetCurrentYRangeGlobal;
-                dlg.FitY2Provider = GetVisiblePhaseRangeDeg_ForFitY2;
-                dlg.FftSizeN = lastFftSize;
-
-
-                if (dlg.ShowDialog(FindForm()) == DialogResult.OK)
-                {
-                    customYMin = dlg.YMin;
-                    customYMax = dlg.YMax;
-
-                    customFMin = dlg.FMinHz;   // plus de *1000
-                    customFMax = dlg.FMaxHz;
-
-                    if (phaseUiEnabled)
-                    {
-                        customPhaseMin = dlg.PhaseMinDeg;
-                        customPhaseMax = dlg.PhaseMaxDeg;
-                    }
-                    else
-                    {
-                        // Si phase non affichée, on ne force pas une plage custom
-                        customPhaseMin = null;
-                        customPhaseMax = null;
-                    }
-
-                    if (customYMin >= customYMax)
-                        customYMin = customYMax - 10.0;
-
-                    if (customFMin < 0.0)
-                        customFMin = 0.0;
-                    if (customFMax <= customFMin)
-                        customFMax = customFMin + 10.0;
-
-                    ResetAveragingState();
-                    UpdateSpectrumChartAndStats();
-
-                }
-            }
-
-        }
         //
         // ------------------------------------------------------------------
         // UI: right-click on < or > buttons => edit NoiseToPeakThresholdDb
         // ------------------------------------------------------------------
-        private void OpenNoiseToPeakThresholdDialog()
-        {
-            using var dlg = new NoiseToPeakThresholdDialog(
-                currentValueDb: NoiseToPeakThresholdDb,
-                minDb: NoiseToPeakThresholdMinDb,
-                maxDb: NoiseToPeakThresholdMaxDb);
-
-            if (dlg.ShowDialog(this.FindForm()) == DialogResult.OK)
-            {
-                NoiseToPeakThresholdDb = dlg.ValueDb;
-                // Pas besoin de recalcul automatique : la valeur sera prise en compte au prochain < / >
-            }
-        }
 
         /// <summary>
         /// Small dialog for editing the Noise→Peak threshold (dB).
@@ -4795,51 +1620,10 @@ namespace AudioHexViewer
         }
 
         //
-        private static string FormatHzK(double hz)
-        {
-            if (hz < 1.0)
-            {
-                // Sous 1 Hz : affiche en mHz si < 1 Hz, ou directement si >= 0.1
-                if (hz >= 0.1) return hz.ToString("0.##");
-                if (hz >= 0.01) return hz.ToString("0.###");
-                return hz.ToString("G3"); // ex. 1E-4 pour de très basses fréquences
-            }
-            if (hz >= 1000.0)
-                return (hz / 1000.0).ToString("0.#") + "k";
-            return hz.ToString("0");
-        }
-        //
         /// <summary>
         /// Applique le mode X (LIN/LOG) de manière atomique et sûre.
         /// Le Chart WinForms peut lever "logarithmic scale cannot be used" si min <= 0 en LOG.
         /// </summary>
-        private void ApplyAxisXModeSafe(ChartArea area, bool useLog, double fMin, double fMax)
-        {
-            // Normalisation des bornes
-            if (double.IsNaN(fMin) || double.IsInfinity(fMin)) fMin = 0.0;
-            if (double.IsNaN(fMax) || double.IsInfinity(fMax)) fMax = fMin + 1.0;
-
-            if (useLog)
-            {
-                // LOG => min strictement > 0 (accepte sub-1Hz)
-                fMin = Math.Max(LogXAbsMinHz, fMin);
-                if (fMax <= fMin) fMax = fMin * 10.0;
-            }
-            else
-            {
-                // LIN => min >= 0 acceptable
-                if (fMax <= fMin) fMax = fMin + 1.0;
-            }
-
-            // Application "atomique" :
-            // 1) repasser en LIN (évite l’état transitoire invalide)
-            // 2) poser les bornes
-            // 3) repasser en LOG si besoin
-            area.AxisX.IsLogarithmic = false;
-            area.AxisX.Minimum = fMin;
-            area.AxisX.Maximum = fMax;
-            area.AxisX.IsLogarithmic = useLog;
-        }
 
 
         // Surcharge pratique : réutilise les derniers buffers temps connus
@@ -4849,6 +1633,123 @@ namespace AudioHexViewer
 
         }
         //
+        // ════════════════════════════════════════════════════════════════════
+        // Phase 5 — Helpers rendu haute performance
+        // ════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Initialise les 5 séries fixes une seule fois (lazy).
+        /// Ordre d'ajout = ordre de rendu (back → front).
+        /// Les overlays (OV*) seront insérés en position 0 = sous tout le reste.
+        /// </summary>
+        private void EnsureSeriesInited()
+        {
+            if (_seriesInited) return;
+
+            Series Mk(string name, Color color, int width,
+                      ChartDashStyle dash = ChartDashStyle.Solid) => new Series(name)
+            {
+                ChartType       = SeriesChartType.FastLine,
+                ChartArea       = "SpectrumArea",
+                Color           = color,
+                BorderWidth     = width,
+                BorderDashStyle = dash,
+            };
+
+            _serPeakLeft  = Mk("LeftPeakHold",  PeakHoldLeftColor,  _colors.PeakHoldWidth, ChartDashStyle.Dash);
+            _serPeakRight = Mk("RightPeakHold", PeakHoldRightColor, _colors.PeakHoldWidth, ChartDashStyle.Dash);
+            _serPhase     = Mk("Phase",          FftRightColor,      _colors.FftWidth);
+            _serPhase.YAxisType = AxisType.Secondary;
+            _serLeft  = Mk("Left",  FftLeftColor,  _colors.FftWidth);
+            _serRight = Mk("Right", FftRightColor, _colors.FftWidth);
+
+            chartSpectrum.Series.Add(_serPeakLeft);
+            chartSpectrum.Series.Add(_serPeakRight);
+            chartSpectrum.Series.Add(_serPhase);
+            chartSpectrum.Series.Add(_serLeft);
+            chartSpectrum.Series.Add(_serRight);
+
+            _seriesInited = true;
+        }
+
+        /// <summary>Supprime uniquement les séries overlay (OV*). Les séries fixes restent.</summary>
+        private void RemoveOverlaySeries()
+        {
+            for (int i = chartSpectrum.Series.Count - 1; i >= 0; i--)
+                if (chartSpectrum.Series[i].Name.StartsWith("OV", StringComparison.Ordinal))
+                    chartSpectrum.Series.RemoveAt(i);
+        }
+
+        /// <summary>
+        /// Remplit une série pré-allouée avec SuspendUpdates.
+        /// Zéro allocation, zéro événement intermédiaire entre Clear et ResumeUpdates.
+        /// </summary>
+        private static void FillSeries(Series ser, double[]? fx, double[]? y,
+                                        int startIdx, bool show, double offset)
+        {
+            ser.Points.SuspendUpdates();
+            ser.Points.Clear();
+            if (show && fx != null && y != null)
+            {
+                int n = Math.Min(fx.Length, y.Length);
+                for (int i = startIdx; i < n; i++)
+                    ser.Points.AddXY(fx[i], y[i] + offset);
+            }
+            ser.Points.ResumeUpdates();
+        }
+
+        /// <summary>
+        /// Met à jour lblXxxRms/Peak depuis les champs _last* pré-calculés par
+        /// FeedExternalTimeStats24. Corrige le bug latent : l'ancien bloc
+        /// "if (timeL != null)" était du dead code (lastTimeLeft jamais assigné).
+        /// </summary>
+        private void UpdateStatsLabels(bool left, bool show, bool useDbv)
+        {
+            Label? lRms  = left ? lblLeftRms   : lblRightRms;
+            Label? lPeak = left ? lblLeftPeak  : lblRightPeak;
+            Label? lRmsV = left ? lblLeftRmsV  : lblRightRmsV;
+            Label? lPkV  = left ? lblLeftPeakV : lblRightPeakV;
+
+            if (!show)
+            {
+                if (lRms  != null) lRms.Text  = "RMS:";
+                if (lPeak != null) lPeak.Text = "Peak:";
+                if (lRmsV != null) lRmsV.Text = "";
+                if (lPkV  != null) lPkV.Text  = "";
+                return;
+            }
+
+            double? rmsDb  = left ? _lastRmsDbfsLeft  : _lastRmsDbfsRight;
+            double? peakFs = left ? _lastPeakFsLeft   : _lastPeakFsRight;
+            double  offset = left ? _levelCalOffsetDbLeft : _levelCalOffsetDbRight;
+            string  unit   = useDbv ? "dBV" : "dBFS";
+
+            if (lRms != null)
+                lRms.Text = rmsDb.HasValue
+                    ? $"RMS:  {(useDbv ? rmsDb.Value + offset : rmsDb.Value):F2} {unit}"
+                    : "RMS:";
+
+            if (lPeak != null && peakFs.HasValue && peakFs.Value > 0.0)
+            {
+                double pkDbfs = Math.Max(-200.0, 20.0 * Math.Log10(peakFs.Value));
+                lPeak.Text = $"Peak: {(useDbv ? pkDbfs + offset : pkDbfs):F2} {unit}";
+            }
+            else if (lPeak != null) lPeak.Text = "Peak:";
+
+            if (useDbv)
+            {
+                double? vrms = left ? _lastVrmsVoltsLeft  : _lastVrmsVoltsRight;
+                double? vpk  = left ? _lastVpkVoltsLeft   : _lastVpkVoltsRight;
+                if (lRmsV != null) lRmsV.Text = vrms.HasValue ? $"Vrms:  {FormatVoltage(vrms.Value)}" : "";
+                if (lPkV  != null) lPkV.Text  = vpk.HasValue  ? $"Vpeak: {FormatVoltage(vpk.Value)}"  : "";
+            }
+            else
+            {
+                if (lRmsV != null) lRmsV.Text = "";
+                if (lPkV  != null) lPkV.Text  = "";
+            }
+        }
+
         private void UpdateSpectrumChartAndStats(double[]? timeL, double[]? timeR)
         {
             if (chartSpectrum.ClientSize.Width <= 0 || chartSpectrum.ClientSize.Height <= 0)
@@ -5074,125 +1975,151 @@ namespace AudioHexViewer
 
             double yMajor = minorPerMajor * yMinor;
 
-            area.AxisY.Minimum = yMin;
-            area.AxisY.Maximum = yMax;
 
-            _currentYMinor = yMinor;
-            _currentYMajor = yMajor;
+            // ── Cache axe : skip les 120+ assignments si les paramètres n'ont pas changé ──
+            bool _axChanged =
+                double.IsNaN(_axCachedFmin)  ||
+                double.IsNaN(_axCachedYmin)  ||
+                Math.Abs(fMin    - _axCachedFmin)   > 0.01 ||
+                Math.Abs(fMax    - _axCachedFmax)   > 0.01 ||
+                Math.Abs(yMin    - _axCachedYmin)   > 0.01 ||
+                Math.Abs(yMax    - _axCachedYmax)   > 0.01 ||
+                Math.Abs(yMinor  - _axCachedYminor) > 1e-6 ||
+                useLog != _axCachedUseLog            ||
+                chartSpectrum.ClientSize != _axCachedChartSize;
 
-            area.AxisY.Interval = yMajor;
-            area.AxisY.IntervalOffset = 0.0;
-
-            area.AxisY.LabelStyle.Interval = yMajor;
-            area.AxisY.LabelStyle.IntervalOffset = 0.0;
-
-            area.AxisY.MajorTickMark.Enabled = true;
-            area.AxisY.MajorTickMark.Interval = yMajor;
-            area.AxisY.MajorTickMark.IntervalOffset = 0.0;
-
-            area.AxisY.MajorGrid.Enabled = true;
-            area.AxisY.MajorGrid.Interval = yMajor;
-            area.AxisY.MajorGrid.IntervalOffset = 0.0;
-            area.AxisY.MajorGrid.LineDashStyle = ChartDashStyle.Solid;
-
-            area.AxisY.MinorGrid.Enabled = true;
-            area.AxisY.MinorGrid.Interval = yMinor;
-            area.AxisY.MinorGrid.IntervalOffset = 0.0;
-            area.AxisY.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
-            area.AxisY.MinorGrid.LineColor = GridMinorColor;
-
-            // Activer les ticks mineurs pour que LabelMinor soit visible.
-            // Désactivé : on dessine nous-mêmes les ticks/labels mineurs.
-            area.AxisY.MinorTickMark.Enabled = false;
-            area.AxisY.MinorTickMark.Size = 1f;
-            int yDecimals = 0;
-            if (yMinor < 1.0)
+            if (_axChanged)
             {
-                yDecimals = (int)Math.Ceiling(-Math.Log10(yMinor));
-                yDecimals = Math.Min(yDecimals, 2);
-            }
-            area.AxisY.LabelStyle.Format = "F" + yDecimals;
+                area.AxisY.Minimum = yMin;
+                area.AxisY.Maximum = yMax;
 
-            // On remplace les labels majeurs du Chart par notre rendu PostPaint (deterministe)
-            // => on masque ceux du Chart sans impacter le layout (ForeColor transparent).
-            area.AxisY.LabelStyle.ForeColor = Color.Transparent;
+                _currentYMinor = yMinor;
+                _currentYMajor = yMajor;
 
-            // --- Axe X : on fixe d'abord les bornes, puis on active le log si besoin ---
-            if (useLog)
-            {
-                if (area.AxisX.Minimum <= 0)
-                    area.AxisX.Minimum = LogXAbsMinHz;
-                if (area.AxisX.Maximum <= area.AxisX.Minimum)
-                    area.AxisX.Maximum = area.AxisX.Minimum * 10.0;
+                area.AxisY.Interval = yMajor;
+                area.AxisY.IntervalOffset = 0.0;
 
-                double minDecade = Math.Pow(10.0, Math.Floor(Math.Log10(area.AxisX.Minimum)));
-                area.AxisX.Minimum = Math.Max(LogXAbsMinHz, minDecade);
+                area.AxisY.LabelStyle.Interval = yMajor;
+                area.AxisY.LabelStyle.IntervalOffset = 0.0;
 
-                if (area.AxisX.Maximum <= area.AxisX.Minimum)
-                    area.AxisX.Maximum = area.AxisX.Minimum * 10.0;
+                area.AxisY.MajorTickMark.Enabled = true;
+                area.AxisY.MajorTickMark.Interval = yMajor;
+                area.AxisY.MajorTickMark.IntervalOffset = 0.0;
 
-                area.AxisX.IsLogarithmic = true;
-                area.AxisX.LogarithmBase = 10.0;
+                area.AxisY.MajorGrid.Enabled = true;
+                area.AxisY.MajorGrid.Interval = yMajor;
+                area.AxisY.MajorGrid.IntervalOffset = 0.0;
+                area.AxisY.MajorGrid.LineDashStyle = ChartDashStyle.Solid;
 
-                area.AxisX.Interval = 1.0;
-                area.AxisX.LabelStyle.Interval = 1.0;
-                area.AxisX.MajorTickMark.Interval = 1.0;
+                area.AxisY.MinorGrid.Enabled = true;
+                area.AxisY.MinorGrid.Interval = yMinor;
+                area.AxisY.MinorGrid.IntervalOffset = 0.0;
+                area.AxisY.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
+                area.AxisY.MinorGrid.LineColor = GridMinorColor;
 
-                area.AxisX.MajorGrid.Enabled = true;
-                area.AxisX.MajorGrid.LineDashStyle = ChartDashStyle.Solid;
-                area.AxisX.MajorGrid.Interval = 1.0;
+                // Activer les ticks mineurs pour que LabelMinor soit visible.
+                // Désactivé : on dessine nous-mêmes les ticks/labels mineurs.
+                area.AxisY.MinorTickMark.Enabled = false;
+                area.AxisY.MinorTickMark.Size = 1f;
+                int yDecimals = 0;
+                if (yMinor < 1.0)
+                {
+                    yDecimals = (int)Math.Ceiling(-Math.Log10(yMinor));
+                    yDecimals = Math.Min(yDecimals, 2);
+                }
+                area.AxisY.LabelStyle.Format = "F" + yDecimals;
 
-                area.AxisX.MinorGrid.Enabled = false;
+                // On remplace les labels majeurs du Chart par notre rendu PostPaint (deterministe)
+                // => on masque ceux du Chart sans impacter le layout (ForeColor transparent).
+                area.AxisY.LabelStyle.ForeColor = Color.Transparent;
 
-                ApplyLogXMinorGridStripLines(area.AxisX);
+                // --- Axe X : on fixe d'abord les bornes, puis on active le log si besoin ---
+                if (useLog)
+                {
+                    if (area.AxisX.Minimum <= 0)
+                        area.AxisX.Minimum = LogXAbsMinHz;
+                    if (area.AxisX.Maximum <= area.AxisX.Minimum)
+                        area.AxisX.Maximum = area.AxisX.Minimum * 10.0;
 
-                area.AxisX.MajorGrid.IntervalOffset = 0.0;
-                area.AxisX.MinorGrid.IntervalOffset = 0.0;
-                area.AxisX.MinorTickMark.IntervalOffset = 0.0;
-            }
-            else
-            {
-                area.AxisX.IsLogarithmic = false;
+                    double minDecade = Math.Pow(10.0, Math.Floor(Math.Log10(area.AxisX.Minimum)));
+                    area.AxisX.Minimum = Math.Max(LogXAbsMinHz, minDecade);
 
-                area.AxisX.StripLines.Clear();
+                    if (area.AxisX.Maximum <= area.AxisX.Minimum)
+                        area.AxisX.Maximum = area.AxisX.Minimum * 10.0;
 
-                double xSpan = fMax - fMin;
-                if (xSpan <= 0) xSpan = 1.0;
+                    area.AxisX.IsLogarithmic = true;
+                    area.AxisX.LogarithmBase = 10.0;
 
-                int spanHz = (int)Math.Round(xSpan);
-                if (spanHz < 1) spanHz = 1;
+                    area.AxisX.Interval = 1.0;
+                    area.AxisX.LabelStyle.Interval = 1.0;
+                    area.AxisX.MajorTickMark.Interval = 1.0;
 
-                var grid = ChooseBestStepWithSpanAdjustment(spanHz);
-                double xMajor = grid.StepHz;
+                    area.AxisX.MajorGrid.Enabled = true;
+                    area.AxisX.MajorGrid.LineDashStyle = ChartDashStyle.Solid;
+                    area.AxisX.MajorGrid.Interval = 1.0;
 
-                double fMaxAdjusted = fMin + grid.SpanAdjustedHz;
+                    area.AxisX.MinorGrid.Enabled = false;
 
-                area.AxisX.Minimum = fMin;
-                area.AxisX.Maximum = fMaxAdjusted;
+                    ApplyLogXMinorGridStripLines(area.AxisX);
 
-                area.AxisX.Interval = xMajor;
-                area.AxisX.IntervalOffset = 0.0;
+                    area.AxisX.MajorGrid.IntervalOffset = 0.0;
+                    area.AxisX.MinorGrid.IntervalOffset = 0.0;
+                    area.AxisX.MinorTickMark.IntervalOffset = 0.0;
+                }
+                else
+                {
+                    area.AxisX.IsLogarithmic = false;
 
-                area.AxisX.LabelStyle.Interval = xMajor;
-                area.AxisX.LabelStyle.IntervalOffset = 0.0;
+                    area.AxisX.StripLines.Clear();
 
-                area.AxisX.MajorTickMark.Enabled = true;
-                area.AxisX.MajorTickMark.Interval = xMajor;
-                area.AxisX.MajorTickMark.IntervalOffset = 0.0;
+                    double xSpan = fMax - fMin;
+                    if (xSpan <= 0) xSpan = 1.0;
 
-                area.AxisX.MajorGrid.Enabled = true;
-                area.AxisX.MajorGrid.Interval = xMajor;
-                area.AxisX.MajorGrid.IntervalOffset = 0.0;
+                    int spanHz = (int)Math.Round(xSpan);
+                    if (spanHz < 1) spanHz = 1;
 
-                area.AxisX.MinorGrid.Enabled = true;
-                area.AxisX.MinorGrid.Interval = xMajor / 5.0;
-                area.AxisX.MinorGrid.IntervalOffset = 0.0;
+                    var grid = ChooseBestStepWithSpanAdjustment(spanHz);
+                    double xMajor = grid.StepHz;
 
-                area.AxisX.MajorTickMark.Size = 2f;
+                    double fMaxAdjusted = fMin + grid.SpanAdjustedHz;
 
-                area.AxisX.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
-                area.AxisX.MinorGrid.LineColor = GridMinorColor;
-            }
+                    area.AxisX.Minimum = fMin;
+                    area.AxisX.Maximum = fMaxAdjusted;
+
+                    area.AxisX.Interval = xMajor;
+                    area.AxisX.IntervalOffset = 0.0;
+
+                    area.AxisX.LabelStyle.Interval = xMajor;
+                    area.AxisX.LabelStyle.IntervalOffset = 0.0;
+
+                    area.AxisX.MajorTickMark.Enabled = true;
+                    area.AxisX.MajorTickMark.Interval = xMajor;
+                    area.AxisX.MajorTickMark.IntervalOffset = 0.0;
+
+                    area.AxisX.MajorGrid.Enabled = true;
+                    area.AxisX.MajorGrid.Interval = xMajor;
+                    area.AxisX.MajorGrid.IntervalOffset = 0.0;
+
+                    area.AxisX.MinorGrid.Enabled = true;
+                    area.AxisX.MinorGrid.Interval = xMajor / 5.0;
+                    area.AxisX.MinorGrid.IntervalOffset = 0.0;
+
+                    area.AxisX.MajorTickMark.Size = 2f;
+
+                    area.AxisX.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
+                    area.AxisX.MinorGrid.LineColor = GridMinorColor;
+                }
+
+
+                // Mettre en cache les paramètres utilisés
+                _axCachedFmin      = fMin;
+                _axCachedFmax      = fMax;
+                _axCachedYmin      = yMin;
+                _axCachedYmax      = yMax;
+                _axCachedYminor    = yMinor;
+                _axCachedUseLog    = useLog;
+                _axCachedChartSize = chartSpectrum.ClientSize;
+            } // end if (_axChanged)
 
             // --- Ce qu'on affiche en fonction du combo Channel ---
             string mode = comboChannel.SelectedItem as string ?? "L+R";
@@ -5249,7 +2176,8 @@ namespace AudioHexViewer
 
             // [Fix B] On ne clear le chart QUE si on va réellement reconstruire des séries.
             // Si on a sauté vers MEASURES_AND_TEXT (état transitoire invalide), cette ligne n'est jamais atteinte.
-            chartSpectrum.Series.Clear();
+            EnsureSeriesInited();
+            RemoveOverlaySeries();
 
             // --- Overlays (Library V3) ---
             OverlayKind activeKind = (mode == "Bode Plot") ? OverlayKind.Bode : OverlayKind.Spectrum;
@@ -5259,395 +2187,132 @@ namespace AudioHexViewer
             double xMax = area.AxisX.Maximum;
 
             // Troncature au Nyquist courant si SR connu
-            //double nyquist = (_sampleRate > 0) ? (_sampleRate / 2.0) : double.PositiveInfinity;
             double xMaxNyq = Math.Min(xMax, nyquist);
 
             // En LOG, on évite <= 0 Hz
-            if (useLog)
-                xMin = Math.Max(xMin, 1.0);
+            if (useLog) xMin = Math.Max(xMin, 1.0);
 
+            // Helper local overlay : filtre xMin/xMaxNyq + SuspendUpdates + offset inline.
+            // Supprime l'allocation .Select().ToArray() de l'ancienne version.
+            void AddPoints(ChartSeries series, double[] fx, double[] yRaw, double yOffset = 0.0)
+            {
+                int n = Math.Min(fx.Length, yRaw.Length);
+                series.Points.SuspendUpdates();
+                series.Points.Clear();
+                for (int i = 0; i < n; i++)
+                {
+                    double f = fx[i];
+                    if (useLog && f <= 0) continue;
+                    if (f < xMin) continue;
+                    if (f > xMaxNyq) break;
+                    series.Points.AddXY(f, yRaw[i] + yOffset);
+                }
+                series.Points.ResumeUpdates();
+            }
+
+            // Overlays insérés en position 0 = rendus sous le spectre live
+            int ovInsert = 0;
             for (int ovIndex = 0; ovIndex < _overlayCache.Count; ovIndex++)
             {
                 var ov = _overlayCache[ovIndex];
-                if (!ov.Visible)
-                    continue;
+                if (!ov.Visible) continue;
 
                 var data = ov.Data;
-                if (data == null)
-                    continue;
+                if (data == null || data.Kind != activeKind) continue;
 
-                // Un overlay ne s’affiche que si son type correspond à la vue
-                if (data.Kind != activeKind)
-                    continue;
-
-                // Couleur: réutilise la palette "slot" (index modulo)
                 int slotIndex = (data.SlotNumber >= 1 && data.SlotNumber <= OverlayManager.MaxOverlays)
-                    ? (data.SlotNumber - 1)
-                    : (ovIndex % OverlayManager.MaxOverlays);
-
+                    ? (data.SlotNumber - 1) : (ovIndex % OverlayManager.MaxOverlays);
                 var ovColor = GetOverlaySlotColor(slotIndex);
-
-
-                // Helper local: ajoute des points sans interpolation, en respectant xMin/xMaxNyq
-                void AddPoints(ChartSeries series, double[] fx, double[] y)
-                {
-                    int n = Math.Min(fx.Length, y.Length);
-                    for (int i = 0; i < n; i++)
-                    {
-                        double f = fx[i];
-                        if (useLog && f <= 0) continue;
-                        if (f < xMin) continue;
-                        if (f > xMaxNyq) break;
-
-                        series.Points.AddXY(f, y[i]);
-                    }
-                }
 
                 if (activeKind == OverlayKind.Spectrum)
                 {
                     if (showLeft && data.LeftDbFs != null && data.FreqHz != null)
                     {
-                        var s = new ChartSeries($"OV{ovIndex + 1}_L");
-                        s.ChartType = SeriesChartType.Line;
-                        s.ChartArea = "SpectrumArea";
-                        s.Color = ovColor;
-                        s.BorderWidth = _colors.OverlayWidth;
-                        s.BorderDashStyle = GetOverlayDashStyle();
-
-                        // dBV mode = offset de calibration, comme le tracé live
-                        var y = useDbvPlot
-                            ? data.LeftDbFs.Select(v => v + _levelCalOffsetDbLeft).ToArray()
-                            : data.LeftDbFs;
-
-                        AddPoints(s, data.FreqHz, y);
-                        chartSpectrum.Series.Add(s);
+                        var s = new ChartSeries($"OV{ovIndex + 1}_L")
+                        {
+                            ChartType = SeriesChartType.FastLine,
+                            ChartArea = "SpectrumArea",
+                            Color = ovColor,
+                            BorderWidth = _colors.OverlayWidth,
+                            BorderDashStyle = GetOverlayDashStyle(),
+                        };
+                        double ovLOff = useDbvPlot ? _levelCalOffsetDbLeft : 0.0;
+                        AddPoints(s, data.FreqHz, data.LeftDbFs, ovLOff);
+                        chartSpectrum.Series.Insert(ovInsert++, s);
                     }
-
                     if (showRight && data.RightDbFs != null && data.FreqHz != null)
                     {
-                        var s = new ChartSeries($"OV{ovIndex + 1}_R");
-                        s.ChartType = SeriesChartType.Line;
-                        s.ChartArea = "SpectrumArea";
-                        s.Color = ovColor;
-                        s.BorderWidth = _colors.OverlayWidth;
-                        s.BorderDashStyle = GetOverlayDashStyle();
-
-                        s.BorderWidth = _colors.OverlayWidth;
-
-                        var y = useDbvPlot
-                            ? data.RightDbFs.Select(v => v + _levelCalOffsetDbRight).ToArray()
-                            : data.RightDbFs;
-
-                        AddPoints(s, data.FreqHz, y);
-                        chartSpectrum.Series.Add(s);
+                        var s = new ChartSeries($"OV{ovIndex + 1}_R")
+                        {
+                            ChartType = SeriesChartType.FastLine,
+                            ChartArea = "SpectrumArea",
+                            Color = ovColor,
+                            BorderWidth = _colors.OverlayWidth,
+                            BorderDashStyle = GetOverlayDashStyle(),
+                        };
+                        double ovROff = useDbvPlot ? _levelCalOffsetDbRight : 0.0;
+                        AddPoints(s, data.FreqHz, data.RightDbFs, ovROff);
+                        chartSpectrum.Series.Insert(ovInsert++, s);
                     }
                 }
                 else // Bode
                 {
-                    // Gain
                     if (data.GainDb != null && data.FreqHz != null)
                     {
-                        var sGain = new ChartSeries($"OV{ovIndex + 1}_Gain");
-                        sGain.ChartType = SeriesChartType.Line;
-                        sGain.ChartArea = "SpectrumArea";
-                        sGain.Color = ovColor;
-                        sGain.BorderDashStyle = GetOverlayDashStyle();
-                        sGain.BorderWidth = _colors.OverlayWidth;
-
+                        var sGain = new ChartSeries($"OV{ovIndex + 1}_Gain")
+                        {
+                            ChartType = SeriesChartType.FastLine,
+                            ChartArea = "SpectrumArea",
+                            Color = ovColor,
+                            BorderDashStyle = GetOverlayDashStyle(),
+                            BorderWidth = _colors.OverlayWidth,
+                        };
                         AddPoints(sGain, data.FreqHz, data.GainDb);
-                        chartSpectrum.Series.Add(sGain);
+                        chartSpectrum.Series.Insert(ovInsert++, sGain);
                     }
-
-                    // Phase (sur Y2) : suit le même enable que la phase live
                     if (_frfPhaseEnabled && data.PhaseDeg != null && data.FreqHz != null)
                     {
-                        var sPh = new ChartSeries($"OV{ovIndex + 1}_Phase");
-                        sPh.ChartType = SeriesChartType.Line;
-                        sPh.ChartArea = "SpectrumArea";
-                        sPh.YAxisType = AxisType.Secondary;
-                        sPh.Color = ovColor;
-                        sPh.BorderDashStyle = GetOverlayDashStyle();
-                        sPh.BorderWidth = _colors.OverlayWidth;
-
+                        var sPh = new ChartSeries($"OV{ovIndex + 1}_Phase")
+                        {
+                            ChartType = SeriesChartType.FastLine,
+                            ChartArea = "SpectrumArea",
+                            YAxisType = AxisType.Secondary,
+                            Color = ovColor,
+                            BorderDashStyle = GetOverlayDashStyle(),
+                            BorderWidth = _colors.OverlayWidth,
+                        };
                         AddPoints(sPh, data.FreqHz, data.PhaseDeg);
-                        chartSpectrum.Series.Add(sPh);
+                        chartSpectrum.Series.Insert(ovInsert++, sPh);
                     }
                 }
             }
 
+            // ── Séries principales (pré-allouées, FastLine, SuspendUpdates) ───────────
+            double leftOff  = useDbvPlot ? _levelCalOffsetDbLeft  : 0.0;
+            double rightOff = useDbvPlot ? _levelCalOffsetDbRight : 0.0;
 
-            // Courbe gauche
-            if (showLeft && plotFx != null && plotL != null)
-            {
-                var seriesL = new System.Windows.Forms.DataVisualization.Charting.Series("Left");
-                seriesL.ChartType = SeriesChartType.Line;
-                seriesL.BorderWidth = _colors.FftWidth;
-                seriesL.ChartArea = "SpectrumArea";
-                seriesL.Color = FftLeftColor;
+            FillSeries(_serLeft!,     plotFx, plotL,                      startIndex, showLeft,                  leftOff);
+            FillSeries(_serRight!,    plotFx, plotR,                      startIndex, showRight,                 rightOff);
+            FillSeries(_serPeakLeft!, plotFx, peakHoldOn ? peakL : null,  startIndex, showLeft  && peakHoldOn,  leftOff);
+            FillSeries(_serPeakRight!,plotFx, peakHoldOn ? peakR : null,  startIndex, showRight && peakHoldOn,  rightOff);
 
-                // startIndex : en log on saute 0 Hz.
-                // ATTENTION : plotFx est déjà construit sur la plage visible, donc startIndex peut rester 0/1 sans problème.
-                for (int i = startIndex; i < plotFx.Length && i < plotL.Length; i++)
-                    seriesL.Points.AddXY(plotFx[i], useDbvPlot ? (plotL[i] + _levelCalOffsetDbLeft) : plotL[i]);
-
-                chartSpectrum.Series.Add(seriesL);
-
-                // --- FRF Phase : 2e courbe sur AxisY2 (uniquement en mode Bode Plot) ---
-                // --- FRF Phase : 2e courbe sur AxisY2 (uniquement en mode Bode Plot) ---
-                if (mode == "Bode Plot" && _frfPhaseEnabled && plotFx != null && _plotFrfPhaseDeg != null)
-                {
-                    var seriesPh = new ChartSeries("Phase");
-                    seriesPh.ChartType = SeriesChartType.FastLine;
-                    seriesPh.BorderWidth = _colors.FftWidth;     // même épaisseur que FFT
-                    seriesPh.ChartArea = "SpectrumArea";
-                    seriesPh.YAxisType = AxisType.Secondary;     // <= IMPORTANT : AxisY2
-                    seriesPh.Color = FftRightColor;              // Phase = couleur voie Right
-
-                    int n = Math.Min(plotFx.Length, _plotFrfPhaseDeg.Length);
-                    for (int i = startIndex; i < n; i++)
-                        seriesPh.Points.AddXY(plotFx[i], _plotFrfPhaseDeg[i]);
-
-                    chartSpectrum.Series.Add(seriesPh);
-                }
+            bool showPhase = mode == "Bode Plot" && _frfPhaseEnabled && _plotFrfPhaseDeg != null;
+            FillSeries(_serPhase!, plotFx, showPhase ? _plotFrfPhaseDeg : null, startIndex, showPhase, 0.0);
 
 
-                if (peakHoldOn && peakL != null)
-                {
-                    var seriesLph = new ChartSeries("LeftPeakHold");
-                    seriesLph.ChartType = SeriesChartType.FastLine;
-                    seriesLph.ChartArea = "SpectrumArea";
-                    seriesLph.Color = PeakHoldLeftColor;
-                    seriesLph.BorderDashStyle = ChartDashStyle.Dash;
-                    seriesLph.BorderWidth = _colors.PeakHoldWidth;
 
-                    for (int i = startIndex; i < plotFx.Length && i < peakL.Length; i++)
-                        seriesLph.Points.AddXY(plotFx[i], useDbvPlot ? (peakL[i] + _levelCalOffsetDbLeft) : peakL[i]);
+            // ── Labels RMS / Peak ───────────────────────────────────────────────────────
+            // Les champs _last* sont calculés par FeedExternalTimeStats24.
+            // L'ancien bloc "if (timeL != null)" était du dead code :
+            // lastTimeLeft n'est jamais assigné en dehors de null.
+            bool showLeftVolts  = (_levelUnit == "dBV") && _levelCalValidLeft;
+            bool showRightVolts = (_levelUnit == "dBV") && _levelCalValidRight;
 
-                    chartSpectrum.Series.Add(seriesLph);
-                }
-            }
-
-
-            // Courbe droite
-            if (showRight && plotFx != null && plotR != null)
-            {
-                var seriesR = new System.Windows.Forms.DataVisualization.Charting.Series("Right");
-                seriesR.ChartType = SeriesChartType.Line;
-                seriesR.BorderWidth = _colors.FftWidth;
-                seriesR.ChartArea = "SpectrumArea";
-                seriesR.Color = FftRightColor;
-
-                for (int i = startIndex; i < plotFx.Length && i < plotR.Length; i++)
-                    seriesR.Points.AddXY(plotFx[i], useDbvPlot ? (plotR[i] + _levelCalOffsetDbRight) : plotR[i]);
-
-                chartSpectrum.Series.Add(seriesR);
-
-                if (peakHoldOn && peakR != null)
-                {
-                    var seriesRph = new ChartSeries("RightPeakHold");
-                    seriesRph.ChartType = SeriesChartType.FastLine;
-                    seriesRph.ChartArea = "SpectrumArea";
-                    seriesRph.Color = PeakHoldRightColor;
-                    seriesRph.BorderDashStyle = ChartDashStyle.Dash;
-                    seriesRph.BorderWidth = _colors.PeakHoldWidth;
-
-                    for (int i = startIndex; i < plotFx.Length && i < peakR.Length; i++)
-                        seriesRph.Points.AddXY(plotFx[i], useDbvPlot ? (peakR[i] + _levelCalOffsetDbRight) : peakR[i]);
-
-                    chartSpectrum.Series.Add(seriesRph);
-                }
-            }
-
-
-            // --- Stats temporelles : LEFT ---
-            bool showLeftVolts = false;
-            bool showRightVolts = false;
-
-            if (timeL != null && timeL.Length > 0)
-            {
-                double peakLfs = 0.0;
-                for (int i = 0; i < timeL.Length; i++)
-                {
-                    double x = timeL[i] / (double)SpectrumAnalyzer.Max24Pos;
-                    double ax = Math.Abs(x);
-                    if (ax > peakLfs) peakLfs = ax;
-                }
-
-                double meanL = 0.0;
-                for (int i = 0; i < timeL.Length; i++)
-                    meanL += timeL[i];
-                meanL /= timeL.Length;
-
-                double sumSqL = 0.0;
-                for (int i = 0; i < timeL.Length; i++)
-                {
-                    double x = (timeL[i] - meanL) / (double)SpectrumAnalyzer.Max24Pos;
-                    sumSqL += x * x;
-                }
-                double rmsL = Math.Sqrt(sumSqL / timeL.Length);
-                _lastRmsFsLeft = rmsL;
-
-                double rmsLDb = rmsL > 0 ? 20.0 * Math.Log10(rmsL * Math.Sqrt(2.0)) : -200.0;
-                double peakLDb = peakLfs > 0 ? 20.0 * Math.Log10(peakLfs) : -200.0;
-
-                if (rmsLDb < -200.0) rmsLDb = -200.0;
-                if (peakLDb < -200.0) peakLDb = -200.0;
-
-                bool leftUseDbv = (_levelUnit == "dBV") && _levelCalValidLeft;
-
-                double rmsLDisp = leftUseDbv ? (rmsLDb + _levelCalOffsetDbLeft) : rmsLDb;
-                double peakLDisp = leftUseDbv ? (peakLDb + _levelCalOffsetDbLeft) : peakLDb;
-                string unitL = leftUseDbv ? "dBV" : "dBFS";
-
-                lblLeftRms.Text = $"RMS:  {rmsLDisp:F2} {unitL}";
-                _lastRmsDbfsLeft = rmsLDb;
-                lblLeftPeak.Text = $"Peak: {peakLDisp:F2} {unitL}";
-                showLeftVolts = leftUseDbv;
-                if (lblLeftRmsV != null && lblLeftPeakV != null)
-                {
-                    // On calcule TOUJOURS les métriques en volts dès que la calibration est valide,
-                    // même si l'affichage FFT reste en dBFS (pour pouvoir les réutiliser ailleurs : Form1).
-                    if (_levelCalValidLeft)
-                    {
-                        // Conversion directe depuis les métriques linéaires (FS) via le gain de calibration.
-                        double gain =
-                            (_levelGainVrmsPerFsLeft > 0.0)
-                                ? _levelGainVrmsPerFsLeft
-                                : GainFromOffsetDb(_levelCalOffsetDbLeft);
-
-                        // 1) Vrms AC : RMS de (sample-mean)
-                        double vrms = rmsL * gain;
-
-                        // 2) Vpeak : max(|sample|) sur la fenêtre (DC compris)
-                        double vpk = peakLfs * gain;
-
-                        // 3) Vdc : moyenne des échantillons (V moyen)
-                        double vdc = (meanL / (double)SpectrumAnalyzer.Max24Pos) * gain;
-
-                        _lastVdcVoltsLeft = vdc;
-                        _lastVrmsVoltsLeft = vrms;
-                        _lastVpkVoltsLeft = vpk;
-
-                        if (showLeftVolts)
-                        {
-                            // Affichage uniquement en mode dBV (côté FFT)
-                            lblLeftRmsV.Text = $"Vrms:  {FormatVoltage(vrms)}";
-                            lblLeftPeakV.Text = $"Vpeak: {FormatVoltage(vpk)}";
-                        }
-                        else
-                        {
-                            lblLeftRmsV.Text = "";
-                            lblLeftPeakV.Text = "";
-                        }
-                    }
-                    else
-                    {
-                        _lastVdcVoltsLeft = null;
-                        _lastVrmsVoltsLeft = null;
-                        _lastVpkVoltsLeft = null;
-                        lblLeftRmsV.Text = "";
-                        lblLeftPeakV.Text = "";
-                    }
-                }
-            }
-            else
-            {
-                lblLeftRms.Text = "RMS:";
-                lblLeftPeak.Text = "Peak:";
-                if (lblLeftRmsV != null) lblLeftRmsV.Text = "";
-                if (lblLeftPeakV != null) lblLeftPeakV.Text = "";
-
-            }
-
-            // --- Stats temporelles : RIGHT ---
-            if (timeR != null && timeR.Length > 0)
-            {
-                double peakRfs = 0.0;
-                for (int i = 0; i < timeR.Length; i++)
-                {
-                    double x = timeR[i] / (double)SpectrumAnalyzer.Max24Pos;
-                    double ax = Math.Abs(x);
-                    if (ax > peakRfs) peakRfs = ax;
-                }
-
-                double meanR = 0.0;
-                for (int i = 0; i < timeR.Length; i++)
-                    meanR += timeR[i];
-                meanR /= timeR.Length;
-
-                double sumSqR = 0.0;
-                for (int i = 0; i < timeR.Length; i++)
-                {
-                    double x = (timeR[i] - meanR) / (double)SpectrumAnalyzer.Max24Pos;
-                    sumSqR += x * x;
-                }
-                double rmsR = Math.Sqrt(sumSqR / timeR.Length);
-                _lastRmsFsRight = rmsR;
-
-                double rmsRDb = rmsR > 0 ? 20.0 * Math.Log10(rmsR * Math.Sqrt(2.0)) : -200.0;
-                double peakRDb = peakRfs > 0 ? 20.0 * Math.Log10(peakRfs) : -200.0;
-
-                if (rmsRDb < -200.0) rmsRDb = -200.0;
-                if (peakRDb < -200.0) peakRDb = -200.0;
-
-                bool rightUseDbv = (_levelUnit == "dBV") && _levelCalValidRight;
-
-                double rmsRDisp = rightUseDbv ? (rmsRDb + _levelCalOffsetDbRight) : rmsRDb;
-                double peakRDisp = rightUseDbv ? (peakRDb + _levelCalOffsetDbRight) : peakRDb;
-                string unitR = rightUseDbv ? "dBV" : "dBFS";
-
-                lblRightRms.Text = $"RMS:  {rmsRDisp:F2} {unitR}";
-                _lastRmsDbfsRight = rmsRDb;
-                lblRightPeak.Text = $"Peak: {peakRDisp:F2} {unitR}";
-                showRightVolts = rightUseDbv;
-                if (lblRightRmsV != null && lblRightPeakV != null)
-                {
-                    // On calcule TOUJOURS les métriques en volts dès que la calibration est valide,
-                    // même si l'affichage FFT reste en dBFS (pour pouvoir les réutiliser ailleurs : Form1).
-                    if (_levelCalValidRight)
-                    {
-                        double gain =
-                            (_levelGainVrmsPerFsRight > 0.0)
-                                ? _levelGainVrmsPerFsRight
-                                : GainFromOffsetDb(_levelCalOffsetDbRight);
-
-                        double vrms = rmsR * gain;
-                        double vpk = peakRfs * gain;
-                        double vdc = (meanR / (double)SpectrumAnalyzer.Max24Pos) * gain;
-
-                        _lastVdcVoltsRight = vdc;
-                        _lastVrmsVoltsRight = vrms;
-                        _lastVpkVoltsRight = vpk;
-
-                        if (showRightVolts)
-                        {
-                            lblRightRmsV.Text = $"Vrms:  {FormatVoltage(vrms)}";
-                            lblRightPeakV.Text = $"Vpeak: {FormatVoltage(vpk)}";
-                        }
-                        else
-                        {
-                            lblRightRmsV.Text = "";
-                            lblRightPeakV.Text = "";
-                        }
-                    }
-                    else
-                    {
-                        _lastVdcVoltsRight = null;
-                        _lastVrmsVoltsRight = null;
-                        _lastVpkVoltsRight = null;
-                        lblRightRmsV.Text = "";
-                        lblRightPeakV.Text = "";
-                    }
-                }
-            }
-            else
-            {
-                lblRightRms.Text = "RMS:";
-                lblRightPeak.Text = "Peak:";
-            }
-
-            // Ajuste l'UI des valeurs en Volts (visible uniquement en dBV calibré)
+            UpdateStatsLabels(left: true,  show: showLeft,  useDbv: showLeftVolts);
+            UpdateStatsLabels(left: false, show: showRight, useDbv: showRightVolts);
             SetVoltLabelsVisible(showLeftVolts, showRightVolts);
+
+
 
 
         // =========================
@@ -5717,26 +2382,27 @@ namespace AudioHexViewer
                             ? Math.Max(-200.0, 20.0 * Math.Log10(pkFs.Value))
                             : null;
 
-                        string s = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
-                        s += "\n" + (pkDbfs.HasValue ? $"dBFS peak: {pkDbfs.Value:F2} dBFS" : "dBFS peak: —");
-                        s += "\n" + (rmsDbfs.HasValue ? $"dBFS rms:  {rmsDbfs.Value:F2} dBFS" : "dBFS rms:  —");
+                        var sb = new System.Text.StringBuilder(512);
+                sb.Append(f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
+                        sb.Append('\n').Append((pkDbfs.HasValue ? $"dBFS peak: {pkDbfs.Value:F2} dBFS" : "dBFS peak: —"));
+                        sb.Append('\n').Append((rmsDbfs.HasValue ? $"dBFS rms:  {rmsDbfs.Value:F2} dBFS" : "dBFS rms:  —"));
 
                         if (_levelCalValidLeft)
                         {
                             double off = _levelCalOffsetDbLeft;
-                            s += "\n" + (pkDbfs.HasValue ? $"dBV peak:  {(pkDbfs.Value + off):F2} dBV" : "dBV peak:  —");
-                            s += "\n" + (rmsDbfs.HasValue ? $"dBV rms:   {(rmsDbfs.Value + off):F2} dBV" : "dBV rms:   —");
+                            sb.Append('\n').Append((pkDbfs.HasValue ? $"dBV peak:  {(pkDbfs.Value + off):F2} dBV" : "dBV peak:  —"));
+                            sb.Append('\n').Append((rmsDbfs.HasValue ? $"dBV rms:   {(rmsDbfs.Value + off):F2} dBV" : "dBV rms:   —"));
                         }
 
                         // --- Puis les mesures THD ---
-                        s += "\n----";
-                        s += "\n" + thdText;
-                        s += "\n" + thdnText;
-                        s += "\n" + $"SINAD: {mL.SinadDb:F1} dB";
-                        s += "\n" + $"SNR: {mL.SnrDb:F1} dB";
-                        s += "\n" + $"SFDR: {mL.SfdrDb:F1} dB";
+                        sb.Append("\n----");
+                        sb.Append('\n').Append(thdText);
+                        sb.Append('\n').Append(thdnText);
+                        sb.Append('\n').Append($"SINAD: {mL.SinadDb:F1} dB");
+                        sb.Append('\n').Append($"SNR: {mL.SnrDb:F1} dB");
+                        sb.Append('\n').Append($"SFDR: {mL.SfdrDb:F1} dB");
 
-                        lblLeftMeas.Text = s;
+                        lblLeftMeas.Text = sb.ToString();
 
 
                         if (showHarmsInPanel && showLeft)
@@ -5744,13 +2410,13 @@ namespace AudioHexViewer
                             var list = mL.Harmonics;
                             if (list != null && list.Count > 0)
                             {
-                                lblLeftMeas.Text += "\n----";
+                                sb.Append("\n----");
                                 foreach (var h in list)
                                 {
                                     if (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
-                                        lblLeftMeas.Text += $"\nH{h.Order}: {h.RatioPercent:F5} %";
+                                        sb.Append('\n').Append($"H{h.Order}: {h.RatioPercent:F5} %");
                                     else
-                                        lblLeftMeas.Text += $"\nH{h.Order}: {h.LevelDbc:F1} dB";
+                                        sb.Append('\n').Append($"H{h.Order}: {h.LevelDbc:F1} dB");
                                 }
                             }
                         }
@@ -5786,22 +2452,23 @@ namespace AudioHexViewer
 
                     double? pkDbfs = (pkFs.HasValue && pkFs.Value > 0.0) ? Math.Max(-200.0, 20.0 * Math.Log10(pkFs.Value)) : null;
 
-                    string s = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
+                    var sb = new System.Text.StringBuilder(512);
+                sb.Append(f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
 
-                    s += "\n" + (pkDbfs.HasValue ? $"dBFS peak: {pkDbfs.Value:F2} dBFS" : "dBFS peak: —");
-                    s += "\n" + (rmsDbfs.HasValue ? $"dBFS rms:  {rmsDbfs.Value:F2} dBFS" : "dBFS rms:  —");
+                    sb.Append('\n').Append((pkDbfs.HasValue ? $"dBFS peak: {pkDbfs.Value:F2} dBFS" : "dBFS peak: —"));
+                    sb.Append('\n').Append((rmsDbfs.HasValue ? $"dBFS rms:  {rmsDbfs.Value:F2} dBFS" : "dBFS rms:  —"));
 
                     if (_levelCalValidLeft)
                     {
                         double off = _levelCalOffsetDbLeft;
-                        if (pkDbfs.HasValue) s += "\n" + $"dBV peak:  {(pkDbfs.Value + off):F2} dBV";
-                        else s += "\n" + "dBV peak:  —";
+                        if (pkDbfs.HasValue) sb.Append('\n').Append($"dBV peak:  {(pkDbfs.Value + off):F2} dBV");
+                        else sb.Append('\n').Append("dBV peak:  —");
 
-                        if (rmsDbfs.HasValue) s += "\n" + $"dBV rms:   {(rmsDbfs.Value + off):F2} dBV";
-                        else s += "\n" + "dBV rms:   —";
+                        if (rmsDbfs.HasValue) sb.Append('\n').Append($"dBV rms:   {(rmsDbfs.Value + off):F2} dBV");
+                        else sb.Append('\n').Append("dBV rms:   —");
                     }
 
-                    lblLeftMeas.Text = s;
+                    lblLeftMeas.Text = sb.ToString();
 
                 }
             }
@@ -5853,26 +2520,27 @@ namespace AudioHexViewer
                             ? Math.Max(-200.0, 20.0 * Math.Log10(pkFs.Value))
                             : null;
 
-                        string s = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
-                        s += "\n" + (pkDbfs.HasValue ? $"dBFS peak: {pkDbfs.Value:F2} dBFS" : "dBFS peak: —");
-                        s += "\n" + (rmsDbfs.HasValue ? $"dBFS rms:  {rmsDbfs.Value:F2} dBFS" : "dBFS rms:  —");
+                        var sb = new System.Text.StringBuilder(512);
+                sb.Append(f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
+                        sb.Append('\n').Append((pkDbfs.HasValue ? $"dBFS peak: {pkDbfs.Value:F2} dBFS" : "dBFS peak: —"));
+                        sb.Append('\n').Append((rmsDbfs.HasValue ? $"dBFS rms:  {rmsDbfs.Value:F2} dBFS" : "dBFS rms:  —"));
 
                         if (_levelCalValidRight)
                         {
                             double off = _levelCalOffsetDbRight;
-                            s += "\n" + (pkDbfs.HasValue ? $"dBV peak:  {(pkDbfs.Value + off):F2} dBV" : "dBV peak:  —");
-                            s += "\n" + (rmsDbfs.HasValue ? $"dBV rms:   {(rmsDbfs.Value + off):F2} dBV" : "dBV rms:   —");
+                            sb.Append('\n').Append((pkDbfs.HasValue ? $"dBV peak:  {(pkDbfs.Value + off):F2} dBV" : "dBV peak:  —"));
+                            sb.Append('\n').Append((rmsDbfs.HasValue ? $"dBV rms:   {(rmsDbfs.Value + off):F2} dBV" : "dBV rms:   —"));
                         }
 
                         // --- Puis les mesures THD ---
-                        s += "\n----";
-                        s += "\n" + thdText;
-                        s += "\n" + thdnText;
-                        s += "\n" + $"SINAD: {mR.SinadDb:F1} dB";
-                        s += "\n" + $"SNR: {mR.SnrDb:F1} dB";
-                        s += "\n" + $"SFDR: {mR.SfdrDb:F1} dB";
+                        sb.Append("\n----");
+                        sb.Append('\n').Append(thdText);
+                        sb.Append('\n').Append(thdnText);
+                        sb.Append('\n').Append($"SINAD: {mR.SinadDb:F1} dB");
+                        sb.Append('\n').Append($"SNR: {mR.SnrDb:F1} dB");
+                        sb.Append('\n').Append($"SFDR: {mR.SfdrDb:F1} dB");
 
-                        lblRightMeas.Text = s;
+                        lblRightMeas.Text = sb.ToString();
 
 
                         if (showHarmsInPanel && showRight)
@@ -5880,13 +2548,13 @@ namespace AudioHexViewer
                             var list = mR.Harmonics;
                             if (list != null && list.Count > 0)
                             {
-                                lblRightMeas.Text += "\n----";
+                                sb.Append("\n----");
                                 foreach (var h in list)
                                 {
                                     if (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
-                                        lblRightMeas.Text += $"\nH{h.Order}: {h.RatioPercent:F5} %";
+                                        sb.Append('\n').Append($"H{h.Order}: {h.RatioPercent:F5} %");
                                     else
-                                        lblRightMeas.Text += $"\nH{h.Order}: {h.LevelDbc:F1} dB";
+                                        sb.Append('\n').Append($"H{h.Order}: {h.LevelDbc:F1} dB");
                                 }
                             }
                         }
@@ -5920,22 +2588,23 @@ namespace AudioHexViewer
 
                     double? pkDbfs = (pkFs.HasValue && pkFs.Value > 0.0) ? Math.Max(-200.0, 20.0 * Math.Log10(pkFs.Value)) : null;
 
-                    string s = (f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
+                    var sb = new System.Text.StringBuilder(512);
+                sb.Append(f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
 
-                    s += "\n" + (pkDbfs.HasValue ? $"dBFS peak: {pkDbfs.Value:F2} dBFS" : "dBFS peak: —");
-                    s += "\n" + (rmsDbfs.HasValue ? $"dBFS rms:  {rmsDbfs.Value:F2} dBFS" : "dBFS rms:  —");
+                    sb.Append('\n').Append((pkDbfs.HasValue ? $"dBFS peak: {pkDbfs.Value:F2} dBFS" : "dBFS peak: —"));
+                    sb.Append('\n').Append((rmsDbfs.HasValue ? $"dBFS rms:  {rmsDbfs.Value:F2} dBFS" : "dBFS rms:  —"));
 
                     if (_levelCalValidRight)
                     {
                         double off = _levelCalOffsetDbRight;
-                        if (pkDbfs.HasValue) s += "\n" + $"dBV peak:  {(pkDbfs.Value + off):F2} dBV";
-                        else s += "\n" + "dBV peak:  —";
+                        if (pkDbfs.HasValue) sb.Append('\n').Append($"dBV peak:  {(pkDbfs.Value + off):F2} dBV");
+                        else sb.Append('\n').Append("dBV peak:  —");
 
-                        if (rmsDbfs.HasValue) s += "\n" + $"dBV rms:   {(rmsDbfs.Value + off):F2} dBV";
-                        else s += "\n" + "dBV rms:   —";
+                        if (rmsDbfs.HasValue) sb.Append('\n').Append($"dBV rms:   {(rmsDbfs.Value + off):F2} dBV");
+                        else sb.Append('\n').Append("dBV rms:   —");
                     }
 
-                    lblRightMeas.Text = s;
+                    lblRightMeas.Text = sb.ToString();
 
                 }
             }
@@ -5947,278 +2616,34 @@ namespace AudioHexViewer
             RebuildStatsRowsFromLabels();
             RefreshCursorAfterRedraw();
         }
-        //
-        protected override void OnResize(EventArgs e)
-        {
-            base.OnResize(e);
 
-            // On laisse le live tick faire le refresh quand live,
-            // sinon on peut rafraîchir directement.
-            if (!isLive)
-                UpdateSpectrumChartAndStats();
-        }
-
-        //
-        private void UpdateToggleButtonVisual(CheckBox? b)
-        {
-            if (b == null) return;
-
-            if (b.Checked)
-            {
-                // IMPORTANT sinon Windows peut ignorer BackColor
-                b.UseVisualStyleBackColor = false;
-                b.BackColor = Color.LightGreen;
-                b.ForeColor = Color.Black;
-            }
-            else
-            {
-                // Revenir au rendu standard
-                b.UseVisualStyleBackColor = true;
-                b.BackColor = SystemColors.Control;
-                b.ForeColor = SystemColors.ControlText;
-            }
-        }
 
 
         //
-        private double GetFrequencyFromMouseX(int mouseX)
-        {
-            var area = chartSpectrum.ChartAreas["SpectrumArea"];
-            bool useLog = (chkLogX != null && chkLogX.Checked);
-
-            double xMinVal = area.AxisX.Minimum;
-            double xMaxVal = area.AxisX.Maximum;
-
-            if (xMaxVal <= xMinVal)
-                return xMinVal;
-
-            // Récupère les positions pixels du min/max axe X
-            double pxMin = area.AxisX.ValueToPixelPosition(xMinVal);
-            double pxMax = area.AxisX.ValueToPixelPosition(xMaxVal);
-
-            // Si quelque chose est inversé ou invalide, fallback
-            if (double.IsNaN(pxMin) || double.IsNaN(pxMax) || Math.Abs(pxMax - pxMin) < 1e-6)
-            {
-                try
-                {
-                    return area.AxisX.PixelPositionToValue(mouseX);
-                }
-                catch
-                {
-                    return xMinVal;
-                }
-            }
-
-            // Position relative 0..1 dans la zone de tracé
-            double t = (mouseX - pxMin) / (pxMax - pxMin);
-            if (t < 0.0) t = 0.0;
-            if (t > 1.0) t = 1.0;
-
-            if (!useLog)
-            {
-                return xMinVal + t * (xMaxVal - xMinVal);
-            }
-
-            // LOG : f = min * (max/min)^t
-            // (valeurs doivent être > 0)
-            double min = Math.Max(1e-12, xMinVal);
-            double max = Math.Max(min * 1.000001, xMaxVal);
-
-            return min * Math.Pow(max / min, t);
-        }
-        //
-        //
-        private void ClearSpectrum()
-        {
-            // Sécuriser l’axe X quand on n’a plus de données
-            if (chartSpectrum.ChartAreas.Count > 0)
-            {
-                var area = chartSpectrum.ChartAreas[0]; // ou "SpectrumArea" si tu préfères
-
-                area.AxisX.StripLines.Clear();
-
-                // Bornes "safe" par défaut
-                // IMPORTANT : si l’axe est en LOG, le minimum doit être STRICTEMENT > 0
-                bool useLog = (chkLogX != null && chkLogX.Checked);
-
-                // Pour éviter un état transitoire invalide, on force temporairement LIN,
-                // on pose des bornes valides, puis on remet LOG si besoin.
-                area.AxisX.IsLogarithmic = false;
-
-                double xMax = (_sampleRate > 0) ? (_sampleRate / 2.0) : 1.0;
-                double xMin = useLog ? 1.0 : 0.0;
-
-                // Sécurité : garantir xMax > xMin
-                if (xMax <= xMin) xMax = xMin * 10.0;
-
-                area.AxisX.Minimum = xMin;
-                area.AxisX.Maximum = xMax;
-
-                area.AxisX.IsLogarithmic = useLog;
-
-
-                area.AxisX.MajorGrid.Enabled = true;
-                area.AxisX.MinorGrid.Enabled = false;
-
-                ApplyLogXMinorGridStripLines(area.AxisX);
-
-            }
-
-            // On vide les séries
-            chartSpectrum.Series.Clear();
-
-            // On remet les labels de stats
-            lblLeftRms.Text = "RMS:";
-            lblLeftPeak.Text = "Peak:";
-            lblRightRms.Text = "";
-            lblRightPeak.Text = "";
-
-            if (_overlayInfoAnno != null)
-                _overlayInfoAnno.Visible = false;
-
-            currentLeftSpectrum = null;
-            currentRightSpectrum = null;
-            freqAxis = null;
-            lastTimeLeft = null;
-            lastTimeRight = null;
-        }
         //
         // =====================
         // Overlays V3 - Library
         // =====================
-        //
-        public void OverlayLibraryUnhideFromList(string libraryFilePath)
-        {
-            _overlayLibrary.UnhideFromList(libraryFilePath);
-            OverlayLibraryReloadCache();
-            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
-        }
-
-        //
-        public void OverlayLibraryRemoveFromList(string libraryFilePath)
-        {
-            // On masque d'abord l'overlay dans l'affichage live
-            OverlayLibrarySetVisible(libraryFilePath, false);
-
-            _overlayLibrary.HideFromList(libraryFilePath);
-            OverlayLibraryReloadCache();
-            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
-        }
-
-        public string OverlayLibraryGetFolderPath()
-        {
-            return _overlayLibrary.LibraryDirectory;
-        }
-
-        //
-        public System.Drawing.Color OverlayGetSlotColor1Based(int slotNumber)
-        {
-            // slotNumber attendu: 1..8
-            int idx0 = slotNumber - 1;
-            if (idx0 < 0 || idx0 >= OverlayManager.MaxOverlays)
-                idx0 = 0;
-
-            return GetOverlaySlotColor(idx0);
-        }
-
-        //
-        private int OverlayLibraryGetNextFreeSlotNumber()
-        {
-            // Slots utilisés = ceux présents dans la bibliothèque (quel que soit Kind)
-            bool[] used = new bool[OverlayManager.MaxOverlays + 1]; // index 1..8
-
-            foreach (var c in _overlayCache)
-            {
-                int s = c.Data != null ? c.Data.SlotNumber : 0;
-                if (s >= 1 && s <= OverlayManager.MaxOverlays)
-                    used[s] = true;
-            }
-
-            for (int s = 1; s <= OverlayManager.MaxOverlays; s++)
-                if (!used[s]) return s;
-
-            throw new InvalidOperationException($"Tous les slots overlays (1..{OverlayManager.MaxOverlays}) sont déjà utilisés.");
-        }
 
 
-        private OverlayFile ReadOverlayFromDisk(string filePath)
-        {
-            var json = File.ReadAllText(filePath);
-            var dto = JsonSerializer.Deserialize<OverlayFile>(json, _overlayJsonOptions);
-            if (dto == null)
-                throw new InvalidDataException("Overlay invalide: JSON vide ou non conforme.");
 
-            if (dto.Version != OverlayFile.CurrentVersion)
-                throw new InvalidDataException($"Overlay invalide: Version={dto.Version}, attendu V{OverlayFile.CurrentVersion}.");
 
-            return dto;
-        }
+
+
 
         /// <summary>
         /// Recharge la bibliothèque interne en cache mémoire.
         /// Par défaut, tout overlay chargé est visible.
         /// </summary>
-        private void OverlayLibraryReloadCache()
-        {
-            // Conserver les visibles actuels par FilePath
-            var prevVisible = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-            foreach (var c in _overlayCache)
-                prevVisible[c.Entry.FilePath] = c.Visible;
-
-            _overlayCache.Clear();
-
-            var entries = _overlayLibrary.LoadAll();
-            foreach (var e in entries)
-            {
-                try
-                {
-                    var data = ReadOverlayFromDisk(e.FilePath);
-
-                    bool visible = _overlayLibrary.GetOverlayVisible(e.FilePath, defaultValue: true);
-
-                    _overlayCache.Add(new CachedOverlay(e, data, visible));
-                }
-                catch
-                {
-                    // ignore: overlay corrompu / non lisible
-                }
-            }
-
-            // Tri: plus récent en premier (déjà trié côté OverlayLibrary, mais on garde une sécurité)
-            _overlayCache.Sort((a, b) => b.Entry.CreatedUtc.CompareTo(a.Entry.CreatedUtc));
-        }
 
 
         /// <summary>
         /// Liste pour UI (future fenêtre Overlays).
         /// </summary>
-        public List<OverlayEntry> OverlayLibraryGetEntries()
-        {
-            // Retourne la liste "UI-friendly" (métadonnées)
-            return _overlayCache.Select(c => c.Entry).ToList();
-        }
 
         /// <summary>
         /// Visible/masqué (future fenêtre Overlays).
         /// </summary>
-        public void OverlayLibrarySetVisible(string filePath, bool visible)
-        {
-            var c = _overlayCache.FirstOrDefault(x => string.Equals(x.Entry.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
-            if (c != null)
-            {
-                c.Visible = visible;
-
-                // Persist
-                _overlayLibrary.SetOverlayVisible(c.Entry.FilePath, visible);
-
-                UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
-            }
-        }
-        //
-        public bool OverlayLibraryGetVisible(string libraryFilePath)
-        {
-            return _overlayLibrary.GetOverlayVisible(libraryFilePath, defaultValue: true);
-        }
 
         //
         /// <summary>
@@ -6329,48 +2754,9 @@ namespace AudioHexViewer
                 return entry;
             }
         }
-        //
-        public OverlayEntry OverlayLibraryImport(string sourcePath)
-        {
-            var entry = _overlayLibrary.ImportFromFile(sourcePath);
-            OverlayLibraryReloadCache();
-            _overlayLibrary.SetOverlayVisible(entry.FilePath, true);
-            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
-            return entry;
-        }
 
-        public void OverlayLibraryExport(string libraryFilePath, string targetPath)
-        {
-            var c = _overlayCache.FirstOrDefault(x => string.Equals(x.Entry.FilePath, libraryFilePath, StringComparison.OrdinalIgnoreCase));
-            if (c == null) throw new FileNotFoundException("Overlay introuvable dans le cache.", libraryFilePath);
 
-            _overlayLibrary.ExportToFile(c.Entry, targetPath);
-        }
 
-        public void OverlayLibraryDelete(string libraryFilePath)
-        {
-            var c = _overlayCache.FirstOrDefault(x => string.Equals(x.Entry.FilePath, libraryFilePath, StringComparison.OrdinalIgnoreCase));
-            if (c == null) return;
-
-            _overlayLibrary.Delete(c.Entry);
-            _overlayLibrary.RemoveOverlayVisibility(libraryFilePath);
-
-            OverlayLibraryReloadCache();
-            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
-        }
-
-        public OverlayEntry OverlayLibraryRename(string libraryFilePath, string newName)
-        {
-            var c = _overlayCache.FirstOrDefault(x => string.Equals(x.Entry.FilePath, libraryFilePath, StringComparison.OrdinalIgnoreCase));
-            if (c == null) throw new FileNotFoundException("Overlay introuvable dans le cache.", libraryFilePath);
-
-            var updated = _overlayLibrary.Rename(c.Entry, newName);
-
-            OverlayLibraryReloadCache();
-            UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
-
-            return updated;
-        }
         //
         public OverlayKind OverlayGetActiveKind()
         {
@@ -6384,607 +2770,8 @@ namespace AudioHexViewer
         private int _windowIndexBeforeFrf = -1;
 
         
-        //
-        private void OpenOverlaysWindow()
-        {
-            if (_overlaysForm == null || _overlaysForm.IsDisposed)
-                _overlaysForm = new OverlaysForm(this);
 
-            _overlaysForm.Show(FindForm());
-            _overlaysForm.BringToFront();
-            _overlaysForm.Activate();
-        }
-        //
-        private void btnOverlay_Click(object sender, EventArgs e)
-        {
-            OpenOverlaysWindow();
-        }
 
-        //
-        private void LblLeftMeas_Click(object sender, EventArgs e)
-        {
-
-        }
-        //
-        private void ChartSpectrum_PostPaint(object sender, ChartPaintEventArgs e)
-        {
-            var chart = (System.Windows.Forms.DataVisualization.Charting.Chart)sender;
-
-            bool isExport = !ReferenceEquals(chart, chartSpectrum);
-
-            // Facteur géométrique (utile pour triangles/ticks), UI=1, export≈scale
-            float sExport = 1f;
-            if (isExport && chartSpectrum != null && chartSpectrum.Width > 0)
-                sExport = (float)chart.Width / chartSpectrum.Width;
-
-            var area = e.ChartElement as ChartArea;
-            if (area == null || area.Name != "SpectrumArea")
-                return;
-
-            RectangleF plotForText = GetPlotRectPixels(chart, area);
-
-            if (isExport && chart.Tag is ExportRenderContext ctx && !string.IsNullOrWhiteSpace(ctx.HeaderTitle))
-            {
-                var g = e.ChartGraphics.Graphics;
-                var saved = g.Save();
-                g.ResetClip();
-
-                try
-                {
-                    if (!plotForText.IsEmpty)
-                    {
-                        var lines = ctx.HeaderTitle
-                            .Replace("\r\n", "\n")
-                            .Split('\n')
-                            .Select(l => l.Trim())
-                            .Where(l => l.Length > 0)
-                            .Take(3)
-                            .Select(l => l.Length > 50 ? l.Substring(0, 50) : l)
-                            .ToArray();
-
-                        if (lines.Length > 0)
-                        {
-                            //Dessin du texte centré au dessus du plot, police agrandie et en gras   
-                            using var titleFont = new Font(chart.Font.FontFamily, chart.Font.SizeInPoints * 1.20f, FontStyle.Bold);
-                            // Couleur noire pour le texte (plus lisible sur fond blanc exporté)
-                            using var b = new SolidBrush(Color.Black);
-                            // Format centré
-                            using var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
-
-                            float lineH = titleFont.GetHeight(g);
-                            float totalH = lineH * lines.Length;
-
-                            // Position Y : un peu au dessus du plot, décalage 20 pixels * sExport
-                            float y = plotForText.Top - totalH - (20f * sExport);
-                            if (y < 2f) y = 2f;
-
-                            for (int i = 0; i < lines.Length; i++)
-                            {
-                                var r = new RectangleF(plotForText.Left, y + i * lineH, plotForText.Width, lineH);
-                                g.DrawString(lines[i], titleFont, b, r, fmt);
-                            }
-                        }
-                    }
-                }
-                finally { g.Restore(saved); }
-            }
-
-            /// ----------------------------
-            // Dessin des marqueurs de curseur
-            /// ----------------------------
-            void DrawDownTriangle(double f, double yValue, bool useY2, Color color)
-            {
-                float x = (float)area.AxisX.ValueToPixelPosition(f);
-                float y = useY2
-                    ? (float)area.AxisY2.ValueToPixelPosition(yValue)
-                    : (float)area.AxisY.ValueToPixelPosition(yValue);
-
-                float h = 10f * sExport;
-                float w = 12f * sExport;
-
-                var pts = new[]
-                {
-                    new PointF(x, y),
-                    new PointF(x - w/2f, y - h),
-                    new PointF(x + w/2f, y - h)
-                };
-
-                using var brush = new SolidBrush(Color.FromArgb(220, color));
-                e.ChartGraphics.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                e.ChartGraphics.Graphics.FillPolygon(brush, pts);
-            }
-
-
-            if (_cursorMarkLVisible)
-                DrawDownTriangle(_cursorMarkLFreq, _cursorMarkLDb, _cursorMarkLUsesY2, _cursorMarkLColor);
-
-            if (_cursorMarkRVisible)
-                DrawDownTriangle(_cursorMarkRFreq, _cursorMarkRDb, _cursorMarkRUsesY2, _cursorMarkRColor);
-
-            // ----------------------------
-            // Y : labels majeurs (remplacement complet du Chart)
-            // ----------------------------
-            {
-                double yMajor = area.AxisY.MajorGrid.Interval;
-                if (yMajor <= 0) yMajor = area.AxisY.Interval; // sécurité
-
-                if (yMajor > 0)
-                {
-                    double yMin = area.AxisY.Minimum;
-                    double yMax = area.AxisY.Maximum;
-
-                    // même repère X que les mineurs (bord gauche du plot)
-                    float xLeftPlot = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Minimum);
-
-                    Font baseFont = area.AxisY.LabelStyle.Font ?? chart.Font;
-                    using (Font majorFont = new Font(baseFont.FontFamily, baseFont.Size, baseFont.Style))
-                    {
-                        float margin = 8f * sExport;
-                        float lastLabelBottom = float.NegativeInfinity;
-
-                        // format déterministe cohérent avec le pas majeur
-                        string fmt;
-                        if (Math.Abs(yMajor - Math.Round(yMajor)) < 1e-9) fmt = "0";
-                        else fmt = "F" + GetStepDecimals(yMajor);
-
-                        // On parcourt du haut vers le bas (comme les mineurs)
-                        double yStart = yMin + Math.Floor((yMax - yMin) / yMajor) * yMajor;
-
-                        for (double y = yStart; y >= yMin - 1e-9; y -= yMajor)
-                        {
-                            float yPix = (float)area.AxisY.ValueToPixelPosition(y);
-
-                            //string txt = y.ToString(fmt, CultureInfo.InvariantCulture);
-                            // En mode Bode Plot (FRF), l’axe Y2 correspond à la phase => unité en degrés sur les labels majeurs
-                            string txt = y.ToString(fmt, CultureInfo.InvariantCulture) + " dB";
-
-                            SizeF sz = e.ChartGraphics.Graphics.MeasureString(txt, majorFont);
-
-                            float xText = xLeftPlot - sz.Width - margin;
-                            float yText = yPix - sz.Height / 2f;
-
-                            if (yText <= lastLabelBottom + 2f * sExport) continue;
-
-                            var g = e.ChartGraphics.Graphics;
-                            var saved = g.Save();
-                            g.ResetClip();
-
-                            using var b = new SolidBrush(LabelMajorColor);
-                            g.DrawString(txt, majorFont, b, xText, yText);
-
-                            g.Restore(saved);
-
-                            lastLabelBottom = yText + sz.Height;
-                        }
-                    }
-                }
-            }
-
-            // ----------------------------
-            // Y2 : labels majeurs (remplacement complet du Chart)
-            // ----------------------------
-            if (area.AxisY2.Enabled == AxisEnabled.True)
-            {
-                double yMajor2 = area.AxisY2.Interval;
-                if (yMajor2 <= 0) yMajor2 = area.AxisY2.MajorGrid.Interval; // sécurité
-
-                if (yMajor2 > 0)
-                {
-                    double yMin2 = area.AxisY2.Minimum;
-                    double yMax2 = area.AxisY2.Maximum;
-
-                    // même repère X que tes mineurs, mais côté droit
-                    float xRightPlot = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Maximum);
-
-                    Font baseFont = area.AxisY2.LabelStyle.Font ?? chart.Font;
-                    using (Font majorFont = new Font(baseFont.FontFamily, baseFont.Size, baseFont.Style))
-                    {
-                        float margin = 8f * sExport;
-                        float gap = 1f * sExport;
-                        float lastLabelBottom = float.NegativeInfinity;
-
-                        string fmt;
-                        if (Math.Abs(yMajor2 - Math.Round(yMajor2)) < 1e-9) fmt = "0";
-                        else fmt = "F" + GetStepDecimals(yMajor2);
-
-                        double yStart = yMin2 + Math.Floor((yMax2 - yMin2) / yMajor2) * yMajor2;
-
-                        for (double y = yStart; y >= yMin2 - 1e-9; y -= yMajor2)
-                        {
-                            float yPix = (float)area.AxisY2.ValueToPixelPosition(y);
-
-                            //string txt = y.ToString(fmt, CultureInfo.InvariantCulture);
-                            // Phase axis (Y2) in FRF/Bode plot: add degree symbol on major labels
-                            string txt = y.ToString(fmt, CultureInfo.InvariantCulture) + "°";
-
-                            SizeF sz = e.ChartGraphics.Graphics.MeasureString(txt, majorFont);
-
-                            float xText = xRightPlot + gap + margin;
-                            float yText = yPix - sz.Height / 2f;
-
-                            if (yText <= lastLabelBottom + 2f * sExport) continue;
-
-                            var g = e.ChartGraphics.Graphics;
-                            var saved = g.Save();
-                            g.ResetClip();
-
-                            using var b = new SolidBrush(LabelMajorColor);
-                            g.DrawString(txt, majorFont, b, xText, yText);
-
-                            g.Restore(saved);
-
-                            lastLabelBottom = yText + sz.Height;
-                        }
-                    }
-                }
-            }
-
-            // ----------------------------
-            // Y : ticks + labels mineurs
-            // ----------------------------
-            {
-                double yMajor = area.AxisY.MajorGrid.Interval;
-                double yMinor = area.AxisY.MinorGrid.Interval;
-
-                if (yMajor > 0 && yMinor > 0)
-                {
-                    double yMin = area.AxisY.Minimum;
-                    double yMax = area.AxisY.Maximum;
-
-                    float xLeftPlot = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Minimum);
-
-                    Font baseFont = area.AxisY.LabelStyle.Font ?? chart.Font;
-                    using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
-                    using (Pen p = new Pen(LabelMinorColor, 1.0f))
-                    {
-                        float tickLenLeft = 5f * sExport;
-                        float gap = 1f * sExport;
-                        float margin = 8f * sExport;
-
-                        float lastLabelBottom = float.NegativeInfinity;
-
-                        double yStart = yMin + Math.Floor((yMax - yMin) / yMinor) * yMinor;
-                        double y0 = yMin;
-
-                        int minorPerMajor = (int)Math.Round(yMajor / yMinor);
-                        if (minorPerMajor <= 0) minorPerMajor = 5;
-
-                        for (double y = yStart; y >= yMin - 1e-9; y -= yMinor)
-                        {
-                            int idx = (int)Math.Round((y - y0) / yMinor);
-                            int m = idx % minorPerMajor;
-                            if (m < 0) m += minorPerMajor;
-                            if (m == 0) continue;
-
-                            float yPix = (float)area.AxisY.ValueToPixelPosition(y);
-
-                            e.ChartGraphics.Graphics.DrawLine(p, xLeftPlot - gap, yPix, xLeftPlot - gap - tickLenLeft, yPix);
-
-                            string txt = FormatDbMinor(y, yMinor);
-
-                            SizeF sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
-                            float xText = xLeftPlot - sz.Width - margin;
-                            float yText = yPix - sz.Height / 2f;
-
-                            if (yText <= lastLabelBottom + 2f * sExport) continue;
-
-                            var g = e.ChartGraphics.Graphics;
-                            var saved = g.Save();
-                            g.ResetClip();
-
-                            using var b = new SolidBrush(LabelMinorColor);
-                            g.DrawString(txt, minorFont, b, xText, yText);
-
-                            g.Restore(saved);
-
-                            lastLabelBottom = yText + sz.Height;
-                        }
-                    }
-                }
-                //
-                // ----------------------------
-                // Y2 : ticks + labels mineurs (Phase en Bode Plot)
-                // Même style que l'axe Y principal, sans grille supplémentaire.
-                // Subdivisions secondaires fixes : 5
-                // ----------------------------
-                if (area.AxisY2.Enabled == AxisEnabled.True)
-                {
-                    double yMajor2 = area.AxisY2.Interval;
-                    if (yMajor2 > 0)
-                    {
-                        double yMinor2 = yMajor2 / 5.0; // demandé : 5 subdivisions secondaires
-
-                        double yMin2 = area.AxisY2.Minimum;
-                        double yMax2 = area.AxisY2.Maximum;
-
-                        // Bord droit du plot (en pixels)
-                        float xRightPlot = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Maximum);
-
-                        Font baseFont = area.AxisY.LabelStyle.Font ?? chart.Font;
-                        using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
-                        using (Pen p = new Pen(LabelMinorColor, 1.0f))
-                        {
-                            float tickLenRight = 5f * sExport;  // même longueur que Y (gauche)
-                            float gap = 1f * sExport;           // même gap
-                            float margin = 8f * sExport;        // même margin (mais côté droit)
-
-                            float lastLabelBottom = float.NegativeInfinity;
-
-                            // Démarrage aligné sur la grille minor
-                            double y0 = yMin2;
-                            double yStart = yMin2 + Math.Floor((yMax2 - yMin2) / yMinor2) * yMinor2;
-
-                            // minorPerMajor = 5 (fixe) ; m==0 => tick major => skip (déjà géré par Chart)
-                            int minorPerMajor = 5;
-
-                            for (double y = yStart; y >= yMin2 - 1e-9; y -= yMinor2)
-                            {
-                                int idx = (int)Math.Round((y - y0) / yMinor2);
-                                int m = idx % minorPerMajor;
-                                if (m < 0) m += minorPerMajor;
-                                if (m == 0) continue; // pas de label/tick mineur sur un major
-
-                                float yPix = (float)area.AxisY2.ValueToPixelPosition(y);
-
-                                // Tick mineur côté droit
-                                e.ChartGraphics.Graphics.DrawLine(p,
-                                    xRightPlot + gap,
-                                    yPix,
-                                    xRightPlot + gap + tickLenRight,
-                                    yPix);
-
-                                // Format label mineur : cohérent avec le pas (comme dB), mais sans "deg" ni symbole
-                                string txt = FormatDbMinor(y, yMinor2); // réutilise la logique de décimales existante
-
-                                SizeF sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
-                                float xText = xRightPlot + gap + tickLenRight + margin;
-                                float yText = yPix - sz.Height / 2f;
-
-                                // Anti-chevauchement vertical (même logique que Y)
-                                if (yText <= lastLabelBottom + 0f * sExport)
-                                    continue;
-
-                                var g = e.ChartGraphics.Graphics;
-                                var saved = g.Save();
-                                g.ResetClip();
-
-                                using var b = new SolidBrush(LabelMinorColor);
-                                g.DrawString(txt, minorFont, b, xText, yText);
-
-                                g.Restore(saved);
-
-                                lastLabelBottom = yText + sz.Height;
-                            }
-                        }
-                    }
-                }
-
-
-                // ---------------------------------------------------------
-                // Ligne SR/N/Overlap au dessus du graphe
-                // ---------------------------------------------------------
-                //if (!isExport && !string.IsNullOrWhiteSpace(_TopInfoLine))
-                if (!string.IsNullOrWhiteSpace(_TopInfoLine))
-                {
-                    var g = e.ChartGraphics.Graphics;
-                    var saved = g.Save();
-                    g.ResetClip();
-
-                    try
-                    {
-                        RectangleF plot = GetPlotRectPixels(chart, area);
-                        if (plot.IsEmpty) return;
-
-                        // IMPORTANT : ici on NE multiplie PAS par sExport.
-                        // En export, les fonts du clone sont déjà agrandies dans ExportPng().
-                        Font titleFont = area.AxisX.TitleFont ?? chart.Font;
-
-                        float y = plot.Top - titleFont.GetHeight(g) - 2f * sExport;
-                        if (y < 2f) y = 2f;
-
-                        float xLeft = plot.Left;
-
-                        using (Brush b = new SolidBrush(InfoTextColor))
-                        {
-                            g.DrawString(_TopInfoLine, titleFont, b, xLeft, y);
-
-                            if (_thdMeasuresEnabled)
-                            {
-                                string FormatHz(double hz) => (hz >= 1000.0) ? $"{hz / 1000.0:F0} kHz" : $"{hz:F0} Hz";
-
-                                string hpf = _thdUi.UseHPF ? FormatHz(_thdUi.FlowHz) : "OFF";
-                                string lpf = _thdUi.UseLPF ? FormatHz(_thdUi.FhighHz) : "OFF";
-                                string thdLine = $"THD filter - HPF: {hpf}, LPF: {lpf}";
-
-                                SizeF sz = g.MeasureString(thdLine, titleFont);
-                                float xRight = plot.Right - sz.Width - 6f * sExport;
-                                if (xRight < xLeft + 10f * sExport) xRight = xLeft + 10f * sExport;
-
-                                g.DrawString(thdLine, titleFont, b, xRight, y);
-                            }
-                        }
-                    }
-                    finally
-                    {
-                        g.Restore(saved);
-                    }
-                }
-            }
-
-            bool useLog = chkLogX != null && chkLogX.Checked;
-
-            if (useLog)
-            {
-                double fMin = area.AxisX.Minimum;
-                double fMax = area.AxisX.Maximum;
-
-                if (fMin <= 0 || fMax <= fMin)
-                    return;
-
-                using (Pen minorPen = new Pen(GridMinorColor, 1f))
-                using (Pen tickPen = new Pen(LabelMinorColor, 1f))
-                {
-                    minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
-
-                    float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
-                    float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
-
-                    Font baseFont = area.AxisX.LabelStyle.Font ?? chart.Font;
-                    using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
-                    using (Brush minorBrush = new SolidBrush(LabelMinorColor))
-                    {
-                        float lastLabelRight = float.NegativeInfinity;
-
-                        double decadeStart = Math.Pow(10, Math.Floor(Math.Log10(fMin)));
-                        double decadeEnd = Math.Pow(10, Math.Ceiling(Math.Log10(fMax)));
-
-                        for (double d = decadeStart; d <= decadeEnd; d *= 10.0)
-                        {
-                            for (int k = 2; k <= 9; k++)
-                            {
-                                double f = d * k;
-                                if (f < fMin || f > fMax)
-                                    continue;
-
-                                float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
-
-                                e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, top, xPixel, bottom);
-
-                                float minorTickLen = 5f * sExport;
-                                e.ChartGraphics.Graphics.DrawLine(tickPen, xPixel, bottom, xPixel, bottom + minorTickLen);
-
-                                string txt = FormatHzK(f);
-
-                                var sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
-                                float xText = xPixel - sz.Width / 2f;
-
-                                float minorLabelYOffset = 10f * sExport;
-                                float yText = bottom - minorTickLen + minorLabelYOffset;
-
-                                if (xText <= lastLabelRight + 4f * sExport)
-                                    continue;
-
-                                using var b = new SolidBrush(LabelMinorColor);
-                                e.ChartGraphics.Graphics.DrawString(txt, minorFont, b, xText, yText);
-
-                                lastLabelRight = xText + sz.Width;
-                            }
-                        }
-                    }
-                }
-            }
-            else
-            {
-                double fMin = area.AxisX.Minimum;
-                double fMax = area.AxisX.Maximum;
-
-                double xMajor = area.AxisX.MajorGrid.Interval;
-                double xMinor = area.AxisX.MinorGrid.Interval;
-
-                if (xMajor > 0)
-                {
-                    if (xMinor <= 0)
-                        xMinor = xMajor / 5.0;
-
-                    if (xMinor > 0)
-                    {
-                        float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
-                        float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
-
-                        using (Pen minorPen = new Pen(LabelMinorColor, 1f))
-                        {
-                            minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
-
-                            Font baseFont = area.AxisX.LabelStyle.Font ?? chart.Font;
-                            using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
-                            using (Brush minorBrush = new SolidBrush(LabelMinorColor))
-                            {
-                                float minorTickLen = 5f * sExport;
-                                float lastLabelRight = float.NegativeInfinity;
-
-                                double firstMinor = fMin + xMinor;
-                                const double eps = 1e-9;
-
-                                for (double f = firstMinor; f <= fMax + eps; f += xMinor)
-                                {
-                                    if (f < fMin - eps) continue;
-
-                                    double q = (f - fMin) / xMajor;
-                                    if (Math.Abs(q - Math.Round(q)) < 1e-6)
-                                        continue;
-
-                                    float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
-
-                                    e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom + minorTickLen);
-
-                                    string txt = FormatHzK(f);
-
-                                    var sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
-                                    float xText = xPixel - sz.Width / 2f;
-
-                                    float yText = bottom + minorTickLen + 2f * sExport;
-
-                                    if (xText <= lastLabelRight + 4f * sExport)
-                                        continue;
-
-                                    using var b = new SolidBrush(LabelMinorColor);
-                                    e.ChartGraphics.Graphics.DrawString(txt, minorFont, b, xText, yText);
-                                    lastLabelRight = xText + sz.Width;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Cadre du plot
-            {
-                var g = e.ChartGraphics.Graphics;
-
-                float xLeft = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Minimum);
-                float xRight = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Maximum);
-
-                float yTop = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
-                float yBottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
-
-                float x0 = Math.Min(xLeft, xRight);
-                float x1 = Math.Max(xLeft, xRight);
-                float y0 = Math.Min(yTop, yBottom);
-                float y1 = Math.Max(yTop, yBottom);
-
-                var saved = g.Save();
-                g.ResetClip();
-
-                using (var pBorder = new Pen(Color.Black, 1f))
-                {
-                    g.DrawRectangle(pBorder, x0, y0, x1 - x0, y1 - y0);
-                }
-
-                g.Restore(saved);
-            }
-
-            try
-            {
-                // Panneau Stats (tableau) : affiché dans tous les modes, y compris FRF/Bode.
-                DrawChartStatsPanel(e.ChartGraphics.Graphics, chart, area);
-
-                // Export only
-                if (isExport)
-                {
-                    DrawCursorInfoOverlay(e.ChartGraphics.Graphics, chart);
-                }
-            }
-            catch
-            {
-                // sécurité : ne jamais laisser un crash UI tuer l'application
-            }
-        }
-
-        //
-        private void LblRightMeas_Click(object sender, EventArgs e)
-        {
-
-        }
         //
         // ===== Stats panel (table) =====
         private enum StatEmphasis { Normal, Medium, Strong }
@@ -7006,262 +2793,14 @@ namespace AudioHexViewer
         private readonly List<StatRow> _rowsLeft = new();
         private readonly List<StatRow> _rowsRight = new();
 
-        private void RebuildStatsRowsFromLabels()
-        {
-            _rowsLeft.Clear();
-            _rowsRight.Clear();
-
-            // Mode Bode Plot : panneau dédié (pas les mesures audio classiques)
-            if (SelectedChannelMode.Equals("Bode Plot", StringComparison.OrdinalIgnoreCase))
-            {
-                _rowsLeft.Clear();
-                _rowsRight.Clear();
-
-                BuildRowsForBodePlot(_rowsLeft);   // on n’utilise que la section "BODE" (LEFT)
-                return;
-            }
-
-            string leftMeas = InjectVoltsLines(
-                lblLeftMeas?.Text,
-                _levelCalValidLeft,
-                _lastVrmsVoltsLeft,
-                _lastVpkVoltsLeft,
-                _lastVdcVoltsLeft,
-                ref _vrmsUnitLeft,
-                ref _vpkUnitLeft,
-                ref _vdcUnitLeft);
-
-
-            string rightMeas = InjectVoltsLines(
-                lblRightMeas?.Text,
-                _levelCalValidRight,
-                _lastVrmsVoltsRight,
-                _lastVpkVoltsRight,
-                _lastVdcVoltsRight,
-                ref _vrmsUnitRight,
-                ref _vpkUnitRight,
-                ref _vdcUnitRight);
-
-
-
-            BuildRowsForChannel(_rowsLeft,
-                lblLeftRms?.Text,
-                lblLeftPeak?.Text,
-                leftMeas);
-
-            BuildRowsForChannel(_rowsRight,
-                lblRightRms?.Text,
-                lblRightPeak?.Text,
-                rightMeas);
-
-            // ------------------------------
-            // Curseurs dans les panneaux (hors Bode)
-            // Règles:
-            // 1) L+R : afficher QUE si fenêtre maximisée ET THD désactivé
-            // 2) Left/Right : afficher si THD désactivé, SAUF si fenêtre maximisée => toujours afficher
-            // ------------------------------
-            bool thdEnabled = (chkEnableThd?.Checked == true);
-            bool isMaximized = (this.FindForm()?.WindowState == FormWindowState.Maximized);
-
-            string mode = SelectedChannelMode;
-
-            bool showCursors =
-                mode.Equals("L+R", StringComparison.OrdinalIgnoreCase)
-                    ? (isMaximized && !thdEnabled)
-                    : (mode.Equals("Left", StringComparison.OrdinalIgnoreCase) || mode.Equals("Right", StringComparison.OrdinalIgnoreCase))
-                        ? (isMaximized || !thdEnabled)
-                        : false;
-
-            if (showCursors)
-            {
-                // On utilise le même rendu/placement que Bode (IsBottomGroup + titres centrés).
-                // IMPORTANT : en L+R, on ajoute le bloc UNE SEULE FOIS dans la section du bas (RIGHT),
-                // sinon 2 blocs "bottom" se marchent dessus.
-                if (mode.Equals("Left", StringComparison.OrdinalIgnoreCase))
-                    AppendCursorStatsBlock(_rowsLeft, "Level");
-                else
-                    AppendCursorStatsBlock(_rowsRight, "Level");
-            }
-
-        }
         //
-        //
-        private void BuildRowsForBodePlot(List<StatRow> dst)
-        {
-            dst.Clear();
-
-            // Sources "plot" (déjà décimées pour affichage, et limitées à la zone visible)
-            var fx = _plotFreqAxis;
-            var gain = _plotLeftSpectrum;          // en mode Bode Plot, LEFT = Gain (dB)
-            var phi = _plotFrfPhaseDeg;            // Phase (°) si activée
-
-            static string FmtHz(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " Hz");
-            static string FmtDb(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " dB");
-            static string FmtDeg(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " °");
-
-            // --- Min/Max visibles ---
-            double gMin = double.NaN, gMax = double.NaN;
-            if (gain != null && gain.Length > 0)
-            {
-                gMin = gain.Min();
-                gMax = gain.Max();
-            }
-
-            double pMin = double.NaN, pMax = double.NaN;
-            bool hasPhi = _frfPhaseEnabled && phi != null && phi.Length > 0;
-            if (hasPhi)
-            {
-                pMin = phi.Min();
-                pMax = phi.Max();
-            }
-
-            dst.Add(new StatRow { Label = "Gain min", Value = FmtDb(gMin), Emphasis = StatEmphasis.Strong });
-            dst.Add(new StatRow { Label = "Gain max", Value = FmtDb(gMax), Emphasis = StatEmphasis.Strong });
-            dst.Add(new StatRow { Label = "φ min", Value = hasPhi ? FmtDeg(pMin) : "---", Emphasis = StatEmphasis.Strong });
-            dst.Add(new StatRow { Label = "φ max", Value = hasPhi ? FmtDeg(pMax) : "---", Emphasis = StatEmphasis.Strong });
-
-
-            dst.Add(new StatRow { IsSeparator = true });
-
-            // --- Curseurs ---
-            void AddCursorBlock(string title, bool visible, double f, double y, bool usesY2)
-            {
-                dst.Add(new StatRow { Label = "Frequency", Value = visible ? FmtHz(f) : "—", IsBottomGroup = true });
-
-                string what = usesY2 ? "φ" : "Gain";
-                dst.Add(new StatRow { Label = what, Value = visible ? (usesY2 ? FmtDeg(y) : FmtDb(y)) : "—", IsBottomGroup = true });
-
-            }
-
-            bool c1On = _cursorMarkLVisible && !double.IsNaN(_cursorMarkLFreq);
-            bool c2On = _cursorMarkRVisible && !double.IsNaN(_cursorMarkRFreq);
-
-            // --- Cursor 1---
-            dst.Add(new StatRow { Label = "Cursor 1", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true });
-
-            AddCursorBlock("Cursor 1", c1On, _cursorMarkLFreq, _cursorMarkLDb, _cursorMarkLUsesY2);
-            dst.Add(new StatRow { IsSeparator = true, IsBottomGroup = true });
-
-            // --- Cursor 2 ---
-            dst.Add(new StatRow { Label = "Cursor 2", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true });
-
-            AddCursorBlock("Cursor 2", c2On, _cursorMarkRFreq, _cursorMarkRDb, _cursorMarkRUsesY2);
-            dst.Add(new StatRow { IsSeparator = true, IsBottomGroup = true });
-
-            // --- Delta ---
-            dst.Add(new StatRow { Label = "Δ Delta", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true });
-
-            if (c1On && c2On)
-            {
-                double df = Math.Abs(_cursorMarkRFreq - _cursorMarkLFreq);
-                dst.Add(new StatRow { Label = "ΔFrequency", Value = FmtHz(df) , IsBottomGroup = true });
-
-                // Delta valeur seulement si mêmes unités (même axe)
-                if (_cursorMarkLUsesY2 == _cursorMarkRUsesY2)
-                {
-                    double dy = _cursorMarkRDb - _cursorMarkLDb;
-                    dst.Add(new StatRow
-                    {
-                        Label = _cursorMarkLUsesY2 ? "Δφ" : "ΔGain",
-                        Value = _cursorMarkLUsesY2 ? (dy.ToString("0.##") + " °") : (dy.ToString("0.##") + " dB"), IsBottomGroup = true
-
-                    });
-                }
-                else
-                {
-                    dst.Add(new StatRow { Label = "ΔGain/Δφ", Value = "—", IsBottomGroup = true });
-                }
-            }
-            else
-            {
-                dst.Add(new StatRow { Label = "ΔFrequency", Value = "—", IsBottomGroup = true });
-                dst.Add(new StatRow { Label = "ΔGain/Δφ", Value = "—", IsBottomGroup = true });
-            }
-        }
 
         //
         // Injecte les lignes Vrms/Vpeak/Vdc au début des mesures existantes
-        private string InjectVoltsLines(string baseMeas, bool calValid, double? vrms, double? vpk, double? vdc,
-        ref VoltUnit vrmsState, ref VoltUnit vpkState, ref VoltUnit vdcState)
-
-        {
-            if (baseMeas == null) baseMeas = string.Empty;            
-
-            var sb = new System.Text.StringBuilder();
-
-            // Les 3 lignes doivent TOUJOURS être présentes.
-            if (!calValid)
-            {   // Non calibré : indiquer "uncalibrated"
-                sb.AppendLine("Vrms:  uncalibrated");
-                sb.AppendLine("Vpeak: uncalibrated");
-                sb.AppendLine("Vdc:   uncalibrated");
-            }
-            else
-            {   // Calibré : afficher les valeurs
-                sb.AppendLine("Vrms:  " + (vrms.HasValue ? FormatVoltage(vrms.Value, ref vrmsState) : "---"));
-                sb.AppendLine("Vpeak: " + (vpk.HasValue ? FormatVoltage(vpk.Value, ref vpkState) : "---"));
-                sb.AppendLine("Vdc:   " + (vdc.HasValue ? FormatVoltage(vdc.Value, ref vdcState) : "---"));
-            }
-
-            // Séparateur + ajout des mesures existantes
-            if (!string.IsNullOrWhiteSpace(baseMeas))
-            {
-                sb.AppendLine("----");
-                sb.Append(baseMeas);
-            }
-
-            return sb.ToString();
-        }
-        //
-        private void AppendCursorStatsBlock(List<StatRow> dst, string valueLabel)
-        {
-            static string FmtHz(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " Hz");
-            static string FmtDb(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " dB");
-
-            void AddCursorLines(bool visible, double f, double yDb)
-            {
-                dst.Add(new StatRow { Label = "Frequency", Value = visible ? FmtHz(f) : "—", IsBottomGroup = true });
-                dst.Add(new StatRow { Label = valueLabel, Value = visible ? FmtDb(yDb) : "—", IsBottomGroup = true });
-            }
-
-            bool c1On = _cursorMarkLVisible && !double.IsNaN(_cursorMarkLFreq);
-            bool c2On = _cursorMarkRVisible && !double.IsNaN(_cursorMarkRFreq);
-
-            // --- Cursor 1 ---
-            dst.Add(new StatRow { Label = "Cursor 1", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true });
-            AddCursorLines(c1On, _cursorMarkLFreq, _cursorMarkLDb);
-            dst.Add(new StatRow { IsSeparator = true, IsBottomGroup = true });
-
-            // --- Cursor 2 ---
-            dst.Add(new StatRow { Label = "Cursor 2", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true });
-            AddCursorLines(c2On, _cursorMarkRFreq, _cursorMarkRDb);
-            dst.Add(new StatRow { IsSeparator = true, IsBottomGroup = true });
-
-            // --- Delta ---
-            dst.Add(new StatRow { Label = "ΔDelta", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true });
-
-            if (c1On && c2On)
-            {
-                double df = Math.Abs(_cursorMarkRFreq - _cursorMarkLFreq);
-                double dy = _cursorMarkRDb - _cursorMarkLDb;
-
-                dst.Add(new StatRow { Label = "ΔFrequency", Value = FmtHz(df), IsBottomGroup = true });
-                dst.Add(new StatRow { Label = "ΔF"+valueLabel, Value = FmtDb(dy), IsBottomGroup = true });
-            }
-            else
-            {
-                dst.Add(new StatRow { Label = "ΔFrequency", Value = "—", IsBottomGroup = true });
-                dst.Add(new StatRow { Label = "ΔF"+valueLabel, Value = "—", IsBottomGroup = true });
-            }
-        }
 
 
         //
 
-        private static void BuildRowsForChannel(List<StatRow> dst, string? rms, string? peak, string? meas)
-        {
-            BuildRowsForChannel(dst, rms, peak, rmsV: null, peakV: null, meas: meas);
-        }
 
         private static void BuildRowsForChannel(List<StatRow> dst, string? rms, string? peak, string? rmsV, string? peakV, string? meas)
         {
@@ -7316,95 +2855,6 @@ namespace AudioHexViewer
                     AddLine(ln);
             }
         }
-        //
-        public void ExportPng(string filePath, int scale = 2, string? headerTitle = null)
-        {
-            RebuildStatsRowsFromLabels();
-
-
-            using var clone = ChartExport.CloneChart(chartSpectrum);
-
-            int headerPx = (headerTitle != null && headerTitle.Trim().Length > 0)
-            ? (int)(60 * scale)   // 80px à scale=1, donc 120px à scale=2
-            : 0;
-
-            clone.Size = new Size(chartSpectrum.Width * scale, chartSpectrum.Height * scale + headerPx);
-
-            clone.BackColor = Color.White;
-            foreach (var a in clone.ChartAreas)
-                a.BackColor = Color.White;
-
-            // Uniformiser la taille des textes UNIQUEMENT SUR LE CLONE
-            ApplyUniformExportScaling(clone, scale);
-
-            // Même formatage chiffres/labels que la GUI
-            clone.FormatNumber += ChartSpectrum_FormatNumber;
-
-            // Contexte export (titre user) — uniquement pour le clone
-            clone.Tag = new ExportRenderContext { HeaderTitle = headerTitle };
-
-            // Marge stats sur le clone (tu as déjà la version reservedScale qui marche)
-            ApplyChartStatsMargin(clone, invalidate: false, reservedScale: scale);
-
-            if (headerPx > 0)
-                ApplyExportHeaderMargin(clone, headerPx);
-
-            clone.PostPaint += ChartSpectrum_PostPaint;
-
-            ChartExport.SavePngRendered(clone, filePath, dpi: 300);
-
-            // ===== helper local =====
-            static void ApplyUniformExportScaling(System.Windows.Forms.DataVisualization.Charting.Chart c, int s)
-            {
-                if (s <= 1) return;
-
-                c.Font = new Font(c.Font.FontFamily, c.Font.SizeInPoints * s, c.Font.Style);
-
-                foreach (var area in c.ChartAreas)
-                {
-                    if (area.AxisX.LabelStyle.Font != null)
-                        area.AxisX.LabelStyle.Font = Scale(area.AxisX.LabelStyle.Font, s);
-                    if (area.AxisY.LabelStyle.Font != null)
-                        area.AxisY.LabelStyle.Font = Scale(area.AxisY.LabelStyle.Font, s);
-
-                    if (area.AxisX.TitleFont != null)
-                        area.AxisX.TitleFont = Scale(area.AxisX.TitleFont, s);
-                    if (area.AxisY.TitleFont != null)
-                        area.AxisY.TitleFont = Scale(area.AxisY.TitleFont, s);
-                }
-
-                foreach (var leg in c.Legends)
-                    if (leg.Font != null)
-                        leg.Font = Scale(leg.Font, s);
-
-                foreach (var t in c.Titles)
-                    if (t.Font != null)
-                        t.Font = Scale(t.Font, s);
-
-                static Font Scale(Font f, int s)
-                    => new Font(f.FontFamily, f.SizeInPoints * s, f.Style);
-            }
-        }
-        //
-        private static void ApplyExportHeaderMargin(System.Windows.Forms.DataVisualization.Charting.Chart chart, int headerPx)
-        {
-            var area = chart.ChartAreas["SpectrumArea"];
-
-            int h = chart.ClientSize.Height;
-            if (h <= 0) return;
-
-            //
-            float headerPct = 100f * headerPx / h;
-
-            // On garde la même largeur, on descend juste l’area et on réduit légèrement la hauteur
-            area.Position.Auto = false;
-            area.Position = new ElementPosition(
-                area.Position.X,
-                area.Position.Y + headerPct,
-                area.Position.Width,
-                Math.Max(5f, area.Position.Height - headerPct)
-            );
-        }
 
         //
         //
@@ -7443,36 +2893,8 @@ namespace AudioHexViewer
         // --------------------------------------------------------------------
         // THD UI handlers (checkbox + button in the Spectrum tab)
         // --------------------------------------------------------------------
-        private void ChkEnableThd_CheckedChanged(object sender, EventArgs e)
-        {
-            if (_suppressThdUiEvents)
-                return;
 
-            bool enabled = chkEnableThd.Checked;
 
-            // Apply immediately (affichage + calculs)
-            SetThdMeasuresEnabled(enabled);
 
-            // Update visual (in case SetThdMeasuresEnabled modified something)
-            UpdateToggleButtonVisual(chkEnableThd);
-
-            // Let Form1 persist it (SessionSettings)
-            ThdEnabledChanged?.Invoke(enabled);
-        }
-
-        private void BtnThdSettings_Click(object sender, EventArgs e)
-        {
-            ThdSettingsRequested?.Invoke();
-        }
-
-        private void label2_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void chkPeakHold_CheckedChanged(object sender, EventArgs e)
-        {
-
-        }
     }
 }

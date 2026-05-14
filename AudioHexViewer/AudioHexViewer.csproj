@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -59,6 +59,96 @@
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
+  </ItemGroup>
+
+
+  <!-- ── Phase 3 : fichiers partiels Form1 ────────────────────────────────── -->
+  <!-- DependentUpon évite que le SDK WinForms les traite comme des contrôles  -->
+  <!-- indépendants et tente de leur associer un .resx séparé.                 -->
+  <ItemGroup>
+    <Compile Update="Form1.AudioCapture.cs">
+      <SubType>Code</SubType>
+      <DependentUpon>Form1.cs</DependentUpon>
+    </Compile>
+    <Compile Update="Form1.FftDiagnostics.cs">
+      <SubType>Code</SubType>
+      <DependentUpon>Form1.cs</DependentUpon>
+    </Compile>
+    <Compile Update="Form1.FftPipeline.cs">
+      <SubType>Code</SubType>
+      <DependentUpon>Form1.cs</DependentUpon>
+    </Compile>
+    <Compile Update="Form1.FftTicker.cs">
+      <SubType>Code</SubType>
+      <DependentUpon>Form1.cs</DependentUpon>
+    </Compile>
+    <Compile Update="Form1.TestSignals.cs">
+      <SubType>Code</SubType>
+      <DependentUpon>Form1.cs</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <!-- ── Phase 4 : fichiers partiels SpectrumControl ──────────────────────── -->
+  <!-- Même raison : SpectrumControl.resx ne doit être traité qu'une seule     -->
+  <!-- fois, associé à SpectrumControl.cs uniquement.                          -->
+  <ItemGroup>
+    <Compile Update="SpectrumControl.Pipeline.cs">
+      <SubType>Code</SubType>
+      <DependentUpon>SpectrumControl.cs</DependentUpon>
+    </Compile>
+    <Compile Update="SpectrumControl.Rendering.cs">
+      <SubType>Code</SubType>
+      <DependentUpon>SpectrumControl.cs</DependentUpon>
+    </Compile>
+    <Compile Update="SpectrumControl.PostPaint.cs">
+      <SubType>Code</SubType>
+      <DependentUpon>SpectrumControl.cs</DependentUpon>
+    </Compile>
+    <Compile Update="SpectrumControl.Cursors.cs">
+      <SubType>Code</SubType>
+      <DependentUpon>SpectrumControl.cs</DependentUpon>
+    </Compile>
+    <Compile Update="SpectrumControl.Overlays.cs">
+      <SubType>Code</SubType>
+      <DependentUpon>SpectrumControl.cs</DependentUpon>
+    </Compile>
+    <Compile Update="SpectrumControl.Bode.cs">
+      <SubType>Code</SubType>
+      <DependentUpon>SpectrumControl.cs</DependentUpon>
+    </Compile>
+    <Compile Update="SpectrumControl.CursorsBar.cs">
+      <SubType>Code</SubType>
+      <DependentUpon>SpectrumControl.cs</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <!-- ── Ancre le .resx au fichier principal (lève toute ambiguïté MSBuild) ─ -->
+  <ItemGroup>
+    <EmbeddedResource Update="SpectrumControl.resx">
+      <DependentUpon>SpectrumControl.cs</DependentUpon>
+    </EmbeddedResource>
+  </ItemGroup>
+
+
+  <!-- ── Supprime les .resx fantômes auto-créés par VS sur les fichiers partiels ── -->
+  <!-- VS génère des .resx vides quand il traite un partial comme un UserControl.    -->
+  <!-- Ces fichiers vides causent MSB3577 car le SDK leur attribue le même           -->
+  <!-- LogicalName que SpectrumControl.resx (via l'inspection de partial class).     -->
+  <ItemGroup>
+    <EmbeddedResource Remove="SpectrumControl.Pipeline.resx" />
+    <EmbeddedResource Remove="SpectrumControl.Rendering.resx" />
+    <EmbeddedResource Remove="SpectrumControl.PostPaint.resx" />
+    <EmbeddedResource Remove="SpectrumControl.Cursors.resx" />
+    <EmbeddedResource Remove="SpectrumControl.Overlays.resx" />
+    <EmbeddedResource Remove="SpectrumControl.Bode.resx" />
+    <EmbeddedResource Remove="SpectrumControl.CursorsBar.resx" />
+    <None Remove="SpectrumControl.Pipeline.resx" />
+    <None Remove="SpectrumControl.Rendering.resx" />
+    <None Remove="SpectrumControl.PostPaint.resx" />
+    <None Remove="SpectrumControl.Cursors.resx" />
+    <None Remove="SpectrumControl.Overlays.resx" />
+    <None Remove="SpectrumControl.Bode.resx" />
+    <None Remove="SpectrumControl.CursorsBar.resx" />
   </ItemGroup>
 
 </Project>

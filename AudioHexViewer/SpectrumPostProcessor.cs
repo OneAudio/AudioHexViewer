@@ -1,6 +1,5 @@
-﻿using MathNet.Numerics;
+using MathNet.Numerics;
 using System;
-using System.Linq;
 
 namespace AudioHexViewer
 {
@@ -97,7 +96,26 @@ namespace AudioHexViewer
         public bool CohAvgComplete => (_cohTarget > 0 && _cohCount >= _cohTarget);
 
         // ── Reset ─────────────────────────────────────────────────────────
-        public void ResetCohAvgState()
+        // ── Buffers réutilisables (Phase 6) ────────────────────────────────────────
+        // Évite les allocations new double[N] à chaque frame dans les chemins chauds.
+        // Réalloués uniquement si N change (changement de taille FFT = rare).
+        private double[]? _scratchLeftPower;   // ApplyAveragingAdvanced : dB→power input L
+        private double[]? _scratchRightPower;  // ApplyAveragingAdvanced : dB→power input R
+        private double[]? _scratchOutLeftPow;  // ApplyAveragingPower   : sortie moyenne L
+        private double[]? _scratchOutRightPow; // ApplyAveragingPower   : sortie moyenne R
+        private double[]? _scratchOutLeftDb;   // ApplyAveragingAdvanced : power→dB output L
+        private double[]? _scratchOutRightDb;  // ApplyAveragingAdvanced : power→dB output R
+        private double[]? _frfGainDbBuf;       // ApplyFrfH1Welch       : gainDb output
+        private double[]? _frfPhaseDegBuf;     // ApplyFrfH1Welch       : phaseDeg output
+
+        private static double[] EnsureBuf(ref double[]? buf, int n)
+        {
+            if (buf == null || buf.Length != n)
+                buf = new double[n];
+            return buf;
+        }
+
+                public void ResetCohAvgState()
         {
             _cohSumL       = null;
             _cohSumR       = null;
@@ -582,7 +600,7 @@ namespace AudioHexViewer
             currentLeftPower = null;
             if (hasLeft && _avgSumLeftPower != null)
             {
-                var outL = new double[bins];
+                var outL = EnsureBuf(ref _scratchOutLeftPow, bins);
                 for (int i = 0; i < bins; i++)
                     outL[i] = _avgSumLeftPower[i] * inv;
                 currentLeftPower = outL;
@@ -591,7 +609,7 @@ namespace AudioHexViewer
             currentRightPower = null;
             if (hasRight && _avgSumRightPower != null)
             {
-                var outR = new double[bins];
+                var outR = EnsureBuf(ref _scratchOutRightPow, bins);
                 for (int i = 0; i < bins; i++)
                     outR[i] = _avgSumRightPower[i] * inv;
                 currentRightPower = outR;
@@ -612,11 +630,12 @@ namespace AudioHexViewer
             out int fillCountForUi)
         {
             // Convert dB(amplitude) -> power
+            // Conversion dB → puissance (scratch réutilisable, zéro alloc si N stable)
             double[]? leftPower = null;
             if (leftNewDb != null)
             {
                 int n = leftNewDb.Length;
-                leftPower = new double[n];
+                leftPower = EnsureBuf(ref _scratchLeftPower, n);
                 for (int i = 0; i < n; i++)
                 {
                     double db = leftNewDb[i];
@@ -628,7 +647,7 @@ namespace AudioHexViewer
             if (rightNewDb != null)
             {
                 int n = rightNewDb.Length;
-                rightPower = new double[n];
+                rightPower = EnsureBuf(ref _scratchRightPower, n);
                 for (int i = 0; i < n; i++)
                 {
                     double db = rightNewDb[i];
@@ -640,11 +659,12 @@ namespace AudioHexViewer
                 out var outLeftPower, out var outRightPower, out fillCountForUi);
 
             // Convert power -> dB(amplitude) : db = 10log10(power)
+            // Conversion puissance → dB (scratch réutilisable)
             currentLeftDb = null;
             if (outLeftPower != null)
             {
                 int n = outLeftPower.Length;
-                var outDb = new double[n];
+                var outDb = EnsureBuf(ref _scratchOutLeftDb, n);
                 for (int i = 0; i < n; i++)
                 {
                     double p = outLeftPower[i];
@@ -660,7 +680,7 @@ namespace AudioHexViewer
             if (outRightPower != null)
             {
                 int n = outRightPower.Length;
-                var outDb = new double[n];
+                var outDb = EnsureBuf(ref _scratchOutRightDb, n);
                 for (int i = 0; i < n; i++)
                 {
                     double p = outRightPower[i];
@@ -683,7 +703,7 @@ namespace AudioHexViewer
             {
                 int bins = currentLeftDb.Length;
                 if (_peakHoldLeftDb == null || _peakHoldLeftDb.Length != bins)
-                    _peakHoldLeftDb = Enumerable.Repeat(-200.0, bins).ToArray();
+                { _peakHoldLeftDb = new double[bins]; Array.Fill(_peakHoldLeftDb, -200.0); }
 
                 for (int i = 0; i < bins; i++)
                 {
@@ -696,7 +716,7 @@ namespace AudioHexViewer
             {
                 int bins = currentRightDb.Length;
                 if (_peakHoldRightDb == null || _peakHoldRightDb.Length != bins)
-                    _peakHoldRightDb = Enumerable.Repeat(-200.0, bins).ToArray();
+                { _peakHoldRightDb = new double[bins]; Array.Fill(_peakHoldRightDb, -200.0); }
 
                 for (int i = 0; i < bins; i++)
                 {
@@ -792,9 +812,9 @@ namespace AudioHexViewer
             fillCountForUi = _frfFillCount;
 
             // --- Calcul du gain ---
-            gainDb = new double[bins];
+            gainDb   = EnsureBuf(ref _frfGainDbBuf,   bins);
+            phaseDeg = EnsureBuf(ref _frfPhaseDegBuf, bins);
             const double EPS = 1e-30;
-            phaseDeg = new double[bins];
 
             for (int k = 0; k < bins; k++)
             {
