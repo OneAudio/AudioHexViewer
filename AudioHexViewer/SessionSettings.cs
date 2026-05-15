@@ -83,11 +83,8 @@ namespace AudioHexViewer
         public ThdSettings Thd { get; set; } = new ThdSettings();
 
 
-        
 
-
-
-public sealed class ThdSettings
+        public sealed class ThdSettings
         {
             // Bande de mesure
             public bool UseHPF { get; set; } = true;          // Flow

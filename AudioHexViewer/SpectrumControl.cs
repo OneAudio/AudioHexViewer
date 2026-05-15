@@ -208,6 +208,7 @@ namespace AudioHexViewer
             // Appliquer au Chart (fond + grilles) + éléments UI (curseurs, stats, etc.)
             ApplyChartTheme();
             ApplyCursorTheme();
+            RefreshSeriesColors();           // met à jour couleur/épaisseur des séries FFT et Peak-Hold
             UpdateSpectrumChartAndStats();
         }
 
@@ -422,17 +423,18 @@ namespace AudioHexViewer
         private Series? _serPeakLeft;
         private Series? _serPeakRight;
         private Series? _serPhase;
-        private bool    _seriesInited;
+        private bool _seriesInited;
+        private bool _logLayoutStabilized;   // true une fois le layout LOG stabilisé (1er rendu)
 
         // ── Cache axe (Phase 6) ────────────────────────────────────────────────────
         // Skip les 84 assignments area.Axis* si les paramètres n'ont pas changé.
         // Réinitialisé quand l'utilisateur change une limite, le SR, ou la taille du chart.
-        private double _axCachedFmin   = double.NaN;
-        private double _axCachedFmax   = double.NaN;
-        private double _axCachedYmin   = double.NaN;
-        private double _axCachedYmax   = double.NaN;
+        private double _axCachedFmin = double.NaN;
+        private double _axCachedFmax = double.NaN;
+        private double _axCachedYmin = double.NaN;
+        private double _axCachedYmax = double.NaN;
         private double _axCachedYminor = double.NaN;
-        private bool   _axCachedUseLog = false;
+        private bool _axCachedUseLog = false;
         private System.Drawing.Size _axCachedChartSize;
 
         /// <summary>Invalide le cache d'axe — à appeler quand l'utilisateur change
@@ -452,10 +454,10 @@ namespace AudioHexViewer
             return buf;
         }
 
-                internal void InvalidateAxisCache()
+        internal void InvalidateAxisCache()
         {
-            _axCachedFmin   = double.NaN;
-            _axCachedYmin   = double.NaN;
+            _axCachedFmin = double.NaN;
+            _axCachedYmin = double.NaN;
         }
 
 
@@ -1637,167 +1639,16 @@ namespace AudioHexViewer
         // Phase 5 — Helpers rendu haute performance
         // ════════════════════════════════════════════════════════════════════
 
+
+
+        // ─────────────────────────────────────────────────────────────────────────────
         /// <summary>
-        /// Initialise les 5 séries fixes une seule fois (lazy).
-        /// Ordre d'ajout = ordre de rendu (back → front).
-        /// Les overlays (OV*) seront insérés en position 0 = sous tout le reste.
+        /// Calcule les paramètres d'axe (X, Y, Y2, grilles) et les applique au chart.
+        /// Retourne un <see cref="AxisConfig"/> utilisé par les sections séries et mesures.
+        /// Extrait de <c>UpdateSpectrumChartAndStats</c> pour réduire la taille de cette méthode.
         /// </summary>
-        private void EnsureSeriesInited()
+        private AxisConfig ApplyChartAxes(ChartArea area)
         {
-            if (_seriesInited) return;
-
-            Series Mk(string name, Color color, int width,
-                      ChartDashStyle dash = ChartDashStyle.Solid) => new Series(name)
-            {
-                ChartType       = SeriesChartType.FastLine,
-                ChartArea       = "SpectrumArea",
-                Color           = color,
-                BorderWidth     = width,
-                BorderDashStyle = dash,
-            };
-
-            _serPeakLeft  = Mk("LeftPeakHold",  PeakHoldLeftColor,  _colors.PeakHoldWidth, ChartDashStyle.Dash);
-            _serPeakRight = Mk("RightPeakHold", PeakHoldRightColor, _colors.PeakHoldWidth, ChartDashStyle.Dash);
-            _serPhase     = Mk("Phase",          FftRightColor,      _colors.FftWidth);
-            _serPhase.YAxisType = AxisType.Secondary;
-            _serLeft  = Mk("Left",  FftLeftColor,  _colors.FftWidth);
-            _serRight = Mk("Right", FftRightColor, _colors.FftWidth);
-
-            chartSpectrum.Series.Add(_serPeakLeft);
-            chartSpectrum.Series.Add(_serPeakRight);
-            chartSpectrum.Series.Add(_serPhase);
-            chartSpectrum.Series.Add(_serLeft);
-            chartSpectrum.Series.Add(_serRight);
-
-            _seriesInited = true;
-        }
-
-        /// <summary>Supprime uniquement les séries overlay (OV*). Les séries fixes restent.</summary>
-        private void RemoveOverlaySeries()
-        {
-            for (int i = chartSpectrum.Series.Count - 1; i >= 0; i--)
-                if (chartSpectrum.Series[i].Name.StartsWith("OV", StringComparison.Ordinal))
-                    chartSpectrum.Series.RemoveAt(i);
-        }
-
-        /// <summary>
-        /// Remplit une série pré-allouée avec SuspendUpdates.
-        /// Zéro allocation, zéro événement intermédiaire entre Clear et ResumeUpdates.
-        /// </summary>
-        private static void FillSeries(Series ser, double[]? fx, double[]? y,
-                                        int startIdx, bool show, double offset)
-        {
-            ser.Points.SuspendUpdates();
-            ser.Points.Clear();
-            if (show && fx != null && y != null)
-            {
-                int n = Math.Min(fx.Length, y.Length);
-                for (int i = startIdx; i < n; i++)
-                    ser.Points.AddXY(fx[i], y[i] + offset);
-            }
-            ser.Points.ResumeUpdates();
-        }
-
-        /// <summary>
-        /// Met à jour lblXxxRms/Peak depuis les champs _last* pré-calculés par
-        /// FeedExternalTimeStats24. Corrige le bug latent : l'ancien bloc
-        /// "if (timeL != null)" était du dead code (lastTimeLeft jamais assigné).
-        /// </summary>
-        private void UpdateStatsLabels(bool left, bool show, bool useDbv)
-        {
-            Label? lRms  = left ? lblLeftRms   : lblRightRms;
-            Label? lPeak = left ? lblLeftPeak  : lblRightPeak;
-            Label? lRmsV = left ? lblLeftRmsV  : lblRightRmsV;
-            Label? lPkV  = left ? lblLeftPeakV : lblRightPeakV;
-
-            if (!show)
-            {
-                if (lRms  != null) lRms.Text  = "RMS:";
-                if (lPeak != null) lPeak.Text = "Peak:";
-                if (lRmsV != null) lRmsV.Text = "";
-                if (lPkV  != null) lPkV.Text  = "";
-                return;
-            }
-
-            double? rmsDb  = left ? _lastRmsDbfsLeft  : _lastRmsDbfsRight;
-            double? peakFs = left ? _lastPeakFsLeft   : _lastPeakFsRight;
-            double  offset = left ? _levelCalOffsetDbLeft : _levelCalOffsetDbRight;
-            string  unit   = useDbv ? "dBV" : "dBFS";
-
-            if (lRms != null)
-                lRms.Text = rmsDb.HasValue
-                    ? $"RMS:  {(useDbv ? rmsDb.Value + offset : rmsDb.Value):F2} {unit}"
-                    : "RMS:";
-
-            if (lPeak != null && peakFs.HasValue && peakFs.Value > 0.0)
-            {
-                double pkDbfs = Math.Max(-200.0, 20.0 * Math.Log10(peakFs.Value));
-                lPeak.Text = $"Peak: {(useDbv ? pkDbfs + offset : pkDbfs):F2} {unit}";
-            }
-            else if (lPeak != null) lPeak.Text = "Peak:";
-
-            if (useDbv)
-            {
-                double? vrms = left ? _lastVrmsVoltsLeft  : _lastVrmsVoltsRight;
-                double? vpk  = left ? _lastVpkVoltsLeft   : _lastVpkVoltsRight;
-                if (lRmsV != null) lRmsV.Text = vrms.HasValue ? $"Vrms:  {FormatVoltage(vrms.Value)}" : "";
-                if (lPkV  != null) lPkV.Text  = vpk.HasValue  ? $"Vpeak: {FormatVoltage(vpk.Value)}"  : "";
-            }
-            else
-            {
-                if (lRmsV != null) lRmsV.Text = "";
-                if (lPkV  != null) lPkV.Text  = "";
-            }
-        }
-
-        private void UpdateSpectrumChartAndStats(double[]? timeL, double[]? timeR)
-        {
-            if (chartSpectrum.ClientSize.Width <= 0 || chartSpectrum.ClientSize.Height <= 0)
-                return;
-            if (freqAxis == null || (currentLeftSpectrum == null && currentRightSpectrum == null))
-                return;
-
-            // Helper local : estimation rapide de F0 (pas de THD => pas de ComputeChannel)
-            static double? EstimateFundamentalHz(double[] spectrum, double[] fx, double fMinHz, double fMaxHz, bool useLog)
-            {
-                if (spectrum == null || fx == null) return null;
-                if (spectrum.Length != fx.Length || spectrum.Length < 3) return null;
-
-                // bornes utiles
-                double minPhys = useLog ? LogXAbsMinHz : 0.0;
-                if (fMinHz < minPhys) fMinHz = minPhys;
-                if (fMaxHz <= fMinHz) return null;
-
-                // trouver l’index de départ/fin dans fx[]
-                int i0 = 0;
-                while (i0 < fx.Length && fx[i0] < fMinHz) i0++;
-
-                int i1 = fx.Length - 1;
-                while (i1 > i0 && fx[i1] > fMaxHz) i1--;
-
-                // éviter DC/0Hz si besoin
-                if (useLog && i0 < 1) i0 = 1;
-                if (i1 <= i0) return null;
-
-                int maxIdx = i0;
-                double maxVal = spectrum[i0];
-
-                for (int i = i0 + 1; i <= i1; i++)
-                {
-                    double v = spectrum[i];
-                    if (v > maxVal)
-                    {
-                        maxVal = v;
-                        maxIdx = i;
-                    }
-                }
-
-                // La fréquence correcte du point sélectionné, même après décimation :
-                return fx[maxIdx];
-            }
-
-            var area = chartSpectrum.ChartAreas["SpectrumArea"];
-
             // --- Axe X lin / log ---
             bool useLog = (chkLogX != null && chkLogX.Checked);
             // Garder l'info pour les autres fonctions
@@ -1831,7 +1682,30 @@ namespace AudioHexViewer
             double fMin = customFMin ?? fMinAuto;   // Hz
             double fMax = customFMax ?? fMaxAuto;   // Hz
 
+            // ─────────────────────────────────────────────────────────────────────────
+            // IMPORTANT — mode LOG : arrondir fMin à la décade inférieure AVANT tout
+            // appel à ApplyAxisXModeSafe et AVANT la comparaison de cache _axChanged.
+            //
+            // Problème sans ce snap :
+            //   fMin = freqAxis[1] = sampleRate/N  (ex: 384 000 / 1 048 576 ≈ 0,37 Hz)
+            //   → ApplyAxisXModeSafe pose Minimum = 0,37 Hz à chaque frame
+            //   → le Chart génère ses labels à 0,37 Hz, 3,7 Hz, 37 Hz… (pas des décades)
+            //   → FormatNumber masque TOUS ces labels (aucun n'est 10^n exact)
+            //   → les labels majeurs disparaissent et les ticks Chart (à 0,37…) ne
+            //     coïncident plus avec les lignes PostPaint (à 2, 3, 4… Hz)
+            //
+            // Solution : snap ici → fMin devient la décade inférieure (0,1 Hz dans
+            // l'exemple), et ce snap est stable entre les frames → le cache _axChanged
+            // se stabilise et ApplyAxisXModeSafe pose toujours la bonne valeur.
+            // ─────────────────────────────────────────────────────────────────────────
+            if (useLog && fMin > 0)
+            {
+                double snapped = Math.Pow(10.0, Math.Floor(Math.Log10(fMin)));
+                fMin = Math.Max(LogXAbsMinHz, snapped);
+            }
+
             ApplyAxisXModeSafe(area, useLog, fMin, fMax);
+
 
             // Sécurités de base
             double xMinPhys = useLog ? LogXAbsMinHz : 0.0;
@@ -1978,14 +1852,14 @@ namespace AudioHexViewer
 
             // ── Cache axe : skip les 120+ assignments si les paramètres n'ont pas changé ──
             bool _axChanged =
-                double.IsNaN(_axCachedFmin)  ||
-                double.IsNaN(_axCachedYmin)  ||
-                Math.Abs(fMin    - _axCachedFmin)   > 0.01 ||
-                Math.Abs(fMax    - _axCachedFmax)   > 0.01 ||
-                Math.Abs(yMin    - _axCachedYmin)   > 0.01 ||
-                Math.Abs(yMax    - _axCachedYmax)   > 0.01 ||
-                Math.Abs(yMinor  - _axCachedYminor) > 1e-6 ||
-                useLog != _axCachedUseLog            ||
+                double.IsNaN(_axCachedFmin) ||
+                double.IsNaN(_axCachedYmin) ||
+                Math.Abs(fMin - _axCachedFmin) > 0.01 ||
+                Math.Abs(fMax - _axCachedFmax) > 0.01 ||
+                Math.Abs(yMin - _axCachedYmin) > 0.01 ||
+                Math.Abs(yMax - _axCachedYmax) > 0.01 ||
+                Math.Abs(yMinor - _axCachedYminor) > 1e-6 ||
+                useLog != _axCachedUseLog ||
                 chartSpectrum.ClientSize != _axCachedChartSize;
 
             if (_axChanged)
@@ -2036,18 +1910,16 @@ namespace AudioHexViewer
                 // --- Axe X : on fixe d'abord les bornes, puis on active le log si besoin ---
                 if (useLog)
                 {
+                    // Note : fMin a déjà été arrondi à la décade inférieure avant cet appel
+                    // (voir le snap en amont de ApplyAxisXModeSafe). Les gardes ci-dessous
+                    // ne sont que des filets de sécurité.
                     if (area.AxisX.Minimum <= 0)
                         area.AxisX.Minimum = LogXAbsMinHz;
                     if (area.AxisX.Maximum <= area.AxisX.Minimum)
                         area.AxisX.Maximum = area.AxisX.Minimum * 10.0;
 
-                    double minDecade = Math.Pow(10.0, Math.Floor(Math.Log10(area.AxisX.Minimum)));
-                    area.AxisX.Minimum = Math.Max(LogXAbsMinHz, minDecade);
-
-                    if (area.AxisX.Maximum <= area.AxisX.Minimum)
-                        area.AxisX.Maximum = area.AxisX.Minimum * 10.0;
-
-                    area.AxisX.IsLogarithmic = true;
+                    if (!area.AxisX.IsLogarithmic)   // éviter le recalcul InnerPlotPosition si déjà LOG
+                        area.AxisX.IsLogarithmic = true;
                     area.AxisX.LogarithmBase = 10.0;
 
                     area.AxisX.Interval = 1.0;
@@ -2068,7 +1940,8 @@ namespace AudioHexViewer
                 }
                 else
                 {
-                    area.AxisX.IsLogarithmic = false;
+                    if (area.AxisX.IsLogarithmic)    // éviter le recalcul InnerPlotPosition si déjà LIN
+                        area.AxisX.IsLogarithmic = false;
 
                     area.AxisX.StripLines.Clear();
 
@@ -2112,213 +1985,52 @@ namespace AudioHexViewer
 
 
                 // Mettre en cache les paramètres utilisés
-                _axCachedFmin      = fMin;
-                _axCachedFmax      = fMax;
-                _axCachedYmin      = yMin;
-                _axCachedYmax      = yMax;
-                _axCachedYminor    = yMinor;
-                _axCachedUseLog    = useLog;
+                _axCachedFmin = fMin;
+                _axCachedFmax = fMax;
+                _axCachedYmin = yMin;
+                _axCachedYmax = yMax;
+                _axCachedYminor = yMinor;
+                _axCachedUseLog = useLog;
                 _axCachedChartSize = chartSpectrum.ClientSize;
+                // Signaler que le layout LOG devra être stabilisé
+                _logLayoutStabilized = false;
             } // end if (_axChanged)
 
-            // --- Ce qu'on affiche en fonction du combo Channel ---
-            string mode = comboChannel.SelectedItem as string ?? "L+R";
+            // Toujours restaurer la couleur des labels X après ApplyAxisXModeSafe.
+            // ApplyAxisXModeSafe bascule IsLogarithmic=false puis=true, ce qui peut
+            // réinitialiser ForeColor en interne. Ce bloc s'exécute à chaque frame,
+            // quelle que soit la valeur de axChanged.
+            area.AxisX.LabelStyle.ForeColor = LabelMajorColor;
 
-            // "Bode Plot" est une seule courbe portée par "Left" (currentLeftSpectrum = ratio en dB)
-            bool showLeft = (mode == "Left" || mode == "L+R" || mode == "Bode Plot") && (currentLeftSpectrum != null);
-            bool showRight = (mode == "Right" || mode == "L+R") && (currentRightSpectrum != null);
-
-
-            bool peakHoldOn = (chkPeakHold != null && chkPeakHold.Checked);
-            bool useDbvPlot = UseDbvForMode(mode);
-
-            _statsShowLeft = showLeft;
-            _statsShowRight = showRight;
-
-
-            bool doThd = _thdMeasuresEnabled;
-
-            // [Fix B] En LOG, si on ne pourra pas ajouter AU MOINS une série,
-            // on ne touche pas au chart (on garde l'ancienne courbe) et on continue vers les mesures.
-            bool useLog_now = (chkLogX != null && chkLogX.Checked);
-            if (useLog_now)
+            return new AxisConfig
             {
-                // 1) Si aucune voie n'est affichable (Right sans spectre droit, etc.)
-                if (!showLeft && !showRight)
-                    goto MEASURES_AND_TEXT;
-
-                // 2) Si les données PLOT ne sont pas prêtes (cas transitoire), on évite de vider le chart.
-                //    Sinon on risque "LOG + 0 série" pendant un paint.
-                if (_plotFreqAxis == null || _plotFreqAxis.Length < 2)
-                    goto MEASURES_AND_TEXT;
-
-                if (showLeft && (_plotLeftSpectrum == null || _plotLeftSpectrum.Length < 2))
-                    goto MEASURES_AND_TEXT;
-
-                if (showRight && (_plotRightSpectrum == null || _plotRightSpectrum.Length < 2))
-                    goto MEASURES_AND_TEXT;
-            }
+                FMin = fMin,
+                FMax = fMax,
+                Nyquist = nyquist,
+                UseLog = useLog,
+                FrfMode = frfMode,
+                UseDbvAxis = useDbvAxis,
+                StartIndex = startIndex,
+            };
+        }
 
 
-            // >>> PLOT : peak-hold et spectres décimés (tracé uniquement)
-            double[]? plotFx = _plotFreqAxis;
-            double[]? plotL = _plotLeftSpectrum;
-            double[]? plotR = _plotRightSpectrum;
-            double[]? peakL = peakHoldOn ? _plotPeakLeft : null;
-            double[]? peakR = peakHoldOn ? _plotPeakRight : null;
+        // ─────────────────────────────────────────────────────────────────────────────
+        /// <summary>
+        /// Met à jour le panneau de mesures analytiques (F0, RMS, Peak, Vdc, THD, harmoniques).
+        /// Exécutée à chaque frame — même quand les séries chart sont dans un état transitoire
+        /// Remplace l'ancien <c>goto MEASURES_AND_TEXT</c> par un appel de méthode propre.
+        /// </summary>
+        /// <param name="showLeft">Voie gauche visible.</param>
+        /// <param name="showRight">Voie droite visible.</param>
+        /// <param name="doThd">Mesures THD activées.</param>
+        /// <param name="ax">Paramètres d'axe calculés par <see cref="ApplyChartAxes"/>.</param>
+        private void UpdateMeasurementsPanel(bool showLeft, bool showRight, bool doThd, AxisConfig ax)
+        {
+            bool useLog = ax.UseLog;
+            double fMin = ax.FMin;
+            double fMax = ax.FMax;
 
-            // Si on n'a pas de données PLOT (cas transitoire), on ne trace rien (mais les métriques restent OK).
-            if (plotFx == null || plotFx.Length == 0)
-            {
-                // On laisse la suite (stats, THD, etc.) travailler sur FULL, mais pas de courbe à afficher.
-                // (Alternative possible : fallback sur FULL, mais ça peut saturer l'UI en points.)
-            }
-
-            // [Fix B] On ne clear le chart QUE si on va réellement reconstruire des séries.
-            // Si on a sauté vers MEASURES_AND_TEXT (état transitoire invalide), cette ligne n'est jamais atteinte.
-            EnsureSeriesInited();
-            RemoveOverlaySeries();
-
-            // --- Overlays (Library V3) ---
-            OverlayKind activeKind = (mode == "Bode Plot") ? OverlayKind.Bode : OverlayKind.Spectrum;
-
-            // Bornes visibles (axe actuel)
-            double xMin = area.AxisX.Minimum;
-            double xMax = area.AxisX.Maximum;
-
-            // Troncature au Nyquist courant si SR connu
-            double xMaxNyq = Math.Min(xMax, nyquist);
-
-            // En LOG, on évite <= 0 Hz
-            if (useLog) xMin = Math.Max(xMin, 1.0);
-
-            // Helper local overlay : filtre xMin/xMaxNyq + SuspendUpdates + offset inline.
-            // Supprime l'allocation .Select().ToArray() de l'ancienne version.
-            void AddPoints(ChartSeries series, double[] fx, double[] yRaw, double yOffset = 0.0)
-            {
-                int n = Math.Min(fx.Length, yRaw.Length);
-                series.Points.SuspendUpdates();
-                series.Points.Clear();
-                for (int i = 0; i < n; i++)
-                {
-                    double f = fx[i];
-                    if (useLog && f <= 0) continue;
-                    if (f < xMin) continue;
-                    if (f > xMaxNyq) break;
-                    series.Points.AddXY(f, yRaw[i] + yOffset);
-                }
-                series.Points.ResumeUpdates();
-            }
-
-            // Overlays insérés en position 0 = rendus sous le spectre live
-            int ovInsert = 0;
-            for (int ovIndex = 0; ovIndex < _overlayCache.Count; ovIndex++)
-            {
-                var ov = _overlayCache[ovIndex];
-                if (!ov.Visible) continue;
-
-                var data = ov.Data;
-                if (data == null || data.Kind != activeKind) continue;
-
-                int slotIndex = (data.SlotNumber >= 1 && data.SlotNumber <= OverlayManager.MaxOverlays)
-                    ? (data.SlotNumber - 1) : (ovIndex % OverlayManager.MaxOverlays);
-                var ovColor = GetOverlaySlotColor(slotIndex);
-
-                if (activeKind == OverlayKind.Spectrum)
-                {
-                    if (showLeft && data.LeftDbFs != null && data.FreqHz != null)
-                    {
-                        var s = new ChartSeries($"OV{ovIndex + 1}_L")
-                        {
-                            ChartType = SeriesChartType.FastLine,
-                            ChartArea = "SpectrumArea",
-                            Color = ovColor,
-                            BorderWidth = _colors.OverlayWidth,
-                            BorderDashStyle = GetOverlayDashStyle(),
-                        };
-                        double ovLOff = useDbvPlot ? _levelCalOffsetDbLeft : 0.0;
-                        AddPoints(s, data.FreqHz, data.LeftDbFs, ovLOff);
-                        chartSpectrum.Series.Insert(ovInsert++, s);
-                    }
-                    if (showRight && data.RightDbFs != null && data.FreqHz != null)
-                    {
-                        var s = new ChartSeries($"OV{ovIndex + 1}_R")
-                        {
-                            ChartType = SeriesChartType.FastLine,
-                            ChartArea = "SpectrumArea",
-                            Color = ovColor,
-                            BorderWidth = _colors.OverlayWidth,
-                            BorderDashStyle = GetOverlayDashStyle(),
-                        };
-                        double ovROff = useDbvPlot ? _levelCalOffsetDbRight : 0.0;
-                        AddPoints(s, data.FreqHz, data.RightDbFs, ovROff);
-                        chartSpectrum.Series.Insert(ovInsert++, s);
-                    }
-                }
-                else // Bode
-                {
-                    if (data.GainDb != null && data.FreqHz != null)
-                    {
-                        var sGain = new ChartSeries($"OV{ovIndex + 1}_Gain")
-                        {
-                            ChartType = SeriesChartType.FastLine,
-                            ChartArea = "SpectrumArea",
-                            Color = ovColor,
-                            BorderDashStyle = GetOverlayDashStyle(),
-                            BorderWidth = _colors.OverlayWidth,
-                        };
-                        AddPoints(sGain, data.FreqHz, data.GainDb);
-                        chartSpectrum.Series.Insert(ovInsert++, sGain);
-                    }
-                    if (_frfPhaseEnabled && data.PhaseDeg != null && data.FreqHz != null)
-                    {
-                        var sPh = new ChartSeries($"OV{ovIndex + 1}_Phase")
-                        {
-                            ChartType = SeriesChartType.FastLine,
-                            ChartArea = "SpectrumArea",
-                            YAxisType = AxisType.Secondary,
-                            Color = ovColor,
-                            BorderDashStyle = GetOverlayDashStyle(),
-                            BorderWidth = _colors.OverlayWidth,
-                        };
-                        AddPoints(sPh, data.FreqHz, data.PhaseDeg);
-                        chartSpectrum.Series.Insert(ovInsert++, sPh);
-                    }
-                }
-            }
-
-            // ── Séries principales (pré-allouées, FastLine, SuspendUpdates) ───────────
-            double leftOff  = useDbvPlot ? _levelCalOffsetDbLeft  : 0.0;
-            double rightOff = useDbvPlot ? _levelCalOffsetDbRight : 0.0;
-
-            FillSeries(_serLeft!,     plotFx, plotL,                      startIndex, showLeft,                  leftOff);
-            FillSeries(_serRight!,    plotFx, plotR,                      startIndex, showRight,                 rightOff);
-            FillSeries(_serPeakLeft!, plotFx, peakHoldOn ? peakL : null,  startIndex, showLeft  && peakHoldOn,  leftOff);
-            FillSeries(_serPeakRight!,plotFx, peakHoldOn ? peakR : null,  startIndex, showRight && peakHoldOn,  rightOff);
-
-            bool showPhase = mode == "Bode Plot" && _frfPhaseEnabled && _plotFrfPhaseDeg != null;
-            FillSeries(_serPhase!, plotFx, showPhase ? _plotFrfPhaseDeg : null, startIndex, showPhase, 0.0);
-
-
-
-            // ── Labels RMS / Peak ───────────────────────────────────────────────────────
-            // Les champs _last* sont calculés par FeedExternalTimeStats24.
-            // L'ancien bloc "if (timeL != null)" était du dead code :
-            // lastTimeLeft n'est jamais assigné en dehors de null.
-            bool showLeftVolts  = (_levelUnit == "dBV") && _levelCalValidLeft;
-            bool showRightVolts = (_levelUnit == "dBV") && _levelCalValidRight;
-
-            UpdateStatsLabels(left: true,  show: showLeft,  useDbv: showLeftVolts);
-            UpdateStatsLabels(left: false, show: showRight, useDbv: showRightVolts);
-            SetVoltLabelsVisible(showLeftVolts, showRightVolts);
-
-
-
-
-        // =========================
-        //   MESURES ANALYTIQUES
-        // =========================
-        MEASURES_AND_TEXT:
             ChannelMetrics? mL = null;
             ChannelMetrics? mR = null;
 
@@ -2373,7 +2085,7 @@ namespace AudioHexViewer
                         // Bande d’analyse = bande affichée (cohérente avec LIN/LOG)
                         double f0Min = Math.Max(useLog ? 1.0 : 0.0, fMin);
                         double f0Max = fMax;
-                        var f0 = EstimateFundamentalHz(currentLeftSpectrum, freqAxis!, f0Min, f0Max, useLog);
+                        var f0 = DspMath.EstimateFundamentalHz(currentLeftSpectrum, freqAxis!, f0Min, f0Max, useLog, LogXAbsMinHz);
 
                         // Niveaux dBFS (issus des stats temporelles)
                         double? pkFs = _lastPeakFsLeft;
@@ -2383,7 +2095,7 @@ namespace AudioHexViewer
                             : null;
 
                         var sb = new System.Text.StringBuilder(512);
-                sb.Append(f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
+                        sb.Append(f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
                         sb.Append('\n').Append((pkDbfs.HasValue ? $"dBFS peak: {pkDbfs.Value:F2} dBFS" : "dBFS peak: —"));
                         sb.Append('\n').Append((rmsDbfs.HasValue ? $"dBFS rms:  {rmsDbfs.Value:F2} dBFS" : "dBFS rms:  —"));
 
@@ -2439,7 +2151,7 @@ namespace AudioHexViewer
                     double f0Min = Math.Max(useLog ? 1.0 : 0.0, fMin);
                     double f0Max = fMax;
 
-                    var f0 = EstimateFundamentalHz(currentLeftSpectrum, freqAxis!, f0Min, f0Max, useLog);
+                    var f0 = DspMath.EstimateFundamentalHz(currentLeftSpectrum, freqAxis!, f0Min, f0Max, useLog, LogXAbsMinHz);
 
 
                     string vdcPrefixL = (_levelUnit == "dBV" && _levelCalValidLeft && _lastVdcVoltsLeft.HasValue)
@@ -2453,7 +2165,7 @@ namespace AudioHexViewer
                     double? pkDbfs = (pkFs.HasValue && pkFs.Value > 0.0) ? Math.Max(-200.0, 20.0 * Math.Log10(pkFs.Value)) : null;
 
                     var sb = new System.Text.StringBuilder(512);
-                sb.Append(f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
+                    sb.Append(f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
 
                     sb.Append('\n').Append((pkDbfs.HasValue ? $"dBFS peak: {pkDbfs.Value:F2} dBFS" : "dBFS peak: —"));
                     sb.Append('\n').Append((rmsDbfs.HasValue ? $"dBFS rms:  {rmsDbfs.Value:F2} dBFS" : "dBFS rms:  —"));
@@ -2512,7 +2224,7 @@ namespace AudioHexViewer
                         // --- F0 + niveaux (toujours affichés, même en mode THD) ---
                         double f0Min = Math.Max(useLog ? 1.0 : 0.0, fMin);
                         double f0Max = fMax;
-                        var f0 = EstimateFundamentalHz(currentRightSpectrum, freqAxis!, f0Min, f0Max, useLog);
+                        var f0 = DspMath.EstimateFundamentalHz(currentRightSpectrum, freqAxis!, f0Min, f0Max, useLog, LogXAbsMinHz);
 
                         double? pkFs = _lastPeakFsRight;
                         double? rmsDbfs = _lastRmsDbfsRight;
@@ -2521,7 +2233,7 @@ namespace AudioHexViewer
                             : null;
 
                         var sb = new System.Text.StringBuilder(512);
-                sb.Append(f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
+                        sb.Append(f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
                         sb.Append('\n').Append((pkDbfs.HasValue ? $"dBFS peak: {pkDbfs.Value:F2} dBFS" : "dBFS peak: —"));
                         sb.Append('\n').Append((rmsDbfs.HasValue ? $"dBFS rms:  {rmsDbfs.Value:F2} dBFS" : "dBFS rms:  —"));
 
@@ -2575,7 +2287,7 @@ namespace AudioHexViewer
                     double f0Min = Math.Max(useLog ? 1.0 : 0.0, fMin);
                     double f0Max = fMax;
 
-                    var f0 = EstimateFundamentalHz(currentRightSpectrum, freqAxis!, f0Min, f0Max, useLog);
+                    var f0 = DspMath.EstimateFundamentalHz(currentRightSpectrum, freqAxis!, f0Min, f0Max, useLog, LogXAbsMinHz);
 
 
                     string vdcPrefixR = (_levelUnit == "dBV" && _levelCalValidRight && _lastVdcVoltsRight.HasValue)
@@ -2589,7 +2301,7 @@ namespace AudioHexViewer
                     double? pkDbfs = (pkFs.HasValue && pkFs.Value > 0.0) ? Math.Max(-200.0, 20.0 * Math.Log10(pkFs.Value)) : null;
 
                     var sb = new System.Text.StringBuilder(512);
-                sb.Append(f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
+                    sb.Append(f0.HasValue ? $"F0: {f0.Value:F1} Hz" : "F0: —");
 
                     sb.Append('\n').Append((pkDbfs.HasValue ? $"dBFS peak: {pkDbfs.Value:F2} dBFS" : "dBFS peak: —"));
                     sb.Append('\n').Append((rmsDbfs.HasValue ? $"dBFS rms:  {rmsDbfs.Value:F2} dBFS" : "dBFS rms:  —"));
@@ -2613,9 +2325,346 @@ namespace AudioHexViewer
                 lblRightMeas.Text = "";
             }
 
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────────
+        // Résultat de ApplyChartAxes — paramètres d'axe calculés, utilisés par
+        // TryDrawChartSeries et UpdateMeasurementsPanel.
+        // ─────────────────────────────────────────────────────────────────────────────
+        private readonly struct AxisConfig
+        {
+            public double FMin { get; init; }
+            public double FMax { get; init; }
+            public double Nyquist { get; init; }
+            public bool UseLog { get; init; }
+            public bool FrfMode { get; init; }
+            public bool UseDbvAxis { get; init; }
+            public int StartIndex { get; init; }
+        }
+
+        /// <summary>
+        /// Initialise les 5 séries fixes une seule fois (lazy).
+        /// Ordre d'ajout = ordre de rendu (back → front).
+        /// Les overlays (OV*) seront insérés en position 0 = sous tout le reste.
+        /// </summary>
+        private void EnsureSeriesInited()
+        {
+            if (_seriesInited) return;
+
+            Series Mk(string name, Color color, int width,
+                      ChartDashStyle dash = ChartDashStyle.Solid) => new Series(name)
+                      {
+                          ChartType = SeriesChartType.FastLine,
+                          ChartArea = "SpectrumArea",
+                          Color = color,
+                          BorderWidth = width,
+                          BorderDashStyle = dash,
+                      };
+
+            _serPeakLeft = Mk("LeftPeakHold", PeakHoldLeftColor, _colors.PeakHoldWidth, ChartDashStyle.Dash);
+            _serPeakRight = Mk("RightPeakHold", PeakHoldRightColor, _colors.PeakHoldWidth, ChartDashStyle.Dash);
+            _serPhase = Mk("Phase", FftRightColor, _colors.FftWidth);
+            _serPhase.YAxisType = AxisType.Secondary;
+            _serLeft = Mk("Left", FftLeftColor, _colors.FftWidth);
+            _serRight = Mk("Right", FftRightColor, _colors.FftWidth);
+
+            chartSpectrum.Series.Add(_serPeakLeft);
+            chartSpectrum.Series.Add(_serPeakRight);
+            chartSpectrum.Series.Add(_serPhase);
+            chartSpectrum.Series.Add(_serLeft);
+            chartSpectrum.Series.Add(_serRight);
+
+            _seriesInited = true;
+        }
+
+
+        /// <summary>
+        /// Force la recréation des 5 séries fixes avec les nouvelles couleurs.
+        ///
+        /// Stratégie : supprimer les séries existantes du Chart + reset <c>_seriesInited</c>.
+        /// La prochaine frame FFT appelle <see cref="EnsureSeriesInited"/> qui les recrée
+        /// avec les valeurs courantes de <c>_colors</c>.
+        ///
+        /// Raison : modifier <c>Series.Color</c> en place n'est pas toujours honoré par
+        /// WinForms.DataVisualization (palette interne peut prévaloir). La recréation garantit
+        /// que les propriétés sont prises en compte au moment du <c>Series.Add()</c>.
+        /// </summary>
+        private void RefreshSeriesColors()
+        {
+            // Retirer les séries fixes du chart et réinitialiser le flag.
+            // EnsureSeriesInited() les recrée proprement à la prochaine frame.
+            if (_serPeakLeft != null) { chartSpectrum.Series.Remove(_serPeakLeft); _serPeakLeft = null; }
+            if (_serPeakRight != null) { chartSpectrum.Series.Remove(_serPeakRight); _serPeakRight = null; }
+            if (_serPhase != null) { chartSpectrum.Series.Remove(_serPhase); _serPhase = null; }
+            if (_serLeft != null) { chartSpectrum.Series.Remove(_serLeft); _serLeft = null; }
+            if (_serRight != null) { chartSpectrum.Series.Remove(_serRight); _serRight = null; }
+            _seriesInited = false;
+
+            // Recréer immédiatement si les données sont déjà disponibles,
+            // sinon EnsureSeriesInited() sera appelée à la prochaine frame.
+            if (currentLeftSpectrum != null || currentRightSpectrum != null)
+                EnsureSeriesInited();
+        }
+
+        /// <summary>Supprime uniquement les séries overlay (OV*). Les séries fixes restent.</summary>
+        private void RemoveOverlaySeries()
+        {
+            for (int i = chartSpectrum.Series.Count - 1; i >= 0; i--)
+                if (chartSpectrum.Series[i].Name.StartsWith("OV", StringComparison.Ordinal))
+                    chartSpectrum.Series.RemoveAt(i);
+        }
+
+        /// <summary>
+        /// Remplit une série pré-allouée avec SuspendUpdates.
+        /// Zéro allocation, zéro événement intermédiaire entre Clear et ResumeUpdates.
+        /// </summary>
+        private static void FillSeries(Series ser, double[]? fx, double[]? y,
+                                        int startIdx, bool show, double offset)
+        {
+            ser.Points.SuspendUpdates();
+            ser.Points.Clear();
+            if (show && fx != null && y != null)
+            {
+                int n = Math.Min(fx.Length, y.Length);
+                for (int i = startIdx; i < n; i++)
+                    ser.Points.AddXY(fx[i], y[i] + offset);
+            }
+            ser.Points.ResumeUpdates();
+        }
+
+        /// <summary>
+        /// Met à jour lblXxxRms/Peak depuis les champs _last* pré-calculés par
+        /// FeedExternalTimeStats24. Corrige le bug latent : l'ancien bloc
+        /// "if (timeL != null)" était du dead code (lastTimeLeft jamais assigné).
+        /// </summary>
+        private void UpdateStatsLabels(bool left, bool show, bool useDbv)
+        {
+            Label? lRms = left ? lblLeftRms : lblRightRms;
+            Label? lPeak = left ? lblLeftPeak : lblRightPeak;
+            Label? lRmsV = left ? lblLeftRmsV : lblRightRmsV;
+            Label? lPkV = left ? lblLeftPeakV : lblRightPeakV;
+
+            // dBFS RMS/Peak supprimés de la section supérieure : redondants avec
+            // "dBFS peak" / "dBFS rms" affichés dans lblLeftMeas (sous F0).
+            if (lRms != null) { lRms.Text = ""; lRms.Visible = false; }
+            if (lPeak != null) { lPeak.Text = ""; lPeak.Visible = false; }
+
+            if (!show)
+            {
+                if (lRmsV != null) lRmsV.Text = "";
+                if (lPkV != null) lPkV.Text = "";
+                return;
+            }
+
+            double? rmsDb = left ? _lastRmsDbfsLeft : _lastRmsDbfsRight;
+            double? peakFs = left ? _lastPeakFsLeft : _lastPeakFsRight;
+            double offset = left ? _levelCalOffsetDbLeft : _levelCalOffsetDbRight;
+
+            if (useDbv)
+            {
+                double? vrms = left ? _lastVrmsVoltsLeft : _lastVrmsVoltsRight;
+                double? vpk = left ? _lastVpkVoltsLeft : _lastVpkVoltsRight;
+                if (lRmsV != null) lRmsV.Text = vrms.HasValue ? $"Vrms:  {FormatVoltage(vrms.Value)}" : "";
+                if (lPkV != null) lPkV.Text = vpk.HasValue ? $"Vpeak: {FormatVoltage(vpk.Value)}" : "";
+            }
+            else
+            {
+                if (lRmsV != null) lRmsV.Text = "";
+                if (lPkV != null) lPkV.Text = "";
+            }
+        }
+
+        private void UpdateSpectrumChartAndStats(double[]? timeL, double[]? timeR)
+        {
+            if (chartSpectrum.ClientSize.Width <= 0 || chartSpectrum.ClientSize.Height <= 0)
+                return;
+            if (freqAxis == null || (currentLeftSpectrum == null && currentRightSpectrum == null))
+                return;
+
+            var area = chartSpectrum.ChartAreas["SpectrumArea"];
+
+            // ── Axes (X, Y, Y2, grilles) ─────────────────────────────────────────────
+            var ax = ApplyChartAxes(area);
+
+            // ── Visibilité selon le combo Channel ─────────────────────────────────────
+            string mode = comboChannel.SelectedItem as string ?? "L+R";
+            bool showLeft = (mode == "Left" || mode == "L+R" || mode == "Bode Plot") && currentLeftSpectrum != null;
+            bool showRight = (mode == "Right" || mode == "L+R") && currentRightSpectrum != null;
+            bool peakHoldOn = chkPeakHold?.Checked ?? false;
+            bool useDbvPlot = UseDbvForMode(mode);
+            bool doThd = _thdMeasuresEnabled;
+            double nyquist = ax.Nyquist;
+            int startIndex = ax.StartIndex;
+            bool useLog = ax.UseLog;
+
+            _statsShowLeft = showLeft;
+            _statsShowRight = showRight;
+
+            // ── Séries chart ──────────────────────────────────────────────────────────
+            // En LOG : ne pas vider le chart si les données ne sont pas encore prêtes
+            // (évite l'exception "logarithmic axis + 0 point" pendant un paint transitoire).
+            bool skipSeries = ax.UseLog && (
+                (!showLeft && !showRight) ||
+                _plotFreqAxis == null || _plotFreqAxis.Length < 2 ||
+                (showLeft && (_plotLeftSpectrum == null || _plotLeftSpectrum.Length < 2)) ||
+                (showRight && (_plotRightSpectrum == null || _plotRightSpectrum.Length < 2)));
+
+            // Les séries doivent exister même si skipSeries (RefreshSeriesColors les supprime
+            // et peut être appelé quand currentLeftSpectrum est déjà disponible mais skipSeries = true).
+            EnsureSeriesInited();
+
+            if (!skipSeries)
+            {
+                double[]? plotFx = _plotFreqAxis;
+                double[]? plotL = _plotLeftSpectrum;
+                double[]? plotR = _plotRightSpectrum;
+                double[]? peakL = peakHoldOn ? _plotPeakLeft : null;
+                double[]? peakR = peakHoldOn ? _plotPeakRight : null;
+
+                RemoveOverlaySeries();
+
+                // --- Overlays (Library V3) ---
+                OverlayKind activeKind = (mode == "Bode Plot") ? OverlayKind.Bode : OverlayKind.Spectrum;
+
+                // Bornes visibles (axe actuel)
+                double xMin = area.AxisX.Minimum;
+                double xMax = area.AxisX.Maximum;
+
+                // Troncature au Nyquist courant si SR connu
+                double xMaxNyq = Math.Min(xMax, nyquist);
+
+                // En LOG, on évite <= 0 Hz
+                if (useLog) xMin = Math.Max(xMin, 1.0);
+
+                // Helper local overlay : filtre xMin/xMaxNyq + SuspendUpdates + offset inline.
+                // Supprime l'allocation .Select().ToArray() de l'ancienne version.
+                void AddPoints(ChartSeries series, double[] fx, double[] yRaw, double yOffset = 0.0)
+                {
+                    int n = Math.Min(fx.Length, yRaw.Length);
+                    series.Points.SuspendUpdates();
+                    series.Points.Clear();
+                    for (int i = 0; i < n; i++)
+                    {
+                        double f = fx[i];
+                        if (useLog && f <= 0) continue;
+                        if (f < xMin) continue;
+                        if (f > xMaxNyq) break;
+                        series.Points.AddXY(f, yRaw[i] + yOffset);
+                    }
+                    series.Points.ResumeUpdates();
+                }
+
+                // Overlays insérés en position 0 = rendus sous le spectre live
+                int ovInsert = 0;
+                for (int ovIndex = 0; ovIndex < _overlayCache.Count; ovIndex++)
+                {
+                    var ov = _overlayCache[ovIndex];
+                    if (!ov.Visible) continue;
+
+                    var data = ov.Data;
+                    if (data == null || data.Kind != activeKind) continue;
+
+                    int slotIndex = (data.SlotNumber >= 1 && data.SlotNumber <= OverlayManager.MaxOverlays)
+                        ? (data.SlotNumber - 1) : (ovIndex % OverlayManager.MaxOverlays);
+                    var ovColor = GetOverlaySlotColor(slotIndex);
+
+                    if (activeKind == OverlayKind.Spectrum)
+                    {
+                        if (showLeft && data.LeftDbFs != null && data.FreqHz != null)
+                        {
+                            var s = new ChartSeries($"OV{ovIndex + 1}_L")
+                            {
+                                ChartType = SeriesChartType.FastLine,
+                                ChartArea = "SpectrumArea",
+                                Color = ovColor,
+                                BorderWidth = _colors.OverlayWidth,
+                                BorderDashStyle = GetOverlayDashStyle(),
+                            };
+                            double ovLOff = useDbvPlot ? _levelCalOffsetDbLeft : 0.0;
+                            AddPoints(s, data.FreqHz, data.LeftDbFs, ovLOff);
+                            chartSpectrum.Series.Insert(ovInsert++, s);
+                        }
+                        if (showRight && data.RightDbFs != null && data.FreqHz != null)
+                        {
+                            var s = new ChartSeries($"OV{ovIndex + 1}_R")
+                            {
+                                ChartType = SeriesChartType.FastLine,
+                                ChartArea = "SpectrumArea",
+                                Color = ovColor,
+                                BorderWidth = _colors.OverlayWidth,
+                                BorderDashStyle = GetOverlayDashStyle(),
+                            };
+                            double ovROff = useDbvPlot ? _levelCalOffsetDbRight : 0.0;
+                            AddPoints(s, data.FreqHz, data.RightDbFs, ovROff);
+                            chartSpectrum.Series.Insert(ovInsert++, s);
+                        }
+                    }
+                    else // Bode
+                    {
+                        if (data.GainDb != null && data.FreqHz != null)
+                        {
+                            var sGain = new ChartSeries($"OV{ovIndex + 1}_Gain")
+                            {
+                                ChartType = SeriesChartType.FastLine,
+                                ChartArea = "SpectrumArea",
+                                Color = ovColor,
+                                BorderDashStyle = GetOverlayDashStyle(),
+                                BorderWidth = _colors.OverlayWidth,
+                            };
+                            AddPoints(sGain, data.FreqHz, data.GainDb);
+                            chartSpectrum.Series.Insert(ovInsert++, sGain);
+                        }
+                        if (_frfPhaseEnabled && data.PhaseDeg != null && data.FreqHz != null)
+                        {
+                            var sPh = new ChartSeries($"OV{ovIndex + 1}_Phase")
+                            {
+                                ChartType = SeriesChartType.FastLine,
+                                ChartArea = "SpectrumArea",
+                                YAxisType = AxisType.Secondary,
+                                Color = ovColor,
+                                BorderDashStyle = GetOverlayDashStyle(),
+                                BorderWidth = _colors.OverlayWidth,
+                            };
+                            AddPoints(sPh, data.FreqHz, data.PhaseDeg);
+                            chartSpectrum.Series.Insert(ovInsert++, sPh);
+                        }
+                    }
+                }
+
+                // ── Séries principales (pré-allouées, FastLine, SuspendUpdates) ───────────
+                double leftOff = useDbvPlot ? _levelCalOffsetDbLeft : 0.0;
+                double rightOff = useDbvPlot ? _levelCalOffsetDbRight : 0.0;
+
+                FillSeries(_serLeft!, plotFx, plotL, startIndex, showLeft, leftOff);
+                FillSeries(_serRight!, plotFx, plotR, startIndex, showRight, rightOff);
+                FillSeries(_serPeakLeft!, plotFx, peakHoldOn ? peakL : null, startIndex, showLeft && peakHoldOn, leftOff);
+                FillSeries(_serPeakRight!, plotFx, peakHoldOn ? peakR : null, startIndex, showRight && peakHoldOn, rightOff);
+
+                bool showPhase = mode == "Bode Plot" && _frfPhaseEnabled && _plotFrfPhaseDeg != null;
+                FillSeries(_serPhase!, plotFx, showPhase ? _plotFrfPhaseDeg : null, startIndex, showPhase, 0.0);
+
+
+
+                // ── Labels RMS / Peak ───────────────────────────────────────────────────────
+                // Les champs _last* sont calculés par FeedExternalTimeStats24.
+                // L'ancien bloc "if (timeL != null)" était du dead code :
+                // lastTimeLeft n'est jamais assigné en dehors de null.
+                bool showLeftVolts = (_levelUnit == "dBV") && _levelCalValidLeft;
+                bool showRightVolts = (_levelUnit == "dBV") && _levelCalValidRight;
+
+                UpdateStatsLabels(left: true, show: showLeft, useDbv: showLeftVolts);
+                UpdateStatsLabels(left: false, show: showRight, useDbv: showRightVolts);
+                SetVoltLabelsVisible(showLeftVolts, showRightVolts);
+
+            } // if (!skipSeries)
+
+            // ── Mesures analytiques (F0, RMS, Peak, THD) — toujours, même si skipSeries ─
+            UpdateMeasurementsPanel(showLeft, showRight, doThd, ax);
+
             RebuildStatsRowsFromLabels();
             RefreshCursorAfterRedraw();
         }
+
 
 
 
@@ -2746,7 +2795,7 @@ namespace AudioHexViewer
                     RightDbFs = captureRight ? _plotRightSpectrum!.Take(n).ToArray() : null
                 };
 
-                var entry = _overlayLibrary.AddCapturedOverlay(dto, $"{defaultName}_{DateTime.Now:yyyy-MM-dd HH-mm-ss}");   
+                var entry = _overlayLibrary.AddCapturedOverlay(dto, $"{defaultName}_{DateTime.Now:yyyy-MM-dd HH-mm-ss}");
 
                 OverlayLibraryReloadCache();
                 UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
@@ -2769,7 +2818,7 @@ namespace AudioHexViewer
         // Mémorise la fenêtre choisie hors FRF, pour la restaurer quand on sort du mode Bode Plot.
         private int _windowIndexBeforeFrf = -1;
 
-        
+
 
 
         //

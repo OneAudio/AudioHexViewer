@@ -16,7 +16,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="Class1.cs" />
+    <Compile Remove="HistogramForm.cs" />  <!-- doublon : HistogramForm déjà défini ailleurs dans le projet -->
     <Compile Remove="HistogramWindow.cs" />
     <Compile Remove="HistogramWindow.Designer.cs" />
     <Compile Remove="ThdSettingsDialog_Code.cs" />
@@ -149,6 +149,14 @@
     <None Remove="SpectrumControl.Overlays.resx" />
     <None Remove="SpectrumControl.Bode.resx" />
     <None Remove="SpectrumControl.CursorsBar.resx" />
+  </ItemGroup>
+
+
+  <!-- ── Tests unitaires ── Donne accès aux membres internal depuis AudioHexViewer.Tests -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>AudioHexViewer.Tests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
 </Project>

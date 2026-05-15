@@ -102,7 +102,7 @@ namespace AudioHexViewer
 
         // =============================================================
         // Pipeline float stéréo [-1..1]
-        // _audioRing (StereoRingBuffer int24) supprimé : était écrit mais jamais lu.
+        // _audioRing et StereoRingBuffer (int24) supprimés : jamais lus hors ProcessBuffer.
         // =============================================================
 
         // ── Canal de découplage : thread de capture → ProcessBuffer ──────────
@@ -353,123 +353,8 @@ namespace AudioHexViewer
             public int Left;
             public int Right;
         }
-        //
-        private sealed class StereoRingBuffer
-        {
-            private int[] _l;
-            private int[] _r;
-            private int _write;     // index d'écriture (0..cap-1)
-            private int _count;     // nombre d'échantillons valides (<= cap)
-            private long _absWrite; // nombre total d'échantillons écrits depuis le dernier reset
-
-            public int Capacity => _l.Length;
-            public int Count => _count;
-            public long AbsWrite => _absWrite; // index absolu "one past last"
-
-            public StereoRingBuffer(int capacity)
-            {
-                if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
-                _l = new int[capacity];
-                _r = new int[capacity];
-                _write = 0;
-                _count = 0;
-                _absWrite = 0;
-            }
-
-            public void Resize(int capacity, bool reset = true)
-            {
-                if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
-                _l = new int[capacity];
-                _r = new int[capacity];
-                if (reset)
-                {
-                    _write = 0;
-                    _count = 0;
-                    _absWrite = 0;
-                }
-                else
-                {
-                    // Pour l'instant on n'implémente pas de conservation partielle (inutile ici)
-                    _write = 0;
-                    _count = 0;
-                    _absWrite = 0;
-                }
-            }
-
-            public void Clear(bool resetAbsIndex = true)
-            {
-                _write = 0;
-                _count = 0;
-                if (resetAbsIndex) _absWrite = 0;
-            }
-
-            public void WriteSample(int left, int right)
-            {
-                _l[_write] = left;
-                _r[_write] = right;
-
-                _write++;
-                if (_write >= _l.Length) _write = 0;
-
-                if (_count < _l.Length) _count++;
-                _absWrite++;
-            }
-
-            /// <summary>
-            /// Copie une plage d'échantillons à partir d'un index absolu (absStart) dans des buffers de sortie.
-            /// absStart..absStart+length doit être contenu dans la zone encore présente dans le ring.
-            /// </summary>
-            public bool TryCopyFromAbs(long absStart, int length, int[] dstL, int[] dstR)
-            {
-                if (length <= 0) return false;
-                if (dstL.Length < length || dstR.Length < length) return false;
-
-                long absEnd = _absWrite;
-                long absOldest = absEnd - _count;
-
-                if (absStart < absOldest) return false;
-                if (absStart + length > absEnd) return false;
-
-                int cap = _l.Length;
-
-                // index de l'échantillon le plus ancien dans le tableau
-                int oldestIndex = (_count == cap) ? _write : 0;
-
-                long offsetFromOldest = absStart - absOldest;
-                int idx = (int)((oldestIndex + offsetFromOldest) % cap);
-
-                int remaining = length;
-                int outPos = 0;
-
-                while (remaining > 0)
-                {
-                    int chunk = Math.Min(remaining, cap - idx);
-                    Array.Copy(_l, idx, dstL, outPos, chunk);
-                    Array.Copy(_r, idx, dstR, outPos, chunk);
-                    remaining -= chunk;
-                    outPos += chunk;
-                    idx = 0;
-                }
-
-                return true;
-            }
-
-            public bool TryCopyLast(int length, int[] dstL, int[] dstR)
-            {
-                long absEnd = _absWrite;
-                long absStart = absEnd - length;
-                return TryCopyFromAbs(absStart, length, dstL, dstR);
-            }
-        }
 
 
-        // Fournit la DERNIÈRE fenêtre d'analyse commune (Histogram + Spectrum).
-        // Les contrôles appellent ce provider avec sampleCount (= analysisSampleSize).
-        // Fournit la DERNIÈRE fenêtre d'analyse commune (Histogram + Spectrum).
-        // Les contrôles appellent ce provider avec sampleCount (= analysisSampleSize).
-        // Fournit les N derniers samples int24 depuis le ring (pour HistogramControl).
-        // Phase 2 : remplace lastAnalysisLeft/Right + lock analysisLock.
-        //
         private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
         {
             SaveSessionSettingsSilently();

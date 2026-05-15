@@ -4,7 +4,8 @@
 // Responsabilités :
 //   • Démarrage / arrêt de la capture (StartCapture / StopCapture)
 //   • Découplage thread capture → ProcessBuffer via Channel<byte[]>
-//   • Conversion byte[] → float32 → FftPipelineController.PushAudio()
+//   • Conversion byte[] → float32 via MemoryMarshal.Cast (zéro copie)
+//     Passe unique : déinterleave + VU peak + REC + pipeline push
 //   • VU-mètres, saturation, détection de bits
 //   • Enregistrement 1s (btnRecord_Click / SaveRecordingToCsv)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -377,154 +378,144 @@ namespace AudioHexViewer
             if (currentFormat == null)
                 return;
 
-            // On s'attend  du float 32 bits stro
             if (currentFormat.Encoding != WaveFormatEncoding.IeeeFloat ||
                 currentFormat.BitsPerSample != 32)
-            {
                 return;
-            }
 
             int channels = currentFormat.Channels;
             if (channels < 2)
                 return;
 
-            int bytesPerSample = 4; // 32 bits float
-            int blockAlign = bytesPerSample * channels;
-
-            if (bytesRecorded < blockAlign)
+            int bytesPerFrame = channels * 4;
+            if (bytesRecorded < bytesPerFrame)
                 return;
 
-            // ---------- Calcul du dernier frame pour affichage dtaill ----------
-            int lastFrameIndex = bytesRecorded - blockAlign;
+            int frameCount = bytesRecorded / bytesPerFrame;
 
-            float leftF = BitConverter.ToSingle(buffer, lastFrameIndex);
-            float rightF = BitConverter.ToSingle(buffer, lastFrameIndex + bytesPerSample);
+            // ── Cast zéro-copie byte[] → float (MemoryMarshal, zéro alloc, zéro bounds-check) ─
+            // Le buffer provient d'ArrayPool<byte> (aligné ≥8 octets) ; float = 4 octets → OK.
+            // Sur Windows x64/x86/ARM le format est little-endian, identique à la mémoire native.
+            var floatBuf = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(
+                buffer.AsSpan(0, bytesRecorded));
 
-            const int Max24 = 1 << 23;      // 8388608
-            const int Max24Pos = Max24 - 1; // +0x7FFFFF
-            const int Min24Neg = -Max24;    // -0x800000
+            // ── Constantes de conversion float→int24 ─────────────────────────────────────────
+            const int Max24    =  1 << 23;        // 8 388 608
+            const int Max24Pos =  Max24 - 1;      // +0x7FFFFF
+            const int Min24Neg = -Max24;           // -0x800000
 
-            int left24 = (int)Math.Truncate(leftF * Max24);
+            // ── Dernier frame : affichage hex/bits + saturation ───────────────────────────────
+            // On utilise directement le span casté (zéro BitConverter supplémentaire).
+            float leftF  = floatBuf[(frameCount - 1) * channels];
+            float rightF = floatBuf[(frameCount - 1) * channels + 1];
+
+            int left24  = (int)Math.Truncate(leftF  * Max24);
             int right24 = (int)Math.Truncate(rightF * Max24);
 
-            // Mmoriser le dernier code 24 bits
-            lastCodeLeft = left24;
+            lastCodeLeft  = left24;
             lastCodeRight = right24;
 
-            double instVoltsLeft = 0.0;
-            double instVoltsRight = 0.0;
+            double instVoltsLeft  = calibValidLeft  ? calibGainLeft  * left24  + calibOffsetLeft  : 0.0;
+            double instVoltsRight = calibValidRight ? calibGainRight * right24 + calibOffsetRight : 0.0;
 
-            if (calibValidLeft)
-                instVoltsLeft = calibGainLeft * left24 + calibOffsetLeft;
-
-            if (calibValidRight)
-                instVoltsRight = calibGainRight * right24 + calibOffsetRight;
-
-            // Filtre daffichage 4 Hz
             var now = DateTime.Now;
             if (now - lastVoltageUpdate >= voltageUpdateInterval)
             {
                 lastVoltageUpdate = now;
-                displayVoltsLeft = instVoltsLeft;
+                displayVoltsLeft  = instVoltsLeft;
                 displayVoltsRight = instVoltsRight;
             }
 
-            if (left24 > Max24Pos) left24 = Max24Pos;
-            if (left24 < Min24Neg) left24 = Min24Neg;
+            if (left24  > Max24Pos) left24  = Max24Pos;
+            if (left24  < Min24Neg) left24  = Min24Neg;
             if (right24 > Max24Pos) right24 = Max24Pos;
             if (right24 < Min24Neg) right24 = Min24Neg;
 
-            // ---- SATURATION PAR VOIE ----
-            bool sampleSatLeft = (left24 == Max24Pos || left24 == Min24Neg);
-            bool sampleSatRight = (right24 == Max24Pos || right24 == Min24Neg);
+            bool sampleSatLeft  = left24  == Max24Pos || left24  == Min24Neg;
+            bool sampleSatRight = right24 == Max24Pos || right24 == Min24Neg;
 
-            var nowSat = DateTime.Now;
-
-            // Voie gauche : on ne date QUE le dbut de saturation
             if (sampleSatLeft && !isCurrentlySatLeft)
-            {
-                isCurrentlySatLeft = true;
-                lastSatLeft = nowSat;  // dbut de la saturation
-            }
+            { isCurrentlySatLeft = true;  lastSatLeft  = now; }
             else if (!sampleSatLeft && isCurrentlySatLeft)
-            {
-                // fin de la saturation continue
                 isCurrentlySatLeft = false;
-            }
 
-            // Voie droite
             if (sampleSatRight && !isCurrentlySatRight)
-            {
-                isCurrentlySatRight = true;
-                lastSatRight = nowSat;
-            }
+            { isCurrentlySatRight = true; lastSatRight = now; }
             else if (!sampleSatRight && isCurrentlySatRight)
-            {
                 isCurrentlySatRight = false;
-            }
 
-            uint left24u = unchecked((uint)(left24 & 0xFFFFFF));
+            uint left24u  = unchecked((uint)(left24  & 0xFFFFFF));
             uint right24u = unchecked((uint)(right24 & 0xFFFFFF));
 
-            // Nombre de frames dans ce callback
-            int bytesPerFrame = currentFormat.Channels * 4;
-            int frameCount = bytesRecorded / bytesPerFrame;
+            // ── Passe UNIQUE : déinterleave → tmpL/tmpR + VU peak + REC ──────────────────────
+            // Avant : 2 parcours complets du buffer (push pipeline PUIS VU peak).
+            // Maintenant : 1 seul parcours ; tmpL/tmpR sont réutilisés directement
+            // pour PushAudio, éliminant le second balayage et un double-parse float.
+            List<RecordFrame>? recordSnapshotToSave = null;
+            int peakLeftAbs  = 0;
+            int peakRightAbs = 0;
 
-            // --- NOUVEAU: push du bloc float stéréo dans _pipeline?.Ring (étape 1) ---
-            // Ici on lit 1 seule fois le buffer en float32 stéréo et on pousse dans le ring.
-            // Aucun impact sur l'ancien pipeline (int24), il reste en place.
-            if (!(_useSineTest || _useMetricsRefTest) && _pipeline?.Ring != null && frameCount > 0) // pas de carte son si test actif
+            bool recWasActive;
+            lock (_recordLock) { recWasActive = isRecordingOneSecond; }
+            List<RecordFrame>? localRec = null;
+
+            float[]? tmpL = null;
+            float[]? tmpR = null;
+            try
             {
-                float[]? tmpL = null;
-                float[]? tmpR = null;
+                tmpL = ArrayPool<float>.Shared.Rent(frameCount);
+                tmpR = ArrayPool<float>.Shared.Rent(frameCount);
 
-                try
+                for (int i = 0; i < frameCount; i++)
                 {
-                    tmpL = ArrayPool<float>.Shared.Rent(frameCount);
-                    tmpR = ArrayPool<float>.Shared.Rent(frameCount);
+                    float lf = floatBuf[i * channels];
+                    float rf = floatBuf[i * channels + 1];
 
-                    int p = 0;
-                    for (int i = 0; i < frameCount; i++)
+                    tmpL[i] = lf;
+                    tmpR[i] = rf;
+
+                    int L = (int)(lf * Max24);
+                    int R = (int)(rf * Max24);
+
+                    if (L > Max24Pos) L = Max24Pos;
+                    if (L < Min24Neg) L = Min24Neg;
+                    if (R > Max24Pos) R = Max24Pos;
+                    if (R < Min24Neg) R = Min24Neg;
+
+                    int absL = L < 0 ? -L : L;
+                    int absR = R < 0 ? -R : R;
+                    if (absL > peakLeftAbs)  peakLeftAbs  = absL;
+                    if (absR > peakRightAbs) peakRightAbs = absR;
+
+                    if (recWasActive)
                     {
-                        // buffer = float32 interleaved: L,R,L,R...
-                        tmpL[i] = BitConverter.ToSingle(buffer, p); p += 4;
-                        tmpR[i] = BitConverter.ToSingle(buffer, p); p += 4;
+                        localRec ??= new List<RecordFrame>(frameCount);
+                        localRec.Add(new RecordFrame { Left = L, Right = R });
                     }
+                }
 
-                    //for (int i = 0; i < frameCount; i++)
-                    //{
-                    //    int idxFrame = i * bytesPerFrame;   // bytesPerFrame = currentFormat.Channels * 4
-
-                    //    tmpL[i] = BitConverter.ToSingle(buffer, idxFrame);       // ch0
-                    //    tmpR[i] = BitConverter.ToSingle(buffer, idxFrame + 4);   // ch1
-                    //}
-
-
-                    // Push uniquement la partie utile [0..frameCount)
+                // ── Pipeline FFT ──────────────────────────────────────────────────────────────
+                if (_pipeline?.Ring != null)
+                {
                     _pipeline!.PushAudio(tmpL.AsSpan(0, frameCount), tmpR.AsSpan(0, frameCount));
-                    _pipeline!.Stats.SetAbsWrite(_pipeline!.Ring!.AbsWrite);
+                    _pipeline!.Stats.SetAbsWrite(_pipeline!.Ring.AbsWrite);
 
-                    // ── Diagnostic débit ──────────────────────────────────────────
+                    // ── Diagnostic débit ─────────────────────────────────────────────────────
                     var diagNow = DateTime.UtcNow;
                     if (_diagLastTime == DateTime.MinValue) _diagLastTime = diagNow;
 
                     _diagSamplesReceived += frameCount;
                     double diagElapsed = (diagNow - _diagLastTime).TotalSeconds;
 
-                    if (diagElapsed >= 2.0 && currentFormat != null)
+                    if (diagElapsed >= 2.0)
                     {
                         _diagSamplesExpected = (long)(currentFormat.SampleRate * diagElapsed);
-                        long deficit = _diagSamplesExpected - _diagSamplesReceived;
+                        long deficit  = _diagSamplesExpected - _diagSamplesReceived;
                         _diagDeficitMs = deficit * 1000.0 / currentFormat.SampleRate;
 
-                        // Drops dans cette fenêtre de 2s : Exchange remet le compteur à zéro
-                        // atomiquement, évitant toute perte de compte entre lecture et reset.
                         long dropsWindow = Interlocked.Exchange(ref _diagDropCount, 0);
 
-                        string lockInfo = _pipeline?.Ring != null
-                            ? $" | LockWait max={_pipeline?.Ring.LockWaitMaxMs:F2}ms avg={_pipeline?.Ring.LockWaitAvgMs:F3}ms n={_pipeline?.Ring.LockWaitCount}"
-                            : "";
-
+                        var ring = _pipeline.Ring;
+                        string lockInfo = $" | LockWait max={ring.LockWaitMaxMs:F2}ms avg={ring.LockWaitAvgMs:F3}ms n={ring.LockWaitCount}";
                         string dropInfo = dropsWindow > 0
                             ? $" | DROP={dropsWindow} pkt ⚠"
                             : " | DROP=0 ✓";
@@ -533,71 +524,22 @@ namespace AudioHexViewer
                                          $"déficit={deficit} ({_diagDeficitMs:F1}ms){lockInfo}{dropInfo}";
 
                         System.Diagnostics.Debug.WriteLine(diagMsg);
-                        _pipeline!.Stats.SetLastError(diagMsg);  // visible dans la barre de titre
+                        _pipeline!.Stats.SetLastError(diagMsg);
 
-                        // Reset pour la prochaine fenêtre de 2s
                         _diagSamplesReceived = 0;
-                        _diagLastTime = diagNow;
-                        _pipeline?.ResetLockStats();
+                        _diagLastTime        = diagNow;
+                        _pipeline.ResetLockStats();
                     }
-                    // ─────────────────────────────────────────────────────────────
+                    // ─────────────────────────────────────────────────────────────────────────
                 }
-                finally
-                {
-                    if (tmpL != null) ArrayPool<float>.Shared.Return(tmpL);
-                    if (tmpR != null) ArrayPool<float>.Shared.Return(tmpR);
-                }
-
-
-                _pipeline!.Stats.SetAbsWrite(_pipeline!.Ring!.AbsWrite);
-                                
             }
-
-            // ── Passe unique : fenêtre d'analyse + VU peak + REC ────────────────────
-            // Supprimé : _audioRing (StereoRingBuffer int24) — jamais lu hors de ProcessBuffer.
-            // Optimisé : _analysisWindowLock acquis UNE fois (et non N fois per-sample).
-            //            _recordLock acquis UNE fois après la boucle (flush en batch).
-            // ───────────────────────────────────────────────────────────────────────────
-            List<RecordFrame>? recordSnapshotToSave = null;
-            int peakLeftAbs  = 0;
-            int peakRightAbs = 0;
-
-            // Collecte REC locale sans lock dans la boucle
-            List<RecordFrame>? localRec = null;
-            bool recWasActive;
-            lock (_recordLock) { recWasActive = isRecordingOneSecond; }
-
-            // ── VU peak + REC (Phase 2 : boucle extraite du lock _analysisWindowLock supprimé) ──
-            // Note : la conversion float→int24 ici sert uniquement au VU-mètre et à l'enregistrement.
-            // La source de vérité audio reste _pipeline.Ring (float32).
-            for (int i = 0; i < frameCount; i++)
+            finally
             {
-                int idxFrame = i * bytesPerFrame;
-                float lf = BitConverter.ToSingle(buffer, idxFrame);
-                float rf = BitConverter.ToSingle(buffer, idxFrame + 4);
-
-                int L = (int)Math.Truncate(lf * Max24);
-                int R = (int)Math.Truncate(rf * Max24);
-
-                if (L > Max24Pos) L = Max24Pos;
-                if (L < Min24Neg) L = Min24Neg;
-                if (R > Max24Pos) R = Max24Pos;
-                if (R < Min24Neg) R = Min24Neg;
-
-                int absL = L < 0 ? -L : L;
-                int absR = R < 0 ? -R : R;
-                if (absL > peakLeftAbs)  peakLeftAbs  = absL;
-                if (absR > peakRightAbs) peakRightAbs = absR;
-
-                if (recWasActive)
-                {
-                    localRec ??= new List<RecordFrame>(frameCount);
-                    localRec.Add(new RecordFrame { Left = L, Right = R });
-                }
+                if (tmpL != null) ArrayPool<float>.Shared.Return(tmpL);
+                if (tmpR != null) ArrayPool<float>.Shared.Return(tmpR);
             }
-            // ─────────────────────────────────────────────────────────────────────────
 
-            // Flush REC avec une seule acquisition de _recordLock
+            // ── Flush REC en batch (une seule acquisition de _recordLock) ────────────────────
             if (localRec != null)
             {
                 lock (_recordLock)
@@ -619,51 +561,35 @@ namespace AudioHexViewer
                 }
             }
 
-            // Sauvegarde CSV déclenchée côté UI
             if (recordSnapshotToSave != null)
                 BeginInvoke((Action)(() => SaveRecordingToCsv(recordSnapshotToSave)));
 
-            // Conversion en dBFS
-            double dbLeft, dbRight;
-            const double fullScale = Max24Pos; // 0x7FFFFF
+            // ── Conversion VU en dBFS ─────────────────────────────────────────────────────────
+            const double fullScale = Max24Pos;
 
-            if (peakLeftAbs == 0)
-                dbLeft = double.NegativeInfinity;
-            else
-                dbLeft = 20.0 * Math.Log10(peakLeftAbs / fullScale);
+            double dbLeft  = peakLeftAbs  == 0 ? double.NegativeInfinity : 20.0 * Math.Log10(peakLeftAbs  / fullScale);
+            double dbRight = peakRightAbs == 0 ? double.NegativeInfinity : 20.0 * Math.Log10(peakRightAbs / fullScale);
 
-            if (peakRightAbs == 0)
-                dbRight = double.NegativeInfinity;
-            else
-                dbRight = 20.0 * Math.Log10(peakRightAbs / fullScale);
-
-            // On clip  -120 dBFS pour l'affichage
-            double dbLeftClamped = double.IsNegativeInfinity(dbLeft) ? -120.0 : Math.Max(dbLeft, -120.0);
+            double dbLeftClamped  = double.IsNegativeInfinity(dbLeft)  ? -120.0 : Math.Max(dbLeft,  -120.0);
             double dbRightClamped = double.IsNegativeInfinity(dbRight) ? -120.0 : Math.Max(dbRight, -120.0);
 
-            // Mapping [-120, 0] dB -> [0, 100]
-            int levelLeft = (int)Math.Round((dbLeftClamped + 120.0) / 120.0 * 100.0);
-            int levelRight = (int)Math.Round((dbRightClamped + 120.0) / 120.0 * 100.0);
+            int levelLeft  = Math.Clamp((int)Math.Round((dbLeftClamped  + 120.0) / 120.0 * 100.0), 0, 100);
+            int levelRight = Math.Clamp((int)Math.Round((dbRightClamped + 120.0) / 120.0 * 100.0), 0, 100);
 
-            if (levelLeft < 0) levelLeft = 0;
-            if (levelLeft > 100) levelLeft = 100;
-            if (levelRight < 0) levelRight = 0;
-            if (levelRight > 100) levelRight = 100;
-
-            // ---------- Texte existant ----------
-            string leftHex24 = "0x" + left24u.ToString("X6");
+            // ── Texte détaillé (dernier frame) ───────────────────────────────────────────────
+            string leftHex24  = "0x" + left24u.ToString("X6");
             string rightHex24 = "0x" + right24u.ToString("X6");
 
-            string leftBits = FormatBitsWithStability(left24u, lastBitsLeft, lastChangeLeft);
+            string leftBits  = FormatBitsWithStability(left24u,  lastBitsLeft,  lastChangeLeft);
             string rightBits = FormatBitsWithStability(right24u, lastBitsRight, lastChangeRight);
 
             var leftText = new StringBuilder();
             leftText.AppendLine(FormatRow("---LEFT---", ""));
-            leftText.AppendLine(FormatRow("Float", leftF.ToString("G9")));
-            leftText.AppendLine(FormatRow("Decimal (24b)", left24.ToString()));
-            leftText.AppendLine(FormatRow("Hex (24 bits)", leftHex24));
-            leftText.AppendLine(FormatRow("Binary (24b)", leftBits));
-            // Mesures en volts (issues de SpectrumControl / calibration unifiée)
+            leftText.AppendLine(FormatRow("Float",          leftF.ToString("G9")));
+            leftText.AppendLine(FormatRow("Decimal (24b)",  left24.ToString()));
+            leftText.AppendLine(FormatRow("Hex (24 bits)",  leftHex24));
+            leftText.AppendLine(FormatRow("Binary (24b)",   leftBits));
+
             double? vrmsL = null, vpkL = null, vdcL = null;
             double? vrmsR = null, vpkR = null, vdcR = null;
             bool calL = false, calR = false;
@@ -675,63 +601,48 @@ namespace AudioHexViewer
                 spectrumControl.GetLastVoltages(out vrmsL, out vpkL, out vdcL, out vrmsR, out vpkR, out vdcR);
             }
 
-            leftText.AppendLine(FormatRow("Voltage (Vrms)", (calL && vrmsL.HasValue) ? FormatVoltageWithUnit(vrmsL.Value) : "Uncalibrated"));
-            leftText.AppendLine(FormatRow("Voltage (Vpeak)", (calL && vpkL.HasValue) ? FormatVoltageWithUnit(vpkL.Value) : "Uncalibrated"));
-            leftText.AppendLine(FormatRow("Voltage (Vdc)", (calL && vdcL.HasValue) ? FormatVoltageWithUnit(vdcL.Value) : "Uncalibrated"));    
+            leftText.AppendLine(FormatRow("Voltage (Vrms)",  (calL && vrmsL.HasValue) ? FormatVoltageWithUnit(vrmsL.Value) : "Uncalibrated"));
+            leftText.AppendLine(FormatRow("Voltage (Vpeak)", (calL && vpkL.HasValue)  ? FormatVoltageWithUnit(vpkL.Value)  : "Uncalibrated"));
+            leftText.AppendLine(FormatRow("Voltage (Vdc)",   (calL && vdcL.HasValue)  ? FormatVoltageWithUnit(vdcL.Value)  : "Uncalibrated"));
+
             var rightText = new StringBuilder();
             rightText.AppendLine(FormatRow("---RIGHT---", ""));
-            rightText.AppendLine(FormatRow("Float", rightF.ToString("G9")));
-            rightText.AppendLine(FormatRow("Decimal (24b)", right24.ToString()));
-            rightText.AppendLine(FormatRow("Hex (24 bits)", rightHex24));
-            rightText.AppendLine(FormatRow("Binary (24b)", rightBits));
-            
-            rightText.AppendLine(FormatRow("Voltage (Vrms)", (calR && vrmsR.HasValue) ? FormatVoltageWithUnit(vrmsR.Value) : "Uncalibrated"));
-            rightText.AppendLine(FormatRow("Voltage (Vpeak)", (calR && vpkR.HasValue) ? FormatVoltageWithUnit(vpkR.Value) : "Uncalibrated"));
-            rightText.AppendLine(FormatRow("Voltage (Vdc)", (calR && vdcR.HasValue) ? FormatVoltageWithUnit(vdcR.Value) : "Uncalibrated"));
-            // Sauvegarde des dernires valeurs (si utilis ailleurs)
-            lastLeftFloat = leftF;
-            lastRightFloat = rightF;
+            rightText.AppendLine(FormatRow("Float",          rightF.ToString("G9")));
+            rightText.AppendLine(FormatRow("Decimal (24b)",  right24.ToString()));
+            rightText.AppendLine(FormatRow("Hex (24 bits)",  rightHex24));
+            rightText.AppendLine(FormatRow("Binary (24b)",   rightBits));
+            rightText.AppendLine(FormatRow("Voltage (Vrms)",  (calR && vrmsR.HasValue) ? FormatVoltageWithUnit(vrmsR.Value) : "Uncalibrated"));
+            rightText.AppendLine(FormatRow("Voltage (Vpeak)", (calR && vpkR.HasValue)  ? FormatVoltageWithUnit(vpkR.Value)  : "Uncalibrated"));
+            rightText.AppendLine(FormatRow("Voltage (Vdc)",   (calR && vdcR.HasValue)  ? FormatVoltageWithUnit(vdcR.Value)  : "Uncalibrated"));
 
-            lastLeftScaled = (int)Math.Round(leftF * (1 << 23));
+            // ── Cache des dernières valeurs ───────────────────────────────────────────────────
+            lastLeftFloat   = leftF;
+            lastRightFloat  = rightF;
+            lastLeftScaled  = (int)Math.Round(leftF  * (1 << 23));
             lastRightScaled = (int)Math.Round(rightF * (1 << 23));
+            lastLeft24      = left24;
+            lastRight24     = right24;
+            lastLeftHex24   = leftHex24;
+            lastRightHex24  = rightHex24;
+            lastLeftBits    = leftBits;
+            lastRightBits   = rightBits;
+            lastLeftVolts   = displayVoltsLeft;
+            lastRightVolts  = displayVoltsRight;
 
-            lastLeft24 = left24;
-            lastRight24 = right24;
+            // ── Throttle affichage texte (4 Hz) ──────────────────────────────────────────────
+            bool updateText = (now - lastTextDump) >= textDumpInterval;
+            if (updateText) lastTextDump = now;
 
-            lastLeftHex24 = leftHex24;
-            lastRightHex24 = rightHex24;
-
-            lastLeftBits = leftBits;
-            lastRightBits = rightBits;
-
-            lastLeftVolts = displayVoltsLeft;
-            lastRightVolts = displayVoltsRight;
-
-            // ---------- Limitation frquence UI texte ----------
-            var nowUi = DateTime.Now;
-            bool updateText;
-
-            if (nowUi - lastTextDump >= textDumpInterval)
-            {
-                updateText = true;
-                lastTextDump = nowUi;
-            }
-            else
-            {
-                updateText = false;
-            }
-
-            // ---------- Mise  jour UI ----------
+            // ── Mise à jour UI (BeginInvoke → thread UI) ─────────────────────────────────────
             BeginInvoke((Action)(() =>
             {
-                // On ne met  jour le texte que si l'intervalle est coul
                 if (updateText)
                 {
                     var newLeft = leftText.ToString();
                     if (!string.Equals(newLeft, _lastAllFormatsLeft, StringComparison.Ordinal))
                     {
                         _lastAllFormatsLeft = newLeft;
-                        txtLeft.Text = newLeft;
+                        txtLeft.Text        = newLeft;
                         ColorBinaryXs(txtLeft, "Binary (24b)");
                     }
 
@@ -739,75 +650,47 @@ namespace AudioHexViewer
                     if (!string.Equals(newRight, _lastAllFormatsRight, StringComparison.Ordinal))
                     {
                         _lastAllFormatsRight = newRight;
-                        txtRight.Text = newRight;
+                        txtRight.Text        = newRight;
                         ColorBinaryXs(txtRight, "Binary (24b)");
                     }
-
                 }
 
                 // Bargraphs dBFS
-                UpdateLevelBar(barLeftLevel, levelLeft);
+                UpdateLevelBar(barLeftLevel,  levelLeft);
                 UpdateLevelBar(barRightLevel, levelRight);
 
-                // SAT + dBFS
-                bool satLActive =
-                    isCurrentlySatLeft ||
-                    (lastSatLeft.HasValue && (nowUi - lastSatLeft.Value) < satDisplayTime);
+                // SAT + dBFS (gauche)
+                bool satLActive = isCurrentlySatLeft ||
+                    (lastSatLeft.HasValue && (now - lastSatLeft.Value) < satDisplayTime);
 
                 if (satLActive)
                 {
-                    var elapsed = nowUi - lastSatLeft.Value;
+                    var elapsed = now - lastSatLeft!.Value;
                     bool blinkOn = ((int)(elapsed.TotalMilliseconds / (satBlinkPeriod.TotalMilliseconds / 2))) % 2 == 0;
-
-                    if (blinkOn)
-                    {
-                        ApplyLeftLevelDisplay("      SAT", Color.Red, levelFontBold);
-
-                    }
-                    else
-                    {
-                        ApplyLeftLevelDisplay("", Color.Red, levelFontBold);
-
-                    }
+                    ApplyLeftLevelDisplay(blinkOn ? "      SAT" : "", Color.Red, levelFontBold);
                 }
                 else
                 {
                     ApplyLeftLevelDisplay(
                         double.IsNegativeInfinity(dbLeft) ? "- dBFS" : $"{dbLeft:F1} dBFS",
-                        SystemColors.HotTrack,
-                        levelFontRegular
-                    );
-
+                        SystemColors.HotTrack, levelFontRegular);
                 }
 
-                bool satRActive =
-                    isCurrentlySatRight ||
-                    (lastSatRight.HasValue && (nowUi - lastSatRight.Value) < satDisplayTime);
+                // SAT + dBFS (droite)
+                bool satRActive = isCurrentlySatRight ||
+                    (lastSatRight.HasValue && (now - lastSatRight.Value) < satDisplayTime);
 
                 if (satRActive)
                 {
-                    var elapsed = nowUi - lastSatRight.Value;
+                    var elapsed = now - lastSatRight!.Value;
                     bool blinkOn = ((int)(elapsed.TotalMilliseconds / (satBlinkPeriod.TotalMilliseconds / 2))) % 2 == 0;
-
-                    if (blinkOn)
-                    {
-                        ApplyRightLevelDisplay("SAT", Color.Red, levelFontBold);
-
-                    }
-                    else
-                    {
-                        ApplyRightLevelDisplay("", Color.Red, levelFontBold);
-
-                    }
+                    ApplyRightLevelDisplay(blinkOn ? "SAT" : "", Color.Red, levelFontBold);
                 }
                 else
                 {
                     ApplyRightLevelDisplay(
                         double.IsNegativeInfinity(dbRight) ? "- dBFS" : $"{dbRight:F1} dBFS",
-                        SystemColors.HotTrack,
-                        levelFontRegular
-                    );
-
+                        SystemColors.HotTrack, levelFontRegular);
                 }
 
                 UpdateMainDisplayFromLastValues();

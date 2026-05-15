@@ -164,5 +164,50 @@ namespace AudioHexViewer.Core
                 outDb[k] = v;
             }
         }
+        // ── Estimation de la fréquence fondamentale ───────────────────────────────────
+        /// <summary>
+        /// Cherche le bin de puissance maximale dans [fMinHz, fMaxHz] du spectre décimé.
+        /// Retourne la fréquence du bin dominant, ou null si les données sont insuffisantes.
+        /// </summary>
+        /// <param name="spectrum">Spectre dBFS (tableau décimé pour le plot).</param>
+        /// <param name="fx">Tableau de fréquences correspondant à spectrum.</param>
+        /// <param name="fMinHz">Borne basse de recherche (Hz).</param>
+        /// <param name="fMaxHz">Borne haute de recherche (Hz).</param>
+        /// <param name="useLog">True = axe log : évite le bin DC (index 0).</param>
+        /// <param name="logXAbsMinHz">Fréquence physique minimale en mode log (typiquement 0.8 Hz).</param>
+        internal static double? EstimateFundamentalHz(
+            double[] spectrum, double[] fx,
+            double fMinHz, double fMaxHz,
+            bool useLog, double logXAbsMinHz = 0.0)
+        {
+            if (spectrum == null || fx == null) return null;
+            if (spectrum.Length != fx.Length || spectrum.Length < 3) return null;
+
+            double minPhys = useLog ? logXAbsMinHz : 0.0;
+            if (fMinHz < minPhys) fMinHz = minPhys;
+            if (fMaxHz <= fMinHz) return null;
+
+            int i0 = 0;
+            while (i0 < fx.Length && fx[i0] < fMinHz) i0++;
+
+            int i1 = fx.Length - 1;
+            while (i1 > i0 && fx[i1] > fMaxHz) i1--;
+
+            if (useLog && i0 < 1) i0 = 1;
+            if (i1 <= i0) return null;
+
+            int maxIdx  = i0;
+            double maxVal = spectrum[i0];
+
+            for (int i = i0 + 1; i <= i1; i++)
+            {
+                double v = spectrum[i];
+                if (v > maxVal) { maxVal = v; maxIdx = i; }
+            }
+
+            return fx[maxIdx];
+        }
+
+
     }
 }

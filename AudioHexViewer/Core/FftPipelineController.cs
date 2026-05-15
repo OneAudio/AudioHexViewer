@@ -137,7 +137,7 @@ namespace AudioHexViewer.Core
             // Conversion float → int24
             var l = new int[n];
             var r = new int[n];
-            const float scale    =  8388607f;   // 2^23 − 1  = Max24Pos
+            const float scale    =  8388608f;   // 2^23 (même convention que ProcessBuffer : LSB = 1/2^23)
             const int   max24pos =  8388607;
             const int   min24neg = -8388608;
 

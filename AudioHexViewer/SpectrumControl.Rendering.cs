@@ -999,10 +999,24 @@ namespace AudioHexViewer
             // 1) repasser en LIN (évite l’état transitoire invalide)
             // 2) poser les bornes
             // 3) repasser en LOG si besoin
-            area.AxisX.IsLogarithmic = false;
-            area.AxisX.Minimum = fMin;
-            area.AxisX.Maximum = fMax;
-            area.AxisX.IsLogarithmic = useLog;
+            bool wasLog = area.AxisX.IsLogarithmic;
+            if (wasLog == useLog)
+            {
+                // Mode inchangé — mettre à jour les bornes SANS toggler IsLogarithmic.
+                // Ce toggle est la cause du bug WinForms.DataVisualization :
+                // InnerPlotPosition.Height se recalcule à ~97-99%, repoussant les labels
+                // X en dessous de la zone visible. On l'évite quand le mode ne change pas.
+                area.AxisX.Minimum = fMin;
+                area.AxisX.Maximum = fMax;
+            }
+            else
+            {
+                // Changement de mode LOG↔LIN : toggle atomique nécessaire.
+                area.AxisX.IsLogarithmic = false;
+                area.AxisX.Minimum = fMin;
+                area.AxisX.Maximum = fMax;
+                area.AxisX.IsLogarithmic = useLog;
+            }
         }
 
         //
