@@ -40,8 +40,22 @@ namespace AudioHexViewer
             // Important : cette méthode doit être appelée sur le thread UI
             _useExternalSpectrum = true;
 
+            // ── Détection du changement de SR ou de N (taille FFT) ─────────────────
+            // Quand SR ou N change, ΔF = SR/N change → le minimum physique de l'axe
+            // X en mode LOG change aussi. Si customFMin était réglé pour l'ancien ΔF,
+            // il peut être devenu inférieur au nouveau ΔF → axe LOG illisible.
+            // Solution : dès que SR ou N change, invalider customFMin s'il est en
+            // dessous du nouveau ΔF. Cela force ApplyChartAxes à recalculer fMinAuto.
+            bool _srOrNChanged = (lastFftSize != frame.FftSize || _sampleRate != frame.SampleRate);
             lastFftSize = frame.FftSize;
             _sampleRate = frame.SampleRate;
+
+            if (_srOrNChanged && customFMin.HasValue && frame.FftSize > 0 && frame.SampleRate > 0)
+            {
+                double newDeltaF = (double)frame.SampleRate / frame.FftSize;
+                if (customFMin.Value <= 0 || customFMin.Value < newDeltaF)
+                    customFMin = null;   // → ApplyChartAxes utilisera fMinAuto = nouveau ΔF
+            }
 
             // Conversion bins complexes → puissance (Phase 7: buffers pré-alloués, zéro alloc)
             double[]? powL = null;

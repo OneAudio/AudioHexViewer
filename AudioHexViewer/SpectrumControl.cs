@@ -1682,27 +1682,9 @@ namespace AudioHexViewer
             double fMin = customFMin ?? fMinAuto;   // Hz
             double fMax = customFMax ?? fMaxAuto;   // Hz
 
-            // ─────────────────────────────────────────────────────────────────────────
-            // IMPORTANT — mode LOG : arrondir fMin à la décade inférieure AVANT tout
-            // appel à ApplyAxisXModeSafe et AVANT la comparaison de cache _axChanged.
-            //
-            // Problème sans ce snap :
-            //   fMin = freqAxis[1] = sampleRate/N  (ex: 384 000 / 1 048 576 ≈ 0,37 Hz)
-            //   → ApplyAxisXModeSafe pose Minimum = 0,37 Hz à chaque frame
-            //   → le Chart génère ses labels à 0,37 Hz, 3,7 Hz, 37 Hz… (pas des décades)
-            //   → FormatNumber masque TOUS ces labels (aucun n'est 10^n exact)
-            //   → les labels majeurs disparaissent et les ticks Chart (à 0,37…) ne
-            //     coïncident plus avec les lignes PostPaint (à 2, 3, 4… Hz)
-            //
-            // Solution : snap ici → fMin devient la décade inférieure (0,1 Hz dans
-            // l'exemple), et ce snap est stable entre les frames → le cache _axChanged
-            // se stabilise et ApplyAxisXModeSafe pose toujours la bonne valeur.
-            // ─────────────────────────────────────────────────────────────────────────
-            if (useLog && fMin > 0)
-            {
-                double snapped = Math.Pow(10.0, Math.Floor(Math.Log10(fMin)));
-                fMin = Math.Max(LogXAbsMinHz, snapped);
-            }
+            // En mode LOG, fMin invalide (0 ou négatif) → utiliser fMinAuto
+            if (useLog && fMin <= 0)
+                fMin = fMinAuto;
 
             ApplyAxisXModeSafe(area, useLog, fMin, fMax);
 
@@ -1910,11 +1892,14 @@ namespace AudioHexViewer
                 // --- Axe X : on fixe d'abord les bornes, puis on active le log si besoin ---
                 if (useLog)
                 {
-                    // Note : fMin a déjà été arrondi à la décade inférieure avant cet appel
-                    // (voir le snap en amont de ApplyAxisXModeSafe). Les gardes ci-dessous
-                    // ne sont que des filets de sécurité.
                     if (area.AxisX.Minimum <= 0)
                         area.AxisX.Minimum = LogXAbsMinHz;
+                    if (area.AxisX.Maximum <= area.AxisX.Minimum)
+                        area.AxisX.Maximum = area.AxisX.Minimum * 10.0;
+
+                    double minDecade = Math.Pow(10.0, Math.Floor(Math.Log10(area.AxisX.Minimum)));
+                    area.AxisX.Minimum = Math.Max(LogXAbsMinHz, minDecade);
+
                     if (area.AxisX.Maximum <= area.AxisX.Minimum)
                         area.AxisX.Maximum = area.AxisX.Minimum * 10.0;
 
@@ -2485,6 +2470,24 @@ namespace AudioHexViewer
 
             // ── Axes (X, Y, Y2, grilles) ─────────────────────────────────────────────
             var ax = ApplyChartAxes(area);
+
+            // ── Enforcement IMPÉRATIF du minimum LOG ────────────────────────────────
+            // Placé ICI (après ApplyChartAxes, pas à l'intérieur) pour être la
+            // DERNIÈRE écriture sur area.AxisX.Minimum avant le rendu du Chart.
+            // Utilise _sampleRate et lastFftSize (toujours à jour depuis FeedExternalSpectrum)
+            // et non fMinAuto (qui peut valoir le plancher 1e-6 si freqAxis est vide).
+            //
+            // Règle : en LOG, le minimum de l'axe X ≥ décade inférieure de ΔF (= SR/N).
+            //   Ex : ΔF = 11,7 Hz → décade = 10 Hz ; l'axe ne peut pas démarrer < 10 Hz.
+            // Cette règle s'applique peu importe ce que customFMin contenait, peu importe
+            // le mode précédent (LIN→LOG) ou un changement de SR/N en cours de RUN.
+            if (IsXAxisLog() && _sampleRate > 0 && lastFftSize > 0)
+            {
+                double deltaF    = (double)_sampleRate / lastFftSize;
+                double minAllowed = Math.Pow(10.0, Math.Floor(Math.Log10(deltaF)));
+                if (area.AxisX.Minimum < minAllowed)
+                    area.AxisX.Minimum = minAllowed;
+            }
 
             // ── Visibilité selon le combo Channel ─────────────────────────────────────
             string mode = comboChannel.SelectedItem as string ?? "L+R";

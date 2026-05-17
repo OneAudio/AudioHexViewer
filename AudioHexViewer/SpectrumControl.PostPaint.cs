@@ -756,35 +756,26 @@ namespace AudioHexViewer
 
                                 float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
 
-                                // Grille (inside plot) — clip normal suffisant
                                 e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, top, xPixel, bottom);
 
-                                // Tick + label (below plot) — ResetClip nécessaire car la zone sous
-                                // bottom peut être en dehors du clip GDI+ courant du ChartArea.
-                                {
-                                    var g2 = e.ChartGraphics.Graphics;
-                                    var saved2 = g2.Save();
-                                    g2.ResetClip();
+                                float minorTickLen = 5f * sExport;
+                                e.ChartGraphics.Graphics.DrawLine(tickPen, xPixel, bottom, xPixel, bottom + minorTickLen);
 
-                                    float minorTickLen = 5f * sExport;
-                                    g2.DrawLine(tickPen, xPixel, bottom, xPixel, bottom + minorTickLen);
+                                string txt = FormatHzK(f);
 
-                                    string txt = FormatHzK(f);
-                                    var sz = g2.MeasureString(txt, minorFont);
-                                    float xText = xPixel - sz.Width / 2f;
+                                var sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
+                                float xText = xPixel - sz.Width / 2f;
 
-                                    // Même convention que le mode LIN : label sous le tick avec 2px d'espace
-                                    float yText = bottom + minorTickLen + 2f * sExport;
+                                float minorLabelYOffset = 10f * sExport;
+                                float yText = bottom - minorTickLen + minorLabelYOffset;
 
-                                    if (xText > lastLabelRight + 4f * sExport)
-                                    {
-                                        using var b = new SolidBrush(LabelMinorColor);
-                                        g2.DrawString(txt, minorFont, b, xText, yText);
-                                        lastLabelRight = xText + sz.Width;
-                                    }
+                                if (xText <= lastLabelRight + 4f * sExport)
+                                    continue;
 
-                                    g2.Restore(saved2);
-                                }
+                                using var b = new SolidBrush(LabelMinorColor);
+                                e.ChartGraphics.Graphics.DrawString(txt, minorFont, b, xText, yText);
+
+                                lastLabelRight = xText + sz.Width;
                             }
                         }
                     }

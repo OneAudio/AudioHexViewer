@@ -673,6 +673,21 @@ namespace AudioHexViewer
                     if (_isRestoringSettings)
                         return;
 
+                    // Bascule LIN→LOG : réinitialiser customFMin inconditionnellement.
+                    //
+                    // Problème fondamental : customFMin peut contenir n'importe quelle valeur
+                    // saisie en LIN (y compris 0, ou sub-Hz comme 0,001 Hz) qui est invalide
+                    // pour l'axe LOG. Toutes les tentatives de "corriger conditionnellement"
+                    // (si < ΔF, si <= 0…) ont échoué car fMinAuto peut lui-même être
+                    // incorrect dans certains états transitoires.
+                    //
+                    // Solution définitive : en passant en LOG, on part toujours de l'auto
+                    // (fMinAuto = ΔF courant, décade inférieure). L'utilisateur qui souhaite
+                    // un Fmin custom en LOG l'entre via le dialog APRÈS avoir basculé en LOG,
+                    // où la validation contre ΔF se fait correctement.
+                    if (chkLogX.Checked)
+                        customFMin = null;
+
                     // IMPORTANT (anti-artifacts)
                     // Le passage LOG <-> LIN change l'echantillonnage visuel de l'axe X
                     // et peut faire apparaitre un 'ghost' d'une moyenne precedente.
@@ -935,8 +950,31 @@ namespace AudioHexViewer
                     if (customYMin >= customYMax)
                         customYMin = customYMax - 10.0;
 
-                    if (customFMin < 0.0)
-                        customFMin = 0.0;
+                    // Valider customFMin selon le mode actuel :
+                    //   • LIN : 0 Hz valide, négatif → 0
+                    //   • LOG : la valeur saisie doit être >= la décade inférieure de ΔF.
+                    //           Si elle est inférieure ou nulle → null (= auto).
+                    //           On utilise _sampleRate/lastFftSize directement (toujours
+                    //           à jour, fiable même si freqAxis est transitoirement vide).
+                    if (chkLogX?.Checked == true)
+                    {
+                        if (customFMin.HasValue && _sampleRate > 0 && lastFftSize > 0)
+                        {
+                            double deltaF    = (double)_sampleRate / lastFftSize;
+                            double minAllowed = Math.Pow(10.0, Math.Floor(Math.Log10(deltaF)));
+                            if (customFMin.Value <= 0 || customFMin.Value < minAllowed)
+                                customFMin = null;
+                        }
+                        else if (customFMin.HasValue && customFMin.Value <= 0)
+                        {
+                            customFMin = null;
+                        }
+                    }
+                    else
+                    {
+                        if (customFMin < 0.0)
+                            customFMin = 0.0;
+                    }
                     if (customFMax <= customFMin)
                         customFMax = customFMin + 10.0;
 
@@ -985,8 +1023,36 @@ namespace AudioHexViewer
 
             if (useLog)
             {
-                // LOG => min strictement > 0 (accepte sub-1Hz)
+                // LOG => min strictement > 0
                 fMin = Math.Max(LogXAbsMinHz, fMin);
+
+                // ── RÈGLE ABSOLUE en LOG : fMin >= décade inférieure de ΔF ────────────
+                // Calcul de ΔF directement depuis les paramètres FFT instantanés
+                // (_sampleRate et lastFftSize sont mis à jour AVANT ApplyChartAxes).
+                // Ce calcul ne dépend ni de freqAxis (qui peut être null/vide), ni de
+                // customFMin (qui peut persister depuis une autre config).
+                //
+                // Exemple : SR = 192 kHz, N = 32 768 → ΔF = 5,86 Hz → décade = 1 Hz
+                //   → fMin sera >= 1 Hz, peu importe ce qui était passé en argument.
+                //
+                // C'est l'application stricte de la règle énoncée :
+                //   "ΔF du SR en cours détermine la décade minimum autorisée pour LOG"
+                if (_sampleRate > 0 && lastFftSize > 0)
+                {
+                    double deltaF       = (double)_sampleRate / lastFftSize;
+                    double minDecadeFft = Math.Pow(10.0, Math.Floor(Math.Log10(deltaF)));
+                    if (fMin < minDecadeFft)
+                        fMin = minDecadeFft;
+                }
+
+                // Snap à la décade inférieure (sécurité — corrige le bug original
+                // des labels majeurs invisibles, et idempotent si fMin est déjà une décade)
+                if (fMin > 0.0)
+                {
+                    double decade = Math.Pow(10.0, Math.Floor(Math.Log10(fMin)));
+                    fMin = Math.Max(LogXAbsMinHz, decade);
+                }
+
                 if (fMax <= fMin) fMax = fMin * 10.0;
             }
             else
