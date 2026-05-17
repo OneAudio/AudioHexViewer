@@ -278,7 +278,9 @@ namespace AudioHexViewer
                 bool isLeftSection = title.Equals("LEFT", StringComparison.OrdinalIgnoreCase) ||
                                      title.Equals("BODE", StringComparison.OrdinalIgnoreCase);
                 var harms = isLeftSection ? _lastHarmonicsLeft : _lastHarmonicsRight;
-                bool showH  = isLeftSection ? _showHarmonicsLeft : _showHarmonicsRight;
+                // Guard direct : pas d'harmoniques si THD désactivé, quelle que soit la valeur des champs
+                bool thdIsOn = (chkEnableThd?.Checked == true);
+                bool showH  = thdIsOn && (isLeftSection ? _showHarmonicsLeft : _showHarmonicsRight);
 
                 // Calcul de l'espace réservé pour le bloc harmoniques (séparateur + N lignes).
                 // On le fait AVANT RenderRows(topRows) pour que les topRows ne mangent pas
@@ -1000,21 +1002,15 @@ namespace AudioHexViewer
 
             // ------------------------------
             // Curseurs dans les panneaux (hors Bode)
-            // Règles:
-            // 1) L+R : afficher QUE si fenêtre maximisée ET THD désactivé
-            // 2) Left/Right : afficher si THD désactivé, SAUF si fenêtre maximisée => toujours afficher
+            // Règle : uniquement en fenêtre maximisée ET THD désactivé
+            // (en non-maximisé, le panneau n'a pas la hauteur pour les afficher)
             // ------------------------------
             bool thdEnabled = (chkEnableThd?.Checked == true);
             bool isMaximized = (this.FindForm()?.WindowState == FormWindowState.Maximized);
 
             string mode = SelectedChannelMode;
 
-            bool showCursors =
-                mode.Equals("L+R", StringComparison.OrdinalIgnoreCase)
-                    ? (isMaximized && !thdEnabled)
-                    : (mode.Equals("Left", StringComparison.OrdinalIgnoreCase) || mode.Equals("Right", StringComparison.OrdinalIgnoreCase))
-                        ? (isMaximized || !thdEnabled)
-                        : false;
+            bool showCursors = isMaximized && !thdEnabled;
 
             if (showCursors)
             {

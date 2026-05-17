@@ -53,6 +53,15 @@ namespace AudioHexViewer
             _pipeline?.SetActiveChannels(needL, needR);
         }
 
+        /// <summary>
+        /// Propage le mode AC/DC courant de SpectrumControl vers SfftWorker.
+        /// Appelé au démarrage du pipeline et à chaque changement de la checkbox.
+        /// </summary>
+        private void ApplyDcModeToWorker()
+        {
+            _pipeline?.SetRemoveDc(spectrumControl?.RemoveDcEnabled ?? true);
+        }
+
         //
         private void RestartSfftFromUi()
         {
@@ -87,6 +96,9 @@ namespace AudioHexViewer
 
             // 3) Appliquer le mode voie courant dès la création du worker
             ApplyActiveChannelsToWorker(spectrumControl?.SelectedChannelMode ?? "L+R");
+
+            // 4) Appliquer le mode AC/DC courant
+            ApplyDcModeToWorker();
         }
 
         // Fournit les N derniers samples int24 depuis le ring (pour HistogramControl).

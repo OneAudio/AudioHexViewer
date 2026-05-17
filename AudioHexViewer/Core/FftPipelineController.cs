@@ -171,6 +171,23 @@ namespace AudioHexViewer.Core
             _worker?.SetActiveChannels(needLeft, needRight);
         }
 
+        /// <summary>
+        /// Active ou désactive le retrait de la composante DC avant FFT (mode AC/DC).
+        /// Délègue à <see cref="SfftWorker.SetRemoveDc"/> ET vide la queue de frames
+        /// pour que l'affichage reflète le nouveau mode sans délai.
+        /// </summary>
+        /// <remarks>
+        /// Sans le drain, les frames déjà calculées avec l'ancien mode restent en queue
+        /// et continuent à s'afficher plusieurs secondes. Le drain les supprime
+        /// immédiatement ; le worker remplit la queue avec des frames au nouveau mode
+        /// dès le prochain hop.
+        /// </remarks>
+        public void SetRemoveDc(bool remove)
+        {
+            _worker?.SetRemoveDc(remove);
+            DrainFrameQueue();   // vide les frames périmées → affichage immédiat
+        }
+
         // ── Diagnostics ring ─────────────────────────────────────────────────
 
         public double LockWaitMaxMs  => _ring?.LockWaitMaxMs ?? 0.0;

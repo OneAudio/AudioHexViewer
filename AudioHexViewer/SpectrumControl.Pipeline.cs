@@ -432,7 +432,9 @@ namespace AudioHexViewer
 
             // Phase 7 : algorithme de Welford — 1 seule boucle au lieu de 2.
             // Calcule peak, mean (DC) et variance (AC RMS) en une passe.
-            void ComputeOne(int[] x24, out double? rmsFsAc, out double? peakFs, out double? meanFs)
+            // En mode AC (_removeDcStats=true) : peak = max(|sample - prevMean|)
+            // utilisant la moyenne du frame précédent (latence 1 frame, coût nul).
+            void ComputeOne(int[] x24, double prevMean, out double? rmsFsAc, out double? peakFs, out double? meanFs)
             {
                 rmsFsAc = null;
                 peakFs  = null;
@@ -445,15 +447,18 @@ namespace AudioHexViewer
                 double M2     = 0.0;
                 double invScale = 1.0 / fullScale;
 
+                // En mode AC, le peak est calculé par rapport à prevMean (frame N-1).
+                // En mode DC, prevMean = 0.0 → peak = max(|sample|) comme avant.
                 for (int i = 0; i < n; i++)
                 {
                     double v = x24[i] * invScale;   // en FS [-1..1]
 
-                    // Peak (valeur absolue)
-                    double av = v < 0 ? -v : v;
+                    // Peak AC : soustrait la moyenne du frame précédent
+                    double av = v - prevMean;
+                    if (av < 0) av = -av;
                     if (av * fullScale > pk24) pk24 = (int)(av * fullScale);
 
-                    // Welford incremental mean + variance
+                    // Welford incremental mean + variance (toujours sur signal brut)
                     double delta  = v - mean;
                     mean         += delta / (i + 1);
                     M2           += delta * (v - mean);   // = delta * delta2
@@ -467,8 +472,16 @@ namespace AudioHexViewer
                 meanFs  = mean;
             }
 
-            ComputeOne(left24, out var rmsL, out var pkL, out var meanL);
-            ComputeOne(right24, out var rmsR, out var pkR, out var meanR);
+            // prevMean = 0 en mode DC, moyenne frame précédent en mode AC
+            double prevL = _removeDcStats ? _prevMeanFsLeft  : 0.0;
+            double prevR = _removeDcStats ? _prevMeanFsRight : 0.0;
+
+            ComputeOne(left24,  prevL, out var rmsL, out var pkL, out var meanL);
+            ComputeOne(right24, prevR, out var rmsR, out var pkR, out var meanR);
+
+            // Mémoriser les moyennes pour le prochain frame (utilisées pour le peak AC)
+            if (meanL.HasValue) _prevMeanFsLeft  = meanL.Value;
+            if (meanR.HasValue) _prevMeanFsRight = meanR.Value;
 
             _lastRmsFsLeft = rmsL;
             _lastRmsFsRight = rmsR;

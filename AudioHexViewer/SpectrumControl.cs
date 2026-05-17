@@ -351,6 +351,25 @@ namespace AudioHexViewer
         private double? _lastPeakFsLeft = null;
         private double? _lastPeakFsRight = null;
 
+        // ── Mode AC/DC ────────────────────────────────────────────────────────
+        // Moyenne du frame précédent (pour correction du peak en mode AC).
+        // Initialisée à 0 : au premier frame, peak AC ≈ peak DC (sans DC offset connu).
+        private double _prevMeanFsLeft  = 0.0;
+        private double _prevMeanFsRight = 0.0;
+
+        // true = mode AC (retrait DC, défaut), false = mode DC (DC conservé).
+        // Lu par FeedExternalTimeStats24 ET passé à SfftWorker via RemoveDcChanged.
+        private bool _removeDcStats = true;
+
+        /// <summary>
+        /// Déclenché quand l'utilisateur change le mode AC/DC.
+        /// Form1 s'y abonne pour propager le flag à SfftWorker.
+        /// </summary>
+        public event EventHandler? RemoveDcChanged;
+
+        /// <summary>true = mode AC (DC retiré avant FFT et dans les stats).</summary>
+        public bool RemoveDcEnabled => _removeDcStats;
+
         // Gain linéaire Vrms / FS_rms (AC) — dérivé de la calibration
         private double _levelGainVrmsPerFsLeft = 0.0;
         private double _levelGainVrmsPerFsRight = 0.0;
@@ -1120,8 +1139,8 @@ namespace AudioHexViewer
             //{
             //    s.RemoveDC = chkRemoveDC.Checked;
             //}
-
-            // Window
+            // DC mode : RemoveDC=false = AC (défaut) ; true = DC conservé
+            s.RemoveDC = !_removeDcStats;
             if (comboWindow != null && comboWindow.SelectedItem is string w)
                 s.Window = w;
             else
@@ -1183,6 +1202,10 @@ namespace AudioHexViewer
                 //{
                 //    chkRemoveDC.Checked = s.RemoveDC;
                 //}
+                // DC mode : s.RemoveDC=false → AC (défaut) ; true → DC conservé
+                _removeDcStats = !s.RemoveDC;
+                if (chkDcMode != null)
+                    chkDcMode.Checked = s.RemoveDC; // coché = DC mode
 
                 // Window
                 if (comboWindow != null)
@@ -2158,6 +2181,10 @@ namespace AudioHexViewer
 
                     lblLeftMeas.Text = sb.ToString();
 
+                    // THD désactivé : s'assurer que les harmoniques ne restent pas affichées
+                    _showHarmonicsLeft = false;
+                    _lastHarmonicsLeft = null;
+
                 }
             }
             else if (lblLeftMeas != null)
@@ -2282,6 +2309,10 @@ namespace AudioHexViewer
                     }
 
                     lblRightMeas.Text = sb.ToString();
+
+                    // THD désactivé : s'assurer que les harmoniques ne restent pas affichées
+                    _showHarmonicsRight = false;
+                    _lastHarmonicsRight = null;
 
                 }
             }
@@ -2696,7 +2727,7 @@ namespace AudioHexViewer
             bool isBode = (mode == "Bode Plot");
 
             // Contexte (info)
-            bool removeDc = false;                 // RemoveDC commenté dans ton UI actuellement
+            bool removeDc = _removeDcStats;
             string window = lastWindow.ToString(); // info fenêtre
             int sr = _sampleRate;
             int fftSize = lastFftSize;

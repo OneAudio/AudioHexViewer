@@ -24,6 +24,11 @@ namespace AudioHexViewer.Core
         private volatile int _needLeft = 1;
         private volatile int _needRight = 1;
 
+        // ---- Couplage AC/DC (retrait composante DC avant FFT) ----
+        // 1 = retirer DC (mode AC, défaut), 0 = garder DC (mode DC).
+        // Volatile : écrit depuis le thread UI, lu depuis le thread FFT.
+        private volatile int _removeDc = 1;
+
         /// <summary>
         /// Définit quelles voies doivent être calculées.
         /// Appelé par Form1 quand l'UI change de mode (Left/Right/L+R/Bode Plot).
@@ -32,6 +37,17 @@ namespace AudioHexViewer.Core
         {
             _needLeft = needLeft ? 1 : 0;
             _needRight = needRight ? 1 : 0;
+        }
+
+        /// <summary>
+        /// Active ou désactive le retrait de la composante DC avant FFT.
+        /// <para>true = mode AC (défaut) : soustrait la moyenne du bloc avant fenêtrage.</para>
+        /// <para>false = mode DC : bloc transmis tel quel.</para>
+        /// Thread-safe (volatile).
+        /// </summary>
+        public void SetRemoveDc(bool remove)
+        {
+            _removeDc = remove ? 1 : 0;
         }
 
         private CancellationTokenSource? _cts;
@@ -267,18 +283,51 @@ namespace AudioHexViewer.Core
                         int N = _fftSize;
                         int half = N / 2;
 
+                        // ── Couplage AC : soustraction de la moyenne pondérée par la fenêtre ──
+                        //
+                        // POURQUOI la moyenne PONDÉRÉE (et non arithmétique) :
+                        // La DFT de la fenêtre BH7 en k=1 vaut ≈ −windowSum (même ordre de grandeur
+                        // que W[0]). Tout signal à k=1 contribue donc au bin DC (k=0) avec une
+                        // amplitude comparable à la sienne. La moyenne arithmétique (µ_arith) d'un
+                        // cosinus à k=1 est exactement 0, donc µ_arith = DC pur et la correction
+                        // ne retire pas cette contribution résiduelle de k=0.
+                        //
+                        // La moyenne PONDÉRÉE par w[i] garantit :
+                        //   Σ (x[i] − offset) × w[i] = 0  →  bin k=0 exactement nul
+                        // quel que soit le contenu basse fréquence du signal.
+                        //
+                        // Coût : 1 multiplication + 1 addition par sample dans la passe 1,
+                        // même ordre que la passe de fenêtrage elle-même.
+                        bool rmDc = (_removeDc != 0);
+                        double offL = 0.0, offR = 0.0;
+                        if (rmDc)
+                        {
+                            if (doL)
+                            {
+                                double wSumL = 0.0;
+                                for (int i = 0; i < N; i++) wSumL += _winL[i] * _window[i];
+                                offL = wSumL / _windowSum;   // moyenne pondérée → bin k=0 nul
+                            }
+                            if (doR)
+                            {
+                                double wSumR = 0.0;
+                                for (int i = 0; i < N; i++) wSumR += _winR[i] * _window[i];
+                                offR = wSumR / _windowSum;
+                            }
+                        }
+
                         // Remplissage des buffers FFT réutilisés (uniquement voies actives)
                         for (int i = 0; i < N; i++)
                         {
                             double wcoef = _window[i];
                             if (doL)
                             {
-                                double wl = _winL[i] * wcoef;
+                                double wl = (_winL[i] - offL) * wcoef;
                                 _fftL[i] = new MathNet.Numerics.Complex32((float)wl, 0f);
                             }
                             if (doR)
                             {
-                                double wr = _winR[i] * wcoef;
+                                double wr = (_winR[i] - offR) * wcoef;
                                 _fftR[i] = new MathNet.Numerics.Complex32((float)wr, 0f);
                             }
                         }

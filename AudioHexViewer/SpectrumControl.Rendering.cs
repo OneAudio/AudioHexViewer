@@ -553,6 +553,23 @@ namespace AudioHexViewer
             //UpdateAcDcButtonText();
             //UpdateLogLinButtonText();
 
+            // Checkbox DC mode
+            if (chkDcMode != null)
+            {
+                chkDcMode.CheckedChanged += (s, e) =>
+                {
+                    if (_isRestoringSettings) return;
+
+                    // Checked = DC mode (conserver DC), Unchecked = AC mode (retirer DC)
+                    _removeDcStats = !chkDcMode.Checked;
+
+                    // Notifier Form1 pour propager à SfftWorker
+                    RemoveDcChanged?.Invoke(this, EventArgs.Empty);
+
+                    UpdateOverlayInfo();
+                };
+            }
+
 
             // Peak-hold
             if (chkPeakHold != null)

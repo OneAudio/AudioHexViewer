@@ -34,6 +34,7 @@
             comboLevelUnit = new ComboBox();
             lblChannel = new Label();
             comboChannel = new ComboBox();
+            chkDcMode = new CheckBox();
             lblWindowInfo = new Label();
             btnRun = new Button();
             chkLogX = new CheckBox();
@@ -97,6 +98,7 @@
             panelTop.Controls.Add(comboLevelUnit);
             panelTop.Controls.Add(lblChannel);
             panelTop.Controls.Add(comboChannel);
+            panelTop.Controls.Add(chkDcMode);
             panelTop.Controls.Add(lblWindowInfo);
             panelTop.Controls.Add(btnRun);
             panelTop.Controls.Add(chkLogX);
@@ -105,7 +107,7 @@
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 0);
             panelTop.Name = "panelTop";
-            panelTop.Size = new Size(1138, 70);
+            panelTop.Size = new Size(1138, 90);
             panelTop.TabIndex = 1;
             // 
             // lblFftTicker
@@ -284,6 +286,18 @@
             comboChannel.Name = "comboChannel";
             comboChannel.Size = new Size(85, 23);
             comboChannel.TabIndex = 7;
+            // 
+            // chkDcMode
+            // 
+            chkDcMode.AutoSize = true;
+            chkDcMode.Checked = false;
+            chkDcMode.CheckState = CheckState.Unchecked;
+            chkDcMode.Location = new Point(15, 68);
+            chkDcMode.Name = "chkDcMode";
+            chkDcMode.Size = new Size(85, 19);
+            chkDcMode.TabIndex = 8;
+            chkDcMode.Text = "DC mode";
+            chkDcMode.UseVisualStyleBackColor = true;
             // 
             // lblWindowInfo
             // 
@@ -747,6 +761,7 @@
         private Button btnPhiEnable;
         private Button btnPhiUnwrap;
         private Button btnOverlay;
+        private CheckBox chkDcMode;
 
     }
 }

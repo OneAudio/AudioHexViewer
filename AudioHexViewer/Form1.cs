@@ -431,20 +431,6 @@ namespace AudioHexViewer
             _dataViewForm.comboDisplayMode.SelectedIndexChanged += comboDisplayMode_SelectedIndexChanged;
 
 
-            // Relance le SFFT quand l'utilisateur change la fenêtre
-            if (spectrumControl != null)
-            {
-                spectrumControl.WindowTypeChangedForExternalFft += (_, __) =>
-                {
-                    // Si le SFFT n'est pas démarré, ne rien faire.
-                    // Si tu as un bool de run, utilise-le, sinon on fait simple :
-                    if (_pipeline != null && _pipeline.IsRunning)
-                        RestartSfftFromUi();
-                };
-
-               
-            }
-
             InitDataView();
 
             InitAnalysisUi();
@@ -1880,6 +1866,9 @@ namespace AudioHexViewer
                     if (_pipeline != null && _pipeline.IsRunning)
                         RestartSfftFromUi();
                 };
+
+                // Mode AC/DC -> propage immédiatement à SfftWorker (flag volatile + drain queue)
+                spectrumControl.RemoveDcChanged += (_, __) => ApplyDcModeToWorker();
                 
                 spectrumControl.Dock = DockStyle.Fill;
                 spectrumControl.SetGlobalSampleSize(analysisSampleSize);
