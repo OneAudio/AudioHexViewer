@@ -2027,7 +2027,9 @@ namespace AudioHexViewer
             // - OU la fenêtre est maximisée
             bool allowThdMeasurementsUi = singleChannel || isMaximized;
 
-            bool showHarmsInPanel = doThd && _thdUi.ShowHarmonicsValues && allowThdMeasurementsUi;
+            // Les harmoniques ne s'affichent QUE si une seule voie est active (L ou R),
+            // même en fenêtre maximisée : trop de lignes en L+R ou Bode Plot.
+            bool showHarmsInPanel = doThd && _thdUi.ShowHarmonicsValues && singleChannel;
 
             // LEFT
             if (lblLeftMeas != null && currentLeftSpectrum != null && _sampleRate > 0 && lastFftSize > 0)
@@ -2099,30 +2101,19 @@ namespace AudioHexViewer
                         sb.Append('\n').Append($"SNR: {mL.SnrDb:F1} dB");
                         sb.Append('\n').Append($"SFDR: {mL.SfdrDb:F1} dB");
 
+                        // Stocker les harmoniques pour rendu direct dans DrawChartStatsPanel
+                        _showHarmonicsLeft = showHarmsInPanel && showLeft;
+                        _lastHarmonicsLeft = (showHarmsInPanel && showLeft) ? mL.Harmonics : null;
+
                         lblLeftMeas.Text = sb.ToString();
-
-
-                        if (showHarmsInPanel && showLeft)
-                        {
-                            var list = mL.Harmonics;
-                            if (list != null && list.Count > 0)
-                            {
-                                sb.Append("\n----");
-                                foreach (var h in list)
-                                {
-                                    if (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
-                                        sb.Append('\n').Append($"H{h.Order}: {h.RatioPercent:F5} %");
-                                    else
-                                        sb.Append('\n').Append($"H{h.Order}: {h.LevelDbc:F1} dB");
-                                }
-                            }
-                        }
 
 
                     }
                     else
                     {
                         lblLeftMeas.Text = "—";
+                        _lastHarmonicsLeft = null;
+                        _showHarmonicsLeft = false;
                     }
                 }
                 else
@@ -2237,29 +2228,18 @@ namespace AudioHexViewer
                         sb.Append('\n').Append($"SNR: {mR.SnrDb:F1} dB");
                         sb.Append('\n').Append($"SFDR: {mR.SfdrDb:F1} dB");
 
+                        // Stocker les harmoniques pour rendu direct dans DrawChartStatsPanel
+                        _showHarmonicsRight = showHarmsInPanel && showRight;
+                        _lastHarmonicsRight = (showHarmsInPanel && showRight) ? mR.Harmonics : null;
+
                         lblRightMeas.Text = sb.ToString();
-
-
-                        if (showHarmsInPanel && showRight)
-                        {
-                            var list = mR.Harmonics;
-                            if (list != null && list.Count > 0)
-                            {
-                                sb.Append("\n----");
-                                foreach (var h in list)
-                                {
-                                    if (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
-                                        sb.Append('\n').Append($"H{h.Order}: {h.RatioPercent:F5} %");
-                                    else
-                                        sb.Append('\n').Append($"H{h.Order}: {h.LevelDbc:F1} dB");
-                                }
-                            }
-                        }
 
                     }
                     else
                     {
                         lblRightMeas.Text = "—";
+                        _lastHarmonicsRight = null;
+                        _showHarmonicsRight = false;
                     }
                 }
                 else
@@ -2834,16 +2814,24 @@ namespace AudioHexViewer
             public string Value { get; init; } = "";
             public StatEmphasis Emphasis { get; init; } = StatEmphasis.Normal;
 
-            // Nouveau : ligne de séparation visuelle
+            // Ligne de séparation visuelle
             public bool IsSeparator { get; init; } = false;
 
             public bool IsBottomGroup { get; init; } = false;
 
+            // Police réduite (harmoniques H2, H3... pour tenir dans le panneau)
+            public bool IsSmall { get; init; } = false;
         }
 
 
         private readonly List<StatRow> _rowsLeft = new();
         private readonly List<StatRow> _rowsRight = new();
+
+        // Harmoniques calculées au dernier frame THD — lues directement par DrawChartStatsPanel
+        private IReadOnlyList<HarmonicInfo>? _lastHarmonicsLeft;
+        private IReadOnlyList<HarmonicInfo>? _lastHarmonicsRight;
+        private bool _showHarmonicsLeft;
+        private bool _showHarmonicsRight;
 
         //
 
@@ -2893,7 +2881,10 @@ namespace AudioHexViewer
                 else if (label.Equals("Peak", StringComparison.OrdinalIgnoreCase))
                     emph = StatEmphasis.Medium;
 
-                dst.Add(new StatRow { Label = label, Value = value, Emphasis = emph });
+                // Harmoniques H2, H3, … → police réduite pour tenir dans le panneau
+                bool isSmall = label.Length >= 2 && label[0] == 'H' && char.IsDigit(label[1]);
+
+                dst.Add(new StatRow { Label = label, Value = value, Emphasis = emph, IsSmall = isSmall });
             }
 
             AddLine(rms);

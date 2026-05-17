@@ -216,11 +216,13 @@ namespace AudioHexViewer
                             continue;
                         }
 
-                        Font fLabel = r.Emphasis == StatEmphasis.Strong ? fontBold : fontBase;
-                        Font fVal =
-                            r.Emphasis == StatEmphasis.Strong ? fontStrong :
-                            r.Emphasis == StatEmphasis.Medium ? fontBold :
-                            fontBase;
+                        // Police réduite pour les harmoniques (H2, H3…) → tient dans le panneau
+                        Font fLabel = r.IsSmall ? fontHarm :
+                                      r.Emphasis == StatEmphasis.Strong ? fontBold : fontBase;
+                        Font fVal = r.IsSmall ? fontHarm :
+                                    r.Emphasis == StatEmphasis.Strong ? fontStrong :
+                                    r.Emphasis == StatEmphasis.Medium ? fontBold :
+                                    fontBase;
 
                         // Label
                         g.DrawString(r.Label, fLabel, brushLabel, xL, y);
@@ -270,8 +272,68 @@ namespace AudioHexViewer
                     return h;
                 }
 
-                // 1) Render du haut (min/max etc.)
+                // Harmoniques H2…HN : rendues directement depuis les champs d'instance,
+                // en police réduite (fontHarm), APRÈS les topRows standard.
+                // Ce chemin direct évite les aléas du pipeline lblMeas→InjectVolts→BuildRows.
+                bool isLeftSection = title.Equals("LEFT", StringComparison.OrdinalIgnoreCase) ||
+                                     title.Equals("BODE", StringComparison.OrdinalIgnoreCase);
+                var harms = isLeftSection ? _lastHarmonicsLeft : _lastHarmonicsRight;
+                bool showH  = isLeftSection ? _showHarmonicsLeft : _showHarmonicsRight;
+
+                // Calcul de l'espace réservé pour le bloc harmoniques (séparateur + N lignes).
+                // On le fait AVANT RenderRows(topRows) pour que les topRows ne mangent pas
+                // tout l'espace disponible et laissent de la place aux harmoniques.
+                float harmRowH = fontHarm.GetHeight(g) + 3f;
+                float harmBlockH = 0f;
+                if (showH && harms != null && harms.Count > 0)
+                    harmBlockH = 12f + harms.Count * harmRowH; // 12px séparateur + lignes
+
+                // Espace réservé pour les bottomRows (curseurs)
+                float hBottomEst = bottomRows.Count > 0 ? EstimateHeight(bottomRows) + pad : 0f;
+
+                // Limite verticale pour les topRows : on réserve l'espace des harmoniques
+                // et des bottomRows en bas du panneau.
+                float yTopMax = rect.Bottom - hBottomEst - harmBlockH;
+
+                // 1) Render du haut (min/max etc.) avec clip vertical pour ne pas empiéter
+                //    sur la zone réservée aux harmoniques.
+                var savedState = g.Save();
+                if (harmBlockH > 0f && yTopMax > rect.Top)
+                {
+                    g.SetClip(new RectangleF(
+                        rect.Left, rect.Top,
+                        rect.Width, yTopMax - rect.Top));
+                }
                 RenderRows(topRows);
+                g.Restore(savedState);
+
+                // Si les topRows ont avancé y au-delà de yTopMax (avant clip), on le recale
+                // pour que les harmoniques démarrent exactement à la bonne position.
+                if (harmBlockH > 0f && y > yTopMax)
+                    y = yTopMax;
+
+                if (showH && harms != null && harms.Count > 0)
+                {
+                    // Trait de séparation
+                    g.DrawLine(penSep, rect.X + pad, y + 4f, rect.Right - pad, y + 4f);
+                    y += 12f;
+
+                    foreach (var h in harms)
+                    {
+                        if (y + fontHarm.GetHeight(g) > rect.Bottom - hBottomEst) break; // sécurité
+
+                        string hLabel = $"H{h.Order}";
+                        string hValue = (_thdUi.Unit == SpectrumSettings.ThdSettings.ThdUnit.Percent)
+                            ? $"{h.RatioPercent:F5} %"
+                            : $"{h.LevelDbc:F1} dB";
+
+                        g.DrawString(hLabel, fontHarm, brushLabel, xL, y);
+                        var hRect = new RectangleF(valueLeft, y, (rect.Right - pad) - valueLeft, fontHarm.GetHeight(g));
+                        g.DrawString(hValue, fontHarm, brushText, hRect, fmtRight);
+                        y += harmRowH;
+                    }
+                }
+
                 float yAfterTop = y;
 
                 // 2) Render du bas collé au bas du panneau (curseurs/delta)
