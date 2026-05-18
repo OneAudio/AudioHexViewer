@@ -93,6 +93,14 @@ namespace AudioHexViewer
             public bool UseLPF { get; set; } = true;          // Fhigh
             public double FhighHz { get; set; } = 20000.0;    // clamp à Fs/2 à l’application
 
+            // Bande de mesure SFDR (indépendante de la bande THD)
+            // SfdrUseHPF=false / SfdrFlowHz=0  → ΔF (premier bin utile)
+            // SfdrUseLPF=false / SfdrFhighHz=0 → Fs/2 (Nyquist)
+            public bool SfdrUseHPF { get; set; } = false;
+            public double SfdrFlowHz { get; set; } = 0.0;
+            public bool SfdrUseLPF { get; set; } = false;
+            public double SfdrFhighHz { get; set; } = 0.0;
+
             // Harmoniques
             public int HarmonicsNumber { get; set; } = 5;     // 2..20
 

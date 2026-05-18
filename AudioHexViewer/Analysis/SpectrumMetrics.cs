@@ -9,6 +9,11 @@ namespace AudioHexViewer
         public double MinFreqHz { get; set; } = 20.0;
         public double MaxFreqHz { get; set; } = 24000.0; // 0 => Nyquist
 
+        // Bande de mesure dédiée au SFDR (indépendante de la bande THD)
+        // 0.0 = utiliser la bande THD (MinFreqHz / MaxFreqHz)
+        public double SfdrMinFreqHz { get; set; } = 0.0;
+        public double SfdrMaxFreqHz { get; set; } = 0.0;
+
         // Largeur demi-lobe principale pour SFDR
         public int SfdrFundHalfWidthBins { get; set; } = 16;
 
@@ -195,46 +200,43 @@ namespace AudioHexViewer
             // 6) Bruit = total - (fund + harm)
             double pNoise = Math.Max(0.0, pTotal - pFund - pHarm);
 
-            // 7) SFDR "spur-only" : on exclut fondamentale + harmoniques (THD) puis on cherche le plus gros spur restant.
-            // Important : pour être stable, on centre les harmoniques en BINS (kFund*h) plutôt qu'en Hz interpolé.
+            // 7) SFDR (définition stricte Wikipedia / Option A) :
+            //    - Bande propre au SFDR (SfdrMinFreqHz / SfdrMaxFreqHz), indépendante de la bande THD.
+            //    - Seule la fondamentale est masquée ; les harmoniques sont incluses
+            //      comme « n'importe quelle autre raie » (définition Wikipedia).
+            //    - SFDR = fundDb - spurDb  (plus la valeur est grande, mieux c'est).
             double spurDb = -200.0;
             double spurHz = 0.0;
 
-            // Masque d'exclusion SFDR
+            // Bande SFDR : si SfdrMinFreqHz/SfdrMaxFreqHz sont non nuls, on les utilise ;
+            // sinon on retombe sur la bande THD [kMin, kMax].
+            double sfdrFMin = (opt.SfdrMinFreqHz > 0.0) ? opt.SfdrMinFreqHz : fMin;
+            double sfdrFMax = (opt.SfdrMaxFreqHz > 0.0) ? opt.SfdrMaxFreqHz
+                                                        : (fMax > 0.0 ? fMax : nyquist);
+            int sfdrKMin = FreqToBinCeil(sfdrFMin, sampleRate, fftSize);
+            int sfdrKMax = FreqToBinFloor(sfdrFMax, sampleRate, fftSize);
+            if (opt.ExcludeDc && sfdrKMin < 1) sfdrKMin = 1;
+            if (sfdrKMax >= bins) sfdrKMax = bins - 1;
+
+            // Masque SFDR : uniquement la fondamentale (±SfdrFundHalfWidthBins)
             var excludedSfdr = new bool[bins];
-
-            // Exclure fondamentale (largeur dédiée SFDR)
-            MarkBins(excludedSfdr, kFund, opt.SfdrFundHalfWidthBins, kMin, kMax);
-
-            // Exclure harmoniques H2..Hmax (même largeur que l'intégration tonalité, ou une largeur dédiée si tu ajoutes une option)
-            for (int h = 2; h <= maxH; h++)
-            {
-                int kH = kFund * h;
-                if (kH > kMax) break;
-
-                // Respecter MinHarmonicFreqHz
-                double fh = BinToFreq(kH, sampleRate, fftSize);
-                if (fh < opt.MinHarmonicFreqHz) continue;
-                if (fh >= nyquist) break;
-
-                MarkBins(excludedSfdr, kH, opt.ToneHalfWidthBins, kMin, kMax);
-            }
+            MarkBins(excludedSfdr, kFund, opt.SfdrFundHalfWidthBins, sfdrKMin, sfdrKMax);
 
             int kSpur = -1;
             double pSpurPeak = 0.0;
 
-            // 1er passage : trouver le bin max hors exclusions
-            for (int k = kMin; k <= kMax; k++)
+            // 1er passage : bin de puissance max dans la bande SFDR (hors fondamentale)
+            for (int k = sfdrKMin; k <= sfdrKMax; k++)
             {
                 if (excludedSfdr[k]) continue;
                 if (p[k] > pSpurPeak) { pSpurPeak = p[k]; kSpur = k; }
             }
 
-            // 2e passage : intégrer autour du spur trouvé (plus robuste qu'un seul bin, surtout avec fenêtrage)
+            // 2e passage : intégrer autour du spur (plus robuste qu'un seul bin avec fenêtrage)
             double pSpur = 0.0;
             if (kSpur >= 0 && pSpurPeak > 0.0)
             {
-                pSpur = IntegrateTonePowerAndMark(new bool[bins], p, kSpur, opt.ToneHalfWidthBins, kMin, kMax);
+                pSpur = IntegrateTonePowerAndMark(new bool[bins], p, kSpur, opt.ToneHalfWidthBins, sfdrKMin, sfdrKMax);
                 spurDb = 10.0 * Math.Log10(pSpur);
                 spurHz = BinToFreq(kSpur, sampleRate, fftSize);
             }

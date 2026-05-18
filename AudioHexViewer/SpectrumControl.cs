@@ -833,6 +833,18 @@ namespace AudioHexViewer
                 _metricsOpt.MaxFreqHz = 0.0; // 0 => Nyquist
             }
 
+            // Bande SFDR (indépendante de la bande THD)
+            _metricsOpt.SfdrMinFreqHz = _thdUi.SfdrUseHPF ? Math.Max(0.0, _thdUi.SfdrFlowHz) : 0.0;
+            if (_thdUi.SfdrUseLPF)
+            {
+                double nyqSfdr = (_sampleRate > 0) ? (_sampleRate / 2.0) : 384000.0;
+                _metricsOpt.SfdrMaxFreqHz = Math.Min(Math.Max(0.0, _thdUi.SfdrFhighHz), nyqSfdr);
+            }
+            else
+            {
+                _metricsOpt.SfdrMaxFreqHz = 0.0; // 0 => Nyquist
+            }
+
             // Harmoniques (voir fix B : exclure le fondamental)
             int countExclFund = _thdUi.HarmonicsNumber;
             if (countExclFund < 1) countExclFund = 1;
