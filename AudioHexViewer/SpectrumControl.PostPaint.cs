@@ -1001,16 +1001,19 @@ namespace AudioHexViewer
                 rightMeas);
 
             // ------------------------------
-            // Curseurs dans les panneaux (hors Bode)
-            // Règle : uniquement en fenêtre maximisée ET THD désactivé
-            // (en non-maximisé, le panneau n'a pas la hauteur pour les afficher)
+            // Curseurs dans les panneaux (hors Bode — déjà géré dans BuildRowsForBodePlot)
+            // Règles :
+            //   L ou R : maximisé → toujours ; non-maximisé → seulement si THD Off
+            //   L+R    : maximisé ET THD Off seulement
             // ------------------------------
             bool thdEnabled = (chkEnableThd?.Checked == true);
             bool isMaximized = (this.FindForm()?.WindowState == FormWindowState.Maximized);
 
             string mode = SelectedChannelMode;
 
-            bool showCursors = isMaximized && !thdEnabled;
+            bool showCursors = mode.Equals("L+R", StringComparison.OrdinalIgnoreCase)
+                ? (isMaximized && !thdEnabled)   // L+R : maximisé ET THD désactivé
+                : (isMaximized || !thdEnabled);  // L ou R : maximisé OU THD désactivé
 
             if (showCursors)
             {

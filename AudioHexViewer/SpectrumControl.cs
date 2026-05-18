@@ -1189,6 +1189,10 @@ namespace AudioHexViewer
             s.LevelCalOffsetDbRight = _levelCalOffsetDbRight;
             s.NoiseToPeakThresholdDb = _noiseToPeakThresholdDb;
 
+            // THD : état du bouton + paramètres complets de la dialog
+            s.EnableThdMeasures = _thdMeasuresEnabled;
+            s.Thd = _thdUi;
+
             return s;
         }
 
@@ -1280,6 +1284,26 @@ namespace AudioHexViewer
 
                 UpdateLevelUnitUi();
                 UpdateFrfUiLocks();   // <-- AJOUT (important si startup direct en FRF)
+
+                // THD : restauration complète (paramètres dialog + état du bouton)
+                // _isRestoringSettings = true ici → ChkEnableThd_CheckedChanged peut encore
+                // déclencher ThdEnabledChanged si on touche .Checked directement.
+                // On passe donc par les setters internes sans toucher le checkbox (qui sera
+                // géré par SetThdEnabledUi après la restauration générale).
+                if (s.Thd != null)
+                    ApplyThdSettings(s.Thd);
+
+                // État du bouton THD : on modifie le champ interne ET le visuel sans déclencher
+                // l'événement CheckedChanged (qui provoquerait une sauvegarde parasite).
+                _thdMeasuresEnabled = s.EnableThdMeasures;
+                if (chkEnableThd != null)
+                {
+                    // Déconnecter temporairement l'événement pour éviter la cascade
+                    chkEnableThd.CheckedChanged -= ChkEnableThd_CheckedChanged;
+                    chkEnableThd.Checked = s.EnableThdMeasures;
+                    chkEnableThd.CheckedChanged += ChkEnableThd_CheckedChanged;
+                    UpdateToggleButtonVisual(chkEnableThd);
+                }
 
             }
             finally

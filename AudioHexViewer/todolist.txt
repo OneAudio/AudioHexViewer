@@ -16,3 +16,24 @@ Le 13/05/2026
  Ajouter le module générateur, ses caractéristique seraient :
  
 
+Sur PC établi :
+il y a des artefacts qui apparaissent parfois sur les labels majeurs de l'axe verticale.
+Ca disparait dés que l'on redimmensionnent un peu la fenêtre (problème mineur).
+Par défaut, avec THD off les curseurs ne sont pas affichés à droite si un curseur est actif. C'est dommage.
+Ils apparaissent en mode full screen, sauf si la THD est activé. C'est dommage ça devrait resté.
+En résumé il faudrait avoir :
+1) Channel Mode L ou R :
+    a) si la fenêtre n'est pas maximisé ;
+        si THD est Off , on affiche le menu curseurs dans le panneau à droite
+        si THD est On, on ne les affiche pas pour laisser la place au mesure dynamiques 
+    b) si la fenêtre est maximisé ;
+        On affiche toujours le menu curseurs dans le panneau à droite
+2) Channel Mode L+R (2 voies affichées) :
+    a) si la fenêtre n'est pas maximisé ;
+        On affiche jamais le menu curseurs dans le panneau à droite
+    b) si la fenêtre est maximisé ;
+        si THD est Off , on affiche le menu curseurs dans le panneau à droite
+        si THD est On, on ne les affiche pas pour laisser la place au mesure dynamiques 
+3) Channel Mode Bode Plot :
+On affiche toujours le menu curseurs dans le panneau à droite quelquesoit 
+le mode d'affichage (maximisé ou non).Note: Le mode THD n'existe pas dans ce mode.
