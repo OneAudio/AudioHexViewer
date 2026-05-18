@@ -476,6 +476,22 @@ namespace AudioHexViewer
             // ----------------------------
             // Y : labels majeurs (remplacement complet du Chart)
             // ----------------------------
+            // Guard : ValueToPixelPosition n'est fiable que lorsque InnerPlotPosition a été
+            // calculé par le Chart (après le premier layout complet). Au premier rendu, si
+            // les pixels min/max sont identiques ou absurdes, on déclenche un second rendu
+            // via BeginInvoke et on sort sans tracer (les labels natifs étant désactivés,
+            // l'écran reste propre jusqu'au second passage).
+            {
+                float _pixChk0 = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
+                float _pixChkN = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
+                bool _layoutOk = !isExport && Math.Abs(_pixChkN - _pixChk0) > 10f;
+                if (!_layoutOk && !isExport)
+                {
+                    // Layout pas encore prêt → repaint différé (ne pas boucler depuis PostPaint)
+                    BeginInvoke(new Action(() => chartSpectrum?.Invalidate()));
+                    goto skipCustomYLabels;
+                }
+            }
             {
                 double yMajor = area.AxisY.MajorGrid.Interval;
                 if (yMajor <= 0) yMajor = area.AxisY.Interval; // sécurité
@@ -532,6 +548,7 @@ namespace AudioHexViewer
                 }
             }
 
+            skipCustomYLabels:
             // ----------------------------
             // Y2 : labels majeurs (remplacement complet du Chart)
             // ----------------------------

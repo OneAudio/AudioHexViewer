@@ -2046,6 +2046,11 @@ namespace AudioHexViewer
             // quelle que soit la valeur de axChanged.
             area.AxisX.LabelStyle.ForeColor = LabelMajorColor;
 
+            // Les labels Y/Y2 sont dessinés par PostPaint → toujours masquer les labels natifs,
+            // même si _axChanged=false (ApplyChartTheme peut avoir remis ForeColor=LabelMajorColor).
+            area.AxisY.LabelStyle.ForeColor  = Color.Transparent;
+            area.AxisY2.LabelStyle.ForeColor = Color.Transparent;
+
             return new AxisConfig
             {
                 FMin = fMin,

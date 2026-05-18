@@ -44,7 +44,12 @@ namespace AudioHexViewer
             // Couleurs des labels. Note: le Chart WinForms n'a pas de "minor labels" texte distincts,
             // donc LabelMinor s'applique aux ticks minor.
             area.AxisX.LabelStyle.ForeColor = LabelMajorColor;
-            area.AxisY.LabelStyle.ForeColor = LabelMajorColor;
+            // AxisY native labels : NE PAS remettre à LabelMajorColor ici.
+            // Ils sont remplacés par le rendu PostPaint (déterministe).
+            // On force Transparent une fois pour toutes afin qu'aucun paint natif
+            // (qui peut avoir lieu avant ApplyChartAxes) ne les rende visibles.
+            area.AxisY.LabelStyle.ForeColor  = Color.Transparent;
+            area.AxisY2.LabelStyle.ForeColor = Color.Transparent;
             area.AxisX.TitleForeColor = LabelMajorColor;
             area.AxisY.TitleForeColor = LabelMajorColor;
 
@@ -81,15 +86,14 @@ namespace AudioHexViewer
             area.AxisX2.MinorGrid.LineColor = GridMinorColor;
             area.AxisY2.MinorGrid.LineColor = GridMinorColor;
             area.AxisX2.LabelStyle.ForeColor = LabelMajorColor;
-            area.AxisY2.LabelStyle.ForeColor = LabelMajorColor;
+            // AxisY2 labels : gérés par PostPaint comme AxisY → toujours Transparent
+            area.AxisY2.LabelStyle.ForeColor = Color.Transparent;
             area.AxisX2.LineColor = LabelMajorColor;
             area.AxisY2.LineColor = LabelMajorColor;
             area.AxisX2.MajorTickMark.LineColor = LabelMajorColor;
             area.AxisY2.MajorTickMark.LineColor = LabelMajorColor;
             area.AxisX2.MinorTickMark.LineColor = LabelMinorColor;
             area.AxisY2.MinorTickMark.LineColor = LabelMinorColor;
-            // On remplace les labels majeurs du Chart par notre rendu PostPaint (deterministe)
-            area.AxisY2.LabelStyle.ForeColor = Color.Transparent;
 
 
             chartSpectrum.Invalidate();
