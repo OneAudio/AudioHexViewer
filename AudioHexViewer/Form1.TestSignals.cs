@@ -129,17 +129,10 @@ namespace AudioHexViewer
                 var l = new float[chunk];
                 var r = new float[chunk];
 
-                // Spéc du signal de référence (coherent FFT)
+                // Specification du signal (voir TestWaves.CreateReferenceSpec pour le detail)
                 var spec = TestWaves.CreateReferenceSpec(
                     fs: sampleRate,
-                    fftSize: fftSize,
-                    targetFundamentalHz: 1000.0,
-                    fundamentalDbfs: -12.0,
-                    h2Dbc: -60.0,
-                    h3Dbc: -70.0,
-                    spurDbc: -80.0,
-                    noiseRmsDbfs: -90.0
-                );
+                    fftSize: fftSize);
 
                 double phaseFund = 0.0;
                 double phaseSpur = 0.0;
