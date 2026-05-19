@@ -527,6 +527,17 @@ namespace AudioHexViewer
         private double _cursorTargetHzL = 1000.0; // valeur init au choix
         private double _cursorTargetHzR = 1000.0;
 
+        // Mémorisent le CENTRE DU BUCKET du dernier pic trouvé par les boutons < / >.
+        // Utilisés comme référence de navigation (centre vs centre, cohérent).
+        // Remis à 0 par SetCursor*FrequencyHz (placement manuel ou bouton Peak).
+        private double _adjNavHzL = 0.0;
+        private double _adjNavHzR = 0.0;
+
+        // Index distincts pour affichage du niveau (bin max du bucket) vs navigation.
+        // Quand le curseur est placé manuellement, identiques à _cursorIdxL/R.
+        private int _cursorLevelIdxL = -1;
+        private int _cursorLevelIdxR = -1;
+
         public event EventHandler? WindowTypeChangedForExternalFft;
 
         // État axe X logarithmique (pour redessin manuel des sous-divisions)

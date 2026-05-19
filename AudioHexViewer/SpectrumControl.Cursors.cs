@@ -468,10 +468,10 @@ namespace AudioHexViewer
             bool useLog = (chkLogX != null && chkLogX.Checked);
             int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
 
-            _cursorTargetHzL = targetHz; // <-- intention
+            _cursorTargetHzL = targetHz;
 
             int idx = FindNearestFreqIndex(freqAxis, targetHz, minIdx);
-            _cursorIdxL = idx;
+            _cursorIdxL  = idx;
             _cursorFreqL = freqAxis[idx];
 
             // lock auto si placé par dialogue
@@ -487,10 +487,10 @@ namespace AudioHexViewer
             bool useLog = (chkLogX != null && chkLogX.Checked);
             int minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
 
-            _cursorTargetHzR = targetHz; // <-- intention
+            _cursorTargetHzR = targetHz;
 
             int idx = FindNearestFreqIndex(freqAxis, targetHz, minIdx);
-            _cursorIdxR = idx;
+            _cursorIdxR  = idx;
             _cursorFreqR = freqAxis[idx];
 
             // lock auto si placé par dialogue
@@ -681,47 +681,147 @@ namespace AudioHexViewer
             if (peaksHz.Count == 0)
                 return false;
 
-            // 4) Select next / previous peak based on frequency (Hz)
-            // (because plot index != full FFT index)
+            // 4) navEps = demi-largeur du bucket au curseur courant.
+            //
+            // PREUVE que ça ne reboucle jamais :
+            //   Le bin max retourné est dans [bucketCenter ± halfBucket], donc
+            //   freqAxis[binMax] >= bucketCenter - halfBucket.
+            //   Après placement, curHz = freqAxis[binMax].
+            //   Condition pour re-sélectionner le même bucket :
+            //     bucketCenter > curHz + navEps
+            //     = freqAxis[binMax] + halfBucket
+            //     <= bucketCenter - halfBucket + halfBucket
+            //     = bucketCenter   → FALSE (strict >).    QED ✓
+            //
+            // PREUVE que le bucket suivant est toujours trouvé :
+            //   nextBucketCenter = bucketCenter + 2*halfBucket
+            //   nextBucketCenter > curHz + navEps
+            //   >= bucketCenter - halfBucket + halfBucket = bucketCenter   → TRUE ✓
+            double navEps;
+            if (_plotFreqAxis != null && _plotFreqAxis.Length >= 2)
+            {
+                int pi = Math.Max(0, Math.Min(_plotFreqAxis.Length - 1,
+                             LowerBound(_plotFreqAxis, curHz)));
+                navEps = (pi > 0 && pi < _plotFreqAxis.Length - 1)
+                    ? (_plotFreqAxis[pi + 1] - _plotFreqAxis[pi - 1]) * 0.5
+                    : Math.Abs(_plotFreqAxis[1] - _plotFreqAxis[0]);
+            }
+            else
+                navEps = freqAxis.Length > 1 ? freqAxis[1] - freqAxis[0] : 1.0;
+
             double selectedHz = 0;
             bool found = false;
 
             if (direction > 0)
             {
-                // Next: first peak strictly to the right
                 for (int k = 0; k < peaksHz.Count; k++)
                 {
-                    double hz = peaksHz[k];
-                    if (hz > curHz)
-                    {
-                        selectedHz = hz;
-                        found = true;
-                        break;
-                    }
+                    if (peaksHz[k] > curHz + navEps) { selectedHz = peaksHz[k]; found = true; break; }
                 }
             }
             else
             {
-                // Prev: last peak strictly to the left
                 for (int k = peaksHz.Count - 1; k >= 0; k--)
                 {
-                    double hz = peaksHz[k];
-                    if (hz < curHz)
-                    {
-                        selectedHz = hz;
-                        found = true;
-                        break;
-                    }
+                    if (peaksHz[k] < curHz - navEps) { selectedHz = peaksHz[k]; found = true; break; }
                 }
             }
 
             if (!found)
                 return false;
 
+            // 5) Raffiner vers le bin de puissance maximale dans le bucket décimé.
+            //    selectedHz = centre du bucket → le vrai pic FFT peut être décalé
+            //    (jusqu'à ±halfBucket pour un signal cohérent comme F10).
+            //    La demi-largeur du bucket est estimée depuis _plotFreqAxis.
+            {
+                double hb;
+                if (_plotFreqAxis != null && _plotFreqAxis.Length >= 2)
+                {
+                    int pi = Math.Max(0, Math.Min(_plotFreqAxis.Length - 1,
+                                 LowerBound(_plotFreqAxis, selectedHz)));
+                    hb = (pi > 0 && pi < _plotFreqAxis.Length - 1)
+                        ? (_plotFreqAxis[pi + 1] - _plotFreqAxis[pi - 1]) * 0.5
+                        : Math.Abs(_plotFreqAxis[1] - _plotFreqAxis[0]);
+                }
+                else
+                    hb = navEps;
+
+                int ri0 = Math.Max(i0, LowerBound(freqAxis, selectedHz - hb));
+                int ri1 = Math.Min(i1, UpperBound(freqAxis, selectedHz + hb) - 1);
+
+                if (ri1 > ri0)
+                {
+                    int best2 = ri0;
+                    double bd2 = spec[ri0];
+                    for (int k = ri0 + 1; k <= ri1; k++)
+                        if (spec[k] > bd2) { bd2 = spec[k]; best2 = k; }
+                    peakHz = freqAxis[best2];
+                    return true;
+                }
+            }
+
             peakHz = selectedHz;
             return true;
 
 
+        }
+
+        /// <summary>
+        /// Retourne true si <paramref name="hz"/> est exactement un centre de bucket décimé
+        /// (valeur issue de <see cref="_plotFreqAxis"/>), ce qui indique un appel depuis les
+        /// boutons &lt; / &gt; (navigation entre pics adjacents).
+        /// </summary>
+        private bool IsBucketCenter(double hz)
+        {
+            var pf = _plotFreqAxis;
+            if (pf == null || pf.Length == 0) return false;
+            int j = LowerBound(pf, hz);
+            if (j < pf.Length && pf[j] == hz) return true;
+            if (j > 0 && pf[j - 1] == hz) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Affine <paramref name="idx"/> vers le bin de puissance maximale dans le bucket
+        /// décimé contenant <paramref name="targetHz"/>. Résout le décalage entre le centre
+        /// du bucket (retourné par la recherche de pic adjacent) et le vrai bin max FFT.
+        /// La largeur du bucket est estimée depuis <see cref="_plotFreqAxis"/>.
+        /// </summary>
+        private int SnapIdxToLocalPeak(int idx, double targetHz, int minIdx, double[]? spec)
+        {
+            if (spec == null || freqAxis == null || _plotFreqAxis == null || _plotFreqAxis.Length < 2)
+                return idx;
+
+            // Estimer la demi-largeur du bucket décimé à la fréquence targetHz
+            int pi = LowerBound(_plotFreqAxis, targetHz);
+            pi = Math.Max(0, Math.Min(_plotFreqAxis.Length - 1, pi));
+
+            double halfBucket;
+            if (pi > 0 && pi < _plotFreqAxis.Length - 1)
+                halfBucket = (_plotFreqAxis[pi + 1] - _plotFreqAxis[pi - 1]) * 0.5;
+            else
+                halfBucket = Math.Abs(_plotFreqAxis[1] - _plotFreqAxis[0]);
+
+            // Chercher le bin maximal en pleine résolution dans [targetHz ± halfBucket]
+            double refMin = targetHz - halfBucket;
+            double refMax = targetHz + halfBucket;
+
+            int ri0 = Math.Max(minIdx, LowerBound(freqAxis, refMin));
+            int ri1 = Math.Min(Math.Min(freqAxis.Length, spec.Length) - 1,
+                               UpperBound(freqAxis, refMax) - 1);
+
+            if (ri1 <= ri0) return idx;
+
+            int best = idx;
+            double bestDb = (idx >= 0 && idx < spec.Length) ? spec[idx] : double.NegativeInfinity;
+
+            for (int k = ri0; k <= ri1; k++)
+            {
+                if (spec[k] > bestDb) { bestDb = spec[k]; best = k; }
+            }
+
+            return best;
         }
 
         private static double MedianOfRange(double[] data, int i0, int i1)
@@ -827,23 +927,28 @@ namespace AudioHexViewer
             if (curve == ResolvedCurve.None) return false;
 
             double[]? spec = null;
+            double[]? plotSpec = null;
 
             switch (curve)
             {
                 case ResolvedCurve.Left:
-                    spec = currentLeftSpectrum;
+                    spec     = currentLeftSpectrum;
+                    plotSpec = _plotLeftSpectrum;
                     break;
 
                 case ResolvedCurve.Right:
-                    spec = currentRightSpectrum;
+                    spec     = currentRightSpectrum;
+                    plotSpec = _plotRightSpectrum;
                     break;
 
                 case ResolvedCurve.Gain:
-                    spec = currentLeftSpectrum;      // Gain FRF stocké ici (dB)
+                    spec     = currentLeftSpectrum;
+                    plotSpec = _plotLeftSpectrum;
                     break;
 
                 case ResolvedCurve.Phase:
-                    spec = currentFrfPhaseDeg;       // Phase FRF (deg)
+                    spec     = currentFrfPhaseDeg;
+                    plotSpec = _plotFrfPhaseDeg;
                     break;
             }
 
@@ -851,9 +956,9 @@ namespace AudioHexViewer
 
             var area = chartSpectrum.ChartAreas["SpectrumArea"];
 
-            // plage visible du graphe (spec demandé)
-            double fMin = area.AxisX.Minimum;
-            double fMax = area.AxisX.Maximum;
+            // Plage visible : on utilise GetVisibleFreqRangeHz() pour être cohérent
+            // avec l'affichage (ScaleView ou Minimum/Maximum selon le mode).
+            var (fMin, fMax) = GetVisibleFreqRangeHz();
             if (fMax <= fMin) return false;
 
             bool useLog = (chkLogX != null && chkLogX.Checked);
@@ -866,42 +971,92 @@ namespace AudioHexViewer
             i1 = Math.Min(i1, Math.Min(freqAxis.Length - 1, spec.Length - 1));
             if (i1 <= i0) return false;
 
-            // --- Nouveau : cherche le meilleur "pic" (selon critères) ---
-            int best = -1;
-            double bestDb = double.NegativeInfinity;
+            // ── Phase 1 : trouver le bucket visuel maximum dans les données décimées ──
+            // L'affichage utilise _plotLeftSpectrum (MAX-HOLD par bucket). Le centre
+            // visuel du pic est _plotFreqAxis[bestPlot], PAS freqAxis[bestFullRes].
+            // Si on cherchait directement en pleine résolution, le curseur se poserait
+            // au bin exact (correct) mais légèrement décalé visuellement par rapport au
+            // centre du bucket affiché → impression de "quelques bins" d'erreur.
+            // → On identifie d'abord le bucket visuel, puis on affine en pleine résolution.
+            double[]? plotFreq = _plotFreqAxis;
+            int bestFullRes = -1;
 
-            // On évite les bords car on teste i-1 / i+1
-            int start = Math.Max(i0 + 1, i0);
-            int end = Math.Min(i1 - 1, i1);
-
-            for (int i = start; i <= end; i++)
+            if (plotSpec != null && plotFreq != null &&
+                plotSpec.Length > 0 && plotFreq.Length == plotSpec.Length)
             {
-                // Candidats uniquement si "peak" selon critères robustes
-                if (!IsProminentPeak(spec, i, i0, i1))
-                    continue;
+                // Trouver le max dans les données décimées (plage visible)
+                int pi0 = LowerBound(plotFreq, fMin);
+                int pi1 = UpperBound(plotFreq, fMax) - 1;
+                pi0 = Math.Max(0, Math.Min(plotSpec.Length - 1, pi0));
+                pi1 = Math.Max(pi0, Math.Min(plotSpec.Length - 1, pi1));
 
-                double db = spec[i];
-                if (db > bestDb)
+                int bestPlot = pi0;
+                double bestPlotDb = plotSpec[pi0];
+                for (int j = pi0 + 1; j <= pi1; j++)
                 {
-                    bestDb = db;
-                    best = i;
+                    if (plotSpec[j] > bestPlotDb) { bestPlotDb = plotSpec[j]; bestPlot = j; }
+                }
+
+                // Estimer la largeur du bucket (centre ± demi-largeur)
+                double bucketCenter = plotFreq[bestPlot];
+                double halfBucket;
+                if (bestPlot > 0 && bestPlot < plotFreq.Length - 1)
+                    halfBucket = (plotFreq[bestPlot + 1] - plotFreq[bestPlot - 1]) * 0.5;
+                else if (plotFreq.Length > 1)
+                    halfBucket = Math.Abs(plotFreq[1] - plotFreq[0]);
+                else
+                    halfBucket = (fMax - fMin) / Math.Max(1, plotFreq.Length);
+
+                // Phase 2 : affiner en pleine résolution dans ce bucket
+                double refMin = bucketCenter - halfBucket;
+                double refMax = bucketCenter + halfBucket;
+
+                int ri0 = LowerBound(freqAxis, refMin);
+                int ri1 = UpperBound(freqAxis, refMax) - 1;
+                ri0 = Math.Max(i0, ri0);
+                ri1 = Math.Min(i1, ri1);
+
+                if (ri1 > ri0)
+                {
+                    // Maximum pleine résolution dans le bucket visuel
+                    bestFullRes = ri0;
+                    double bestDb2 = spec[ri0];
+                    for (int i = ri0 + 1; i <= ri1; i++)
+                    {
+                        if (spec[i] > bestDb2) { bestDb2 = spec[i]; bestFullRes = i; }
+                    }
                 }
             }
 
-            // Fallback : si aucun "pic visible" détecté, on retombe sur le max simple
-            // (pour ne jamais avoir un bouton Peak "muet" sur certains signaux).
+            if (bestFullRes >= 0)
+            {
+                peakHz = freqAxis[bestFullRes];
+                return true;
+            }
+
+            // ── Fallback : recherche classique pleine résolution avec IsProminentPeak ──
+            int best = -1;
+            double bestDb = double.NegativeInfinity;
+
+            int start = i0 + 1;
+            int end   = i1 - 1;
+
+            for (int i = start; i <= end; i++)
+            {
+                if (!IsProminentPeak(spec, i, i0, i1)) continue;
+                double db = spec[i];
+                if (db > bestDb) { bestDb = db; best = i; }
+            }
+
+            // Fallback ultime : max simple sans critères de prominance
             if (best < 0)
             {
-                best = i0;
+                best   = i0;
                 bestDb = spec[i0];
                 for (int i = i0 + 1; i <= i1; i++)
                 {
                     double db = spec[i];
-                    if (db > bestDb)
-                    {
-                        bestDb = db;
-                        best = i;
-                    }
+                    if (db > bestDb) { bestDb = db; best = i; }
                 }
             }
 
