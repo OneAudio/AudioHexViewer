@@ -81,6 +81,10 @@ namespace AudioHexViewer
 
         private bool captureOutput = false; // false = IN (capture), true = OUT (loopback)
 
+        // Périphérique sélectionné (remplace l'ancien comboDevices.SelectedItem)
+        private MMDevice? _selectedInputDevice;
+        private MMDevice? _selectedOutputDevice;  // pour le futur générateur
+
         // Taille de la fentre principale (avec/sans graphes)
         //private int _heightWithGraphs;
         //private bool _hasHeightWithGraphs;
@@ -473,10 +477,14 @@ namespace AudioHexViewer
                 lastBitsRight[i] = false;
             }
 
-            comboDevices.DisplayMember = "FriendlyName";
-            LoadDevices();
-
-            comboDevices.SelectedIndexChanged += comboDevices_SelectedIndexChanged;
+            // Charger les périphériques d'entrée et sélectionner le premier disponible
+            try
+            {
+                var enumerator = new MMDeviceEnumerator();
+                var caps = enumerator.EnumerateAudioEndPoints(NAudio.CoreAudioApi.DataFlow.Capture, NAudio.CoreAudioApi.DeviceState.Active);
+                if (caps.Count > 0) _selectedInputDevice = caps[0];
+            }
+            catch { }
 
             // Timer calibration
             calibTimer = new System.Windows.Forms.Timer();
@@ -506,8 +514,6 @@ namespace AudioHexViewer
             UpdateOverlapMenuChecks();
             InitBufferMenu();
             UpdateBufferMenuChecks();
-            InitSampleRateMenu();
-            UpdateSampleRateMenuChecks();
 
             this.FormClosing += Form1_FormClosing;
         }
@@ -827,7 +833,6 @@ namespace AudioHexViewer
             UpdateSampleSizeMenuChecks();
             UpdateOverlapMenuChecks();
             UpdateBufferMenuChecks();
-            UpdateSampleRateMenuChecks();
 
             if (histogramControl != null)
             {
@@ -862,22 +867,21 @@ namespace AudioHexViewer
             // 1) IN / OUT
             captureOutput = ui.CaptureOutput;
 
-            if (ui.CaptureOutput)
-                rbOutput.Checked = true;   // CheckedChanged appelle LoadDevices()
-            else
-                rbInput.Checked = true;
-
-            // 2) Device ID
+            // 2) Device ID — restaurer depuis la liste des périphériques d'entrée
             if (!string.IsNullOrEmpty(ui.DeviceId))
             {
-                for (int i = 0; i < comboDevices.Items.Count; i++)
+                try
                 {
-                    if (comboDevices.Items[i] is MMDevice dev && dev.ID == ui.DeviceId)
+                    var en = new MMDeviceEnumerator();
+                    var flow = captureOutput
+                        ? NAudio.CoreAudioApi.DataFlow.Render
+                        : NAudio.CoreAudioApi.DataFlow.Capture;
+                    foreach (var d in en.EnumerateAudioEndPoints(flow, NAudio.CoreAudioApi.DeviceState.Active))
                     {
-                        comboDevices.SelectedIndex = i;
-                        break;
+                        if (d.ID == ui.DeviceId) { _selectedInputDevice = d; break; }
                     }
                 }
+                catch { }
             }
             // 3) Main Data Format
             if (!string.IsNullOrEmpty(ui.MainDataFormat))
@@ -915,11 +919,7 @@ namespace AudioHexViewer
             };
 
             // UI
-            string? devId = null;
-            if (comboDevices.SelectedItem is MMDevice dev)
-                devId = dev.ID;
-
-            s.Ui.DeviceId = devId;
+            s.Ui.DeviceId = _selectedInputDevice?.ID;
             s.Ui.CaptureOutput = captureOutput;
             s.Ui.MainDataFormat = _dataViewForm!.comboDisplayMode.SelectedItem as string;
 
@@ -1026,72 +1026,6 @@ namespace AudioHexViewer
         // SAMPLE RATE MENU (Exclusive Mode)
         // ================================================================
 
-        private void InitSampleRateMenu()
-        {
-            if (menuSampleRate == null) return;
-
-            menuSampleRate.DropDownItems.Clear();
-
-            // Première entrée : mode Auto (Windows Shared Mode, SR imposé par Windows)
-            var autoItem = new ToolStripMenuItem("Auto (Windows)")
-            {
-                Tag = 0,
-                Checked = (_requestedCaptureFormat == null)
-            };
-            autoItem.Click += (s, e) =>
-            {
-                _requestedCaptureFormat = null;
-                UpdateSampleRateMenuChecks();
-            };
-            menuSampleRate.DropDownItems.Add(autoItem);
-
-            menuSampleRate.DropDownItems.Add(new ToolStripSeparator());
-
-            // Une entrée par sample rate
-            foreach (int sr in _sampleRateOptions)
-            {
-                string label = sr < 1000
-                    ? $"{sr} Hz"
-                    : $"{sr / 1000.0:0.###} kHz";
-
-                var item = new ToolStripMenuItem(label)
-                {
-                    Tag = sr
-                };
-
-                item.Click += (s, e) =>
-                {
-                    if (s is not ToolStripMenuItem clicked) return;
-                    int chosen = (int)clicked.Tag!;
-                    // WaveFormatExtensible requis pour le mode Exclusif
-                    // Le constructeur 3-args règle automatiquement le sous-type IEEE Float pour 32 bits
-                    _requestedCaptureFormat = new WaveFormatExtensible(chosen, 32, 2);
-                    UpdateSampleRateMenuChecks();
-                };
-
-                menuSampleRate.DropDownItems.Add(item);
-            }
-        }
-
-        private void UpdateSampleRateMenuChecks()
-        {
-            if (menuSampleRate == null) return;
-
-            int currentSr = _requestedCaptureFormat?.SampleRate ?? 0;
-
-            foreach (ToolStripItem rawItem in menuSampleRate.DropDownItems)
-            {
-                if (rawItem is not ToolStripMenuItem item) continue;
-
-                int tag = (item.Tag is int t) ? t : -1;
-
-                if (tag == 0)
-                    item.Checked = (_requestedCaptureFormat == null); // Auto
-                else
-                    item.Checked = (tag == currentSr);
-            }
-        }
-
         /// <summary>
         /// Vérifie si le format demandé est supporté par le driver en mode Exclusif.
         /// Retourne false en cas d'erreur (driver non compatible, device absent, etc.)
@@ -1118,12 +1052,8 @@ namespace AudioHexViewer
             //if (lblDeviceSummary == null)
             //    return;
 
-            // Si aucun device slectionn
-            if (comboDevices.SelectedItem is not MMDevice dev)
-            {
-                //lblDeviceSummary.Text = "No device selected";
+            if (_selectedInputDevice is not MMDevice dev)
                 return;
-            }
 
             // Type : IN / OUT
             string typeText = captureOutput ? "Output" : "Input";
@@ -1180,33 +1110,81 @@ namespace AudioHexViewer
         }
 
         //
-        private void menuDeviceInfo_Click(object? sender, EventArgs e)
+        private void menuDevices_Click(object? sender, EventArgs e)
+        {
+            // Enumérer les périphériques d'entrée et de sortie
+            List<MMDevice> inputs  = new();
+            List<MMDevice> outputs = new();
+            try
+            {
+                var en = new MMDeviceEnumerator();
+                inputs.AddRange(en.EnumerateAudioEndPoints(NAudio.CoreAudioApi.DataFlow.Capture, NAudio.CoreAudioApi.DeviceState.Active));
+                outputs.AddRange(en.EnumerateAudioEndPoints(NAudio.CoreAudioApi.DataFlow.Render,  NAudio.CoreAudioApi.DeviceState.Active));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Devices", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            using var dlg = new DevicesDialog(
+                inputDevices:        inputs,
+                outputDevices:       outputs,
+                currentInput:        _selectedInputDevice,
+                currentOutput:       _selectedOutputDevice,
+                sampleRateOptions:   _sampleRateOptions,
+                currentInputFormat:  _requestedCaptureFormat as WaveFormatExtensible,
+                currentOutputFormat: null,
+                onInfosClick:        ShowDeviceInfoDialog);
+
+            if (dlg.ShowDialog(this) == DialogResult.OK)
+            {
+                bool deviceChanged = dlg.SelectedInputDevice?.ID != _selectedInputDevice?.ID;
+                bool srChanged     = (dlg.SelectedInputFormat?.SampleRate ?? 0) != (_requestedCaptureFormat?.SampleRate ?? 0);
+
+                _selectedInputDevice  = dlg.SelectedInputDevice;
+                _selectedOutputDevice = dlg.SelectedOutputDevice;
+                _requestedCaptureFormat = dlg.SelectedInputFormat;
+
+                if (deviceChanged || srChanged)
+                {
+                    currentFormat = null;
+                    UpdateDeviceInfo();
+                    UpdateDeviceSummary();
+
+                    // Si la capture est active, la redémarrer avec les nouveaux paramètres
+                if (capture != null)
+                    {
+                        StopCapture();
+                        StartCapture();
+                    }
+                }
+            }
+        }
+
+        private void ShowDeviceInfoDialog()
         {
             try
             {
                 string text = BuildDeviceInfoText();
-
-                using (var dlg = new Form())
+                using var f = new Form
                 {
-                    dlg.Text = "Audio device info";
-                    dlg.StartPosition = FormStartPosition.CenterParent;
-                    dlg.Size = new Size(500, 350);
-                    dlg.MinimizeBox = false;
-                    dlg.MaximizeBox = false;
-                    dlg.ShowIcon = false;
-
-                    var box = new RichTextBox();
-                    box.Dock = DockStyle.Fill;
-                    box.ReadOnly = true;
-                    box.BorderStyle = BorderStyle.None;
-                    box.Font = new Font(FontFamily.GenericMonospace, 9f);
-                    box.Text = text;
-                    box.BackColor = SystemColors.Window;
-
-                    dlg.Controls.Add(box);
-
-                    dlg.ShowDialog(this);
-                }
+                    Text = "Device info",
+                    Size = new System.Drawing.Size(600, 500),
+                    StartPosition = FormStartPosition.CenterParent
+                };
+                var tb = new TextBox
+                {
+                    Multiline   = true,
+                    ScrollBars  = ScrollBars.Both,
+                    ReadOnly    = true,
+                    Dock        = DockStyle.Fill,
+                    Font        = new System.Drawing.Font("Consolas", 9),
+                    Text        = text,
+                    WordWrap    = false
+                };
+                f.Controls.Add(tb);
+                f.ShowDialog(this);
             }
             catch (Exception ex)
             {
@@ -1214,8 +1192,6 @@ namespace AudioHexViewer
             }
         }
 
-        //
-        //
         private void menuShowAllFormats_Click(object? sender, EventArgs e)
         {
             // Si la fentre existe dj, on la raffiche simplement
@@ -1360,33 +1336,6 @@ namespace AudioHexViewer
         }
         //
         //
-        private void LoadDevices()
-        {
-            comboDevices.Items.Clear();
-
-            var enumerator = new MMDeviceEnumerator();
-
-            // IN -> priphriques de capture, OUT -> priphriques de rendu
-            var flow = captureOutput ? DataFlow.Render : DataFlow.Capture;
-
-            var devices = enumerator.EnumerateAudioEndPoints(flow, DeviceState.Active);
-            foreach (var dev in devices)
-            {
-                // Tu avais dj un DeviceItem qui expose FriendlyName
-                comboDevices.Items.Add(dev);
-            }
-
-            if (comboDevices.Items.Count > 0)
-                comboDevices.SelectedIndex = 0;
-        }
-
-        private void comboDevices_SelectedIndexChanged(object? sender, EventArgs e)
-        {
-            // On nest plus en train de capturer si on change de device
-            currentFormat = null;
-            UpdateDeviceInfo();
-            UpdateDeviceSummary();   // 
-        }
         //
         /// <summary>
         /// Démarre la capture audio + pipeline d'analyse si elle n'est pas déjà active.
@@ -1416,25 +1365,6 @@ namespace AudioHexViewer
         /// Remplace l'ancien bouton STOP.
         /// </summary>
 
-        private void rbInput_CheckedChanged(object? sender, EventArgs e)
-        {
-            if (rbInput.Checked)
-            {
-                captureOutput = false;  // mode IN
-                LoadDevices();
-                UpdateDeviceSummary();
-            }
-        }
-
-        private void rbOutput_CheckedChanged(object? sender, EventArgs e)
-        {
-            if (rbOutput.Checked)
-            {
-                captureOutput = true;   // mode OUT
-                LoadDevices();
-                UpdateDeviceSummary();
-            }
-        }
         //
         //
         //

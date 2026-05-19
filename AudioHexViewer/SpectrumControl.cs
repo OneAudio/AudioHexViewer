@@ -448,7 +448,7 @@ namespace AudioHexViewer
         private Series? _serPeakRight;
         private Series? _serPhase;
         private bool _seriesInited;
-        private bool _logLayoutStabilized;   // true une fois le layout LOG stabilisé (1er rendu)
+
 
         // ── Cache axe (Phase 6) ────────────────────────────────────────────────────
         // Skip les 84 assignments area.Axis* si les paramètres n'ont pas changé.
@@ -531,17 +531,6 @@ namespace AudioHexViewer
 
         private double _cursorTargetHzL = 1000.0; // valeur init au choix
         private double _cursorTargetHzR = 1000.0;
-
-        // Mémorisent le CENTRE DU BUCKET du dernier pic trouvé par les boutons < / >.
-        // Utilisés comme référence de navigation (centre vs centre, cohérent).
-        // Remis à 0 par SetCursor*FrequencyHz (placement manuel ou bouton Peak).
-        private double _adjNavHzL = 0.0;
-        private double _adjNavHzR = 0.0;
-
-        // Index distincts pour affichage du niveau (bin max du bucket) vs navigation.
-        // Quand le curseur est placé manuellement, identiques à _cursorIdxL/R.
-        private int _cursorLevelIdxL = -1;
-        private int _cursorLevelIdxR = -1;
 
         public event EventHandler? WindowTypeChangedForExternalFft;
 
@@ -2053,7 +2042,7 @@ namespace AudioHexViewer
                 _axCachedUseLog = useLog;
                 _axCachedChartSize = chartSpectrum.ClientSize;
                 // Signaler que le layout LOG devra être stabilisé
-                _logLayoutStabilized = false;
+
             } // end if (_axChanged)
 
             // Toujours restaurer la couleur des labels X après ApplyAxisXModeSafe.

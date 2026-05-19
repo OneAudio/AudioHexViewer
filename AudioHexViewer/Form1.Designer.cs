@@ -33,7 +33,7 @@ namespace AudioHexViewer
         {
             label5 = new Label();
             menuStrip1 = new MenuStrip();
-            menuDeviceInfo = new ToolStripMenuItem();
+            menuDevices = new ToolStripMenuItem();
             menuHelp = new ToolStripMenuItem();
             menuAbout = new ToolStripMenuItem();
             menuOpenCal = new ToolStripMenuItem();
@@ -48,7 +48,6 @@ namespace AudioHexViewer
             menuSampleSize = new ToolStripMenuItem();
             menuOverlap = new ToolStripMenuItem();
             menuBuffer = new ToolStripMenuItem();
-            menuSampleRate = new ToolStripMenuItem();
             exportToolStripMenuItem = new ToolStripMenuItem();
             menuExportPng = new ToolStripMenuItem();
             panelTop = new Panel();
@@ -59,10 +58,6 @@ namespace AudioHexViewer
             lblFormatInfo = new Label();
             barRightLevel = new Panel();
             label7 = new Label();
-            label1 = new Label();
-            rbInput = new RadioButton();
-            rbOutput = new RadioButton();
-            comboDevices = new ComboBox();
             btnRecord = new Button();
             btnCalV = new Button();
             tabAnalysis = new TabControl();
@@ -90,20 +85,19 @@ namespace AudioHexViewer
             // menuStrip1
             // 
             menuStrip1.AutoSize = false;
-            menuStrip1.Items.AddRange(new ToolStripItem[] { menuDeviceInfo, menuHelp, menuData, menuSampleSize, menuOverlap, menuBuffer, menuSampleRate, exportToolStripMenuItem });
+            menuStrip1.Items.AddRange(new ToolStripItem[] { menuDevices, menuHelp, menuData, menuSampleSize, menuOverlap, menuBuffer, exportToolStripMenuItem });
             menuStrip1.Location = new Point(0, 0);
             menuStrip1.Name = "menuStrip1";
             menuStrip1.Size = new Size(1138, 25);
             menuStrip1.TabIndex = 0;
             menuStrip1.Text = "menuStrip1";
             // 
-            // menuDeviceInfo
-            // 
-            menuDeviceInfo.Alignment = ToolStripItemAlignment.Right;
-            menuDeviceInfo.Name = "menuDeviceInfo";
-            menuDeviceInfo.Size = new Size(78, 21);
-            menuDeviceInfo.Text = "Device info";
-            menuDeviceInfo.Click += menuDeviceInfo_Click;
+            // menuDevices
+            menuDevices.Alignment = ToolStripItemAlignment.Right;
+            menuDevices.Name      = "menuDevices";
+            menuDevices.Size      = new Size(59, 21);
+            menuDevices.Text      = "Devices";
+            menuDevices.Click    += menuDevices_Click;
             // 
             // menuHelp
             // 
@@ -193,13 +187,6 @@ namespace AudioHexViewer
             menuBuffer.Size = new Size(51, 21);
             menuBuffer.Text = "Buffer";
             // 
-            // menuSampleRate
-            // 
-            menuSampleRate.Alignment = ToolStripItemAlignment.Right;
-            menuSampleRate.Name = "menuSampleRate";
-            menuSampleRate.Size = new Size(83, 21);
-            menuSampleRate.Text = "Sample rate";
-            // 
             // exportToolStripMenuItem
             // 
             exportToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { menuExportPng });
@@ -223,10 +210,6 @@ namespace AudioHexViewer
             panelTop.Controls.Add(lblFormatInfo);
             panelTop.Controls.Add(barRightLevel);
             panelTop.Controls.Add(label7);
-            panelTop.Controls.Add(label1);
-            panelTop.Controls.Add(rbInput);
-            panelTop.Controls.Add(rbOutput);
-            panelTop.Controls.Add(comboDevices);
             panelTop.Controls.Add(btnRecord);
             panelTop.Controls.Add(btnCalV);
             panelTop.Dock = DockStyle.Top;
@@ -332,45 +315,13 @@ namespace AudioHexViewer
             label7.TabIndex = 55;
             label7.Text = "dBFS Level Right Channel";
             // 
-            // label1
+
             // 
-            label1.AutoSize = true;
-            label1.Location = new Point(851, 19);
-            label1.Name = "label1";
-            label1.Size = new Size(42, 15);
-            label1.TabIndex = 42;
-            label1.Text = "Device";
+
             // 
-            // rbInput
+
             // 
-            rbInput.AutoSize = true;
-            rbInput.Checked = true;
-            rbInput.Location = new Point(905, 48);
-            rbInput.Name = "rbInput";
-            rbInput.Size = new Size(37, 19);
-            rbInput.TabIndex = 45;
-            rbInput.TabStop = true;
-            rbInput.Text = "IN";
-            rbInput.UseVisualStyleBackColor = true;
-            // 
-            // rbOutput
-            // 
-            rbOutput.AutoSize = true;
-            rbOutput.Location = new Point(851, 48);
-            rbOutput.Name = "rbOutput";
-            rbOutput.Size = new Size(48, 19);
-            rbOutput.TabIndex = 46;
-            rbOutput.TabStop = true;
-            rbOutput.Text = "OUT";
-            rbOutput.UseVisualStyleBackColor = true;
-            // 
-            // comboDevices
-            // 
-            comboDevices.FormattingEnabled = true;
-            comboDevices.Location = new Point(899, 16);
-            comboDevices.Name = "comboDevices";
-            comboDevices.Size = new Size(235, 23);
-            comboDevices.TabIndex = 40;
+
             // 
             // btnRecord
             // 
@@ -491,7 +442,7 @@ namespace AudioHexViewer
         #endregion
         private Label label5;
         private MenuStrip menuStrip1;
-        private ToolStripMenuItem menuDeviceInfo;
+        private ToolStripMenuItem menuDevices;
         private ToolStripMenuItem menuHelp;
         private ToolStripMenuItem menuAbout;
         private ToolStripMenuItem menuOpenCal;
@@ -502,10 +453,6 @@ namespace AudioHexViewer
         private Label label6;
         private Panel barLeftLevel;
         private Panel barRightLevel;
-        private Label label1;
-        private RadioButton rbInput;
-        private RadioButton rbOutput;
-        private ComboBox comboDevices;
         private Button btnRecord;
         private Button btnCalV;
         // Nouveaux contrôles pour la zone d'analyse
@@ -526,7 +473,6 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuSampleSize;
         private ToolStripMenuItem menuOverlap;
         private ToolStripMenuItem menuBuffer;
-        private ToolStripMenuItem menuSampleRate;
         private ToolStripMenuItem exportToolStripMenuItem;
         private ToolStripMenuItem menuExportPng;
         internal Label lblLeftLevelMain;

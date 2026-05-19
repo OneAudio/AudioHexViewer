@@ -31,7 +31,7 @@ namespace AudioHexViewer
             if (capture != null)
                 return; // déjà démarré
 
-            if (comboDevices.SelectedItem is not MMDevice dev)
+            if (_selectedInputDevice is not MMDevice dev)
             {
                 MessageBox.Show("Selectionne un priphrique audio.");
                 return;
