@@ -278,6 +278,11 @@ namespace AudioHexViewer
         // Spectres courants & axe fréquence
         private double[]? currentLeftSpectrum;
         private double[]? currentRightSpectrum;
+
+        // Bins complexes du dernier frame FFT (magnitude + phase).
+        // Mis à jour par FeedExternalSpectrum → utilisés par ComputeChannel pour la phase des harmoniques.
+        private MathNet.Numerics.Complex32[]? _complexBinsLeft;
+        private MathNet.Numerics.Complex32[]? _complexBinsRight;
         // --- FRF Phase (degrés) ---
         // Utilisé UNIQUEMENT en mode "Bode Plot" (Right=entrée, Left=sortie)
         private double[]? currentFrfPhaseDeg;
@@ -2121,7 +2126,7 @@ namespace AudioHexViewer
                                       ? _cohAvgLeftDb
                                       : currentLeftSpectrum;
 
-                    mL = SpectrumMetrics.ComputeChannel(specL, _sampleRate, lastFftSize, _metricsOpt);
+                    mL = SpectrumMetrics.ComputeChannel(specL, _sampleRate, lastFftSize, _metricsOpt, _complexBinsLeft);
 
                     if (mL.Valid)
                     {
@@ -2256,7 +2261,7 @@ namespace AudioHexViewer
                                       ? _cohAvgRightDb
                                       : currentRightSpectrum;
 
-                    mR = SpectrumMetrics.ComputeChannel(specR, _sampleRate, lastFftSize, _metricsOpt);
+                    mR = SpectrumMetrics.ComputeChannel(specR, _sampleRate, lastFftSize, _metricsOpt, _complexBinsRight);
 
                     if (mR.Valid)
                     {

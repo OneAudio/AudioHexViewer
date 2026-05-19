@@ -106,6 +106,7 @@ namespace AudioHexViewer
 
             // UI
             public bool ShowHarmonicsValues { get; set; } = true;
+            public bool ShowHarmonicsPhase  { get; set; } = false;   // phase relative (°), off par défaut
 
             // THD en dB ou %
             public ThdUnit Unit { get; set; } = ThdUnit.Db;

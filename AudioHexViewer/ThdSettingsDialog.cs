@@ -42,6 +42,7 @@ namespace AudioHexViewer
             // ── Harmonics / unit / avg ───────────────────────────────────────
             nudHarms.Value       = Math.Min(Math.Max(Result.HarmonicsNumber, 2), 20);
             chkShowHarms.Checked = Result.ShowHarmonicsValues;
+            chkShowPhase.Checked = Result.ShowHarmonicsPhase;
 
             rbDb.Checked  = (Result.Unit == SpectrumSettings.ThdSettings.ThdUnit.Db);
             rbPct.Checked = !rbDb.Checked;
@@ -76,6 +77,7 @@ namespace AudioHexViewer
                 // Harmonics / unit / avg
                 HarmonicsNumber     = (int)nudHarms.Value,
                 ShowHarmonicsValues = chkShowHarms.Checked,
+                ShowHarmonicsPhase  = chkShowPhase.Checked,
                 Unit = rbPct.Checked
                     ? SpectrumSettings.ThdSettings.ThdUnit.Percent
                     : SpectrumSettings.ThdSettings.ThdUnit.Db,

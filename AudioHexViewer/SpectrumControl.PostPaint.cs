@@ -330,8 +330,24 @@ namespace AudioHexViewer
                             : $"{h.LevelDbc:F1} dB";
 
                         g.DrawString(hLabel, fontHarm, brushLabel, xL, y);
-                        var hRect = new RectangleF(valueLeft, y, (rect.Right - pad) - valueLeft, fontHarm.GetHeight(g));
-                        g.DrawString(hValue, fontHarm, brushText, hRect, fmtRight);
+
+                        float xRight = rect.Right - pad;
+
+                        if (_thdUi.ShowHarmonicsPhase)
+                        {
+                            // Phase relative à la fondamentale à gauche, amplitude à droite
+                            string hPhase = $"{h.PhaseDeg:+0.0;-0.0}°";
+                            float ampW   = g.MeasureString(hValue, fontHarm).Width;
+                            float phaseW = g.MeasureString(hPhase, fontHarm).Width;
+                            g.DrawString(hValue, fontHarm, brushText,  xRight - ampW, y);
+                            g.DrawString(hPhase, fontHarm, brushLabel, xRight - ampW - phaseW - 4f, y);
+                        }
+                        else
+                        {
+                            var hRect = new RectangleF(valueLeft, y, xRight - valueLeft, fontHarm.GetHeight(g));
+                            g.DrawString(hValue, fontHarm, brushText, hRect, fmtRight);
+                        }
+
                         y += harmRowH;
                     }
                 }

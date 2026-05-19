@@ -45,6 +45,8 @@ namespace AudioHexViewer
         public double FrequencyHz { get; init; }  // Hz
         public double LevelDbc { get; init; }     // dBc (relatif à la fondamentale)
         public double RatioPercent { get; init; } // % (relatif à la fondamentale)
+        public double PhaseDeg { get; init; }     // phase relative au fondamental (deg, normalisée [-180, 180])
+                                                  // = Arg(Hn) - n·Arg(H1), 0 si bins complexes non fournis
     }
 
     internal sealed class ChannelMetrics
@@ -84,7 +86,8 @@ namespace AudioHexViewer
 
     internal static class SpectrumMetrics
     {
-        public static ChannelMetrics ComputeChannel(double[] spectrumDbFs, int sampleRate, int fftSize, SpectrumMetricsOptions opt)
+        public static ChannelMetrics ComputeChannel(double[] spectrumDbFs, int sampleRate, int fftSize, SpectrumMetricsOptions opt,
+            MathNet.Numerics.Complex32[]? complexBins = null)
         {
             if (spectrumDbFs == null) throw new ArgumentNullException(nameof(spectrumDbFs));
             if (sampleRate <= 0 || fftSize <= 0) return new ChannelMetrics { Valid = false };
@@ -147,6 +150,11 @@ namespace AudioHexViewer
             // Exclure fondamentale (±W)
             double pFund = IntegrateTonePowerAndMark(excluded, p, kFund, opt.FundamentalHalfWidthBins, kMin, kMax);
 
+            // Phase de la fondamentale (pour phase relative des harmoniques)
+            double fundPhaseRad = (complexBins != null && kFund < complexBins.Length)
+                ? Math.Atan2(complexBins[kFund].Imaginary, complexBins[kFund].Real)
+                : 0.0;
+
             // 4) Harmoniques
             var harmonics = new List<HarmonicInfo>();
 
@@ -169,12 +177,25 @@ namespace AudioHexViewer
                 {
                     double ratioAmp = Math.Sqrt(pThis / pFund);            // amplitude ratio
                     double levelDbc = 20.0 * SafeLog10(ratioAmp);          // dBc (négatif)
+
+                    // Phase relative : Arg(Hn) - h·Arg(H1), normalisée [-180, 180]
+                    double phaseDeg = 0.0;
+                    if (complexBins != null && kH < complexBins.Length)
+                    {
+                        double phaseH = Math.Atan2(complexBins[kH].Imaginary, complexBins[kH].Real);
+                        double relRad = phaseH - h * fundPhaseRad;
+                        // Normaliser dans [-π, π]
+                        relRad = relRad - 2.0 * Math.PI * Math.Round(relRad / (2.0 * Math.PI));
+                        phaseDeg = relRad * (180.0 / Math.PI);
+                    }
+
                     harmonics.Add(new HarmonicInfo
                     {
                         Order = h,
                         FrequencyHz = fh,
                         LevelDbc = ClampDb(levelDbc),
-                        RatioPercent = ratioAmp * 100.0
+                        RatioPercent = ratioAmp * 100.0,
+                        PhaseDeg = phaseDeg
                     });
                 }
                 else

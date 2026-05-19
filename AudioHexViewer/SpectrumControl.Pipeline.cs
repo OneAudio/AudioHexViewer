@@ -63,12 +63,15 @@ namespace AudioHexViewer
             {
                 powL = EnsureDspBuf(ref _binsPowL, frame.LeftBins.Length);
                 DspMath.ComplexBinsToPowerInto(frame.LeftBins, powL);
+                // Conserver les bins complexes pour la phase des harmoniques (ComputeChannel)
+                _complexBinsLeft = frame.LeftBins;
             }
             double[]? powR = null;
             if (frame.RightBins != null)
             {
                 powR = EnsureDspBuf(ref _binsPowR, frame.RightBins.Length);
                 DspMath.ComplexBinsToPowerInto(frame.RightBins, powR);
+                _complexBinsRight = frame.RightBins;
             }
 
 
