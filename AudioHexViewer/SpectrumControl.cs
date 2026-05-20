@@ -261,6 +261,9 @@ namespace AudioHexViewer
         private SpectrumSettings.ThdSettings _thdUi = new SpectrumSettings.ThdSettings();
 
         private int lastFftSize;
+
+        /// <summary>Taille FFT du dernier frame reçu (0 si aucun frame).</summary>
+        public int CurrentFftSize => lastFftSize;
         private int? _forcedFftSize = null;
         private WindowType lastWindow = WindowType.Rectangular;
 

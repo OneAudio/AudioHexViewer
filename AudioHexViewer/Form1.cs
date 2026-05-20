@@ -35,6 +35,35 @@ namespace AudioHexViewer
 
         // Format demandé explicitement par l'utilisateur (null = auto / Windows Shared Mode)
         private WaveFormat? _requestedCaptureFormat = null;
+        private WaveFormatExtensible? _requestedOutputFormat = null;   // SR générateur (null = Auto/Shared)
+
+        /// <summary>
+        /// Source pour le mode Loopback Test : le générateur alimente directement l'analyseur.
+        /// null = mode normal (périphérique physique).
+        /// </summary>
+        private IWaveProvider? _loopbackSource = null;
+
+        /// <summary>Appelé par GeneratorWindow pour activer/désactiver le loopback logiciel.</summary>
+        private void HandleLoopbackRequest(IWaveProvider? source)
+        {
+            bool wasCapturing = capture != null;
+
+            // Arrêter la capture actuelle (physique ou loopback précédent)
+            if (wasCapturing) StopCapture();
+
+            _loopbackSource = source;
+
+            if (source != null)
+            {
+                // Démarrer la capture en mode loopback
+                StartCapture();
+            }
+            else if (wasCapturing)
+            {
+                // Loopback désactivé → reprendre capture physique si possible
+                StartCapture();
+            }
+        }
 
 
 
@@ -234,6 +263,9 @@ namespace AudioHexViewer
         private HistogramControl? histogramControl;
         private SpectrumControl? spectrumControl;
         private ToolStripMenuItem? menuColors;
+
+        // Fenêtres non-modales persistantes
+        private GeneratorWindow? _generatorWindow;
 
         private bool _spectrumRunning;
         private bool _histogramRunning;
@@ -756,6 +788,14 @@ namespace AudioHexViewer
             // Insert right after Measures (same pattern as InitCursorsMenu)
             // Ajouter au menu principal (top-level)
             menuStrip1.Items.Add(menuColors);
+
+            // "Generator" apparaît à gauche de "Colors" (ajouté après dans la collection = plus à gauche visuellement)
+            var menuGenerator = new ToolStripMenuItem("Generator")
+            {
+                Alignment = ToolStripItemAlignment.Right
+            };
+            menuGenerator.Click += menuGenerator_Click;
+            menuStrip1.Items.Add(menuGenerator);
         }
 
         private void ShowColorsDialog()
@@ -1142,9 +1182,10 @@ namespace AudioHexViewer
                 bool deviceChanged = dlg.SelectedInputDevice?.ID != _selectedInputDevice?.ID;
                 bool srChanged     = (dlg.SelectedInputFormat?.SampleRate ?? 0) != (_requestedCaptureFormat?.SampleRate ?? 0);
 
-                _selectedInputDevice  = dlg.SelectedInputDevice;
-                _selectedOutputDevice = dlg.SelectedOutputDevice;
+                _selectedInputDevice    = dlg.SelectedInputDevice;
+                _selectedOutputDevice   = dlg.SelectedOutputDevice;
                 _requestedCaptureFormat = dlg.SelectedInputFormat;
+                _requestedOutputFormat  = dlg.SelectedOutputFormat;
 
                 if (deviceChanged || srChanged)
                 {
@@ -1160,6 +1201,29 @@ namespace AudioHexViewer
                     }
                 }
             }
+        }
+
+        private void menuGenerator_Click(object? sender, EventArgs e)
+        {
+            if (_generatorWindow == null || _generatorWindow.IsDisposed)
+            {
+                _generatorWindow = new GeneratorWindow(
+                    getOutputDevice:    () => _selectedOutputDevice,
+                    getInputDevice:     () => _selectedInputDevice,
+                    getOutputFormat:    () => _requestedOutputFormat,
+                    getAnalyzerSR:      () => currentFormat?.SampleRate ?? 0,
+                    getAnalyzerN:       () => spectrumControl?.CurrentFftSize ?? 0,
+                    onLoopbackRequest:  HandleLoopbackRequest);
+
+                // Positionner à côté de la fenêtre principale
+                _generatorWindow.Location = new System.Drawing.Point(
+                    Location.X + Width + 4, Location.Y);
+            }
+
+            if (_generatorWindow.WindowState == FormWindowState.Minimized)
+                _generatorWindow.WindowState = FormWindowState.Normal;
+
+            _generatorWindow.Show(this);
         }
 
         private void ShowDeviceInfoDialog()

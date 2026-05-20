@@ -31,19 +31,33 @@ namespace AudioHexViewer
             if (capture != null)
                 return; // déjà démarré
 
-            if (_selectedInputDevice is not MMDevice dev)
+            // ── Mode loopback : ne nécessite pas de périphérique physique ─────
+            // La création de LoopbackWaveIn se fait dans le bloc try ci-dessous
+            // pour que tout le pipeline (Channel, SfftWorker, analysisTimer...) soit
+            // correctement initialisé — comme pour une capture physique normale.
+
+            if (_loopbackSource == null && _selectedInputDevice is not MMDevice)
             {
                 MessageBox.Show("Selectionne un priphrique audio.");
                 return;
             }
 
-            selectedDevice = dev;
+            var dev = _selectedInputDevice as MMDevice;
+            selectedDevice = dev;   // null si loopback, MMDevice sinon
 
             try
             {
-                // === Choix IN / OUT + Exclusif si SR explicite demandé ===
-                if (!captureOutput)
+                // ── Sélection du mode de capture ─────────────────────────────
+                if (_loopbackSource != null)
                 {
+                    // Mode loopback logiciel : pas de périphérique physique
+                    capture = new LoopbackWaveIn(_loopbackSource);
+                }
+                else
+                {
+                    // === Choix IN / OUT + Exclusif si SR explicite demandé ===
+                    if (!captureOutput)
+                    {
                     if (_requestedCaptureFormat != null)
                     {
                         // Négocie le format réel supporté par ce driver pour ce SR
@@ -71,11 +85,12 @@ namespace AudioHexViewer
                         capture = new WasapiCapture(selectedDevice, useEventSync: false, audioBufferMillisecondsLength: 100);
                     }
                 }
-                else
-                {
-                    // Mode OUT : loopback — toujours Shared, SR du renderer Windows
-                    capture = new WasapiLoopbackCapture(selectedDevice);
-                }
+                    else
+                    {
+                        // Mode OUT : loopback — toujours Shared, SR du renderer Windows
+                        capture = new WasapiLoopbackCapture(selectedDevice);
+                    }
+                }   // fin else (mode physique)
                 // ============================================================
 
                 currentFormat = capture.WaveFormat;

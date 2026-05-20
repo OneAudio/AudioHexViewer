@@ -44,9 +44,14 @@ namespace AudioHexViewer
                 cmbOutputDevice.Items.Add(d);
             SelectDevice(cmbOutputDevice, currentOutput);
 
-            // ── Sample rates (In) ─────────────────────────────────────────────
-            PopulateSrCombo(cmbInputRate,  currentInputFormat);
-            PopulateSrCombo(cmbOutputRate, currentOutputFormat);
+            // ── Sample rates (filtrés selon les capacités du périphérique) ────
+            cmbInputDevice.SelectedIndexChanged  += (_, _) =>
+                RefreshSrCombo(cmbInputRate,  cmbInputDevice.SelectedItem  as MMDevice, currentInputFormat);
+            cmbOutputDevice.SelectedIndexChanged += (_, _) =>
+                RefreshSrCombo(cmbOutputRate, cmbOutputDevice.SelectedItem as MMDevice, currentOutputFormat);
+
+            RefreshSrCombo(cmbInputRate,  cmbInputDevice.SelectedItem  as MMDevice, currentInputFormat);
+            RefreshSrCombo(cmbOutputRate, cmbOutputDevice.SelectedItem as MMDevice, currentOutputFormat);
 
             btnInfos.Click  += (_, _) => _onInfos?.Invoke();
             btnOk.Click     += BtnOk_Click;
@@ -56,22 +61,44 @@ namespace AudioHexViewer
 
         // ── Helpers ───────────────────────────────────────────────────────────
 
-        private void PopulateSrCombo(ComboBox cb, WaveFormatExtensible? current)
+        private void RefreshSrCombo(ComboBox cb, MMDevice? device, WaveFormatExtensible? current)
         {
+            int curSr = current?.SampleRate ?? 0;
+
+            // Conserver la sélection courante si possible
+            if (cb.SelectedItem is SrItem sel) curSr = sel.Rate;
+
+            cb.Items.Clear();
             cb.Items.Add(new SrItem("Auto (Windows)", 0));
+
             foreach (int sr in _srOptions)
             {
-                string lbl = sr < 1000 ? $"{sr} Hz" : $"{sr / 1000.0:0.###} kHz";
+                // Si un périphérique est sélectionné, vérifier le support
+                if (device != null && !IsSRSupported(device, sr))
+                    continue;
+
+                string lbl = sr >= 1000 ? $"{sr / 1000.0:0.###} kHz" : $"{sr} Hz";
                 cb.Items.Add(new SrItem(lbl, sr));
             }
-            // Sélection courante
-            int curSr = current?.SampleRate ?? 0;
+
+            // Restaurer la sélection
             for (int i = 0; i < cb.Items.Count; i++)
             {
                 if (cb.Items[i] is SrItem si && si.Rate == curSr)
                 { cb.SelectedIndex = i; return; }
             }
-            cb.SelectedIndex = 0; // Auto
+            cb.SelectedIndex = 0; // Auto par défaut
+        }
+
+        private static bool IsSRSupported(MMDevice device, int sampleRate)
+        {
+            try
+            {
+                var wf = WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, 2);
+                return device.AudioClient.IsFormatSupported(
+                    NAudio.CoreAudioApi.AudioClientShareMode.Shared, wf, out _);
+            }
+            catch { return false; }
         }
 
         private static void SelectDevice(ComboBox cb, MMDevice? target)

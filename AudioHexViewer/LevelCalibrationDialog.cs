@@ -19,6 +19,7 @@ namespace AudioHexViewer
         public Func<double, (bool ok, string message)>? CalibrateRight { get; set; }
 
         // Callback fourni par SpectrumControl
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public Action? ResetCalibration { get; set; }
 
         private void _ResetCalibration_Click(object sender, EventArgs e)
