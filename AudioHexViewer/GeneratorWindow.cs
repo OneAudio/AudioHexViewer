@@ -26,6 +26,7 @@ namespace AudioHexViewer
         private readonly System.Windows.Forms.Timer _doneTimer;
         private readonly System.Windows.Forms.Timer _levelTimer;
         private LevelMeasuringProvider? _levelProbe;
+        private IWaveProvider?          _rawProvider;  // underlying provider (before LevelMeasuringProvider wrap)
         private int    _vuPctL, _vuPctR;
         private string _vuLevelStrL = "-∞ dBFS", _vuLevelStrR = "-∞ dBFS";
 
@@ -65,10 +66,20 @@ namespace AudioHexViewer
             rbL.CheckedChanged              += (_, _) => chkInvert.Enabled = rbLR.Checked;
             rbR.CheckedChanged              += (_, _) => chkInvert.Enabled = rbLR.Checked;
             rbLR.CheckedChanged             += (_, _) => chkInvert.Enabled = rbLR.Checked;
-            btnPreset100.Click              += (_, _) => nudF1.Value = 100m;
-            btnPreset1k.Click               += (_, _) => nudF1.Value = 1000m;
-            btnPreset10k.Click              += (_, _) => nudF1.Value = 10000m;
-            btnPreset100k.Click             += (_, _) => { if (btnPreset100k.Enabled) nudF1.Value = Math.Min(100000m, nudF1.Maximum); };
+            // ─ Freq presets ─────────────────────────────────────────────────────
+            btnF1.Click    += (_, _) => nudF1.Value = 1m;
+            btnF10.Click   += (_, _) => nudF1.Value = 10m;
+            btnF100.Click  += (_, _) => nudF1.Value = 100m;
+            btnF1k.Click   += (_, _) => nudF1.Value = 1000m;
+            btnF10k.Click  += (_, _) => nudF1.Value = 10000m;
+            btnF100k.Click += (_, _) => { if (btnF100k.Enabled) nudF1.Value = Math.Min(100000m, nudF1.Maximum); };
+            // ─ Amp presets ──────────────────────────────────────────────────────
+            btnA0.Click   += (_, _) => nudAmplitude.Value =   0m;
+            btnAm3.Click  += (_, _) => nudAmplitude.Value =  -3m;
+            btnAm6.Click  += (_, _) => nudAmplitude.Value =  -6m;
+            btnAm12.Click += (_, _) => nudAmplitude.Value = -12m;
+            btnAm20.Click += (_, _) => nudAmplitude.Value = -20m;
+            btnAm60.Click += (_, _) => nudAmplitude.Value = -60m;
             cmbIMDPreset.SelectedIndexChanged += CmbIMDPreset_Changed;
             btnRun.Click                    += BtnRun_Click;
 
@@ -95,22 +106,51 @@ namespace AudioHexViewer
             bool isPeriodic= t == SignalType.Sine || t == SignalType.Square
                           || t == SignalType.Triangle || t == SignalType.Sawtooth;
 
+            // ── Visibilité ───────────────────────────────────────────────────
             nudF1.Visible      = hasFreq;
             lblHz1.Visible     = hasFreq;
-            pnlPresets.Visible = hasFreq;
             chkSynch.Visible   = hasFreq && !isBurst;
             lblNoFreq.Visible  = !hasFreq;
 
+            pnlFreqPresets.Visible = isPeriodic;
+            pnlAmpPresets.Visible  = isPeriodic;
             pnlSweep.Visible   = isSweep;
             pnlTwoTone.Visible = isTwoTone;
             pnlBurst.Visible   = isBurst;
             pnlDither.Visible  = isPeriodic;
 
+            // ── Labels ───────────────────────────────────────────────────────
             lblFreqTitle.Text  = isSweep   ? "START"
                                : isBurst   ? "FREQ (BURST)"
                                : isTwoTone ? "FREQUENCY F1"
                                : "FREQUENCY";
             lblAmpTitle.Text   = isTwoTone ? "AMPLITUDE F1" : "AMPLITUDE";
+
+            // ── Repositionnement dynamique (supprimer espace vide) ────────────
+            // Les lignes de presets (80-133) ne s'affichent qu'en mode périodique.
+            // Dans les autres modes on remonte les contrôles juste sous Freq/Amp.
+            if (isPeriodic)
+            {   // presets visibles → pnlDither juste après chkSynch
+                chkSynch.Top     = 138;
+                pnlDither.Top    = 160;   // juste en dessous de chkSynch
+                lblSynchFreq.Top = 205;   // sous pnlDither si synch activé
+            }
+            else if (isSweep)
+            {   // pas de presets : remonter chkSynch + pnlSweep
+                chkSynch.Top     = 78;
+                lblSynchFreq.Top = 100;
+                pnlSweep.Top     = 118;
+            }
+            else if (isTwoTone)
+            {   // pas de presets : remonter chkSynch + pnlTwoTone
+                chkSynch.Top     = 78;
+                lblSynchFreq.Top = 100;
+                pnlTwoTone.Top   = 120;
+            }
+            else if (isBurst)
+            {   // pas de synch visible : remonter pnlBurst
+                pnlBurst.Top = 80;
+            }
         }
 
         // ── Synch ─────────────────────────────────────────────────────────────
@@ -176,8 +216,8 @@ namespace AudioHexViewer
         private void UpdateNudMax(int sr)
         {
             nudF1.Maximum = nudSweepEnd.Maximum = nudF2.Maximum = (decimal)(sr / 2 - 1);
-            btnPreset100k.Enabled   = 100000 <= sr / 2;
-            btnPreset100k.ForeColor = btnPreset100k.Enabled ? SystemColors.ControlText : SystemColors.GrayText;
+            btnF100k.Enabled   = 100000 <= sr / 2;
+            btnF100k.ForeColor = btnF100k.Enabled ? SystemColors.ControlText : SystemColors.GrayText;
         }
 
         private static int MixSR(MMDevice d) { try { return d.AudioClient.MixFormat.SampleRate; } catch { return 48000; } }
@@ -229,6 +269,7 @@ namespace AudioHexViewer
             {
                 int sr = fmt?.SampleRate > 0 ? fmt.SampleRate : MixSR(outDev);
                 var rawProv = SignalProviderFactory.Create(p, sr);
+                _rawProvider = rawProv;
                 _levelProbe = new LevelMeasuringProvider(rawProv);
                 _provider = _levelProbe;
                 if (fmt != null) StartExclusive(outDev, fmt, _provider);
@@ -248,8 +289,8 @@ namespace AudioHexViewer
 
         private void DoneTimer_Tick(object? s, EventArgs e)
         {
-            bool done = (_provider as SweepProvider)?.Done == true
-                     || (_provider as ToneBurstProvider)?.Done == true;
+            bool done = (_rawProvider as SweepProvider)?.Done == true
+                     || (_rawProvider as ToneBurstProvider)?.Done == true;
             if (done) StopGenerator();
         }
 
@@ -282,6 +323,7 @@ namespace AudioHexViewer
             try
             {
                 var rawProv2 = SignalProviderFactory.Create(p, sr);
+                _rawProvider = rawProv2;
                 _levelProbe = new LevelMeasuringProvider(rawProv2);
                 _provider = _levelProbe;
                 _onLoopbackRequest(_provider);
@@ -305,7 +347,7 @@ namespace AudioHexViewer
             try { _wasapiShared?.Stop(); }    catch {}
             try { _wasapiExclusive?.Stop(); } catch {}
             _wasapiShared?.Dispose(); _wasapiExclusive?.Dispose();
-            _wasapiShared=null; _wasapiExclusive=null; _provider=null;
+            _wasapiShared=null; _wasapiExclusive=null; _provider=null; _rawProvider=null;
         }
 
         private void SetRunState(bool on)
@@ -322,7 +364,8 @@ namespace AudioHexViewer
             nudBurstOnPer.Enabled=nudBurstOnMs.Enabled=off;
             nudBurstOffPer.Enabled=nudBurstOffMs.Enabled=cmbBurstWindow.Enabled=off;
             rbBurstOnPer.Enabled=rbBurstOnMs.Enabled=rbBurstOffPer.Enabled=rbBurstOffMs.Enabled=off;
-            chkBurstLoop.Enabled=chkSynch.Enabled=chkLoopback.Enabled=pnlPresets.Enabled=off;
+            chkBurstLoop.Enabled=chkSynch.Enabled=chkLoopback.Enabled=off;
+            pnlFreqPresets.Enabled=pnlAmpPresets.Enabled=off;
             cmbIMDPreset.Enabled=rbL.Enabled=rbR.Enabled=rbLR.Enabled=off;
             chkDitherEnable.Enabled=nudDitherBits.Enabled=off;
             chkInvert.Enabled=off && rbLR.Checked;

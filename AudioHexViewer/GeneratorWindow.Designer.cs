@@ -12,8 +12,11 @@ namespace AudioHexViewer
         private System.Windows.Forms.GroupBox grpParams;
         private Label lblFreqTitle; private NumericUpDown nudF1; private Label lblHz1;
         private Label lblNoFreq; private CheckBox chkSynch; private Label lblSynchFreq;
-        private Panel pnlPresets;
-        private Button btnPreset100, btnPreset1k, btnPreset10k, btnPreset100k;
+        private Panel pnlFreqPresets, pnlAmpPresets;  // deux lignes de presets
+        // Freq presets (6)
+        private Button btnF1, btnF10, btnF100, btnF1k, btnF10k, btnF100k;
+        // Amp presets (6)
+        private Button btnA0, btnAm3, btnAm6, btnAm12, btnAm20, btnAm60;
         private Label lblAmpTitle; private NumericUpDown nudAmplitude; private Label lblDbfs;
         // Sweep
         private Panel pnlSweep;
@@ -57,8 +60,11 @@ namespace AudioHexViewer
             lblTypeLabel=new Label(); cmbType=new ComboBox(); grpParams=new System.Windows.Forms.GroupBox();
             lblFreqTitle=new Label(); nudF1=new NumericUpDown(); lblHz1=new Label();
             lblNoFreq=new Label(); chkSynch=new CheckBox(); lblSynchFreq=new Label();
-            pnlPresets=new Panel();
-            btnPreset100=new Button(); btnPreset1k=new Button(); btnPreset10k=new Button(); btnPreset100k=new Button();
+            pnlFreqPresets=new Panel(); pnlAmpPresets=new Panel();
+            btnF1=new Button(); btnF10=new Button(); btnF100=new Button();
+            btnF1k=new Button(); btnF10k=new Button(); btnF100k=new Button();
+            btnA0=new Button(); btnAm3=new Button(); btnAm6=new Button();
+            btnAm12=new Button(); btnAm20=new Button(); btnAm60=new Button();
             lblAmpTitle=new Label(); nudAmplitude=new NumericUpDown(); lblDbfs=new Label();
             pnlSweep=new Panel(); lblSweepEndT=new Label(); nudSweepEnd=new NumericUpDown();
             lblSweepEndHz=new Label(); lblSweepTimeT=new Label(); nudSweepTime=new NumericUpDown();
@@ -87,10 +93,11 @@ namespace AudioHexViewer
                 nudF1,nudAmplitude,nudSweepEnd,nudSweepTime,nudF2,nudAmplitudeF2,
                 nudBurstOnPer,nudBurstOnMs,nudBurstOffPer,nudBurstOffMs,nudDitherBits};
             foreach(var n in allNud) n.BeginInit();
-            grpParams.SuspendLayout(); pnlPresets.SuspendLayout();
+            grpParams.SuspendLayout();
             pnlSweep.SuspendLayout(); pnlTwoTone.SuspendLayout();
             pnlBurst.SuspendLayout(); pnlOnMode.SuspendLayout(); pnlOffMode.SuspendLayout();
-            pnlDither.SuspendLayout(); pnlVuMeter.SuspendLayout(); grpOutput.SuspendLayout();
+            pnlDither.SuspendLayout(); pnlFreqPresets.SuspendLayout(); pnlAmpPresets.SuspendLayout();
+            pnlVuMeter.SuspendLayout(); grpOutput.SuspendLayout();
             SuspendLayout();
 
             var grayS = new Font("Segoe UI", 8f);
@@ -115,17 +122,22 @@ namespace AudioHexViewer
             lblNoFreq.ForeColor=SystemColors.GrayText; lblNoFreq.Location=new Point(10,52);
             lblNoFreq.Text="Broadband — no frequency"; lblNoFreq.Visible=false;
 
-            // Presets
-            pnlPresets.Location=new Point(10,80); pnlPresets.Size=new Size(232,26);
-            void Preset(Button b,int x,int w,string t){b.Location=new Point(x,0);b.Size=new Size(w,24);b.Text=t;b.Font=new Font("Segoe UI",7.5f);b.FlatStyle=FlatStyle.Popup;}
-            Preset(btnPreset100,0,52,"100 Hz"); Preset(btnPreset1k,56,44,"1 kHz");
-            Preset(btnPreset10k,104,50,"10 kHz"); Preset(btnPreset100k,158,62,"100 kHz");
-            pnlPresets.Controls.AddRange(new Control[]{btnPreset100,btnPreset1k,btnPreset10k,btnPreset100k});
+            // Presets fréquence — ligne pleine largeur (y=80)
+            void Btn(Button b,int x,string t){b.Location=new Point(x,1);b.Size=new Size(60,24);b.Text=t;b.Font=new Font("Segoe UI",7.5f);b.FlatStyle=FlatStyle.Popup;}
+            pnlFreqPresets.Location=new Point(10,80); pnlFreqPresets.Size=new Size(360,26);
+            Btn(btnF1,0,"1 Hz"); Btn(btnF10,60,"10 Hz"); Btn(btnF100,120,"100 Hz");
+            Btn(btnF1k,180,"1 kHz"); Btn(btnF10k,240,"10 kHz"); Btn(btnF100k,300,"100 kHz");
+            pnlFreqPresets.Controls.AddRange(new Control[]{btnF1,btnF10,btnF100,btnF1k,btnF10k,btnF100k});
+            // Presets amplitude — ligne pleine largeur (y=108)
+            pnlAmpPresets.Location=new Point(10,108); pnlAmpPresets.Size=new Size(360,26);
+            Btn(btnA0,0,"0 dBFS"); Btn(btnAm3,60,"-3 dBFS"); Btn(btnAm6,120,"-6 dBFS");
+            Btn(btnAm12,180,"-12 dBFS"); Btn(btnAm20,240,"-20 dBFS"); Btn(btnAm60,300,"-60 dBFS");
+            pnlAmpPresets.Controls.AddRange(new Control[]{btnA0,btnAm3,btnAm6,btnAm12,btnAm20,btnAm60});
 
-            chkSynch.AutoSize=true; chkSynch.Location=new Point(10,112);
+            chkSynch.AutoSize=true; chkSynch.Location=new Point(10,138);
             chkSynch.Text="Synch (coherent)"; chkSynch.TabIndex=2; chkSynch.UseVisualStyleBackColor=true;
             lblSynchFreq.AutoSize=true; lblSynchFreq.Font=grayS; lblSynchFreq.ForeColor=SystemColors.GrayText;
-            lblSynchFreq.Location=new Point(10,134); lblSynchFreq.Text="→ 1000.12 Hz"; lblSynchFreq.Visible=false;
+            lblSynchFreq.Location=new Point(10,160); lblSynchFreq.Text="→ 1000.12 Hz"; lblSynchFreq.Visible=false;
 
             // Amplitude
             lblAmpTitle.AutoSize=true; lblAmpTitle.Font=grayS; lblAmpTitle.ForeColor=SystemColors.GrayText;
@@ -218,7 +230,7 @@ namespace AudioHexViewer
 
             // ── pnlDither (y=155, h=40) ───────────────────────────────────────
             // "bits" centré verticalement sur nudDitherBits (h=34)
-            pnlDither.Location=new Point(0,155); pnlDither.Size=new Size(384,40); pnlDither.Visible=false;
+            pnlDither.Location=new Point(0,183); pnlDither.Size=new Size(384,40); pnlDither.Visible=false;
 
             chkDitherEnable.AutoSize=true; chkDitherEnable.Location=new Point(10,11);
             chkDitherEnable.Text="Dithering  (TPDF):"; chkDitherEnable.TabIndex=17; chkDitherEnable.UseVisualStyleBackColor=true;
@@ -233,7 +245,7 @@ namespace AudioHexViewer
 
             pnlDither.Controls.AddRange(new Control[]{chkDitherEnable,nudDitherBits,lblDitherBits});
 
-            grpParams.Controls.AddRange(new Control[]{lblFreqTitle,nudF1,lblHz1,lblNoFreq,pnlPresets,chkSynch,lblSynchFreq,lblAmpTitle,nudAmplitude,lblDbfs,pnlSweep,pnlTwoTone,pnlBurst,pnlDither});
+            grpParams.Controls.AddRange(new Control[]{lblFreqTitle,nudF1,lblHz1,lblNoFreq,pnlFreqPresets,pnlAmpPresets,chkSynch,lblSynchFreq,lblAmpTitle,nudAmplitude,lblDbfs,pnlSweep,pnlTwoTone,pnlBurst,pnlDither});
 
             // ── grpOutput (y=384) ─────────────────────────────────────────────
             // ── pnlVuMeter (y=0, h=52) — taille manquante dans les versions précédentes
@@ -264,7 +276,8 @@ namespace AudioHexViewer
             StartPosition=FormStartPosition.Manual; Text="Generator";
 
             foreach(var n in allNud) n.EndInit();
-            grpParams.ResumeLayout(false); grpParams.PerformLayout(); pnlPresets.ResumeLayout(false);
+            grpParams.ResumeLayout(false); grpParams.PerformLayout();
+            pnlFreqPresets.ResumeLayout(false); pnlAmpPresets.ResumeLayout(false);
             pnlSweep.ResumeLayout(false); pnlSweep.PerformLayout();
             pnlTwoTone.ResumeLayout(false); pnlTwoTone.PerformLayout();
             pnlBurst.ResumeLayout(false); pnlBurst.PerformLayout();
