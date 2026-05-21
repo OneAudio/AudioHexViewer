@@ -442,3 +442,42 @@ namespace AudioHexViewer
         }
     }
 }
+
+    // ── Mesure de niveau (wrapper peak detector) ──────────────────────────────
+    /// <summary>
+    /// Mesure en temps réel le niveau crête des canaux L et R (float, 0..1).
+    /// Utilisé par le VU-mètre du générateur.
+    /// </summary>
+    internal sealed class LevelMeasuringProvider : IWaveProvider
+    {
+        private readonly IWaveProvider _source;
+        private volatile float _peakL, _peakR;
+
+        public WaveFormat WaveFormat => _source.WaveFormat;
+
+        /// <summary>Niveau crête depuis le dernier appel (0..1). Remet à zéro après lecture.</summary>
+        public (float L, float R) GetAndResetPeak()
+        {
+            var r = (_peakL, _peakR);
+            _peakL = _peakR = 0f;
+            return r;
+        }
+
+        public LevelMeasuringProvider(IWaveProvider source) => _source = source;
+
+        public int Read(byte[] buf, int off, int count)
+        {
+            int read = _source.Read(buf, off, count);
+            var sp = MemoryMarshal.Cast<byte, float>(new Span<byte>(buf, off, read));
+            float maxL = 0f, maxR = 0f;
+            for (int i = 0; i < sp.Length - 1; i += 2)
+            {
+                float al = Math.Abs(sp[i]), ar = Math.Abs(sp[i + 1]);
+                if (al > maxL) maxL = al;
+                if (ar > maxR) maxR = ar;
+            }
+            if (maxL > _peakL) _peakL = maxL;
+            if (maxR > _peakR) _peakR = maxR;
+            return read;
+        }
+    }

@@ -57,6 +57,17 @@ namespace AudioHexViewer
             {
                 // Démarrer la capture en mode loopback
                 StartCapture();
+                // Auto-démarrer le spectre et l'histogramme pour voir immédiatement le signal
+                if (spectrumControl != null && !_spectrumRunning)
+                {
+                    spectrumControl.StartFromRun(false);
+                    _spectrumRunning = true;
+                }
+                if (histogramControl != null && !_histogramRunning)
+                {
+                    histogramControl.StartFromRun(false);
+                    _histogramRunning = true;
+                }
             }
             else if (wasCapturing)
             {
@@ -923,7 +934,29 @@ namespace AudioHexViewer
                 }
                 catch { }
             }
-            // 3) Main Data Format
+            // 3) Output device — restaurer ou auto-sélectionner le premier disponible
+            try
+            {
+                var en = new MMDeviceEnumerator();
+                var renders = en.EnumerateAudioEndPoints(
+                    NAudio.CoreAudioApi.DataFlow.Render,
+                    NAudio.CoreAudioApi.DeviceState.Active);
+                if (!string.IsNullOrEmpty(ui.OutputDeviceId))
+                {
+                    foreach (var d in renders)
+                        if (d.ID == ui.OutputDeviceId) { _selectedOutputDevice = d; break; }
+                }
+                // Si aucun périphérique restauré (premier démarrage ou ID disparu),
+                // prendre le premier périphérique de rendu disponible
+                if (_selectedOutputDevice == null && renders.Count > 0)
+                    _selectedOutputDevice = renders[0];
+                // Restaurer le format exclusif si SR était configuré
+                if (_selectedOutputDevice != null && ui.RequestedOutputSR > 0)
+                    _requestedOutputFormat = new WaveFormatExtensible(ui.RequestedOutputSR, 32, 2);
+            }
+            catch { }
+
+            // 4) Main Data Format
             if (!string.IsNullOrEmpty(ui.MainDataFormat))
             {
                 int idx = _dataViewForm!.comboDisplayMode.Items.IndexOf(ui.MainDataFormat);
@@ -962,6 +995,9 @@ namespace AudioHexViewer
             s.Ui.DeviceId = _selectedInputDevice?.ID;
             s.Ui.CaptureOutput = captureOutput;
             s.Ui.MainDataFormat = _dataViewForm!.comboDisplayMode.SelectedItem as string;
+            // Périphérique de sortie générateur
+            s.Ui.OutputDeviceId    = _selectedOutputDevice?.ID;
+            s.Ui.RequestedOutputSR = _requestedOutputFormat?.SampleRate ?? 0;
 
             // Analysis (valeurs actuelles, même si on ne les applique pas encore)
             s.Analysis.BufferSize  = analysisBufferSize;

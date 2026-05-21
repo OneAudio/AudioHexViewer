@@ -19,9 +19,12 @@ namespace AudioHexViewer
 
     public sealed class UiSettings
     {
-        public string? DeviceId { get; set; }
-        public bool CaptureOutput { get; set; }
-        public string? MainDataFormat { get; set; }
+        public string? DeviceId             { get; set; }
+        public bool    CaptureOutput        { get; set; }
+        public string? MainDataFormat       { get; set; }
+        // Périphérique de sortie du générateur
+        public string? OutputDeviceId       { get; set; }
+        public int     RequestedOutputSR    { get; set; } = 0;   // 0 = Auto (Shared)
     }
 
     public sealed class AnalysisSettings

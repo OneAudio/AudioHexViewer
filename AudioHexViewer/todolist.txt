@@ -11,6 +11,5 @@ Le 13/05/2026
 
  Pour le mode FRF (Bode Plot), le moyennage serait à revoir...
 
- Ajouter le module générateur, ses caractéristique seraient :
  
 
