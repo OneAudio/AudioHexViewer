@@ -92,13 +92,26 @@ namespace AudioHexViewer
 
         private static bool IsSRSupported(MMDevice device, int sampleRate)
         {
-            try
+            // Test en mode Exclusif avec les formats les plus courants.
+            // Si l'un passe → SR définitivement supporté.
+            WaveFormat[] cands =
             {
-                var wf = WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, 2);
-                return device.AudioClient.IsFormatSupported(
-                    NAudio.CoreAudioApi.AudioClientShareMode.Shared, wf, out _);
-            }
-            catch { return false; }
+                WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, 2),
+                new WaveFormatExtensible(sampleRate, 32, 2),
+                new WaveFormatExtensible(sampleRate, 24, 2),
+                new WaveFormatExtensible(sampleRate, 16, 2),
+            };
+            foreach (var wf in cands)
+                try { if (device.AudioClient.IsFormatSupported(
+                              NAudio.CoreAudioApi.AudioClientShareMode.Exclusive, wf))
+                          return true; }
+                catch { }
+
+            // Fallback : certains drivers de capture (USB, virtuel, ASIO-proxy…) répondent
+            // incorrectement à IsFormatSupported même pour des SR réellement supportés.
+            // Pour les périphériques de sortie (Render), on reste strict : on n'affiche
+            // que les SR dont on a la confirmation. La capture validera au moment réel.
+            return device.DataFlow == NAudio.CoreAudioApi.DataFlow.Capture;
         }
 
         private static void SelectDevice(ComboBox cb, MMDevice? target)

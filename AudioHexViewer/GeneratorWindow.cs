@@ -180,8 +180,19 @@ namespace AudioHexViewer
         }
 
         // ── Status périphérique ───────────────────────────────────────────────
-        public new void Show(IWin32Window owner) { RefreshDeviceStatus(); base.Show(owner); BringToFront(); }
-        public new void Show()                   { RefreshDeviceStatus(); base.Show();      BringToFront(); }
+        public new void Show(IWin32Window owner)
+        {
+            RefreshDeviceStatus();
+            if (!Visible) base.Show(owner);
+            BringToFront();
+        }
+
+        public new void Show()
+        {
+            RefreshDeviceStatus();
+            if (!Visible) base.Show();
+            BringToFront();
+        }
 
         private void RefreshDeviceStatus()
         {

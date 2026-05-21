@@ -1210,7 +1210,7 @@ namespace AudioHexViewer
                 currentOutput:       _selectedOutputDevice,
                 sampleRateOptions:   _sampleRateOptions,
                 currentInputFormat:  _requestedCaptureFormat as WaveFormatExtensible,
-                currentOutputFormat: null,
+                currentOutputFormat: _requestedOutputFormat,
                 onInfosClick:        ShowDeviceInfoDialog);
 
             if (dlg.ShowDialog(this) == DialogResult.OK)
