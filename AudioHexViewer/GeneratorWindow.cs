@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
@@ -17,6 +18,17 @@ namespace AudioHexViewer
         private readonly Func<int>                    _getAnalyzerSR;
         private readonly Func<int>                    _getAnalyzerN;
         private readonly Action<IWaveProvider?>       _onLoopbackRequest;
+
+        // ── Calibration de niveau de sortie ──────────────────────────────────
+        private readonly SessionSettings              _settings;
+        private readonly Action                       _saveSettings;
+        private GeneratorCalibrationDialog?           _calDialog;
+
+        // Propriétés de calibration (raccourcis vers _settings)
+        private bool   _calValidL  { get => _settings.GenCalValidLeft;           set => _settings.GenCalValidLeft           = value; }
+        private double _calVrmsL   { get => _settings.GenCalVrmsFullScaleLeft;   set => _settings.GenCalVrmsFullScaleLeft   = value; }
+        private bool   _calValidR  { get => _settings.GenCalValidRight;          set => _settings.GenCalValidRight          = value; }
+        private double _calVrmsR   { get => _settings.GenCalVrmsFullScaleRight;  set => _settings.GenCalVrmsFullScaleRight  = value; }
 
         private WasapiOut?               _wasapiShared;
         private ExclusiveWasapiPlayback? _wasapiExclusive;
@@ -36,7 +48,9 @@ namespace AudioHexViewer
             Func<WaveFormatExtensible?> getOutputFormat,
             Func<int>                   getAnalyzerSR,
             Func<int>                   getAnalyzerN,
-            Action<IWaveProvider?>      onLoopbackRequest)
+            Action<IWaveProvider?>      onLoopbackRequest,
+            SessionSettings             settings,
+            Action                      saveSettings)
         {
             _getOutputDevice   = getOutputDevice;
             _getInputDevice    = getInputDevice;
@@ -44,6 +58,8 @@ namespace AudioHexViewer
             _getAnalyzerSR     = getAnalyzerSR;
             _getAnalyzerN      = getAnalyzerN;
             _onLoopbackRequest = onLoopbackRequest;
+            _settings          = settings;
+            _saveSettings      = saveSettings;
 
             InitializeComponent();
             InitVuBars();   // ← WAS MISSING: wire pnlVuMeter.Paint event
@@ -82,6 +98,10 @@ namespace AudioHexViewer
             btnAm60.Click += (_, _) => nudAmplitude.Value = -60m;
             cmbIMDPreset.SelectedIndexChanged += CmbIMDPreset_Changed;
             btnRun.Click                    += BtnRun_Click;
+            // ── Calibration et toggle Vrms ────────────────────────────────────
+            btnCalibrateLevel.Click         += BtnCalibrateLevel_Click;
+            rbAmpdBFS.CheckedChanged        += (_, _) => { if (rbAmpdBFS.Checked) SwitchAmplitudeUnit(toVrms: false); };
+            rbAmpVrms.CheckedChanged        += (_, _) => { if (rbAmpVrms.Checked) SwitchAmplitudeUnit(toVrms: true);  };
 
             _doneTimer = new System.Windows.Forms.Timer { Interval = 200 };
             _doneTimer.Tick += DoneTimer_Tick;
@@ -92,10 +112,9 @@ namespace AudioHexViewer
             SetRunState(false);
             RefreshSynchLabel();
             // Initialiser les barres VU après affichage (ClientSize valide)
-            Shown += (_, _) => pnlVuMeter.Invalidate();
+            Shown += (_, _) => { pnlVuMeter.Invalidate(); RefreshCalibrationLabels(); RefreshVrmsToggle(); };
         }
 
-        // ── Panels dynamiques ─────────────────────────────────────────────────
         private void UpdateParamPanels()
         {
             var t = CurrentType();
@@ -127,30 +146,26 @@ namespace AudioHexViewer
             lblAmpTitle.Text   = isTwoTone ? "AMPLITUDE F1" : "AMPLITUDE";
 
             // ── Repositionnement dynamique (supprimer espace vide) ────────────
-            // Les lignes de presets (80-133) ne s'affichent qu'en mode périodique.
-            // Dans les autres modes on remonte les contrôles juste sous Freq/Amp.
             if (isPeriodic)
-            {   // presets visibles → pnlDither juste après chkSynch
-                chkSynch.Top     = 138;
-                pnlDither.Top    = 160;   // juste en dessous de chkSynch
-                lblSynchFreq.Top = 205;   // sous pnlDither si synch activé
+            {   chkSynch.Top     = 138;
+                pnlDither.Top    = 160;
+                lblSynchFreq.Top = 205;
             }
             else if (isSweep)
-            {   // pas de presets : remonter chkSynch + pnlSweep
-                chkSynch.Top     = 78;
+            {   chkSynch.Top     = 78;
                 lblSynchFreq.Top = 100;
                 pnlSweep.Top     = 118;
             }
             else if (isTwoTone)
-            {   // pas de presets : remonter chkSynch + pnlTwoTone
-                chkSynch.Top     = 78;
+            {   chkSynch.Top     = 78;
                 lblSynchFreq.Top = 100;
                 pnlTwoTone.Top   = 120;
             }
             else if (isBurst)
-            {   // pas de synch visible : remonter pnlBurst
-                pnlBurst.Top = 80;
-            }
+            {   pnlBurst.Top = 80; }
+
+            // ── Mise à jour du toggle Vrms (dépend du type) ──────────────────
+            RefreshVrmsToggle();
         }
 
         // ── Synch ─────────────────────────────────────────────────────────────
@@ -239,9 +254,9 @@ namespace AudioHexViewer
         private void StartGenerator()
         {
             double f1   = chkSynch.Checked ? CoherentFreq((double)nudF1.Value) : (double)nudF1.Value;
-            double amp  = Math.Pow(10.0, (double)nudAmplitude.Value  / 20.0);
-            double ampF2= Math.Pow(10.0, (double)nudAmplitudeF2.Value / 20.0);
             int    ch   = rbL.Checked ? 0 : rbR.Checked ? 1 : 2;
+            double amp  = GetAmplitudeLinear(ch);
+            double ampF2= Math.Pow(10.0, (double)nudAmplitudeF2.Value / 20.0);
             bool   inv  = chkInvert.Checked && ch == 2;
             var    type = CurrentType();
 
@@ -380,7 +395,10 @@ namespace AudioHexViewer
             cmbIMDPreset.Enabled=rbL.Enabled=rbR.Enabled=rbLR.Enabled=off;
             chkDitherEnable.Enabled=nudDitherBits.Enabled=off;
             chkInvert.Enabled=off && rbLR.Checked;
-            if (off) RefreshDeviceStatus();
+            // Le toggle Vrms est verrouillé pendant la génération
+            rbAmpdBFS.Enabled=rbAmpVrms.Enabled=off;
+            btnCalibrateLevel.Enabled=off;
+            if (off) { RefreshDeviceStatus(); RefreshVrmsToggle(); }
         }
 
         private SignalType CurrentType() => cmbType.SelectedItem is TypeItem ti ? ti.Type : SignalType.Sine;
@@ -390,9 +408,155 @@ namespace AudioHexViewer
             if (e.CloseReason == CloseReason.UserClosing)
             { e.Cancel=true; if (_isRunning) StopGenerator(); Hide(); return; }
             StopGenerator(); _doneTimer.Dispose(); _levelTimer.Dispose();
+            _calDialog?.Close();
             base.OnFormClosing(e);
         }
 
+
+        // ── Calibration de niveau de sortie ──────────────────────────────────
+
+        private void BtnCalibrateLevel_Click(object? s, EventArgs e)
+        {
+            // 1) Forcer le type Sinus
+            var sineItem = cmbType.Items.Cast<TypeItem>()
+                                   .FirstOrDefault(ti => ti.Type == SignalType.Sine);
+            if (sineItem != null && !_isRunning)
+                cmbType.SelectedItem = sineItem;
+
+            // 2) Ouvrir/ramener le dialogue (non-modal)
+            if (_calDialog == null || _calDialog.IsDisposed)
+            {
+                _calDialog = new GeneratorCalibrationDialog
+                {
+                    GetCurrentAmplitudeDbfs = () =>
+                        _isRunning ? (double?)nudAmplitude.Value : null,
+                    OnCalibrationApplied = ApplyCalibration
+                };
+
+                // Positionner à gauche de la fenêtre générateur
+                _calDialog.StartPosition = FormStartPosition.Manual;
+                _calDialog.Location = new System.Drawing.Point(
+                    Math.Max(0, Left - _calDialog.Width - 8),
+                    Top);
+            }
+
+            if (!_calDialog.Visible) _calDialog.Show(this);
+            _calDialog.BringToFront();
+        }
+
+        private void ApplyCalibration(double vrmsFS_L, double vrmsFS_R)
+        {
+            _calValidL = true; _calVrmsL = vrmsFS_L;
+            _calValidR = true; _calVrmsR = vrmsFS_R;
+            _saveSettings();
+            RefreshCalibrationLabels();
+            RefreshVrmsToggle();
+        }
+
+        private void RefreshCalibrationLabels()
+        {
+            if (_calValidL)
+            {
+                lblCalL.Text      = $"L: FS = {_calVrmsL:G4} Vrms";
+                lblCalL.ForeColor = System.Drawing.SystemColors.GrayText;
+            }
+            else
+            {
+                lblCalL.Text      = "L: FS = — Vrms";
+                lblCalL.ForeColor = System.Drawing.SystemColors.GrayText;
+            }
+
+            if (_calValidR)
+            {
+                lblCalR.Text      = $"R: FS = {_calVrmsR:G4} Vrms";
+                lblCalR.ForeColor = System.Drawing.SystemColors.GrayText;
+            }
+            else
+            {
+                lblCalR.Text      = "R: FS = — Vrms";
+                lblCalR.ForeColor = System.Drawing.SystemColors.GrayText;
+            }
+        }
+
+        /// <summary>
+        /// Active/désactive le RadioButton "Vrms" selon la calibration et le type de signal.
+        /// Le mode Vrms est disponible pour tous les types sauf Bruit blanc et Bruit rose.
+        /// </summary>
+        private void RefreshVrmsToggle()
+        {
+            bool calDone = _calValidL && _calValidR;
+            var type     = CurrentType();
+            bool noiseType = type == SignalType.WhiteNoise || type == SignalType.PinkNoise;
+
+            rbAmpVrms.Enabled = calDone && !noiseType && !_isRunning;
+
+            // Si la calibration vient d'être invalidée (reset), repasser en dBFS
+            if (!calDone && rbAmpVrms.Checked)
+                rbAmpdBFS.Checked = true;
+
+            // Si on vient de sélectionner un type bruit, repasser en dBFS
+            if (noiseType && rbAmpVrms.Checked)
+                rbAmpdBFS.Checked = true;
+        }
+
+        /// <summary>
+        /// Bascule le NUD amplitude entre le mode dBFS et le mode Vrms.
+        /// </summary>
+        private void SwitchAmplitudeUnit(bool toVrms)
+        {
+            if (toVrms)
+            {
+                // Utiliser VrmsFS du canal actif (L par défaut, ou R si R seul)
+                double vrmsFS = rbR.Checked ? _calVrmsR : _calVrmsL;
+                if (vrmsFS <= 0) vrmsFS = 1.0;
+
+                // Convertir la valeur courante dBFS → Vrms
+                double currentDbfs = (double)nudAmplitude.Value;
+                double currentVrms = Math.Pow(10.0, currentDbfs / 20.0) * vrmsFS;
+
+                nudAmplitude.Minimum      = 0.001m;
+                nudAmplitude.Maximum      = (decimal)(vrmsFS * 1.2);
+                nudAmplitude.DecimalPlaces = 3;
+                nudAmplitude.Increment    = 0.01m;
+                nudAmplitude.Value        = (decimal)Math.Round(Math.Clamp(currentVrms, 0.001, (double)(nudAmplitude.Maximum)), 3);
+                lblDbfs.Visible           = false;   // caché, remplacé par les radio buttons
+            }
+            else
+            {
+                // Convertir la valeur courante Vrms → dBFS
+                double vrmsFS = rbR.Checked ? _calVrmsR : _calVrmsL;
+                if (vrmsFS <= 0) vrmsFS = 1.0;
+                double currentVrms = (double)nudAmplitude.Value;
+                double currentDbfs = 20.0 * Math.Log10(Math.Max(1e-10, currentVrms / vrmsFS));
+
+                nudAmplitude.Minimum      = -180m;
+                nudAmplitude.Maximum      = 0m;
+                nudAmplitude.DecimalPlaces = 1;
+                nudAmplitude.Increment    = 0.5m;
+                nudAmplitude.Value        = (decimal)Math.Round(Math.Clamp(currentDbfs, -180.0, 0.0), 1);
+                lblDbfs.Visible           = false;   // remplacé définitivement par les radio buttons
+            }
+        }
+
+        /// <summary>
+        /// Retourne l'amplitude linéaire [0..1] pour le canal ch (0=L, 1=R, 2=L+R).
+        /// Tient compte du mode Vrms si actif.
+        /// En mode L+R, VrmsFS_L est utilisé comme référence (cf. commentaire ci-dessous).
+        /// Note : en L+R, les deux canaux reçoivent le même dBFS. Si le hardware a une légère
+        /// asymétrie entre L et R, la tension de sortie sur R différera de la valeur Vrms entrée.
+        /// Pour une précision maximale, calibrer et utiliser L ou R séparément.
+        /// </summary>
+        private double GetAmplitudeLinear(int ch)
+        {
+            if (rbAmpVrms.Checked)
+            {
+                double vrmsFS = (ch == 1) ? _calVrmsR : _calVrmsL;  // R seul → VrmsFS_R, sinon VrmsFS_L
+                if (vrmsFS <= 0) vrmsFS = 1.0;
+                double vrms = (double)nudAmplitude.Value;
+                return Math.Clamp(vrms / vrmsFS, 0.0, 1.0);
+            }
+            return Math.Pow(10.0, (double)nudAmplitude.Value / 20.0);
+        }
 
         // ── VU-mètre ──────────────────────────────────────────────────────────
         private const int    _vuLedCount  = 40;

@@ -159,4 +159,14 @@
     </AssemblyAttribute>
   </ItemGroup>
 
+
+  <!-- GeneratorCalibrationDialog : designer imbriqué sous le fichier principal -->
+  <ItemGroup>
+    <Compile Update="GeneratorCalibrationDialog.Designer.cs">
+      <SubType>Code</SubType>
+      <DependentUpon>GeneratorCalibrationDialog.cs</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
 </Project>
+  <!-- PATCHED: GeneratorCalibrationDialog Designer dependency -->

@@ -1019,6 +1019,13 @@ namespace AudioHexViewer
             }
 
             // Histogram / Spectrum : on remplira à l'étape suivante (pour l'instant defaults)
+
+            // ── Calibration de niveau de sortie du générateur (persistance) ──
+            s.GenCalValidLeft           = _session.GenCalValidLeft;
+            s.GenCalVrmsFullScaleLeft   = _session.GenCalVrmsFullScaleLeft;
+            s.GenCalValidRight          = _session.GenCalValidRight;
+            s.GenCalVrmsFullScaleRight  = _session.GenCalVrmsFullScaleRight;
+
             return s;
         }
 
@@ -1249,7 +1256,9 @@ namespace AudioHexViewer
                     getOutputFormat:    () => _requestedOutputFormat,
                     getAnalyzerSR:      () => currentFormat?.SampleRate ?? 0,
                     getAnalyzerN:       () => spectrumControl?.CurrentFftSize ?? 0,
-                    onLoopbackRequest:  HandleLoopbackRequest);
+                    onLoopbackRequest:  HandleLoopbackRequest,
+                    settings:           _session,
+                    saveSettings:       SaveSessionSettingsSilently);
 
                 // Positionner à côté de la fenêtre principale
                 _generatorWindow.Location = new System.Drawing.Point(

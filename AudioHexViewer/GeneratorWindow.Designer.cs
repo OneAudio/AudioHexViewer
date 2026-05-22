@@ -18,6 +18,7 @@ namespace AudioHexViewer
         // Amp presets (6)
         private Button btnA0, btnAm3, btnAm6, btnAm12, btnAm20, btnAm60;
         private Label lblAmpTitle; private NumericUpDown nudAmplitude; private Label lblDbfs;
+        private RadioButton rbAmpdBFS, rbAmpVrms;  // toggle unité amplitude
         // Sweep
         private Panel pnlSweep;
         private Label lblSweepEndT, lblSweepTimeT;
@@ -48,6 +49,9 @@ namespace AudioHexViewer
         private RadioButton rbL, rbR, rbLR;
         private CheckBox chkInvert, chkLoopback;
         private Label lblSR, lblLoopback;
+        // Calibration de niveau de sortie
+        private Button btnCalibrateLevel;
+        private Label  lblCalL, lblCalR;
         private Panel  pnlVuMeter;
         private Label  lblVuL, lblVuR, lblVuLevelL, lblVuLevelR;
         private Panel  barGenL, barGenR;
@@ -66,6 +70,7 @@ namespace AudioHexViewer
             btnA0=new Button(); btnAm3=new Button(); btnAm6=new Button();
             btnAm12=new Button(); btnAm20=new Button(); btnAm60=new Button();
             lblAmpTitle=new Label(); nudAmplitude=new NumericUpDown(); lblDbfs=new Label();
+            rbAmpdBFS=new RadioButton(); rbAmpVrms=new RadioButton();
             pnlSweep=new Panel(); lblSweepEndT=new Label(); nudSweepEnd=new NumericUpDown();
             lblSweepEndHz=new Label(); lblSweepTimeT=new Label(); nudSweepTime=new NumericUpDown();
             lblSweepS=new Label(); chkSweepLog=new CheckBox(); chkSweepLoop=new CheckBox();
@@ -84,6 +89,7 @@ namespace AudioHexViewer
             grpOutput=new System.Windows.Forms.GroupBox();
             lblChannel=new Label(); rbL=new RadioButton(); rbR=new RadioButton(); rbLR=new RadioButton();
             chkInvert=new CheckBox(); chkLoopback=new CheckBox(); lblSR=new Label(); lblLoopback=new Label();
+            btnCalibrateLevel=new Button(); lblCalL=new Label(); lblCalR=new Label();
             pnlVuMeter=new Panel(); lblVuL=new Label(); lblVuR=new Label();
             lblVuLevelL=new Label(); lblVuLevelR=new Label();
             barGenL=new Panel(); barGenR=new Panel();
@@ -146,6 +152,13 @@ namespace AudioHexViewer
             nudAmplitude.Location=new Point(218,38); nudAmplitude.Maximum=0m; nudAmplitude.Minimum=-180m;
             nudAmplitude.Size=new Size(108,34); nudAmplitude.TabIndex=3; nudAmplitude.Value=-12m;
             lblDbfs.AutoSize=true; lblDbfs.Font=std10; lblDbfs.Location=new Point(330,44); lblDbfs.Text="dBFS";
+            // ── Toggle dBFS / Vrms ────────────────────────────────────────────
+            rbAmpdBFS.AutoSize=true; rbAmpdBFS.Checked=true; rbAmpdBFS.Font=new Font("Segoe UI",8.5f);
+            rbAmpdBFS.Location=new Point(330,36); rbAmpdBFS.Text="dBFS"; rbAmpdBFS.TabIndex=4;
+            rbAmpdBFS.UseVisualStyleBackColor=true;
+            rbAmpVrms.AutoSize=true; rbAmpVrms.Font=new Font("Segoe UI",8.5f); rbAmpVrms.Enabled=false;
+            rbAmpVrms.Location=new Point(330,54); rbAmpVrms.Text="Vrms"; rbAmpVrms.TabIndex=5;
+            rbAmpVrms.UseVisualStyleBackColor=true;
 
             // ── pnlSweep (y=155, h=115) ───────────────────────────────────────
             pnlSweep.Location=new Point(0,155); pnlSweep.Size=new Size(384,115); pnlSweep.Visible=false;
@@ -245,7 +258,7 @@ namespace AudioHexViewer
 
             pnlDither.Controls.AddRange(new Control[]{chkDitherEnable,nudDitherBits,lblDitherBits});
 
-            grpParams.Controls.AddRange(new Control[]{lblFreqTitle,nudF1,lblHz1,lblNoFreq,pnlFreqPresets,pnlAmpPresets,chkSynch,lblSynchFreq,lblAmpTitle,nudAmplitude,lblDbfs,pnlSweep,pnlTwoTone,pnlBurst,pnlDither});
+            grpParams.Controls.AddRange(new Control[]{lblFreqTitle,nudF1,lblHz1,lblNoFreq,pnlFreqPresets,pnlAmpPresets,chkSynch,lblSynchFreq,lblAmpTitle,nudAmplitude,rbAmpdBFS,rbAmpVrms,pnlSweep,pnlTwoTone,pnlBurst,pnlDither});
 
             // ── grpOutput (y=384) ─────────────────────────────────────────────
             // ── pnlVuMeter (y=0, h=52) — taille manquante dans les versions précédentes
@@ -259,8 +272,19 @@ namespace AudioHexViewer
             chkLoopback.AutoSize=true; chkLoopback.Location=new Point(10,52); chkLoopback.Text="Loopback Test  (no device)"; chkLoopback.TabIndex=26; chkLoopback.UseVisualStyleBackColor=true;
             lblSR.AutoSize=true; lblSR.ForeColor=SystemColors.GrayText; lblSR.Location=new Point(10,78); lblSR.Text="SR: —";
             lblLoopback.AutoSize=true; lblLoopback.ForeColor=Color.DodgerBlue; lblLoopback.Font=new Font("Segoe UI",8.5f,FontStyle.Italic);
-            lblLoopback.Location=new Point(260,78); lblLoopback.Text="Loopback mode"; lblLoopback.Visible=false;
-            grpOutput.Controls.AddRange(new Control[]{lblChannel,rbL,rbR,rbLR,chkInvert,chkLoopback,lblSR,lblLoopback});
+            lblLoopback.Location=new Point(200,78); lblLoopback.Text="Loopback mode"; lblLoopback.Visible=false;
+            // ── Calibration : bouton à droite de "Invert R", labels sur les 2 lignes dessous ──
+            btnCalibrateLevel.Location=new Point(282,19); btnCalibrateLevel.Size=new Size(94,26);
+            btnCalibrateLevel.Text="Calibrate Level"; btnCalibrateLevel.TabIndex=28;
+            btnCalibrateLevel.UseVisualStyleBackColor=true;
+            btnCalibrateLevel.Font=new Font("Segoe UI",8f);
+            lblCalL.AutoSize=true; lblCalL.Font=new Font("Segoe UI",8f);
+            lblCalL.ForeColor=SystemColors.GrayText;
+            lblCalL.Location=new Point(282,50); lblCalL.Text="L: FS = — Vrms";
+            lblCalR.AutoSize=true; lblCalR.Font=new Font("Segoe UI",8f);
+            lblCalR.ForeColor=SystemColors.GrayText;
+            lblCalR.Location=new Point(282,66); lblCalR.Text="R: FS = — Vrms";
+            grpOutput.Controls.AddRange(new Control[]{lblChannel,rbL,rbR,rbLR,chkInvert,chkLoopback,lblSR,lblLoopback,btnCalibrateLevel,lblCalL,lblCalR});
 
             // ── RUN ───────────────────────────────────────────────────────────
             btnRun.Location=new Point(240,540); btnRun.Size=new Size(152,42); btnRun.TabIndex=27;
