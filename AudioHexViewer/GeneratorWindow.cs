@@ -63,6 +63,7 @@ namespace AudioHexViewer
 
             InitializeComponent();
             InitVuBars();   // ← WAS MISSING: wire pnlVuMeter.Paint event
+            InitWavePreview();
             foreach (var v in Enum.GetValues<SignalType>())
                 cmbType.Items.Add(new TypeItem(v));
             cmbType.SelectedIndex = 0;
@@ -75,13 +76,19 @@ namespace AudioHexViewer
             cmbIMDPreset.SelectedIndex = 0;
 
             // Événements
-            cmbType.SelectedIndexChanged    += (_, _) => { UpdateParamPanels(); RefreshSynchLabel(); RefreshDeviceStatus(); };
+            cmbType.SelectedIndexChanged    += (_, _) => { UpdateParamPanels(); RefreshSynchLabel(); RefreshDeviceStatus(); InvalidateWavePreview(); };
             nudF1.ValueChanged              += (_, _) => RefreshSynchLabel();
             chkSynch.CheckedChanged         += (_, _) => RefreshSynchLabel();
             chkLoopback.CheckedChanged      += (_, _) => RefreshDeviceStatus();
             rbL.CheckedChanged              += (_, _) => chkInvert.Enabled = rbLR.Checked;
             rbR.CheckedChanged              += (_, _) => chkInvert.Enabled = rbLR.Checked;
             rbLR.CheckedChanged             += (_, _) => chkInvert.Enabled = rbLR.Checked;
+            // Invalidation preview sur changements de paramètres burst/sweep
+            nudBurstOnPer.ValueChanged      += (_, _) => InvalidateWavePreview();
+            nudBurstOnMs.ValueChanged       += (_, _) => InvalidateWavePreview();
+            cmbBurstWindow.SelectedIndexChanged += (_, _) => InvalidateWavePreview();
+            chkSweepLog.CheckedChanged      += (_, _) => InvalidateWavePreview();
+            nudF2.ValueChanged              += (_, _) => InvalidateWavePreview();
             // ─ Freq presets ─────────────────────────────────────────────────────
             btnF1.Click    += (_, _) => nudF1.Value = 1m;
             btnF10.Click   += (_, _) => nudF1.Value = 10m;
@@ -112,7 +119,7 @@ namespace AudioHexViewer
             SetRunState(false);
             RefreshSynchLabel();
             // Initialiser les barres VU après affichage (ClientSize valide)
-            Shown += (_, _) => { pnlVuMeter.Invalidate(); RefreshCalibrationLabels(); RefreshVrmsToggle(); };
+            Shown += (_, _) => { pnlVuMeter.Invalidate(); RefreshCalibrationLabels(); RefreshVrmsToggle(); InvalidateWavePreview(); };
         }
 
         private void UpdateParamPanels()
@@ -556,6 +563,156 @@ namespace AudioHexViewer
                 return Math.Clamp(vrms / vrmsFS, 0.0, 1.0);
             }
             return Math.Pow(10.0, (double)nudAmplitude.Value / 20.0);
+        }
+
+        // ── Prévisualisation forme d'onde ─────────────────────────────────────
+
+        private void InitWavePreview()
+        {
+            pnlWavePreview.Paint += PnlWavePreview_Paint;
+        }
+
+        /// <summary>Invalide la preview — à appeler sur tout changement de paramètre visible.</summary>
+        private void InvalidateWavePreview() => pnlWavePreview?.Invalidate();
+
+        private void PnlWavePreview_Paint(object? sender, PaintEventArgs e)
+        {
+            var g  = e.Graphics;
+            var sz = pnlWavePreview.ClientSize;
+            if (sz.Width < 10 || sz.Height < 10) return;
+
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+            float yMid = sz.Height / 2f;
+            float yAmp = sz.Height * 0.40f;
+
+            float[] samples = GenerateWavePreviewSamples(sz.Width);
+
+            float peak = 0f;
+            foreach (var s in samples) if (Math.Abs(s) > peak) peak = Math.Abs(s);
+            if (peak < 1e-6f) peak = 1f;
+            float scale = yAmp * 0.94f / peak;
+
+            var pts = new PointF[samples.Length];
+            for (int i = 0; i < samples.Length; i++)
+                pts[i] = new PointF(i, yMid - samples[i] * scale);
+
+            using var penWave = new Pen(SystemColors.GrayText, 1.3f);
+            g.DrawLines(penWave, pts);
+        }
+
+        private float[] GenerateWavePreviewSamples(int count)
+        {
+            var samples = new float[count];
+            var type    = CurrentType();
+
+            switch (type)
+            {
+                case SignalType.Sine:
+                    for (int i = 0; i < count; i++)
+                        samples[i] = (float)Math.Sin(2 * Math.PI * 4.5 * i / count);
+                    break;
+
+                case SignalType.Square:
+                    for (int i = 0; i < count; i++)
+                        samples[i] = ((4.5 * i / count) % 1.0) < 0.5 ? 1f : -1f;
+                    break;
+
+                case SignalType.Triangle:
+                    for (int i = 0; i < count; i++)
+                    {
+                        double ph = (4.5 * i / count) % 1.0;
+                        samples[i] = (float)(ph < 0.25 ? 4*ph : ph < 0.75 ? 2 - 4*ph : 4*ph - 4);
+                    }
+                    break;
+
+                case SignalType.Sawtooth:
+                    for (int i = 0; i < count; i++)
+                        samples[i] = (float)(2.0 * ((4.5 * i / count) % 1.0) - 1.0);
+                    break;
+
+                case SignalType.WhiteNoise:
+                {
+                    var rng = new Random(137);
+                    for (int i = 0; i < count; i++)
+                        samples[i] = (float)(rng.NextDouble() * 2 - 1);
+                    break;
+                }
+
+                case SignalType.PinkNoise:
+                {
+                    // Filtre IIR Paul Kellet (warmup de 100 samples)
+                    var rng = new Random(137);
+                    double b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
+                    int total = count + 100;
+                    for (int i = 0; i < total; i++)
+                    {
+                        double w = rng.NextDouble() * 2 - 1;
+                        b0 = 0.99886*b0 + w*0.0555179; b1 = 0.99332*b1 + w*0.0750759;
+                        b2 = 0.96900*b2 + w*0.1538520; b3 = 0.86650*b3 + w*0.3104856;
+                        b4 = 0.55000*b4 + w*0.5329522; b5 = -0.7616*b5 - w*0.0168980;
+                        double pink = (b0+b1+b2+b3+b4+b5+b6 + w*0.5362) * 0.11;
+                        b6 = w * 0.115926;
+                        if (i >= 100) samples[i - 100] = (float)Math.Tanh(pink);
+                    }
+                    break;
+                }
+
+                case SignalType.Sweep:
+                {
+                    // Sweep log : 0.5 → 7 cycles sur la largeur
+                    bool isLog = chkSweepLog.Checked;
+                    double ph = 0;
+                    for (int i = 0; i < count; i++)
+                    {
+                        double t    = (double)i / count;
+                        double fNorm = isLog
+                            ? 0.5 * Math.Pow(14.0, t)            // 0.5 → 7 cycles/panel (log)
+                            : 0.5 + 6.5 * t;                      // 0.5 → 7 cycles/panel (lin)
+                        ph += 2 * Math.PI * fNorm / count;
+                        samples[i] = (float)Math.Sin(ph);
+                    }
+                    break;
+                }
+
+                case SignalType.TwoTone:
+                {
+                    // Ratio 3:5 pour visualiser l'IMD
+                    for (int i = 0; i < count; i++)
+                        samples[i] = (float)(Math.Sin(2*Math.PI*3*i/count)*0.5
+                                           + Math.Sin(2*Math.PI*5*i/count)*0.5);
+                    break;
+                }
+
+                case SignalType.ToneBurst:
+                {
+                    // Lire les paramètres actuels
+                    int onPer  = rbBurstOnPer.Checked
+                        ? Math.Max(1, Math.Min(12, (int)nudBurstOnPer.Value))
+                        : 5;
+                    int offPer = 3;
+                    int totalPer = onPer + 2 * offPer;
+                    int onStart  = (int)(offPer  * count / (double)totalPer);
+                    int onEnd    = (int)((offPer + onPer) * count / (double)totalPer);
+                    int onLen    = Math.Max(2, onEnd - onStart);
+
+                    var winType = BurstWindows.Labels[
+                        Math.Clamp(cmbBurstWindow.SelectedIndex, 0, BurstWindows.Labels.Length-1)].Type;
+                    float[] win;
+                    try   { win = BurstWindows.Compute(onLen, winType); }
+                    catch { win = new float[onLen]; for (int k=0;k<onLen;k++) win[k]=1f; }
+
+                    for (int i = onStart; i < onEnd; i++)
+                    {
+                        int j  = i - onStart;
+                        double phase = 2 * Math.PI * onPer * j / (double)onLen;
+                        float  w = j < win.Length ? win[j] : 1f;
+                        samples[i] = (float)Math.Sin(phase) * w;
+                    }
+                    break;
+                }
+            }
+            return samples;
         }
 
         // ── VU-mètre ──────────────────────────────────────────────────────────

@@ -56,6 +56,7 @@ namespace AudioHexViewer
         private Label  lblVuL, lblVuR, lblVuLevelL, lblVuLevelR;
         private Panel  barGenL, barGenR;
         private Button btnRun;
+        private Panel  pnlWavePreview;   // prévisualisation de la forme d'onde
 
         protected override void Dispose(bool disposing) { if (disposing) components?.Dispose(); base.Dispose(disposing); }
 
@@ -93,7 +94,7 @@ namespace AudioHexViewer
             pnlVuMeter=new Panel(); lblVuL=new Label(); lblVuR=new Label();
             lblVuLevelL=new Label(); lblVuLevelR=new Label();
             barGenL=new Panel(); barGenR=new Panel();
-            btnRun=new Button();
+            btnRun=new Button(); pnlWavePreview=new Panel();
 
             var allNud = new System.ComponentModel.ISupportInitialize[]{
                 nudF1,nudAmplitude,nudSweepEnd,nudSweepTime,nudF2,nudAmplitudeF2,
@@ -291,11 +292,14 @@ namespace AudioHexViewer
             btnRun.Text="▶  RUN"; btnRun.BackColor=Color.SeaGreen; btnRun.ForeColor=Color.White;
             btnRun.FlatStyle=FlatStyle.Flat; btnRun.FlatAppearance.BorderSize=0;
             btnRun.Font=new Font("Segoe UI",11f,FontStyle.Bold); btnRun.UseVisualStyleBackColor=false;
+            // ── Prévisualisation forme d'onde ─────────────────────────────────
+            pnlWavePreview.Location=new Point(8,540); pnlWavePreview.Size=new Size(224,42);
+            pnlWavePreview.BackColor=Color.Transparent;
 
             // ── Form ──────────────────────────────────────────────────────────
             AutoScaleDimensions=new SizeF(7F,15F); AutoScaleMode=AutoScaleMode.Font;
             ClientSize=new Size(400,593);
-            Controls.AddRange(new Control[]{pnlVuMeter,lblTypeLabel,cmbType,grpParams,grpOutput,btnRun});
+            Controls.AddRange(new Control[]{pnlVuMeter,lblTypeLabel,cmbType,grpParams,grpOutput,pnlWavePreview,btnRun});
             FormBorderStyle=FormBorderStyle.FixedSingle; MinimizeBox=true; MaximizeBox=false;
             StartPosition=FormStartPosition.Manual; Text="Generator";
 

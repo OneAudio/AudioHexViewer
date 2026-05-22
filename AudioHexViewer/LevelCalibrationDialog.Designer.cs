@@ -32,7 +32,6 @@ namespace AudioHexViewer
 
         private void InitializeComponent()
         {
-            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(LevelCalibrationDialog));
             _lblInfo = new Label();
             _lblLeftCaption = new Label();
             _txtLeft = new TextBox();
@@ -52,7 +51,7 @@ namespace AudioHexViewer
             _lblInfo.Name = "_lblInfo";
             _lblInfo.Size = new Size(324, 69);
             _lblInfo.TabIndex = 0;
-            _lblInfo.Text = resources.GetString("_lblInfo.Text");
+            _lblInfo.Text = "Apply a known AC signal to the input. Enter the measured RMS voltage below and click \"Calibrate\" to establish the dBFS → dBV correspondence.";
             // 
             // _lblLeftCaption
             // 
