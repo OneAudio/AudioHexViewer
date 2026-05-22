@@ -118,6 +118,8 @@ namespace AudioHexViewer
                         spectrumControl.UpdateSampleRate(currentFormat.SampleRate);
                         spectrumControl.UpdateHopSamples(analysisHopSamples);
                     }
+
+                    oscilloscopeControl?.UpdateSampleRate(currentFormat.SampleRate);
                 }
 
                 // ── Mode GC bas-latence pendant la capture ────────────────────────
@@ -732,7 +734,7 @@ namespace AudioHexViewer
         private void EnsureReadStoppedIfNoTabRunning()
         {
             if (capture == null) return; // déjà arrêté
-            if (_spectrumRunning || _histogramRunning) return;
+            if (_spectrumRunning || _histogramRunning || _oscilloscopeRunning) return;
 
             StopCapture();
         }

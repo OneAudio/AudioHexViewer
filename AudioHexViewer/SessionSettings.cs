@@ -16,6 +16,8 @@ namespace AudioHexViewer
         public HistogramSettings Histogram { get; set; } = new HistogramSettings();
         public SpectrumSettings Spectrum { get; set; } = new SpectrumSettings();
 
+        public OscilloscopeSettings Oscilloscope { get; set; } = new OscilloscopeSettings();
+
         // ── Calibration de niveau de sortie du générateur (dBFS → Vrms) ──────
         // VrmsFullScale = tension mesurée en sortie à 0 dBFS (pleine échelle)
         // Vrms_out = VrmsFullScale * 10^(dBFS/20)

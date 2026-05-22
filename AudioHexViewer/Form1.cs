@@ -272,7 +272,9 @@ namespace AudioHexViewer
         private long calibAccum = 0;
 
         private HistogramControl? histogramControl;
-        private SpectrumControl? spectrumControl;
+        private SpectrumControl?  spectrumControl;
+        private OscilloscopeControl? oscilloscopeControl;
+        private bool _oscilloscopeRunning;
         private ToolStripMenuItem? menuColors;
 
         // Fenêtres non-modales persistantes
@@ -487,6 +489,7 @@ namespace AudioHexViewer
             //this.WindowState = FormWindowState.Maximized; // Plein cran au dmarrage
             ShowHistogramArea();
             ShowSpectrumArea();
+            ShowOscilloscopeArea();
 
             // Verrouille la largeur minimale  la largeur par dfaut
             this.MinimumSize = new Size(this.Width, this.MinimumSize.Height);
@@ -832,6 +835,9 @@ namespace AudioHexViewer
             // Propagation des couleurs à l'onglet Histogramme (fond, grilles, labels, barres L/R)
             histogramControl?.ApplySpectrumColorSettings(dlg.SelectedColors);
 
+            // Propagation des couleurs à l'oscilloscope
+            oscilloscopeControl?.ApplySpectrumColorSettings(dlg.SelectedColors);
+
             // Keep settings in sync (used when re-applying settings later + for persistence)
             if (_loadedSessionSettings != null)
             {
@@ -980,7 +986,10 @@ namespace AudioHexViewer
                 // Synchroniser les couleurs de l'histogramme avec celles du spectre
                 var loadedColors = _loadedSessionSettings.Spectrum?.Colors ?? SpectrumColorSettings.Defaults();
                 histogramControl?.ApplySpectrumColorSettings(loadedColors);
+                oscilloscopeControl?.ApplySpectrumColorSettings(loadedColors);
             }
+
+            oscilloscopeControl?.ApplySettings(_loadedSessionSettings.Oscilloscope);
         }
 
         //
@@ -1025,6 +1034,12 @@ namespace AudioHexViewer
             s.GenCalVrmsFullScaleLeft   = _session.GenCalVrmsFullScaleLeft;
             s.GenCalValidRight          = _session.GenCalValidRight;
             s.GenCalVrmsFullScaleRight  = _session.GenCalVrmsFullScaleRight;
+
+            // ── Settings oscilloscope ──────────────────────────────────────────
+            if (oscilloscopeControl != null)
+                s.Oscilloscope = oscilloscopeControl.GetSettingsSnapshot();
+            else
+                s.Oscilloscope = _session.Oscilloscope ?? new OscilloscopeSettings();
 
             return s;
         }
@@ -1928,8 +1943,49 @@ namespace AudioHexViewer
             // Optionnel : slectionner longlet Spectrum quand on louvre
             tabAnalysis.SelectedTab = tabSpectrum;
         }
-        //
-        //
+
+        private void ShowOscilloscopeArea()
+        {
+            if (oscilloscopeControl == null)
+            {
+                oscilloscopeControl = new OscilloscopeControl
+                {
+                    Dock          = DockStyle.Fill,
+                    GetRing       = () => _pipeline?.Ring,
+                    GetSampleRate = () => currentFormat?.SampleRate ?? 0,
+                    GetInputCalibration = () =>
+                    {
+                        var sp = _session.Spectrum;
+                        return (sp.LevelCalValidLeft,  sp.LevelCalOffsetDbLeft,
+                                sp.LevelCalValidRight, sp.LevelCalOffsetDbRight);
+                    }
+                };
+
+                oscilloscopeControl.RunRequested += EnsureReadRunning;
+                oscilloscopeControl.RunStateChanged += running =>
+                {
+                    _oscilloscopeRunning = running;
+                    if (running) EnsureReadRunning();
+                    else EnsureReadStoppedIfNoTabRunning();
+                };
+
+                // Appliquer les couleurs courantes
+                var colors = _loadedSessionSettings?.Spectrum?.Colors
+                          ?? _session?.Spectrum?.Colors
+                          ?? SpectrumColorSettings.Defaults();
+                oscilloscopeControl.ApplySpectrumColorSettings(colors);
+
+                // Appliquer les settings sauvegardés
+                oscilloscopeControl.ApplySettings(_loadedSessionSettings?.Oscilloscope
+                                               ?? _session?.Oscilloscope);
+
+                if (currentFormat != null)
+                    oscilloscopeControl.UpdateSampleRate(currentFormat.SampleRate);
+
+                tabOscilloscope.Controls.Clear();
+                tabOscilloscope.Controls.Add(oscilloscopeControl);
+            }
+        }
         //
         private void UpdateMainDisplayFromLastValues()
         {

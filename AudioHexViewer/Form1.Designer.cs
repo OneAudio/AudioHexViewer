@@ -64,6 +64,7 @@ namespace AudioHexViewer
             tabHistogram = new TabPage();
             panelHistogram = new Panel();
             tabSpectrum = new TabPage();
+            tabOscilloscope = new TabPage();
             txtLeft = new RichTextBox();
             txtRight = new RichTextBox();
             menuStrip1.SuspendLayout();
@@ -355,6 +356,7 @@ namespace AudioHexViewer
             // 
             tabAnalysis.Controls.Add(tabHistogram);
             tabAnalysis.Controls.Add(tabSpectrum);
+            tabAnalysis.Controls.Add(tabOscilloscope);
             tabAnalysis.Dock = DockStyle.Fill;
             tabAnalysis.Location = new Point(0, 98);
             tabAnalysis.Name = "tabAnalysis";
@@ -389,6 +391,13 @@ namespace AudioHexViewer
             tabSpectrum.TabIndex = 1;
             tabSpectrum.Text = "Spectrum";
             tabSpectrum.UseVisualStyleBackColor = true;
+            // tabOscilloscope
+            tabOscilloscope.Location = new Point(4, 24);
+            tabOscilloscope.Name = "tabOscilloscope";
+            tabOscilloscope.Size = new Size(1130, 623);
+            tabOscilloscope.TabIndex = 2;
+            tabOscilloscope.Text = "Oscilloscope";
+            tabOscilloscope.UseVisualStyleBackColor = true;
             // 
             // txtLeft
             // 
@@ -459,6 +468,7 @@ namespace AudioHexViewer
         private TabControl tabAnalysis;
         private TabPage tabHistogram;
         private TabPage tabSpectrum;
+        private TabPage tabOscilloscope;
         //
         private Panel panelHistogram;
         private Label lblFormatInfo;

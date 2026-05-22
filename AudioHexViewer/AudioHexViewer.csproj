@@ -168,5 +168,14 @@
     </Compile>
   </ItemGroup>
 
+
+  <!-- OscilloscopeControl : designer imbriqué sous le fichier principal -->
+  <ItemGroup>
+    <Compile Update="OscilloscopeControl.Designer.cs">
+      <SubType>Code</SubType>
+      <DependentUpon>OscilloscopeControl.cs</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
 </Project>
   <!-- PATCHED: GeneratorCalibrationDialog Designer dependency -->
