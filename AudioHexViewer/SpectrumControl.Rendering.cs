@@ -794,13 +794,13 @@ namespace AudioHexViewer
         {
             if (isLive)
             {
-                btnRun.Text = "STOP";
+                btnRun.Text = "■  STOP";
                 btnRun.BackColor = Color.Firebrick;
                 btnRun.ForeColor = Color.White;
             }
             else
             {
-                btnRun.Text = "RUN";
+                btnRun.Text = "▶  RUN";
                 btnRun.BackColor = Color.SeaGreen;
                 btnRun.ForeColor = Color.White;
             }

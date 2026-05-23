@@ -120,12 +120,16 @@ namespace AudioHexViewer
             ChkNorm.CheckedChanged += ChkNorm_CheckedChanged;
 
 
-            // btnRun — mêmes dimensions que SpectrumControl.btnRun
+            // btnRun — même style que OscilloscopeControl.btnRun
             btnRun.FlatStyle = FlatStyle.Flat;
-            btnRun.Size      = new Size(60, 46);
-            btnRun.Location  = new Point(1075, 12);
+            btnRun.FlatAppearance.BorderSize = 0;
+            btnRun.Font      = new Font("Segoe UI", 10f, FontStyle.Bold);
+            btnRun.Size      = new Size(70, 40);
+            btnRun.Location  = new Point(1060, 10);
             btnRun.Anchor    = AnchorStyles.Top | AnchorStyles.Right;
-            btnRun.Text      = "RUN";
+            btnRun.Text      = "▶  RUN";
+            btnRun.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            btnRun.UseVisualStyleBackColor = false;
 
             // ── chartHistogram ───────────────────────────────────────────────
             chartHistogram.Dock     = DockStyle.Fill;

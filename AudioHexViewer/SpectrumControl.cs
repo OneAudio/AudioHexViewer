@@ -655,6 +655,18 @@ namespace AudioHexViewer
         {
             InitializeComponent();
 
+            // Owner-draw btnRun : même rendu que l'Oscilloscope (évite la corruption
+            // du bouton via WM_PAINT natif quand un ComboBox dropdown s'ouvre).
+            btnRun.Paint += (s, e) =>
+            {
+                var btn = (Button)s!;
+                e.Graphics.Clear(btn.BackColor);
+                TextRenderer.DrawText(e.Graphics, btn.Text, btn.Font,
+                    btn.ClientRectangle, btn.ForeColor,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.SingleLine);
+            };
+
 
             EnsureVoltLayoutInit();
             InitChartAppearance();

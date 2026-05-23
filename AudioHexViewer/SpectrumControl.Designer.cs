@@ -315,11 +315,15 @@
             // 
             btnRun.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnRun.FlatStyle = FlatStyle.Flat;
-            btnRun.Location = new Point(1075, 5);
+            btnRun.FlatAppearance.BorderSize = 0;
+            btnRun.Font = new Font("Segoe UI", 10f, FontStyle.Bold);
+            btnRun.Location = new Point(1060, 10);
             btnRun.Name = "btnRun";
-            btnRun.Size = new Size(60, 46);
+            btnRun.Size = new Size(70, 40);
             btnRun.TabIndex = 9;
-            btnRun.Text = "RUN";
+            btnRun.Text = "▶  RUN";
+            btnRun.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            btnRun.UseVisualStyleBackColor = false;
             // 
             // chkLogX
             // 

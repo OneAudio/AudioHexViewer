@@ -333,6 +333,18 @@ namespace AudioHexViewer
 
             UpdateWindowInfo();
 
+            // Owner-draw btnRun : même rendu que l'Oscilloscope
+            btnRun.Paint += (s, e) =>
+            {
+                var btn = (Button)s!;
+                e.Graphics.Clear(btn.BackColor);
+                TextRenderer.DrawText(e.Graphics, btn.Text, btn.Font,
+                    btn.ClientRectangle, btn.ForeColor,
+                    System.Windows.Forms.TextFormatFlags.HorizontalCenter |
+                    System.Windows.Forms.TextFormatFlags.VerticalCenter   |
+                    System.Windows.Forms.TextFormatFlags.SingleLine);
+            };
+
             btnRun.Click += (s, e) =>
             {
                 if (!isLive)
@@ -396,13 +408,13 @@ namespace AudioHexViewer
             if (btnRun == null) return;
             if (isLive)
             {
-                btnRun.Text      = "STOP";
+                btnRun.Text      = "■  STOP";
                 btnRun.BackColor = Color.Firebrick;
                 btnRun.ForeColor = Color.White;
             }
             else
             {
-                btnRun.Text      = "RUN";
+                btnRun.Text      = "▶  RUN";
                 btnRun.BackColor = Color.SeaGreen;
                 btnRun.ForeColor = Color.White;
             }
