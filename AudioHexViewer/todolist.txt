@@ -1,14 +1,27 @@
 Chose à faire :
 --------------
-Le 13/05/2026
+Le 24/05/2026
 -------------
 
+A faire:
+Uniformiser la calibration d l'analyseur avec celle du générateur.
+Supprimer le bandeau du haut (Format+ vue-mêtre) + bouton REC/CAL.
+Rempaclacer par une barre horizontale d'icônes raccourcis et le même vue-mètre que le générateur.
+Réduire un peu la hauteur de la GUI du générateur.
+Uniformiser les 3 onglets.
+
+Oscilloscope:
+Ajouter une commande pour choisir le type de grille (Full / partial, none)
+Ajouter la possibilité de changer la position x du trig.(delay ?)
+Ajouter l'Oscilloscope pour l'export pdf/png.
+Ajouter des curseurs.
+Ajouter la possibilité d'avoir l'échelle verticale en V si la calibration est faite.
+
+
+
  Prévoir la normalisation de gain/phase (calibration) pour le mode FRF.(plus tard)
-
- Ajouter une calibration spécifique pour le mode DC - Offset + Gain ?
- 
+ Ajouter une calibration spécifique pour le mode DC - Offset + Gain ? 
  Ajouter l'affichage de la cohérence du FRF ? 
-
  Pour le mode FRF (Bode Plot), le moyennage serait à revoir...
 
  
