@@ -30,10 +30,10 @@ namespace AudioHexViewer
         // ── Constantes ────────────────────────────────────────────────────────
         private const int   H_DIVS        = 10;
         private const int   V_DIVS        = 8;
-        private const float MEAS_W        = 132f;
-        private const float MARGIN_LEFT   = 62f;   // élargi pour labels 9pt
-        private const float MARGIN_BOTTOM = 32f;   // élargi pour légende "Time"
-        private const float MARGIN_TOP    = 4f;
+        private const float MEAS_W        = 165f;
+        private const float MARGIN_LEFT   = 62f;
+        private const float MARGIN_BOTTOM = 32f;
+        private const float MARGIN_TOP    = 20f;  // zone pour la ligne d'info au-dessus de la grille
         private const float PRE_TRIG      = 0.20f;
         private const float DC_TAU        = 0.3f;
 
@@ -87,8 +87,8 @@ namespace AudioHexViewer
         {
             InitializeComponent();
 
-            BackColor = Color.Black;
-            Padding   = new Padding(1);
+            // Bordure identique à l'onglet Spectrum
+            BorderStyle = BorderStyle.FixedSingle;
 
             _timer = new System.Windows.Forms.Timer { Interval = 33 };
             _timer.Tick += Timer_Tick;
@@ -454,6 +454,9 @@ namespace AudioHexViewer
         {
             if(ms>=1000)return $"{ms/1000:G3} s/div";if(ms>=1)return $"{ms:G3} ms/div";return $"{ms*1000:G3} µs/div";
         }
+        private static string FormatV(double v)
+        { double a=Math.Abs(v); return a>=10?$"{v:F2}":a>=1?$"{v:F3}":a>=0.1?$"{v:F4}":$"{v:G4}"; }
+
         private static string FormatVoltLabel(double v)
         {
             if(Math.Abs(v)<1e-9) return "0";
@@ -478,6 +481,18 @@ namespace AudioHexViewer
             if(wave.Width<20||wave.Height<20) return;
 
             g.FillRectangle(SystemBrushes.Control,0,0,sz.Width,sz.Height);
+
+            // ── Ligne d'info : même style que l'onglet Spectrum ──────────────
+            // Segoe UI 8.25pt, couleur InfoTextColor (DarkBlue par défaut),
+            // positionnée au-dessus du graphique dans MARGIN_TOP (comme dans PostPaint Spectrum)
+            if (!string.IsNullOrEmpty(_infoLine))
+            {
+                using var fontInfo = new Font("Segoe UI", 8.25f);
+                using var brInfo   = new SolidBrush(InfoTextColor);
+                g.DrawString(_infoLine, fontInfo, brInfo,
+                    new PointF(MARGIN_LEFT + 2, 3));
+            }
+
             DrawGrid(g,wave);
             DrawAxisLabels(g,wave);
 
@@ -609,14 +624,6 @@ namespace AudioHexViewer
             using var sfA=new StringFormat{Alignment=StringAlignment.Center,LineAlignment=StringAlignment.Center};
             g.DrawString("Amplitude",fontLeg,br,new PointF(0,0),sfA);
             g.Restore(state);
-
-            // Info line en haut du graphique
-            if(!string.IsNullOrEmpty(_infoLine))
-            {
-                using var fontInfo=new Font("Segoe UI",7.5f);
-                using var brI=new SolidBrush(InfoTextColor);
-                g.DrawString(_infoLine,fontInfo,brI,new PointF(w.Left+4,1));
-            }
         }
 
         private static void DrawWaveform(Graphics g,RectangleF w,float[] s,Color color,int lw,float zoom)
@@ -646,44 +653,117 @@ namespace AudioHexViewer
             }
         }
 
+        // Panneau de mesures : style identique au DrawChartStatsPanel du Spectrum
         private void DrawMeasurements(Graphics g, RectangleF w)
         {
-            var r=new RectangleF(w.Right,w.Top,MEAS_W-4,w.Height);
-            g.FillRectangle(SystemBrushes.Control,r);
-            using(var pen=new Pen(Color.FromArgb(160,SystemColors.ControlDark),1f))g.DrawRectangle(pen,r.Left,r.Top,r.Width,r.Height);
+            // Rectangle : à droite du graphique, avec gap de 6px (comme Spectrum: outer.Right + 8)
+            var rect = new RectangleF(w.Right + 6, w.Top, MEAS_W - 10, w.Height);
 
-            float y=r.Top+6;int ch=cmbChannel.SelectedIndex;
-            bool calOkL=false,calOkR=false;double offL=0,offR=0;
-            if(GetInputCalibration!=null){var(vL,oL,vR,oR)=GetInputCalibration();calOkL=vL;offL=oL;calOkR=vR;offR=oR;}
-            if(ch==0||ch==2) y=DrawMeasSection(g,"LEFT", TraceColorL,_measL,r,y,calOkL,offL);
-            if(ch==1||ch==2) y=DrawMeasSection(g,"RIGHT",TraceColorR,_measR,r,y,calOkR,offR);
-            if(!_isRunning&&_capL!=null)   DrawSmall(g,"🖱 scroll to pan",Color.Gray,r,ref y);
-            else if(_isArmed)              DrawSmall(g,"ARMED",Color.DarkOrange,r,ref y);
-            else if(IsRollMode)            DrawSmall(g,"ROLL",Color.DodgerBlue,r,ref y);
-            else if(!_isRunning)           DrawSmall(g,"STOPPED",Color.Gray,r,ref y);
+            // Fond blanc + bordure LightGray (identique Spectrum)
+            g.FillRectangle(Brushes.White, rect);
+            using var penBorder = new Pen(Color.LightGray, 1f);
+            g.DrawRectangle(penBorder, rect.X, rect.Y, rect.Width, rect.Height);
+
+            float y = rect.Y + 8f;
+            int ch = cmbChannel.SelectedIndex;
+
+            bool calOkL=false, calOkR=false; double offL=0, offR=0;
+            if (GetInputCalibration != null)
+            { var (vL,oL,vR,oR)=GetInputCalibration(); calOkL=vL;offL=oL;calOkR=vR;offR=oR; }
+
+            if (ch==0||ch==2) DrawMeasSection(g,"LEFT",  Color.DodgerBlue, _measL, rect, ref y, calOkL, offL);
+            if (ch==1||ch==2) DrawMeasSection(g,"RIGHT", Color.OrangeRed,  _measR, rect, ref y, calOkR, offR);
+
+            // Statut centré en bas du panneau, italic gris
+            string statTxt=""; Color statCol=Color.Gray;
+            if      (_isArmed)                     { statTxt="WAIT";          statCol=Color.DarkOrange; }
+            else if (!_isRunning && _capL != null) { statTxt="🖱 scroll/pan"; statCol=Color.Gray; }
+            else if (IsRollMode)                   { statTxt="ROLL";          statCol=Color.DodgerBlue; }
+            else if (!_isRunning)                  { statTxt="STOPPED";       statCol=Color.Gray; }
+            if (statTxt != "")
+            {
+                using var fStat  = new Font("Segoe UI", 7.5f, FontStyle.Italic);
+                using var brStat = new SolidBrush(statCol);
+                using var sfC    = new StringFormat{Alignment=StringAlignment.Center};
+                g.DrawString(statTxt,fStat,brStat,
+                    new RectangleF(rect.X,rect.Bottom-18,rect.Width,16),sfC);
+            }
         }
 
-        private float DrawMeasSection(Graphics g,string title,Color color,MeasResult m,RectangleF r,float y,bool cal,double offDb)
+        /// Panneau section canal : titre centré coloré + séparateur Gainsboro + lignes label|valeur.
+        /// Polices identiques Spectrum : base=8.25pt Regular, header=Bold, strong=9.75pt Bold.
+        private static void DrawMeasSection(Graphics g, string title, Color titleColor,
+            MeasResult m, RectangleF rect, ref float y, bool cal, double offDb)
         {
-            using var fT=new Font("Segoe UI",8.5f,FontStyle.Bold);using var fV=new Font("Segoe UI",8f);
-            using var brT=new SolidBrush(color);
-            using var brV=new SolidBrush(SystemColors.ControlText);
-            using var brG=new SolidBrush(SystemColors.GrayText);
-            float x=r.Left+6;g.DrawString(title,fT,brT,x,y);y+=16;
-            if(!m.Valid){foreach(var l in new[]{"Vrms  ---","Vpp   ---","Vdc   ---","Freq  ---","Per   ---"}){g.DrawString(l,fV,brG,x,y);y+=14;}return y+4;}
-            double sc=cal?Math.Pow(10,offDb/20.0)*Math.Sqrt(2.0):1.0;string u=cal?"V":"";
-            string Fv(double v)=>cal?FormatV(v*sc):$"{v:F4}";
-            g.DrawString($"Vrms  {Fv(m.Vrms)}{u}",fV,brV,x,y);y+=14;
-            g.DrawString($"Vpp   {Fv(m.Vpp)}{u}", fV,brV,x,y);y+=14;
-            g.DrawString($"Vdc   {Fv(m.Vdc)}{u}", fV,brV,x,y);y+=14;
-            if(m.FreqHz>0){string fs=m.FreqHz>=1000?$"{m.FreqHz/1000:G4} kHz":$"{m.FreqHz:G4} Hz";g.DrawString($"Freq  {fs}",fV,brV,x,y);y+=14;g.DrawString($"Per   {1000/m.FreqHz:G4} ms",fV,brV,x,y);y+=14;}
-            else{g.DrawString("Freq  ---",fV,brG,x,y);y+=14;g.DrawString("Per   ---",fV,brG,x,y);y+=14;}
-            return y+4;
-        }
+            using var fontBase   = new Font("Segoe UI", 8.25f, FontStyle.Regular);
+            using var fontHeader = new Font("Segoe UI", 8.25f, FontStyle.Bold);
+            using var fontStrong = new Font("Segoe UI", 9.75f, FontStyle.Bold);
+            using var brushText  = new SolidBrush(Color.DimGray);
+            using var penSep     = new Pen(Color.Gainsboro, 1f);
+            using var fmtCenter  = new StringFormat{Alignment=StringAlignment.Center};
+            using var fmtRight   = new StringFormat{Alignment=StringAlignment.Far,
+                                                     LineAlignment=StringAlignment.Near};
 
-        private static string FormatV(double v){double a=Math.Abs(v);return a>=10?$"{v:F2}":a>=1?$"{v:F3}":a>=0.1?$"{v:F4}":$"{v:G4}";}
-        private static void DrawSmall(Graphics g,string t,Color c,RectangleF r,ref float y)
-        {using var f=new Font("Segoe UI",7.5f,FontStyle.Italic);using var br=new SolidBrush(c);g.DrawString(t,f,br,r.Left+6,y);y+=14;}
+            float pad  = 8f;
+            float xL   = rect.X + pad;
+            float lineH= fontBase.GetHeight(g) + 4f;
+
+            // Titre centré coloré
+            var headerRect = new RectangleF(rect.X+pad, y, rect.Width-2*pad, fontHeader.GetHeight(g));
+            using (var bTitle = new SolidBrush(titleColor))
+                g.DrawString(title, fontHeader, bTitle, headerRect, fmtCenter);
+            y += headerRect.Height + 4f;
+
+            // Séparateur Gainsboro sous le titre (identique Spectrum)
+            g.DrawLine(penSep, rect.X+pad, y, rect.Right-pad, y);
+            y += 8f;
+
+            // Largeur max labels pour aligner les valeurs
+            float maxLW = 0f;
+            foreach (string l in new[]{"Vrms","Vpp","Vdc","Freq","Per"})
+            { float w2=g.MeasureString(l,fontBase).Width; if(w2>maxLW) maxLW=w2; }
+            float valueLeft = xL + maxLW + 8f;
+            float valueW    = rect.Right - pad - valueLeft;
+
+            if (!m.Valid)
+            {
+                foreach (string lbl in new[]{"Vrms","Vpp","Vdc","Freq","Per"})
+                {
+                    g.DrawString(lbl, fontBase, brushText, xL, y);
+                    g.DrawString("---", fontBase, brushText,
+                        new RectangleF(valueLeft,y,valueW,lineH), fmtRight);
+                    y += lineH;
+                }
+                y += 4f; return;
+            }
+
+            double sc = cal ? Math.Pow(10,offDb/20.0)*Math.Sqrt(2.0) : 1.0;
+            string u  = cal ? "V" : "";
+            string Fv(double v) => cal ? FormatV(v*sc)+u : $"{v:F4}";
+
+            // Vrms en fontStrong (valeur principale mise en valeur, comme Spectrum)
+            float strongH = Math.Max(fontBase.GetHeight(g), fontStrong.GetHeight(g));
+            g.DrawString("Vrms", fontBase, brushText, xL, y);
+            g.DrawString(Fv(m.Vrms), fontStrong, brushText,
+                new RectangleF(valueLeft,y,valueW,strongH), fmtRight);
+            y += strongH + 4f;
+
+            // Autres valeurs en fontBase
+            (string lbl, string val)[] rows = {
+                ("Vpp",  Fv(m.Vpp)),
+                ("Vdc",  Fv(m.Vdc)),
+                ("Freq", m.FreqHz>0?(m.FreqHz>=1000?$"{m.FreqHz/1000:G4} kHz":$"{m.FreqHz:G4} Hz"):"---"),
+                ("Per",  m.FreqHz>0?$"{1000/m.FreqHz:G4} ms":"---")
+            };
+            foreach (var (lbl, val) in rows)
+            {
+                g.DrawString(lbl, fontBase, brushText, xL, y);
+                g.DrawString(val, fontBase, brushText,
+                    new RectangleF(valueLeft,y,valueW,lineH), fmtRight);
+                y += lineH;
+            }
+            y += 4f;
+        }
 
         // ─────────────────────────────────────────────────────────────────────
         public OscilloscopeSettings GetSettingsSnapshot()=>new OscilloscopeSettings
