@@ -16,6 +16,7 @@ namespace AudioHexViewer
         private ComboBox      cmbTrigMode;  private ComboBox cmbTrigEdge;
         private Label         lblTrigSrc;   private ComboBox cmbTrigSrc;
         private Label         lblTrigLvl;   private NumericUpDown nudTrigLevel;
+        private Label         lblTrigPos;   private NumericUpDown nudTrigPos;
         private Label         lblGrid;      private ComboBox cmbGrid;
         private Label         lblGainHdr;   private Label lblCoupHdr;
         private Label         lblVdivL;     private ComboBox cmbVdivL;
@@ -24,6 +25,8 @@ namespace AudioHexViewer
         private Label         lblCoupR;     private ComboBox cmbCouplingR;
         private CheckBox      chkRoll;
         private CheckBox      chkVdiv;
+        private Label         lblCursors;
+        private Button        btnC1, btnC1Chan, btnC2, btnC2Chan;
         private Label         lblTrigStatus;
         private ScopePanel    pnlScope;
 
@@ -40,6 +43,7 @@ namespace AudioHexViewer
             cmbTrigMode  = new ComboBox(); cmbTrigEdge = new ComboBox();
             lblTrigSrc   = new Label();   cmbTrigSrc  = new ComboBox();
             lblTrigLvl   = new Label();   nudTrigLevel= new NumericUpDown();
+            lblTrigPos   = new Label();   nudTrigPos  = new NumericUpDown();
             lblGrid      = new Label();   cmbGrid     = new ComboBox();
             lblGainHdr   = new Label();   lblCoupHdr  = new Label();
             lblVdivL     = new Label();   cmbVdivL    = new ComboBox();
@@ -48,10 +52,14 @@ namespace AudioHexViewer
             lblCoupR     = new Label();   cmbCouplingR= new ComboBox();
             chkRoll      = new CheckBox();
             chkVdiv      = new CheckBox();
+            lblCursors   = new Label();
+            btnC1        = new Button(); btnC1Chan = new Button();
+            btnC2        = new Button(); btnC2Chan = new Button();
             lblTrigStatus= new Label();
             pnlScope     = new ScopePanel();
 
             nudTrigLevel.BeginInit();
+            nudTrigPos.BeginInit();
             panelTop.SuspendLayout();
             SuspendLayout();
 
@@ -69,11 +77,13 @@ namespace AudioHexViewer
                 lblTrig, cmbTrigMode, cmbTrigEdge,
                 lblTrigSrc, cmbTrigSrc,
                 lblTrigLvl, nudTrigLevel,
+                lblTrigPos, nudTrigPos,
                 lblGrid, cmbGrid,
                 lblGainHdr, lblCoupHdr,
                 lblVdivL, cmbVdivL, lblCoupL, cmbCouplingL,
                 lblVdivR, cmbVdivR, lblCoupR, cmbCouplingR,
                 chkRoll, chkVdiv,
+                lblCursors, btnC1, btnC1Chan, btnC2, btnC2Chan,
                 lblTrigStatus,
                 btnRun
             });
@@ -164,7 +174,46 @@ namespace AudioHexViewer
             chkVdiv.Location=new Point(780,62); chkVdiv.Text="V/div"; chkVdiv.TabIndex=13;
             chkVdiv.Enabled=false; chkVdiv.UseVisualStyleBackColor=true;
 
-            // ── WAIT / TRIG'D ─────────────────────────────────────────────────
+            // ── Curseurs C1 / C2 ─────────────────────────────────────────────
+            lblCursors.AutoSize=true; lblCursors.Font=gS; lblCursors.ForeColor=System.Drawing.SystemColors.GrayText;
+            lblCursors.Location=new Point(848,14); lblCursors.Text="CURSORS";
+
+            // Ligne C1 (alignée avec barre principale, y=30)
+            btnC1.FlatStyle=FlatStyle.Flat; btnC1.FlatAppearance.BorderSize=1;
+            btnC1.Font=new Font("Segoe UI",9f,FontStyle.Bold);
+            btnC1.Location=new Point(848,30); btnC1.Size=new Size(30,24);
+            btnC1.Text="C1"; btnC1.TabIndex=14; btnC1.UseVisualStyleBackColor=false;
+            btnC1.Paint += (s,e) => { var b=(Button)s!; e.Graphics.Clear(b.BackColor);
+                TextRenderer.DrawText(e.Graphics,b.Text,b.Font,b.ClientRectangle,b.ForeColor,
+                System.Windows.Forms.TextFormatFlags.HorizontalCenter|System.Windows.Forms.TextFormatFlags.VerticalCenter); };
+
+            btnC1Chan.FlatStyle=FlatStyle.Flat; btnC1Chan.FlatAppearance.BorderSize=1;
+            btnC1Chan.Font=std9;
+            btnC1Chan.Location=new Point(882,30); btnC1Chan.Size=new Size(72,24);
+            btnC1Chan.Text="Left"; btnC1Chan.TabIndex=15; btnC1Chan.UseVisualStyleBackColor=true;
+
+            // Ligne C2 (décalée y=62 comme voie R)
+            btnC2.FlatStyle=FlatStyle.Flat; btnC2.FlatAppearance.BorderSize=1;
+            btnC2.Font=new Font("Segoe UI",9f,FontStyle.Bold);
+            btnC2.Location=new Point(848,62); btnC2.Size=new Size(30,24);
+            btnC2.Text="C2"; btnC2.TabIndex=16; btnC2.UseVisualStyleBackColor=false;
+            btnC2.Paint += (s,e) => { var b=(Button)s!; e.Graphics.Clear(b.BackColor);
+                TextRenderer.DrawText(e.Graphics,b.Text,b.Font,b.ClientRectangle,b.ForeColor,
+                System.Windows.Forms.TextFormatFlags.HorizontalCenter|System.Windows.Forms.TextFormatFlags.VerticalCenter); };
+
+            btnC2Chan.FlatStyle=FlatStyle.Flat; btnC2Chan.FlatAppearance.BorderSize=1;
+            btnC2Chan.Font=std9;
+            btnC2Chan.Location=new Point(882,62); btnC2Chan.Size=new Size(72,24);
+            btnC2Chan.Text="Right"; btnC2Chan.TabIndex=17; btnC2Chan.UseVisualStyleBackColor=true;
+
+            // ── Position horizontale du trigger ───────────────────────────────
+            // Plage : 0,5 à 9,5 divisions (5 % à 95 % de la fenêtre), défaut = 2,0 div
+            lblTrigPos.AutoSize=true; lblTrigPos.Font=gS; lblTrigPos.ForeColor=System.Drawing.SystemColors.GrayText;
+            lblTrigPos.Location=new Point(960,14); lblTrigPos.Text="T POS (div)";
+            nudTrigPos.DecimalPlaces=1; nudTrigPos.Increment=0.5m;
+            nudTrigPos.Minimum=0.5m; nudTrigPos.Maximum=9.5m; nudTrigPos.Value=2.0m;
+            nudTrigPos.Font=std9; nudTrigPos.Location=new Point(960,30);
+            nudTrigPos.Size=new Size(62,26); nudTrigPos.TabIndex=18;
             lblTrigStatus.Anchor  =System.Windows.Forms.AnchorStyles.Top|System.Windows.Forms.AnchorStyles.Right;
             lblTrigStatus.Location=new Point(1060,54); lblTrigStatus.Size=new Size(70,18);
             lblTrigStatus.Text=""; lblTrigStatus.Font=new Font("Segoe UI",8.5f,FontStyle.Bold);
@@ -187,6 +236,7 @@ namespace AudioHexViewer
             Controls.Add(pnlScope); Controls.Add(panelTop);
 
             nudTrigLevel.EndInit();
+            nudTrigPos.EndInit();
             panelTop.ResumeLayout(false); panelTop.PerformLayout();
             ResumeLayout(false);
         }

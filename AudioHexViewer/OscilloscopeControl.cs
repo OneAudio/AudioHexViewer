@@ -30,11 +30,17 @@ namespace AudioHexViewer
         // ── Constantes ────────────────────────────────────────────────────────
         private const int   H_DIVS        = 10;
         private const int   V_DIVS        = 8;
-        private const float MEAS_W        = 165f;
+        private const float MEAS_W        = 200f;   // identique ChartStatsWidthPx = 200 (Spectrum)
         private const float MARGIN_LEFT   = 62f;
         private const float MARGIN_BOTTOM = 32f;
         private const float MARGIN_TOP    = 20f;  // zone pour la ligne d'info au-dessus de la grille
-        private const float PRE_TRIG      = 0.20f;
+        private const float PRE_TRIG_DEFAULT = 0.20f;
+
+        /// Position horizontale du trigger : fraction [0,1] du début de la fenêtre.
+        /// Lue depuis nudTrigPos (en divisions / H_DIVS).
+        private float PreTrig => nudTrigPos != null
+            ? Math.Clamp((float)nudTrigPos.Value / H_DIVS, 0.05f, 0.95f)
+            : PRE_TRIG_DEFAULT;
         private const float DC_TAU        = 0.3f;
 
         private static readonly double[] TimeDivMs =
@@ -78,6 +84,15 @@ namespace AudioHexViewer
         private int _capSR, _capTrigIdx, _panOffset;
         private float _dcEstL, _dcEstR;
 
+        // ── Curseurs C1 / C2 ─────────────────────────────────────────────────
+        private bool  _c1Active, _c2Active;
+        private bool  _c1Frozen, _c2Frozen;          // figé par double-clic
+        private float _c1Frac = 1f/3, _c2Frac = 2f/3; // position [0,1] dans la fenêtre
+        private int   _c1Chan = 0, _c2Chan = 1;       // 0=Left 1=Right 2=Auto
+        private int   _cursorDragging;                 // 0=none 1=C1 2=C2
+        private static readonly Color CC1 = Color.OrangeRed;
+        private static readonly Color CC2 = Color.DodgerBlue;
+
         private readonly System.Windows.Forms.Timer _timer;
 
         private struct MeasResult { public bool Valid; public double Vpp, Vrms, Vdc, FreqHz; }
@@ -87,8 +102,8 @@ namespace AudioHexViewer
         {
             InitializeComponent();
 
-            // Bordure identique à l'onglet Spectrum
-            BorderStyle = BorderStyle.FixedSingle;
+            // Pas de BorderStyle sur le UserControl (comme SpectrumControl) :
+            // la bordure est dessinée dans PnlScope_Paint sans réduire ClientSize.
 
             _timer = new System.Windows.Forms.Timer { Interval = 33 };
             _timer.Tick += Timer_Tick;
@@ -110,6 +125,7 @@ namespace AudioHexViewer
             cmbTrigEdge.SelectedIndexChanged  += (_, _) => { };
             cmbTrigSrc.SelectedIndexChanged   += (_, _) => { };
             nudTrigLevel.ValueChanged         += (_, _) => pnlScope.Invalidate();
+            nudTrigPos.ValueChanged           += (_, _) => { if (!_isRunning) RefreshStoppedView(); else pnlScope.Invalidate(); };
             cmbVdivL.SelectedIndexChanged     += (_, _) => pnlScope.Invalidate();
             cmbVdivR.SelectedIndexChanged     += (_, _) => pnlScope.Invalidate();
             cmbCouplingL.SelectedIndexChanged += (_, _) => { if (!_isRunning) RefreshStoppedView(); };
@@ -122,6 +138,19 @@ namespace AudioHexViewer
             pnlScope.Resize     += (_, _) => pnlScope.Invalidate();
             pnlScope.MouseEnter += (_, _) => { if (!_isRunning) pnlScope.Focus(); };
             pnlScope.MouseWheel += PnlScope_MouseWheel;
+
+            // ── Curseurs ─────────────────────────────────────────────────────
+            btnC1.Click     += (_, _) => { _c1Active=!_c1Active; UpdateCursorButtons(); pnlScope.Invalidate(); };
+            btnC2.Click     += (_, _) => { _c2Active=!_c2Active; UpdateCursorButtons(); pnlScope.Invalidate(); };
+            btnC1Chan.Click += (_, _) => { _c1Chan=(_c1Chan+1)%3; UpdateCursorButtons(); pnlScope.Invalidate(); };
+            btnC2Chan.Click += (_, _) => { _c2Chan=(_c2Chan+1)%3; UpdateCursorButtons(); pnlScope.Invalidate(); };
+
+            pnlScope.MouseDown        += PnlScope_CursorMouseDown;
+            pnlScope.MouseMove        += PnlScope_CursorMouseMove;
+            pnlScope.MouseUp          += (_, _) => _cursorDragging = 0;
+            pnlScope.MouseDoubleClick += PnlScope_CursorDblClick;
+
+            UpdateCursorButtons();
 
             UpdateRollCheckbox();
             SetRunState(false);
@@ -141,6 +170,156 @@ namespace AudioHexViewer
             bool can = cmbTimediv.SelectedIndex >= INDEX_ROLL_MIN;
             chkRoll.Enabled = can;
             if (!can) chkRoll.Checked = false;
+        }
+
+        // ── Helpers curseurs ──────────────────────────────────────────────────
+        private void UpdateCursorButtons()
+        {
+            string[] cn = {"Left","Right","Auto"};
+            btnC1.BackColor = _c1Active ? CC1              : SystemColors.Control;
+            btnC1.ForeColor = _c1Active ? Color.White      : SystemColors.ControlText;
+            btnC2.BackColor = _c2Active ? CC2              : SystemColors.Control;
+            btnC2.ForeColor = _c2Active ? Color.White      : SystemColors.ControlText;
+            btnC1Chan.Text  = cn[_c1Chan];
+            btnC2Chan.Text  = cn[_c2Chan];
+        }
+
+        private RectangleF GetWaveRect()
+        {
+            var sz = pnlScope.ClientSize;
+            if (sz.Width<60||sz.Height<60) return RectangleF.Empty;
+            return new RectangleF(MARGIN_LEFT, MARGIN_TOP,
+                sz.Width-MARGIN_LEFT-MEAS_W, sz.Height-MARGIN_TOP-MARGIN_BOTTOM);
+        }
+
+        /// Retourne les données du curseur selon son réglage de voie.
+        private float[]? GetCursorData(int cursorIdx)
+        {
+            int ch   = cmbChannel.SelectedIndex;
+            bool hasL= _dispL!=null && (ch==0||ch==2);
+            bool hasR= _dispR!=null && (ch==1||ch==2);
+            int chan = cursorIdx==1 ? _c1Chan : _c2Chan;
+            return chan switch
+            {
+                0 => hasL ? _dispL : null,
+                1 => hasR ? _dispR : null,
+                _ => cursorIdx==1 ? (hasL?_dispL:_dispR) : (hasR?_dispR:_dispL)
+            };
+        }
+
+        private float GetCursorZoom(int cursorIdx)
+        {
+            int ch   = cmbChannel.SelectedIndex;
+            bool hasL= ch==0||ch==2;
+            bool hasR= ch==1||ch==2;
+            int chan = cursorIdx==1 ? _c1Chan : _c2Chan;
+            return chan switch
+            {
+                0 => _effZoomL,
+                1 => _effZoomR,
+                _ => cursorIdx==1 ? (hasL?_effZoomL:_effZoomR) : (hasR?_effZoomR:_effZoomL)
+            };
+        }
+
+        private (bool calOk, double offDb) GetCursorCal(int cursorIdx)
+        {
+            if (GetInputCalibration == null) return (false, 0);
+            var (vL, oL, vR, oR) = GetInputCalibration();
+            int chan = cursorIdx==1 ? _c1Chan : _c2Chan;
+            int ch   = cmbChannel.SelectedIndex;
+            bool hasL= ch==0||ch==2;
+            bool hasR= ch==1||ch==2;
+            return chan switch
+            {
+                0 => (vL, oL),
+                1 => (vR, oR),
+                _ => cursorIdx==1 ? (hasL?(vL,oL):(vR,oR)) : (hasR?(vR,oR):(vL,oL))
+            };
+        }
+
+        private (double timeMs, float normVal, bool valid) EvalCursor(float frac, int cursorIdx)
+        {
+            int tdIdx    = Math.Clamp(cmbTimediv.SelectedIndex, 0, TimeDivMs.Length-1);
+            double tMs   = (frac - PreTrig) * TimeDivMs[tdIdx] * H_DIVS;
+            float[]? dat = GetCursorData(cursorIdx);
+            if (dat==null||dat.Length<2) return (tMs, 0f, false);
+            float t=frac*(dat.Length-1); int lo=(int)t, hi=Math.Min(lo+1,dat.Length-1);
+            return (tMs, dat[lo]*(1f-(t-lo))+dat[hi]*(t-lo), true);
+        }
+
+        // ── Souris curseurs ───────────────────────────────────────────────────
+        private void PnlScope_CursorMouseDown(object? s, MouseEventArgs e)
+        {
+            if (e.Button!=MouseButtons.Left) return;
+            var w=GetWaveRect(); if(w.IsEmpty) return;
+            float mx=e.X, thresh=10f;
+            if (_c1Active&&!_c1Frozen&&Math.Abs(mx-(w.Left+_c1Frac*w.Width))<=thresh) _cursorDragging=1;
+            else if(_c2Active&&!_c2Frozen&&Math.Abs(mx-(w.Left+_c2Frac*w.Width))<=thresh) _cursorDragging=2;
+        }
+
+        private void PnlScope_CursorMouseMove(object? s, MouseEventArgs e)
+        {
+            var w=GetWaveRect(); if(w.IsEmpty) return;
+            float mx=e.X;
+            if (_cursorDragging>0)
+            {
+                float f=Math.Clamp((mx-w.Left)/w.Width,0f,1f);
+                if(_cursorDragging==1) _c1Frac=f; else _c2Frac=f;
+                pnlScope.Invalidate(); return;
+            }
+            float c1x=w.Left+_c1Frac*w.Width, c2x=w.Left+_c2Frac*w.Width;
+            bool near=(_c1Active&&!_c1Frozen&&Math.Abs(mx-c1x)<=10f)
+                    ||(_c2Active&&!_c2Frozen&&Math.Abs(mx-c2x)<=10f);
+            pnlScope.Cursor=near?Cursors.SizeWE:Cursors.Default;
+        }
+
+        private void PnlScope_CursorDblClick(object? s, MouseEventArgs e)
+        {
+            var w=GetWaveRect(); if(w.IsEmpty) return;
+            float mx=e.X, thresh=10f;
+            if (_c1Active&&Math.Abs(mx-(w.Left+_c1Frac*w.Width))<=thresh) { _c1Frozen=!_c1Frozen; pnlScope.Invalidate(); }
+            else if(_c2Active&&Math.Abs(mx-(w.Left+_c2Frac*w.Width))<=thresh) { _c2Frozen=!_c2Frozen; pnlScope.Invalidate(); }
+        }
+
+        // ── Dessin des curseurs ───────────────────────────────────────────────
+        private void DrawCursors(Graphics g, RectangleF w)
+        {
+            // Dessiner C2 d'abord (C1 par-dessus)
+            if (_c2Active) DrawOneCursor(g, w, _c2Frac, 2, _c2Frozen, CC2, "C2");
+            if (_c1Active) DrawOneCursor(g, w, _c1Frac, 1, _c1Frozen, CC1, "C1");
+        }
+
+        private void DrawOneCursor(Graphics g, RectangleF w, float frac, int cursorIdx,
+            bool frozen, Color color, string label)
+        {
+            float cx = w.Left + frac * w.Width;
+
+            // Ligne verticale (tiretée si mobile, pleine si figée)
+            using var pen = new Pen(Color.FromArgb(210, color), 1f)
+                { DashStyle = frozen ? DashStyle.Solid : DashStyle.Dash };
+            g.DrawLine(pen, cx, w.Top, cx, w.Bottom);
+
+            // Marqueur diamant sur la courbe
+            float[]? dat = GetCursorData(cursorIdx);
+            if (dat != null && dat.Length >= 2)
+            {
+                float zoom = GetCursorZoom(cursorIdx);
+                float t = frac*(dat.Length-1); int lo=(int)t,hi=Math.Min(lo+1,dat.Length-1);
+                float val = dat[lo]*(1f-(t-lo))+dat[hi]*(t-lo);
+                float ym  = w.Top+w.Height/2f, ys=w.Height/2f*zoom;
+                float yPos= Math.Clamp(ym-val*ys, w.Top, w.Bottom);
+                float d   = 6f;
+                var pts   = new[]{new PointF(cx,yPos-d),new PointF(cx+d,yPos),
+                                  new PointF(cx,yPos+d),new PointF(cx-d,yPos)};
+                using var br = new SolidBrush(Color.FromArgb(220, color));
+                g.FillPolygon(br, pts);
+            }
+
+            // Étiquette + icône figé
+            using var font = new Font("Segoe UI", 8f, FontStyle.Bold);
+            using var brL  = new SolidBrush(color);
+            string lbl = label + (frozen ? " ⏸" : "");
+            g.DrawString(lbl, font, brL, cx+3, w.Top+2);
         }
 
         // ── Mode V/div ────────────────────────────────────────────────────────
@@ -317,7 +496,7 @@ namespace AudioHexViewer
             if(_capL==null||_capR==null||_capSR<=0) return;
             int td=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
             int win=Math.Max(8,(int)(TimeDivMs[td]*H_DIVS/1000.0*_capSR));
-            int pre=(int)(win*PRE_TRIG);
+            int pre=(int)(win*PreTrig);
             int tref=_capTrigIdx>=0?_capTrigIdx:pre;
             int ds=Math.Clamp(tref-pre+_panOffset,0,Math.Max(0,_capL.Length-win));
             win=Math.Min(win,_capL.Length-ds); if(win<2) return;
@@ -343,7 +522,7 @@ namespace AudioHexViewer
 
             int td=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
             int win=Math.Max(8,(int)(TimeDivMs[td]*H_DIVS/1000.0*sr));
-            int pre=(int)(win*PRE_TRIG);
+            int pre=(int)(win*PreTrig);
             int search=Math.Min(win*3+pre+4,ring.Capacity-1);
 
             long absEnd=ring.AbsWrite;
@@ -383,7 +562,7 @@ namespace AudioHexViewer
             _capL=rawL;_capR=rawR;_capSR=sr;_capTrigIdx=trigIdx;
             _dispL=new float[win];_dispR=new float[win];
             Array.Copy(rawL,dstart,_dispL,0,win);Array.Copy(rawR,dstart,_dispR,0,win);
-            _trigPx=trigIdx>=0?trigIdx-dstart:(int)(win*PRE_TRIG);
+            _trigPx=trigIdx>=0?trigIdx-dstart:(int)(win*PreTrig);
             _measL=ComputeMeasurements(_dispL,sr);_measR=ComputeMeasurements(_dispR,sr);
             UpdateInfoLine();
         }
@@ -502,7 +681,16 @@ namespace AudioHexViewer
             if(!IsRollMode&&(_dispL!=null||_dispR!=null))
                 DrawTriggerMarkers(g,wave,_trigPx,(_dispL??_dispR)!.Length);
 
+            // Curseurs (par-dessus les traces et le trigger)
+            if (_c1Active || _c2Active) DrawCursors(g, wave);
+
             DrawMeasurements(g,wave);
+
+            // Bordure noire 1px autour de pnlScope — dessinée EN DERNIER pour ne jamais
+            // être recouverte. Technique identique au chart DataVisualization du Spectrum
+            // (BorderlineColor + Width), mais sans réduire le ClientSize du contrôle.
+            g.SmoothingMode = SmoothingMode.None;
+            g.DrawRectangle(Pens.Black, 0, 0, sz.Width-1, sz.Height-1);
         }
 
         // ── Grille 3 modes ────────────────────────────────────────────────────
@@ -586,10 +774,22 @@ namespace AudioHexViewer
             for(int i=0;i<=H_DIVS;i+=2)
             {
                 float x=w.Left+i*w.Width/H_DIVS;
-                double tMs=IsRollMode?i*td:(i-PRE_TRIG*H_DIVS)*td;
+                double tMs=IsRollMode?i*td:(i-PreTrig*H_DIVS)*td;
                 string lbl=(!IsRollMode&&Math.Abs(tMs)<td*0.001)?"0":FormatTime(tMs);
                 var sf=new StringFormat{Alignment=StringAlignment.Center};
                 g.DrawString(lbl,font,br,new RectangleF(x-38,w.Bottom+2,76,16),sf);
+            }
+            // Label "0" à la position exacte du trigger si elle tombe entre deux labels pairs
+            if(!IsRollMode)
+            {
+                float trigDiv = PreTrig * H_DIVS;
+                bool isAtEven = Math.Abs(trigDiv - Math.Round(trigDiv/2)*2) < 0.05f;
+                if(!isAtEven)
+                {
+                    float xT = w.Left + PreTrig * w.Width;
+                    var sfT = new StringFormat{Alignment=StringAlignment.Center};
+                    g.DrawString("0",font,br,new RectangleF(xT-20,w.Bottom+2,40,16),sfT);
+                }
             }
 
             // Légende "Time" en bas au centre
@@ -656,8 +856,15 @@ namespace AudioHexViewer
         // Panneau de mesures : style identique au DrawChartStatsPanel du Spectrum
         private void DrawMeasurements(Graphics g, RectangleF w)
         {
-            // Rectangle : à droite du graphique, avec gap de 6px (comme Spectrum: outer.Right + 8)
-            var rect = new RectangleF(w.Right + 6, w.Top, MEAS_W - 10, w.Height);
+            // Rectangle du panneau — formule identique au DrawChartStatsPanel du Spectrum :
+            //   panelLeft  = outer.Right + 8   → w.Right + 8
+            //   panelRight = cr.Right - 6       → (w.Right + MEAS_W) - 6
+            //   → largeur = MEAS_W - 14 ≈ 186 px (pour une fenêtre de 1138 px)
+            var rect = RectangleF.FromLTRB(
+                w.Right + 8,
+                w.Top,
+                w.Right + MEAS_W - 6,
+                w.Bottom);
 
             // Fond blanc + bordure LightGray (identique Spectrum)
             g.FillRectangle(Brushes.White, rect);
@@ -673,6 +880,10 @@ namespace AudioHexViewer
 
             if (ch==0||ch==2) DrawMeasSection(g,"LEFT",  Color.DodgerBlue, _measL, rect, ref y, calOkL, offL);
             if (ch==1||ch==2) DrawMeasSection(g,"RIGHT", Color.OrangeRed,  _measR, rect, ref y, calOkR, offR);
+
+            // Section curseurs (si au moins un actif)
+            if (_c1Active || _c2Active)
+                y = DrawCursorMeasSection(g, rect, y, calOkL, offL, calOkR, offR);
 
             // Statut centré en bas du panneau, italic gris
             string statTxt=""; Color statCol=Color.Gray;
@@ -763,6 +974,101 @@ namespace AudioHexViewer
                 y += lineH;
             }
             y += 4f;
+        }
+
+        /// Section curseurs dans le panneau de mesures (retourne le y mis à jour).
+        private float DrawCursorMeasSection(Graphics g, RectangleF rect, float y,
+            bool calOkL, double offL, bool calOkR, double offR)
+        {
+            using var fontBase   = new Font("Segoe UI", 8.25f);
+            using var fontHeader = new Font("Segoe UI", 8.25f, FontStyle.Bold);
+            using var brushText  = new SolidBrush(Color.DimGray);
+            using var penSep     = new Pen(Color.Gainsboro, 1f);
+            using var fmtCenter  = new StringFormat{Alignment=StringAlignment.Center};
+            using var fmtRight   = new StringFormat{Alignment=StringAlignment.Far,
+                                                     LineAlignment=StringAlignment.Near};
+
+            float pad   = 8f;
+            float xL    = rect.X + pad;
+            float lineH = fontBase.GetHeight(g) + 4f;
+            float maxLW = Math.Max(g.MeasureString("Time", fontBase).Width,
+                                   g.MeasureString("Level",fontBase).Width);
+            float valLeft = xL + maxLW + 6f;
+            float valW    = rect.Right - pad - valLeft;
+
+            // Ligne de séparation avant les curseurs
+            g.DrawLine(penSep, rect.X+pad, y, rect.Right-pad, y);
+            y += 8f;
+
+            // Évalue les deux curseurs
+            var (t1,v1,ok1) = _c1Active ? EvalCursor(_c1Frac,1) : (0.0,0f,false);
+            var (t2,v2,ok2) = _c2Active ? EvalCursor(_c2Frac,2) : (0.0,0f,false);
+
+            // Calibration par curseur
+            var (cal1,off1) = GetCursorCal(1);
+            var (cal2,off2) = GetCursorCal(2);
+
+            void DrawCurRow(string title, Color titleColor, double tMs, float norm,
+                bool ok, bool active, bool frozen, bool calOk, double offDb)
+            {
+                if (!active) return;
+                // Titre centré
+                var hr = new RectangleF(rect.X+pad, y, rect.Width-2*pad, fontHeader.GetHeight(g));
+                using var bT = new SolidBrush(titleColor);
+                string titleTxt = title + (frozen?" ⏸":"");
+                g.DrawString(titleTxt, fontHeader, bT, hr, fmtCenter);
+                y += hr.Height + 4f;
+
+                // Time
+                g.DrawString("Time",  fontBase, brushText, xL, y);
+                g.DrawString(ok ? FormatTime(tMs) : "---", fontBase, brushText,
+                    new RectangleF(valLeft,y,valW,lineH), fmtRight);
+                y += lineH;
+
+                // Level
+                string levStr = "---";
+                if (ok)
+                    levStr = calOk
+                        ? FormatV(norm * Math.Pow(10,offDb/20.0) * Math.Sqrt(2.0)) + "V"
+                        : $"{norm:+0.0000;-0.0000}";
+                g.DrawString("Level", fontBase, brushText, xL, y);
+                g.DrawString(levStr,  fontBase, brushText,
+                    new RectangleF(valLeft,y,valW,lineH), fmtRight);
+                y += lineH + 4f;
+            }
+
+            DrawCurRow("Cursor 1", CC1, t1, v1, ok1, _c1Active, _c1Frozen, cal1, off1);
+            DrawCurRow("Cursor 2", CC2, t2, v2, ok2, _c2Active, _c2Frozen, cal2, off2);
+
+            // Section ΔDelta
+            if (_c1Active && _c2Active && ok1 && ok2)
+            {
+                var hr = new RectangleF(rect.X+pad, y, rect.Width-2*pad, fontHeader.GetHeight(g));
+                using var bD = new SolidBrush(Color.DimGray);
+                g.DrawString("ΔDelta", fontHeader, bD, hr, fmtCenter);
+                y += hr.Height + 4f;
+                g.DrawLine(penSep, rect.X+pad, y-2, rect.Right-pad, y-2);
+
+                double dt = t2 - t1;
+                g.DrawString("ΔTime",  fontBase, brushText, xL, y);
+                g.DrawString(FormatTime(dt), fontBase, brushText,
+                    new RectangleF(valLeft,y,valW,lineH), fmtRight);
+                y += lineH;
+
+                string dvStr;
+                if (cal1 && cal2)
+                {
+                    double dv = v2*Math.Pow(10,off2/20.0)*Math.Sqrt(2.0)
+                              - v1*Math.Pow(10,off1/20.0)*Math.Sqrt(2.0);
+                    dvStr = FormatV(dv) + "V";
+                }
+                else dvStr = $"{(v2-v1):+0.0000;-0.0000}";
+                g.DrawString("ΔLevel", fontBase, brushText, xL, y);
+                g.DrawString(dvStr, fontBase, brushText,
+                    new RectangleF(valLeft,y,valW,lineH), fmtRight);
+                y += lineH;
+            }
+            return y;
         }
 
         // ─────────────────────────────────────────────────────────────────────
