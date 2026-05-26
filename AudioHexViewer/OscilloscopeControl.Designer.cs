@@ -134,7 +134,7 @@ namespace AudioHexViewer
             cmbTimediv.Items.AddRange(new object[]{
                 "0,01 ms/div","0,02 ms/div","0,05 ms/div","0,1 ms/div","0,2 ms/div","0,5 ms/div",
                 "1 ms/div","2 ms/div","5 ms/div","10 ms/div","20 ms/div","50 ms/div",
-                "100 ms/div","200 ms/div","500 ms/div","1 s/div","2 s/div","5 s/div"});
+                "100 ms/div"});
             cmbTimediv.SelectedIndex=7;
             lblTrigPos.AutoSize=true; lblTrigPos.Font=gS; lblTrigPos.ForeColor=System.Drawing.SystemColors.GrayText;
             lblTrigPos.Location=new Point(330,46); lblTrigPos.Text="T POS (div)";
