@@ -11,13 +11,16 @@ Réduire un peu la hauteur de la GUI du générateur.
 Uniformiser les 3 onglets.
 
 Oscilloscope:
-Ajouter une commande pour choisir le type de grille (Full / partial, none)
-Ajouter la possibilité de changer la position x du trig.(delay ?)
+Ajouter une commande pour choisir le type de grille (Full / partial, none)  - OK fait
+Ajouter la possibilité de changer la position x du trig.(delay ?) - OK fait
 Ajouter l'Oscilloscope pour l'export pdf/png.
-Ajouter des curseurs.
-Ajouter la possibilité d'avoir l'échelle verticale en V si la calibration est faite.
+Ajouter des curseurs. - OK fait
+Ajouter la possibilité d'avoir l'échelle verticale en V si la calibration est faite. - OK fait
 
-
+Histogramme:
+Ajouter un mode pour afficher l'axe X en 2^n pour plus de lisibilité des labels.
+Voir si ont peut élargir le graphique ? (même taille que les autres onglets)
+Réorganiser les commandes de ce panneau.
 
  Prévoir la normalisation de gain/phase (calibration) pour le mode FRF.(plus tard)
  Ajouter une calibration spécifique pour le mode DC - Offset + Gain ? 

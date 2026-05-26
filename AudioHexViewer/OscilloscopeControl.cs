@@ -93,6 +93,11 @@ namespace AudioHexViewer
         private static readonly Color CC1 = Color.OrangeRed;
         private static readonly Color CC2 = Color.DodgerBlue;
 
+        // ── Décalage vertical des courbes ────────────────────────────────────
+        // offset en unités normalisées : 0 = centre, +1 = monte d'une demi-hauteur × zoom
+        private float _offsetL = 0f, _offsetR = 0f;
+        private int   _draggingOffset = 0;  // 0=aucun  1=L  2=R
+
         private readonly System.Windows.Forms.Timer _timer;
 
         private struct MeasResult { public bool Valid; public double Vpp, Vrms, Vdc, FreqHz; }
@@ -102,8 +107,12 @@ namespace AudioHexViewer
         {
             InitializeComponent();
 
-            // Pas de BorderStyle sur le UserControl (comme SpectrumControl) :
-            // la bordure est dessinée dans PnlScope_Paint sans réduire ClientSize.
+            // Bordure noire 1px autour de TOUT l'onglet (commandes + graphique + bouton RUN).
+            // Technique du 24 mai : BackColor=Black visible dans le Padding=1 non couvert
+            // par les enfants Dock. panelTop.BackColor=Control évite que la barre de contrôles
+            // devienne noire.
+            BackColor = Color.Black;
+            Padding   = new Padding(1);
 
             _timer = new System.Windows.Forms.Timer { Interval = 33 };
             _timer.Tick += Timer_Tick;
@@ -146,9 +155,12 @@ namespace AudioHexViewer
             btnC2Chan.Click += (_, _) => { _c2Chan=(_c2Chan+1)%3; UpdateCursorButtons(); pnlScope.Invalidate(); };
 
             pnlScope.MouseDown        += PnlScope_CursorMouseDown;
+            pnlScope.MouseDown        += PnlScope_OffsetMouseDown;
             pnlScope.MouseMove        += PnlScope_CursorMouseMove;
-            pnlScope.MouseUp          += (_, _) => _cursorDragging = 0;
+            pnlScope.MouseMove        += PnlScope_OffsetMouseMove;
+            pnlScope.MouseUp          += (_, _) => { _cursorDragging = 0; _draggingOffset = 0; };
             pnlScope.MouseDoubleClick += PnlScope_CursorDblClick;
+            pnlScope.MouseDoubleClick += PnlScope_OffsetDblClick;
 
             UpdateCursorButtons();
 
@@ -176,10 +188,13 @@ namespace AudioHexViewer
         private void UpdateCursorButtons()
         {
             string[] cn = {"Left","Right","Auto"};
-            btnC1.BackColor = _c1Active ? CC1              : SystemColors.Control;
-            btnC1.ForeColor = _c1Active ? Color.White      : SystemColors.ControlText;
-            btnC2.BackColor = _c2Active ? CC2              : SystemColors.Control;
-            btnC2.ForeColor = _c2Active ? Color.White      : SystemColors.ControlText;
+            // Exact Spectrum style: UseVisualStyleBackColor=false quand actif (fond vert)
+            btnC1.BackColor               = _c1Active ? Color.SeaGreen : SystemColors.Control;
+            btnC1.ForeColor               = _c1Active ? Color.White    : SystemColors.ControlText;
+            btnC1.UseVisualStyleBackColor  = !_c1Active;
+            btnC2.BackColor               = _c2Active ? Color.SeaGreen : SystemColors.Control;
+            btnC2.ForeColor               = _c2Active ? Color.White    : SystemColors.ControlText;
+            btnC2.UseVisualStyleBackColor  = !_c2Active;
             btnC1Chan.Text  = cn[_c1Chan];
             btnC2Chan.Text  = cn[_c2Chan];
         }
@@ -676,21 +691,19 @@ namespace AudioHexViewer
             DrawAxisLabels(g,wave);
 
             int ch=cmbChannel.SelectedIndex;
-            if(_dispL!=null&&(ch==0||ch==2)) DrawWaveform(g,wave,_dispL,TraceColorL,_colors.FftWidth,_effZoomL);
-            if(_dispR!=null&&(ch==1||ch==2)) DrawWaveform(g,wave,_dispR,TraceColorR,_colors.FftWidth,_effZoomR);
+            if(_dispL!=null&&(ch==0||ch==2)) DrawWaveform(g,wave,_dispL,TraceColorL,_colors.FftWidth,_effZoomL,_offsetL);
+            if(_dispR!=null&&(ch==1||ch==2)) DrawWaveform(g,wave,_dispR,TraceColorR,_colors.FftWidth,_effZoomR,_offsetR);
             if(!IsRollMode&&(_dispL!=null||_dispR!=null))
                 DrawTriggerMarkers(g,wave,_trigPx,(_dispL??_dispR)!.Length);
 
             // Curseurs (par-dessus les traces et le trigger)
             if (_c1Active || _c2Active) DrawCursors(g, wave);
 
-            DrawMeasurements(g,wave);
+            // Marqueurs de référence verticale (dans la marge gauche)
+            DrawOffsetMarkers(g, wave);
 
-            // Bordure noire 1px autour de pnlScope — dessinée EN DERNIER pour ne jamais
-            // être recouverte. Technique identique au chart DataVisualization du Spectrum
-            // (BorderlineColor + Width), mais sans réduire le ClientSize du contrôle.
-            g.SmoothingMode = SmoothingMode.None;
-            g.DrawRectangle(Pens.Black, 0, 0, sz.Width-1, sz.Height-1);
+            DrawMeasurements(g,wave);
+            // (pas de DrawRectangle ici — la bordure de l'onglet vient de BackColor+Padding)
         }
 
         // ── Grille 3 modes ────────────────────────────────────────────────────
@@ -770,8 +783,8 @@ namespace AudioHexViewer
             int tdIdx=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
             double td=TimeDivMs[tdIdx];
 
-            // ── Axe X (Temps) ─────────────────────────────────────────────────
-            for(int i=0;i<=H_DIVS;i+=2)
+            // ── Axe X : label sur chaque division (11 au total : 0 à H_DIVS) ─────
+            for(int i=0;i<=H_DIVS;i++)
             {
                 float x=w.Left+i*w.Width/H_DIVS;
                 double tMs=IsRollMode?i*td:(i-PreTrig*H_DIVS)*td;
@@ -779,25 +792,13 @@ namespace AudioHexViewer
                 var sf=new StringFormat{Alignment=StringAlignment.Center};
                 g.DrawString(lbl,font,br,new RectangleF(x-38,w.Bottom+2,76,16),sf);
             }
-            // Label "0" à la position exacte du trigger si elle tombe entre deux labels pairs
-            if(!IsRollMode)
-            {
-                float trigDiv = PreTrig * H_DIVS;
-                bool isAtEven = Math.Abs(trigDiv - Math.Round(trigDiv/2)*2) < 0.05f;
-                if(!isAtEven)
-                {
-                    float xT = w.Left + PreTrig * w.Width;
-                    var sfT = new StringFormat{Alignment=StringAlignment.Center};
-                    g.DrawString("0",font,br,new RectangleF(xT-20,w.Bottom+2,40,16),sfT);
-                }
-            }
 
             // Légende "Time" en bas au centre
             using var sfC=new StringFormat{Alignment=StringAlignment.Center};
             g.DrawString("Time",fontLeg,br,new RectangleF(w.Left,w.Bottom+18,w.Width,14),sfC);
 
-            // ── Axe Y (Amplitude) ─────────────────────────────────────────────
-            for(int i=0;i<=V_DIVS;i+=2)
+            // ── Axe Y : label sur chaque division (9 au total : 0 à V_DIVS) ─────
+            for(int i=0;i<=V_DIVS;i++)
             {
                 float y=w.Top+i*w.Height/V_DIVS;
                 string lbl;
@@ -811,7 +812,12 @@ namespace AudioHexViewer
                 {
                     float zoom=ch==1?_effZoomR:_effZoomL;
                     double val=(1.0/zoom)*(1.0-2.0*i/V_DIVS);
-                    lbl=Math.Abs(val)<1e-9?"0":$"{val:+0.000;-0.000}";
+                    if(Math.Abs(val)<1e-9) lbl="0";
+                    else
+                    {   // plus de décimales pour les petites valeurs (zoom élevé)
+                        double a=Math.Abs(val);
+                        lbl = val.ToString(a>=0.01?"+0.000;-0.000":"+0.0000;-0.0000");
+                    }
                 }
                 var sf=new StringFormat{Alignment=StringAlignment.Far,LineAlignment=StringAlignment.Center};
                 g.DrawString(lbl,font,br,new RectangleF(0,y-11,MARGIN_LEFT-4,22),sf);
@@ -826,30 +832,120 @@ namespace AudioHexViewer
             g.Restore(state);
         }
 
-        private static void DrawWaveform(Graphics g,RectangleF w,float[] s,Color color,int lw,float zoom)
+        // offset : fraction de la demi-hauteur écran (SANS zoom).
+        // Changer le zoom ne déplace pas la référence 0V — comme un vrai oscilloscope.
+        // offset > 0 → courbe monte ; offset < 0 → courbe descend.
+        private static void DrawWaveform(Graphics g,RectangleF w,float[] s,Color color,int lw,float zoom,float offset=0f)
         {
             int dw=(int)w.Width;if(dw<2||s.Length<2) return;
-            float ym=w.Top+w.Height/2f,ys=w.Height/2f*zoom;
+            float ym=w.Top+w.Height/2f;
+            float ys=w.Height/2f*zoom;          // échelle dépend du zoom
+            float yRef=ym-offset*w.Height/2f;   // position 0V indépendante du zoom
             var pts=new PointF[dw];
-            for(int px=0;px<dw;px++){float t=(float)px/dw*(s.Length-1);int lo=(int)t,hi=Math.Min(lo+1,s.Length-1);float v=s[lo]*(1f-(t-lo))+s[hi]*(t-lo);pts[px]=new PointF(w.Left+px,Math.Clamp(ym-v*ys,w.Top,w.Bottom));}
+            for(int px=0;px<dw;px++)
+            {
+                float t=(float)px/dw*(s.Length-1);
+                int lo=(int)t,hi=Math.Min(lo+1,s.Length-1);
+                float v=s[lo]*(1f-(t-lo))+s[hi]*(t-lo);
+                pts[px]=new PointF(w.Left+px,Math.Clamp(yRef-v*ys,w.Top,w.Bottom));
+            }
             using var pen=new Pen(color,Math.Max(1,lw));g.DrawLines(pen,pts);
+        }
+
+        // ── Marqueurs de référence verticale (dans la marge gauche) ──────────
+        private void DrawOffsetMarkers(Graphics g, RectangleF w)
+        {
+            int ch=cmbChannel.SelectedIndex;
+            if(ch==0||ch==2) DrawOffsetMarker(g,w,_offsetL,_effZoomL,TraceColorL,"L");
+            if(ch==1||ch==2) DrawOffsetMarker(g,w,_offsetR,_effZoomR,TraceColorR,"R");
+        }
+
+        private static void DrawOffsetMarker(Graphics g,RectangleF w,float offset,float zoom,Color color,string lbl)
+        {
+            float ym=w.Top+w.Height/2f;
+            // Position du marqueur indépendante du zoom (offset en fraction de demi-hauteur)
+            float yM=Math.Clamp(ym-offset*w.Height/2f, w.Top, w.Bottom);
+            float tip=w.Left-2f;
+            float bas=tip-10f;
+            float h=7f;
+            // Triangle pointant à droite
+            PointF[] tri={new(bas,yM-h),new(tip,yM),new(bas,yM+h)};
+            using var brFill=new SolidBrush(Color.FromArgb(220,color));
+            g.FillPolygon(brFill,tri);
+            using var penOut=new Pen(Color.FromArgb(160,color),1f);
+            g.DrawPolygon(penOut,tri);
+            // Étiquette de voie
+            using var font=new Font("Segoe UI",7f,FontStyle.Bold);
+            using var brLbl=new SolidBrush(color);
+            g.DrawString(lbl,font,brLbl,bas-13f,yM-7f);
+        }
+
+        // Drag des marqueurs de décalage vertical
+        private void PnlScope_OffsetMouseDown(object? s, MouseEventArgs e)
+        {
+            if(e.Button!=MouseButtons.Left) return;
+            var w=GetWaveRect();if(w.IsEmpty)return;
+            float tip=w.Left-2f,bas=tip-10f;
+            if(e.X<bas-14f||e.X>tip+2f)return;
+            float ym=w.Top+w.Height/2f;
+            int ch=cmbChannel.SelectedIndex;
+            if((ch==0||ch==2)&&Math.Abs(e.Y-(ym-_offsetL*w.Height/2f))<=12f)_draggingOffset=1;
+            else if((ch==1||ch==2)&&Math.Abs(e.Y-(ym-_offsetR*w.Height/2f))<=12f)_draggingOffset=2;
+        }
+
+        private void PnlScope_OffsetMouseMove(object? s, MouseEventArgs e)
+        {
+            if(_draggingOffset==0)return;
+            var w=GetWaveRect();if(w.IsEmpty)return;
+            float ym=w.Top+w.Height/2f;
+            float halfH=w.Height/2f;
+            if(halfH<1f)return;
+            float yC=Math.Clamp(e.Y,w.Top,w.Bottom);
+            float newOff=(ym-yC)/halfH;   // offset en fraction de demi-hauteur, sans zoom
+            if(_draggingOffset==1)_offsetL=newOff;else _offsetR=newOff;
+            pnlScope.Invalidate();
+        }
+
+        private void PnlScope_OffsetDblClick(object? s, MouseEventArgs e)
+        {
+            var w=GetWaveRect();if(w.IsEmpty)return;
+            float tip=w.Left-2f,bas=tip-10f;
+            if(e.X<bas-14f||e.X>tip+2f)return;
+            float ym=w.Top+w.Height/2f;
+            int ch=cmbChannel.SelectedIndex;
+            if((ch==0||ch==2)&&Math.Abs(e.Y-(ym-_offsetL*w.Height/2f))<=12f){_offsetL=0f;pnlScope.Invalidate();}
+            else if((ch==1||ch==2)&&Math.Abs(e.Y-(ym-_offsetR*w.Height/2f))<=12f){_offsetR=0f;pnlScope.Invalidate();}
         }
 
         private void DrawTriggerMarkers(Graphics g,RectangleF w,int trigIdx,int winSamples)
         {
             int trigCh=cmbTrigSrc.SelectedIndex;
             float zoom=trigCh==1?_effZoomR:_effZoomL;
-            float ym=w.Top+w.Height/2f,ys=w.Height/2f*zoom;
-            float yT=Math.Clamp(ym-(float)nudTrigLevel.Value*ys,w.Top,w.Bottom);
-            Color tCol=Color.FromArgb(180,trigCh==0?TraceColorL:TraceColorR);
-            using var pH=new Pen(tCol,1f){DashStyle=DashStyle.Dash};g.DrawLine(pH,w.Left,yT,w.Right,yT);
+            // Décalage vertical de la voie source du trigger (même formule que DrawWaveform)
+            float offset=trigCh==1?_offsetR:_offsetL;
+            float ym=w.Top+w.Height/2f;
+            float ys=w.Height/2f*zoom;
+            float yRef=ym-offset*w.Height/2f;   // référence 0V décalée comme la courbe
+            float yT=Math.Clamp(yRef-(float)nudTrigLevel.Value*ys,w.Top,w.Bottom);
+            Color tCol=Color.FromArgb(180, trigCh==0?TraceColorL:TraceColorR);
+
+            // Ligne horizontale du niveau de trigger (toujours visible)
+            using var pH=new Pen(tCol,1f){DashStyle=DashStyle.Dash};
+            g.DrawLine(pH,w.Left,yT,w.Right,yT);
+
+            // Ligne verticale t=0 TOUJOURS visible à la position PreTrig
+            float xTrig=w.Left+PreTrig*w.Width;
+            using var pV=new Pen(Color.FromArgb(160,tCol),1f){DashStyle=DashStyle.Dash};
+            g.DrawLine(pV,xTrig,w.Top,xTrig,w.Bottom);
+
+            // Flèche indicatrice uniquement quand le trigger a déclenché
             if(_trigFound&&trigIdx>=0&&trigIdx<winSamples)
             {
-                float xT=w.Left+(float)trigIdx/winSamples*w.Width;
-                using var pV=new Pen(tCol,1f){DashStyle=DashStyle.Dash};g.DrawLine(pV,xT,w.Top,xT,w.Bottom);
-                float ay=w.Top+4;using var brA=new SolidBrush(tCol);
+                float ay=w.Top+4; using var brA=new SolidBrush(tCol);
                 bool rising=cmbTrigEdge.SelectedIndex==0;
-                g.FillPolygon(brA,rising?new[]{new PointF(xT,ay+8),new PointF(xT-4,ay),new PointF(xT+4,ay)}:new[]{new PointF(xT,ay),new PointF(xT-4,ay+8),new PointF(xT+4,ay+8)});
+                g.FillPolygon(brA,rising
+                    ?new[]{new PointF(xTrig,ay+8),new PointF(xTrig-4,ay),new PointF(xTrig+4,ay)}
+                    :new[]{new PointF(xTrig,ay),new PointF(xTrig-4,ay+8),new PointF(xTrig+4,ay+8)});
             }
         }
 
