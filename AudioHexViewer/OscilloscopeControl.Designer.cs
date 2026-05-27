@@ -150,9 +150,14 @@ namespace AudioHexViewer
             cmbTimediv.DropDownStyle=ComboBoxStyle.DropDownList; cmbTimediv.Font=std9;
             cmbTimediv.Location=new Point(330,18); cmbTimediv.Size=new Size(110,24); cmbTimediv.TabIndex=2;
             cmbTimediv.Items.AddRange(new object[]{
-                "0,01 ms/div","0,02 ms/div","0,05 ms/div","0,1 ms/div","0,2 ms/div","0,5 ms/div",
-                "1 ms/div","2 ms/div","5 ms/div","10 ms/div","20 ms/div","50 ms/div","100 ms/div"});
-            cmbTimediv.SelectedIndex=7;
+                "1 µs/div","2 µs/div","5 µs/div",
+                "10 µs/div","20 µs/div","50 µs/div",
+                "100 µs/div","200 µs/div","500 µs/div",
+                "1 ms/div","2 ms/div","5 ms/div",
+                "10 ms/div","20 ms/div","50 ms/div",
+                "100 ms/div","200 ms/div","500 ms/div",
+                "1 s/div"});
+            cmbTimediv.SelectedIndex=10; // 2 ms/div
             lblTrigPos.AutoSize=true; lblTrigPos.Font=gS; lblTrigPos.ForeColor=System.Drawing.SystemColors.GrayText;
             lblTrigPos.Location=new Point(330,46); lblTrigPos.Text="T POS (div)";
             nudTrigPos.DecimalPlaces=1; nudTrigPos.Increment=0.5m;

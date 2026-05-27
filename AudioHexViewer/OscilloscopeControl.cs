@@ -45,11 +45,15 @@ namespace AudioHexViewer
 
         private static readonly double[] TimeDivMs =
         {
-            0.01, 0.02, 0.05, 0.1, 0.2, 0.5,
-            1.0,  2.0,  5.0, 10.0, 20.0, 50.0,
-            100.0
+            0.001, 0.002, 0.005,        // idx  0- 2 : 1µs, 2µs, 5µs
+            0.01,  0.02,  0.05,         // idx  3- 5 : 10µs, 20µs, 50µs
+            0.1,   0.2,   0.5,          // idx  6- 8 : 100µs, 200µs, 500µs
+            1.0,   2.0,   5.0,          // idx  9-11 : 1ms, 2ms, 5ms
+            10.0,  20.0,  50.0,         // idx 12-14 : 10ms, 20ms, 50ms
+            100.0, 200.0, 500.0,        // idx 15-17 : 100ms, 200ms, 500ms
+            1000.0                      // idx 18    : 1 s
         };
-        private const int INDEX_ROLL_MIN = 9;  // 10ms/div et plus → Roll disponible
+        private const int INDEX_ROLL_MIN = 12;  // 10ms/div et plus → Roll disponible
 
         // Zoom ×N
         private static readonly float[]  ZoomY = { 1f,2f,5f,10f,20f,50f,100f,200f,500f,1000f };
@@ -103,7 +107,9 @@ namespace AudioHexViewer
         private float _offsetL = 0f, _offsetR = 0f;
         private float _hystEma = 0.002f;  // EMA hystérésis → stabilise la position du trigger
         private long  _lastTrigAbsPos = -1; // position absolue du dernier déclenchement affiché
-        private int   _draggingOffset = 0;  // 0=aucun  1=L  2=R
+        private int   _draggingOffset    = 0;   // 0=aucun 1=L 2=R
+        private bool  _draggingMinimap   = false;
+        private int   _minimapClickOffset= 0;   // offset du clic dans la barre bleue (en samples)
 
         private readonly System.Windows.Forms.Timer _timer;
 
@@ -174,7 +180,9 @@ namespace AudioHexViewer
             pnlScope.MouseDown        += PnlScope_OffsetMouseDown;
             pnlScope.MouseMove        += PnlScope_CursorMouseMove;
             pnlScope.MouseMove        += PnlScope_OffsetMouseMove;
-            pnlScope.MouseUp          += (_, _) => { _cursorDragging = 0; _draggingOffset = 0; };
+            pnlScope.MouseUp          += (_, _) => { _cursorDragging = 0; _draggingOffset = 0; _draggingMinimap = false; };
+            pnlScope.MouseDown        += PnlScope_MinimapMouseDown;
+            pnlScope.MouseMove        += PnlScope_MinimapMouseMove;
             pnlScope.MouseDoubleClick += PnlScope_CursorDblClick;
             pnlScope.MouseDoubleClick += PnlScope_OffsetDblClick;
 
@@ -526,6 +534,8 @@ namespace AudioHexViewer
             if(_isRunning||_capL==null||_capSR<=0) return;
             int td=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
             int spd=Math.Max(1,(int)(TimeDivMs[td]/1000.0*_capSR));
+            // Shift + roulette = déplacement rapide (×10)
+            if((Control.ModifierKeys & Keys.Shift) != 0) spd *= 10;
             _panOffset+=e.Delta>0?-spd:spd;
             RefreshStoppedView();
         }
@@ -565,10 +575,20 @@ namespace AudioHexViewer
             int td=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
             int win=Math.Max(8,(int)(TimeDivMs[td]*H_DIVS/1000.0*sr));
             int pre=(int)(win*PreTrig);
-            int search=Math.Min(win*3+pre+4,ring.Capacity-1);
+            // Cap à 2M samples pour éviter les allocations massives aux grandes bases de temps
+            const int MAX_SEARCH = 2_000_000;
+            int search=Math.Min(win*3+pre+4, Math.Min(ring.Capacity-1, MAX_SEARCH));
 
             long absEnd=ring.AbsWrite;
             if(absEnd-search<0){pnlScope.Invalidate();return;}
+            // Buffer trop petit pour cette base de temps ?
+            int minCap=win+(win-pre)+2;  // pre + post minimum
+            if(ring.Capacity < minCap)
+            {
+                lblTrigStatus.Text=$"BUFFER < {minCap/sr:.0}s";
+                lblTrigStatus.ForeColor=Color.Orange;
+                pnlScope.Invalidate(); return;
+            }
             var rawL=new float[search]; var rawR=new float[search];
             if(!ring.TryReadWindow(absEnd-search,search,rawL,rawR)){pnlScope.Invalidate();return;}
 
@@ -576,7 +596,10 @@ namespace AudioHexViewer
             if(AcL){float s2=0; for(int i=0;i<search;i++)s2+=rawL[i];_dcEstL=_dcEstL*(1f-alpha)+(s2/search)*alpha;for(int i=0;i<search;i++)rawL[i]-=_dcEstL;}
             if(AcR){float s2=0; for(int i=0;i<search;i++)s2+=rawR[i];_dcEstR=_dcEstR*(1f-alpha)+(s2/search)*alpha;for(int i=0;i<search;i++)rawR[i]-=_dcEstR;}
 
-            if(IsRollMode){SetArmedState(false);StoreAndDisplay(rawL,rawR,search,search-win,win,sr,-1);pnlScope.Invalidate();return;}
+            if(IsRollMode){SetArmedState(false);
+                int rollStart=search-win;
+                if(rollStart<0){pnlScope.Invalidate();return;} // buffer trop petit pour cette base de temps
+                StoreAndDisplay(rawL,rawR,search,rollStart,win,sr,-1);pnlScope.Invalidate();return;}
 
             var trigSrc=(cmbTrigSrc.SelectedIndex==1)?rawR:rawL;
             float tLvl=(float)nudTrigLevel.Value; bool rising=cmbTrigEdge.SelectedIndex==0;
@@ -796,6 +819,7 @@ namespace AudioHexViewer
             DrawAxisLabels(g,wave);
 
             int ch=cmbChannel.SelectedIndex;
+            // Peak Detect automatique quand plus de samples que de pixels (comme un vrai oscilloscope)
             if(_dispL!=null&&(ch==0||ch==2)) DrawWaveform(g,wave,_dispL,TraceColorL,_colors.FftWidth,_effZoomL,_offsetL);
             if(_dispR!=null&&(ch==1||ch==2)) DrawWaveform(g,wave,_dispR,TraceColorR,_colors.FftWidth,_effZoomR,_offsetR);
             if(!IsRollMode&&(_dispL!=null||_dispR!=null))
@@ -945,21 +969,44 @@ namespace AudioHexViewer
         // offset : fraction de la demi-hauteur écran (SANS zoom).
         // Changer le zoom ne déplace pas la référence 0V — comme un vrai oscilloscope.
         // offset > 0 → courbe monte ; offset < 0 → courbe descend.
+        // Peak Detect automatique : quand s.Length > dw (sous-échantillonnage),
+        // trace min→max par pixel pour ne perdre aucun transitoire.
         private static void DrawWaveform(Graphics g,RectangleF w,float[] s,Color color,int lw,float zoom,float offset=0f)
         {
             int dw=(int)w.Width;if(dw<2||s.Length<2) return;
-            float ym=w.Top+w.Height/2f;
-            float ys=w.Height/2f*zoom;          // échelle dépend du zoom
-            float yRef=ym-offset*w.Height/2f;   // position 0V indépendante du zoom
-            var pts=new PointF[dw];
-            for(int px=0;px<dw;px++)
+            float ym=w.Top+w.Height/2f, ys=w.Height/2f*zoom;
+            float yRef=ym-offset*w.Height/2f;
+            using var pen=new Pen(color,Math.Max(1,lw));
+
+            if(s.Length > dw)   // Peak Detect automatique (plus de samples que de pixels)
             {
-                float t=(float)px/dw*(s.Length-1);
-                int lo=(int)t,hi=Math.Min(lo+1,s.Length-1);
-                float v=s[lo]*(1f-(t-lo))+s[hi]*(t-lo);
-                pts[px]=new PointF(w.Left+px,Math.Clamp(yRef-v*ys,w.Top,w.Bottom));
+                // ── Peak Detect : 1 ligne verticale min→max par pixel ────────
+                float spx=(float)(s.Length-1)/(dw-1);
+                for(int px=0;px<dw;px++)
+                {
+                    int lo=Math.Max(0,(int)(px*spx));
+                    int hi=Math.Min(s.Length-1,(int)((px+1)*spx));
+                    float vMin=s[lo],vMax=s[lo];
+                    for(int k=lo+1;k<=hi;k++){if(s[k]<vMin)vMin=s[k];if(s[k]>vMax)vMax=s[k];}
+                    float y1=Math.Clamp(yRef-vMax*ys,w.Top,w.Bottom);
+                    float y2=Math.Clamp(yRef-vMin*ys,w.Top,w.Bottom);
+                    if(y2<y1+1f)y2=y1+1f;
+                    g.DrawLine(pen,w.Left+px,y1,w.Left+px,y2);
+                }
             }
-            using var pen=new Pen(color,Math.Max(1,lw));g.DrawLines(pen,pts);
+            else
+            {
+                // ── Mode normal : interpolation linéaire ─────────────────────
+                var pts=new PointF[dw];
+                for(int px=0;px<dw;px++)
+                {
+                    float t=(float)px/dw*(s.Length-1);
+                    int lo=(int)t,hi=Math.Min(lo+1,s.Length-1);
+                    float v=s[lo]*(1f-(t-lo))+s[hi]*(t-lo);
+                    pts[px]=new PointF(w.Left+px,Math.Clamp(yRef-v*ys,w.Top,w.Bottom));
+                }
+                g.DrawLines(pen,pts);
+            }
         }
 
         // ── Marqueurs de référence verticale (dans la marge gauche) ──────────
@@ -1149,6 +1196,59 @@ namespace AudioHexViewer
                 if(Math.Abs(d[i])>=Math.Abs(d[i-1])&&Math.Abs(d[i])>=Math.Abs(d[i+1]))return i;
             return -1;
         }
+
+        // ── Navigation par la mini-carte ─────────────────────────────────────
+        private RectangleF GetMinimapScreenRect()
+        {
+            var w = GetWaveRect();
+            const float MM_W=200f, MM_H=12f;
+            return new RectangleF(w.Left+(w.Width-MM_W)/2f, w.Top+3f, MM_W, MM_H);
+        }
+
+        private void PnlScope_MinimapMouseDown(object? s, MouseEventArgs e)
+        {
+            if(_isRunning||_capL==null||_capSR<=0) return;
+            var mm=GetMinimapScreenRect();
+            if(!mm.Contains(e.Location)) return;
+
+            // Calcul du ds courant pour mémoriser l'offset du clic dans la barre
+            int td =Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
+            int win=Math.Max(8,(int)(TimeDivMs[td]*H_DIVS/1000.0*_capSR));
+            int pre=(int)(win*PreTrig);
+            int tref=_capTrigIdx>=0?_capTrigIdx:pre;
+            int ds =Math.Clamp(tref-pre+_panOffset,0,Math.Max(0,_capL.Length-win));
+            int total=_capL.Length;
+
+            float clickFrac=(e.X-mm.Left)/mm.Width;
+            int clickSample=(int)(clickFrac*total);
+            _minimapClickOffset=clickSample-ds;  // offset clic dans la barre bleue
+            _draggingMinimap=true;
+            ApplyMinimapPan(e.X, mm);
+        }
+
+        private void PnlScope_MinimapMouseMove(object? s, MouseEventArgs e)
+        {
+            if(!_draggingMinimap||_capL==null||_capSR<=0) return;
+            ApplyMinimapPan(e.X, GetMinimapScreenRect());
+        }
+
+        private void ApplyMinimapPan(float mx, RectangleF mm)
+        {
+            if(_capL==null||_capSR<=0) return;
+            int td  =Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
+            int win =Math.Max(8,(int)(TimeDivMs[td]*H_DIVS/1000.0*_capSR));
+            int pre =(int)(win*PreTrig);
+            int tref=_capTrigIdx>=0?_capTrigIdx:pre;
+            int total=_capL.Length;
+
+            float frac=(mx-mm.Left)/mm.Width;
+            int targetDs=(int)(frac*total)-_minimapClickOffset;
+            targetDs=Math.Clamp(targetDs,0,Math.Max(0,total-win));
+            _panOffset=targetDs-(tref-pre);
+            RefreshStoppedView();
+            pnlScope.Invalidate();
+        }
+
         private void PnlScope_OffsetDblClick(object? s, MouseEventArgs e)        {
             var w=GetWaveRect();if(w.IsEmpty)return;
             float tip=w.Left-2f,bas=tip-10f;
