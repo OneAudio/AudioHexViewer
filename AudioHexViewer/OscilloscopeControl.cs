@@ -95,8 +95,7 @@ namespace AudioHexViewer
         private int   _c1Chan = 0, _c2Chan = 1;       // 0=Left 1=Right 2=Auto
         private int   _cursorDragging;                 // 0=none 1=C1 2=C2
 
-        // ── Trigger brut + verrouillage sample des curseurs ───────────────────
-        private bool _trigRaw    = false;
+        // ── verrouillage sample des curseurs ─────────────────────────────────
         private bool _c1Locked   = false, _c2Locked   = false;
         private int  _c1SampleIdx= -1,    _c2SampleIdx= -1;
         private static readonly Color CC1 = Color.OrangeRed;
@@ -109,6 +108,7 @@ namespace AudioHexViewer
         private long  _lastTrigAbsPos = -1; // position absolue du dernier déclenchement affiché
         private int   _draggingOffset    = 0;   // 0=aucun 1=L 2=R
         private bool  _draggingMinimap   = false;
+        private int   _scaleChannel      = 0;   // 0=L  1=R  → quelle voie commande l'échelle Y
         private int   _minimapClickOffset= 0;   // offset du clic dans la barre bleue (en samples)
 
         private readonly System.Windows.Forms.Timer _timer;
@@ -142,7 +142,9 @@ namespace AudioHexViewer
             cmbTimediv.SelectedIndexChanged += (_, _) =>
             { UpdateRollCheckbox(); if (_isRunning) pnlScope.Invalidate(); else RefreshStoppedView(); };
 
-            cmbChannel.SelectedIndexChanged   += (_, _) => pnlScope.Invalidate();
+            // Couplage (DC/AC/OFF) → voies actives recalculées + redraw
+            cmbCouplingL.SelectedIndexChanged += (_, _) => { UpdateGainCombos(); if (!_isRunning) RefreshStoppedView(); else pnlScope.Invalidate(); };
+            cmbCouplingR.SelectedIndexChanged += (_, _) => { UpdateGainCombos(); if (!_isRunning) RefreshStoppedView(); else pnlScope.Invalidate(); };
             cmbTrigMode.SelectedIndexChanged  += (_, _) => { };
             cmbTrigEdge.SelectedIndexChanged  += (_, _) => { };
             cmbTrigSrc.SelectedIndexChanged   += (_, _) => { };
@@ -150,8 +152,6 @@ namespace AudioHexViewer
             nudTrigPos.ValueChanged           += (_, _) => { if (!_isRunning) RefreshStoppedView(); else pnlScope.Invalidate(); };
             cmbVdivL.SelectedIndexChanged     += (_, _) => pnlScope.Invalidate();
             cmbVdivR.SelectedIndexChanged     += (_, _) => pnlScope.Invalidate();
-            cmbCouplingL.SelectedIndexChanged += (_, _) => { if (!_isRunning) RefreshStoppedView(); };
-            cmbCouplingR.SelectedIndexChanged += (_, _) => { if (!_isRunning) RefreshStoppedView(); };
             cmbGrid.SelectedIndexChanged      += (_, _) => pnlScope.Invalidate();
             chkRoll.CheckedChanged            += (_, _) => { };
             chkVdiv.CheckedChanged            += ChkVdiv_Changed;
@@ -172,7 +172,6 @@ namespace AudioHexViewer
             btnC2Prev.Click  += (_, _) => FindAdjacentPeak(2,-1);
             btnC2Next.Click  += (_, _) => FindAdjacentPeak(2,+1);
             btnC2Lock.Click  += (_, _) => ToggleCursorLock(2);
-            chkTrigRaw.CheckedChanged += (_,_) => { _trigRaw=chkTrigRaw.Checked; };
             btnC1Chan.Click += (_, _) => { _c1Chan=(_c1Chan+1)%3; UpdateCursorButtons(); pnlScope.Invalidate(); };
             btnC2Chan.Click += (_, _) => { _c2Chan=(_c2Chan+1)%3; UpdateCursorButtons(); pnlScope.Invalidate(); };
 
@@ -186,7 +185,11 @@ namespace AudioHexViewer
             pnlScope.MouseDoubleClick += PnlScope_CursorDblClick;
             pnlScope.MouseDoubleClick += PnlScope_OffsetDblClick;
 
+            btnScaleL.Click += (_, _) => { _scaleChannel=0; UpdateScaleButtons(); pnlScope.Invalidate(); };
+            btnScaleR.Click += (_, _) => { _scaleChannel=1; UpdateScaleButtons(); pnlScope.Invalidate(); };
+
             UpdateCursorButtons();
+            UpdateScaleButtons();
 
             UpdateRollCheckbox();
             SetRunState(false);
@@ -209,7 +212,30 @@ namespace AudioHexViewer
         }
 
         // ── Helpers curseurs ──────────────────────────────────────────────────
-        private void UpdateCursorButtons()
+        // Voie(s) actives déduites des combos COUP. : DC(0)/AC(1) = actif, OFF(2) = éteint
+        // Retourne 0=Left, 1=Right, 2=L+R  (compatible avec l'ancien GetCh())
+        private int GetCh()
+        {
+            bool l = cmbCouplingL.SelectedIndex < 2;
+            bool r = cmbCouplingR.SelectedIndex < 2;
+            if (l && r) return 2;
+            if (l)      return 0;
+            if (r)      return 1;
+            return 2;  // les deux OFF → on affiche quand même (signal plat)
+        }
+
+                private void UpdateScaleButtons()
+        {
+            // Style identique Spectrum/C1/C2 : vert si actif, gris si inactif
+            btnScaleL.BackColor               = _scaleChannel==0 ? TraceColorL   : SystemColors.Control;
+            btnScaleL.ForeColor               = _scaleChannel==0 ? Color.White   : SystemColors.ControlText;
+            btnScaleL.UseVisualStyleBackColor  = _scaleChannel!=0;
+            btnScaleR.BackColor               = _scaleChannel==1 ? TraceColorR   : SystemColors.Control;
+            btnScaleR.ForeColor               = _scaleChannel==1 ? Color.White   : SystemColors.ControlText;
+            btnScaleR.UseVisualStyleBackColor  = _scaleChannel!=1;
+        }
+
+                private void UpdateCursorButtons()
         {
             string[] cn = {"Left","Right","Auto"};
             // Exact Spectrum style: UseVisualStyleBackColor=false quand actif (fond vert)
@@ -241,7 +267,7 @@ namespace AudioHexViewer
         /// Retourne les données du curseur selon son réglage de voie.
         private float[]? GetCursorData(int cursorIdx)
         {
-            int ch   = cmbChannel.SelectedIndex;
+            int ch   = GetCh();
             bool hasL= _dispL!=null && (ch==0||ch==2);
             bool hasR= _dispR!=null && (ch==1||ch==2);
             int chan = cursorIdx==1 ? _c1Chan : _c2Chan;
@@ -255,7 +281,7 @@ namespace AudioHexViewer
 
         private float GetCursorZoom(int cursorIdx)
         {
-            int ch   = cmbChannel.SelectedIndex;
+            int ch   = GetCh();
             bool hasL= ch==0||ch==2;
             bool hasR= ch==1||ch==2;
             int chan = cursorIdx==1 ? _c1Chan : _c2Chan;
@@ -272,7 +298,7 @@ namespace AudioHexViewer
             if (GetInputCalibration == null) return (false, 0);
             var (vL, oL, vR, oR) = GetInputCalibration();
             int chan = cursorIdx==1 ? _c1Chan : _c2Chan;
-            int ch   = cmbChannel.SelectedIndex;
+            int ch   = GetCh();
             bool hasL= ch==0||ch==2;
             bool hasR= ch==1||ch==2;
             return chan switch
@@ -609,7 +635,7 @@ namespace AudioHexViewer
             // qui causaient des décalages X à la fin d'une acquisition
             float hystInst=Math.Max(0.002f,(vmax-vmin)*0.05f);
             _hystEma = _hystEma*0.85f + hystInst*0.15f;
-            float hyst=_trigRaw?0f:_hystEma;
+            float hyst=_hystEma;
 
             bool trigOk=FindTriggerBackward(trigSrc,search,tLvl,rising,hyst,win,pre,out int trigIdx);
 
@@ -746,7 +772,7 @@ namespace AudioHexViewer
         private void UpdateInfoLine()
         {
             int td=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
-            int ch=cmbChannel.SelectedIndex;
+            int ch=GetCh();
             string sr=_lastSR>0?$"{_lastSR/1000.0:G3} kHz":"—";
             string ch2=ch switch{0=>"Left",1=>"Right",_=>"L+R"};
             string pan=(!_isRunning&&_panOffset!=0&&_capSR>0)?$"   pan {FormatTime((double)_panOffset/_capSR*1000.0)}":"";
@@ -818,10 +844,10 @@ namespace AudioHexViewer
             DrawGrid(g,wave);
             DrawAxisLabels(g,wave);
 
-            int ch=cmbChannel.SelectedIndex;
-            // Peak Detect automatique quand plus de samples que de pixels (comme un vrai oscilloscope)
-            if(_dispL!=null&&(ch==0||ch==2)) DrawWaveform(g,wave,_dispL,TraceColorL,_colors.FftWidth,_effZoomL,_offsetL);
-            if(_dispR!=null&&(ch==1||ch==2)) DrawWaveform(g,wave,_dispR,TraceColorR,_colors.FftWidth,_effZoomR,_offsetR);
+            int ch=GetCh();
+            int traceMode=cmbTraceMode.SelectedIndex;  // 0=Segment 1=Mixed 2=Dot
+            if(_dispL!=null&&(ch==0||ch==2)) DrawWaveform(g,wave,_dispL,TraceColorL,_colors.FftWidth,_effZoomL,_offsetL,traceMode);
+            if(_dispR!=null&&(ch==1||ch==2)) DrawWaveform(g,wave,_dispR,TraceColorR,_colors.FftWidth,_effZoomR,_offsetR,traceMode);
             if(!IsRollMode&&(_dispL!=null||_dispR!=null))
                 DrawTriggerMarkers(g,wave,_trigPx,(_dispL??_dispR)!.Length);
 
@@ -913,7 +939,7 @@ namespace AudioHexViewer
             using var font    = new Font("Segoe UI",9f,FontStyle.Regular);
             using var fontLeg = new Font("Segoe UI",8.5f,FontStyle.Italic);
             using var br      = new SolidBrush(SystemColors.ControlText);
-            int ch=cmbChannel.SelectedIndex;
+            int ch=GetCh();
             int tdIdx=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
             double td=TimeDivMs[tdIdx];
 
@@ -931,56 +957,64 @@ namespace AudioHexViewer
             using var sfC=new StringFormat{Alignment=StringAlignment.Center};
             g.DrawString("Time",fontLeg,br,new RectangleF(w.Left,w.Bottom+18,w.Width,14),sfC);
 
-            // ── Axe Y : label sur chaque division (9 au total : 0 à V_DIVS) ─────
+            // ── Axe Y : voie active (_scaleChannel) avec offset corrigé ──────────
+            // yRef = ym - offset × w.Height/2  (référence 0V de la voie active)
+            // Mode V/div  : val_V = vd × V_DIVS × (yRef - yPos) / w.Height  (SANS zoom)
+            // Mode ×N     : val   = (yRef - yPos) / ys_                       (AVEC zoom)
+            float activeOffset = _scaleChannel==0 ? _offsetL : _offsetR;
+            float activeZoom   = _scaleChannel==0 ? _effZoomL : _effZoomR;
+            float ym_          = w.Top + w.Height/2f;
+            float ys_          = w.Height/2f * activeZoom;
+            float yRef_        = ym_ - activeOffset * w.Height/2f;
+            Color axisColor    = _scaleChannel==0 ? TraceColorL : TraceColorR;
+            using var brAxis   = new SolidBrush(axisColor);
+            var sfY = new StringFormat{Alignment=StringAlignment.Far,LineAlignment=StringAlignment.Center};
+
             for(int i=0;i<=V_DIVS;i++)
             {
-                float y=w.Top+i*w.Height/V_DIVS;
+                float yPos = w.Top + i * w.Height / V_DIVS;
                 string lbl;
                 if(_vdivMode)
                 {
-                    double vd=GetVdivForCh(ch==1?1:0);
-                    double val_V=vd*(V_DIVS/2.0-i);
-                    lbl=FormatVoltLabel(val_V);
+                    // Formule indépendante du zoom :
+                    // val_V = vd × V_DIVS × (yRef - yPos) / w.Height
+                    double vd    = GetVdivForCh(_scaleChannel);
+                    double val_V = vd * V_DIVS * (yRef_ - yPos) / w.Height;
+                    lbl = FormatVoltLabel(val_V);
                 }
                 else
                 {
-                    float zoom=ch==1?_effZoomR:_effZoomL;
-                    double val=(1.0/zoom)*(1.0-2.0*i/V_DIVS);
+                    double val = ys_ > 0.001f ? (double)(yRef_ - yPos) / ys_ : 0.0;
                     if(Math.Abs(val)<1e-9) lbl="0";
-                    else
-                    {   // plus de décimales pour les petites valeurs (zoom élevé)
-                        double a=Math.Abs(val);
-                        lbl = val.ToString(a>=0.01?"+0.000;-0.000":"+0.0000;-0.0000");
-                    }
+                    else{double a=Math.Abs(val);lbl=val.ToString(a>=0.01?"+0.000;-0.000":"+0.0000;-0.0000");}
                 }
-                var sf=new StringFormat{Alignment=StringAlignment.Far,LineAlignment=StringAlignment.Center};
-                g.DrawString(lbl,font,br,new RectangleF(0,y-11,MARGIN_LEFT-4,22),sf);
+                g.DrawString(lbl,font,brAxis,new RectangleF(0,yPos-11,MARGIN_LEFT-4,22),sfY);
             }
 
-            // Légende "Amplitude" verticale (rotée -90°) à gauche
+            // Légende "Amplitude" verticale (couleur de la voie active)
             var state=g.Save();
             g.TranslateTransform(10f,w.Top+w.Height/2f);
             g.RotateTransform(-90f);
             using var sfA=new StringFormat{Alignment=StringAlignment.Center,LineAlignment=StringAlignment.Center};
-            g.DrawString("Amplitude",fontLeg,br,new PointF(0,0),sfA);
+            g.DrawString("Amplitude",fontLeg,brAxis,new PointF(0,0),sfA);
             g.Restore(state);
         }
 
         // offset : fraction de la demi-hauteur écran (SANS zoom).
         // Changer le zoom ne déplace pas la référence 0V — comme un vrai oscilloscope.
         // offset > 0 → courbe monte ; offset < 0 → courbe descend.
-        // Peak Detect automatique : quand s.Length > dw (sous-échantillonnage),
-        // trace min→max par pixel pour ne perdre aucun transitoire.
-        private static void DrawWaveform(Graphics g,RectangleF w,float[] s,Color color,int lw,float zoom,float offset=0f)
+        // traceMode: 0=Segment  1=Mixed(segments+dots)  2=Dot(dots seuls)
+        // Peak Detect automatique quand s.Length > dw (indépendant du mode trace).
+        private static void DrawWaveform(Graphics g,RectangleF w,float[] s,Color color,int lw,float zoom,float offset=0f,int traceMode=0)
         {
             int dw=(int)w.Width;if(dw<2||s.Length<2) return;
             float ym=w.Top+w.Height/2f, ys=w.Height/2f*zoom;
             float yRef=ym-offset*w.Height/2f;
             using var pen=new Pen(color,Math.Max(1,lw));
 
-            if(s.Length > dw)   // Peak Detect automatique (plus de samples que de pixels)
+            if(s.Length > dw)
             {
-                // ── Peak Detect : 1 ligne verticale min→max par pixel ────────
+                // ── Peak Detect automatique ───────────────────────────────────
                 float spx=(float)(s.Length-1)/(dw-1);
                 for(int px=0;px<dw;px++)
                 {
@@ -996,23 +1030,40 @@ namespace AudioHexViewer
             }
             else
             {
-                // ── Mode normal : interpolation linéaire ─────────────────────
-                var pts=new PointF[dw];
-                for(int px=0;px<dw;px++)
+                // ── Mode Segment ou Mixed : lignes interpolées pixel/pixel ────
+                if(traceMode <= 1)
                 {
-                    float t=(float)px/dw*(s.Length-1);
-                    int lo=(int)t,hi=Math.Min(lo+1,s.Length-1);
-                    float v=s[lo]*(1f-(t-lo))+s[hi]*(t-lo);
-                    pts[px]=new PointF(w.Left+px,Math.Clamp(yRef-v*ys,w.Top,w.Bottom));
+                    var pts=new PointF[dw];
+                    for(int px=0;px<dw;px++)
+                    {
+                        float t=(float)px/dw*(s.Length-1);
+                        int lo=(int)t,hi=Math.Min(lo+1,s.Length-1);
+                        float v=s[lo]*(1f-(t-lo))+s[hi]*(t-lo);
+                        pts[px]=new PointF(w.Left+px,Math.Clamp(yRef-v*ys,w.Top,w.Bottom));
+                    }
+                    g.DrawLines(pen,pts);
                 }
-                g.DrawLines(pen,pts);
+
+                // ── Mode Mixed ou Dot : point à chaque position d'échantillon ─
+                if(traceMode >= 1)
+                {
+                    float scale=dw>1?(dw-1f)/(s.Length-1):1f;
+                    float r=Math.Max(2.5f,lw+0.5f);
+                    using var brush=new SolidBrush(color);
+                    for(int si=0;si<s.Length;si++)
+                    {
+                        float px=si*scale;
+                        float y=Math.Clamp(yRef-s[si]*ys,w.Top,w.Bottom);
+                        g.FillEllipse(brush,w.Left+px-r,y-r,r*2f,r*2f);
+                    }
+                }
             }
         }
 
         // ── Marqueurs de référence verticale (dans la marge gauche) ──────────
         private void DrawOffsetMarkers(Graphics g, RectangleF w)
         {
-            int ch=cmbChannel.SelectedIndex;
+            int ch=GetCh();
             if(ch==0||ch==2) DrawOffsetMarker(g,w,_offsetL,_effZoomL,TraceColorL,"L");
             if(ch==1||ch==2) DrawOffsetMarker(g,w,_offsetR,_effZoomR,TraceColorR,"R");
         }
@@ -1047,7 +1098,7 @@ namespace AudioHexViewer
             float tip=w.Left-2f,bas=tip-10f;
             if(e.X<bas-14f||e.X>tip+2f)return;
             float ym=w.Top+w.Height/2f;
-            int ch=cmbChannel.SelectedIndex;
+            int ch=GetCh();
             if((ch==0||ch==2)&&Math.Abs(e.Y-(ym-_offsetL*w.Height/2f))<=12f)_draggingOffset=1;
             else if((ch==1||ch==2)&&Math.Abs(e.Y-(ym-_offsetR*w.Height/2f))<=12f)_draggingOffset=2;
         }
@@ -1061,6 +1112,10 @@ namespace AudioHexViewer
             if(halfH<1f)return;
             float yC=Math.Clamp(e.Y,w.Top,w.Bottom);
             float newOff=(ym-yC)/halfH;   // offset en fraction de demi-hauteur, sans zoom
+            // Aimantation magnétique : accroche sur les divisions de grille si ±15% d'une division
+            float divUnit=2f/V_DIVS;
+            float snapped=(float)Math.Round(newOff/divUnit)*divUnit;
+            if(Math.Abs(newOff-snapped)<divUnit*0.15f) newOff=snapped;
             if(_draggingOffset==1)_offsetL=newOff;else _offsetR=newOff;
             pnlScope.Invalidate();
         }
@@ -1254,7 +1309,7 @@ namespace AudioHexViewer
             float tip=w.Left-2f,bas=tip-10f;
             if(e.X<bas-14f||e.X>tip+2f)return;
             float ym=w.Top+w.Height/2f;
-            int ch=cmbChannel.SelectedIndex;
+            int ch=GetCh();
             if((ch==0||ch==2)&&Math.Abs(e.Y-(ym-_offsetL*w.Height/2f))<=12f){_offsetL=0f;pnlScope.Invalidate();}
             else if((ch==1||ch==2)&&Math.Abs(e.Y-(ym-_offsetR*w.Height/2f))<=12f){_offsetR=0f;pnlScope.Invalidate();}
         }
@@ -1310,7 +1365,7 @@ namespace AudioHexViewer
             g.DrawRectangle(penBorder, rect.X, rect.Y, rect.Width, rect.Height);
 
             float y = rect.Y + 8f;
-            int ch = cmbChannel.SelectedIndex;
+            int ch = GetCh();
 
             bool calOkL=false, calOkR=false; double offL=0, offR=0;
             if (GetInputCalibration != null)
@@ -1520,7 +1575,7 @@ namespace AudioHexViewer
         // ─────────────────────────────────────────────────────────────────────
         public OscilloscopeSettings GetSettingsSnapshot()=>new OscilloscopeSettings
         {
-            ChannelIndex=cmbChannel.SelectedIndex,TimeDivIndex=cmbTimediv.SelectedIndex,
+            ChannelIndex=GetCh(),TimeDivIndex=cmbTimediv.SelectedIndex,
             TrigModeIndex=cmbTrigMode.SelectedIndex,TrigEdgeIndex=cmbTrigEdge.SelectedIndex,
             TrigSrcIndex=cmbTrigSrc.SelectedIndex,TrigLevel=(double)nudTrigLevel.Value,
             ZoomYIndexL=cmbVdivL.SelectedIndex,ZoomYIndexR=cmbVdivR.SelectedIndex,
@@ -1532,7 +1587,6 @@ namespace AudioHexViewer
         {
             if(s==null)return;
             _vdivMode=s.VdivMode; UpdateGainCombos();
-            cmbChannel.SelectedIndex =Math.Clamp(s.ChannelIndex,0,2);
             cmbTimediv.SelectedIndex =Math.Clamp(s.TimeDivIndex,0,TimeDivMs.Length-1);
             cmbTrigMode.SelectedIndex=Math.Clamp(s.TrigModeIndex,0,2);
             cmbTrigEdge.SelectedIndex=Math.Clamp(s.TrigEdgeIndex,0,1);
@@ -1541,8 +1595,8 @@ namespace AudioHexViewer
             int maxZ=_vdivMode?VdivValues.Length-1:ZoomY.Length-1;
             cmbVdivL.SelectedIndex=Math.Clamp(s.ZoomYIndexL,0,maxZ);
             cmbVdivR.SelectedIndex=Math.Clamp(s.ZoomYIndexR,0,maxZ);
-            cmbCouplingL.SelectedIndex=Math.Clamp(s.AcCouplingL,0,1);
-            cmbCouplingR.SelectedIndex=Math.Clamp(s.AcCouplingR,0,1);
+            cmbCouplingL.SelectedIndex=Math.Clamp(s.AcCouplingL,0,2);
+            cmbCouplingR.SelectedIndex=Math.Clamp(s.AcCouplingR,0,2);
             cmbGrid.SelectedIndex=Math.Clamp(s.GridModeIdx,0,2);
             chkVdiv.Checked=_vdivMode;
             UpdateRollCheckbox();
