@@ -115,9 +115,15 @@ namespace AudioHexViewer
 
                     if (!_running) break;
 
-                    while (_captureClient != null &&
-                           _captureClient.GetNextPacketSize() > 0 &&
-                           _running)
+                    // Mode exclusif event : 1 événement = 1 buffer hardware.
+                    // Une boucle while provoquait une double lecture sur certains drivers
+                    // (GetNextPacketSize() > 0 une 2ème fois avec les mêmes données).
+                    // La spec WASAPI exclusive event recommande de lire exactement 1 paquet
+                    // par événement.
+                    if (_captureClient == null || !_running) continue;
+                    uint pktSize = (uint)_captureClient.GetNextPacketSize();
+                    if (pktSize == 0) continue;
+
                     {
                         IntPtr buf = _captureClient.GetBuffer(
                             out int numFrames,

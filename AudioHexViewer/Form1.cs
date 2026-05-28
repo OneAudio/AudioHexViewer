@@ -1093,8 +1093,12 @@ namespace AudioHexViewer
             var ac = device.AudioClient;
             var mode = AudioClientShareMode.Exclusive;
 
+            // Float32 stéréo en premier : certains drivers déclarent PCM Int32 mais
+            // livrent des données Float32, causant saturation à ±0.5.
+            // IMPORTANT : pas de format mono — ProcessBuffer exige 2 canaux.
             WaveFormat[] candidates = new WaveFormat[]
             {
+                WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, 2), // Float32 stéréo (préféré)
                 new WaveFormat(sampleRate, 32, 2),
                 new WaveFormatExtensible(sampleRate, 32, 2),
                 new WaveFormat(sampleRate, 24, 2),
