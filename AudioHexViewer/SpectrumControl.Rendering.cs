@@ -30,8 +30,8 @@ namespace AudioHexViewer
             if (chartSpectrum == null || chartSpectrum.ChartAreas.Count == 0)
                 return;
 
-            // Fond du contrôle Chart (marges / zones hors "plot") : garder la couleur du parent.
-            chartSpectrum.BackColor = chartSpectrum.Parent?.BackColor ?? SystemColors.Control;
+            // Fond du contrôle Chart (marges / zones hors "plot") : même gris que le bandeau de contrôle.
+            chartSpectrum.BackColor = SystemColors.Control;
             var area = chartSpectrum.ChartAreas.FindByName("SpectrumArea") ?? chartSpectrum.ChartAreas[0];
             area.BackColor = BackgroundColor;
 
