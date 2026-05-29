@@ -1,4 +1,4 @@
-﻿using System.Drawing;
+using System.Drawing;
 using System.Windows.Forms;
 
 namespace AudioHexViewer
@@ -49,7 +49,8 @@ namespace AudioHexViewer
             menuOverlap = new ToolStripMenuItem();
             menuBuffer = new ToolStripMenuItem();
             exportToolStripMenuItem = new ToolStripMenuItem();
-            menuExportPng = new ToolStripMenuItem();
+            menuCopyClipboard = new ToolStripMenuItem();
+            menuExportPdf = new ToolStripMenuItem();
             panelTop = new Panel();
             lblRightLevelMain = new Label();
             lblLeftLevelMain = new Label();
@@ -190,17 +191,26 @@ namespace AudioHexViewer
             // 
             // exportToolStripMenuItem
             // 
-            exportToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { menuExportPng });
+            exportToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { menuCopyClipboard, menuExportPdf });
             exportToolStripMenuItem.Name = "exportToolStripMenuItem";
             exportToolStripMenuItem.Size = new Size(53, 21);
             exportToolStripMenuItem.Text = "Export";
-            // 
-            // menuExportPng
-            // 
-            menuExportPng.Name = "menuExportPng";
-            menuExportPng.Size = new Size(209, 22);
-            menuExportPng.Text = "Export graph to PNG/PDF";
-            menuExportPng.Click += menuExportPng_Click;
+            //
+            // menuCopyClipboard
+            //
+            menuCopyClipboard.Name = "menuCopyClipboard";
+            menuCopyClipboard.Size = new Size(230, 22);
+            menuCopyClipboard.Text = "Copy graph to clipboard";
+            menuCopyClipboard.ShortcutKeys = Keys.Control | Keys.C;
+            menuCopyClipboard.ShowShortcutKeys = true;
+            menuCopyClipboard.Click += menuCopyClipboard_Click;
+            //
+            // menuExportPdf
+            //
+            menuExportPdf.Name = "menuExportPdf";
+            menuExportPdf.Size = new Size(209, 22);
+            menuExportPdf.Text = "Export to PDF…";
+            menuExportPdf.Click += menuExportPdf_Click;
             // 
             // panelTop
             // 
@@ -484,7 +494,8 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuOverlap;
         private ToolStripMenuItem menuBuffer;
         private ToolStripMenuItem exportToolStripMenuItem;
-        private ToolStripMenuItem menuExportPng;
+        private ToolStripMenuItem menuCopyClipboard;
+        private ToolStripMenuItem menuExportPdf;
         internal Label lblLeftLevelMain;
         internal Label lblRightLevelMain;
     }

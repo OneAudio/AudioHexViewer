@@ -1676,6 +1676,29 @@ namespace AudioHexViewer
         }
 
         protected override void OnHandleDestroyed(EventArgs e){_timer.Stop();_timer.Dispose();base.OnHandleDestroyed(e);}
+
+        /// <summary>Retourne le panel de rendu pour copie presse-papier (résolution écran).</summary>
+        public System.Windows.Forms.Control GetPanelForClipboard() => pnlScope;
+
+        // ── Export PNG ────────────────────────────────────────────────────────
+        public void ExportPng(string filePath, int scale = 2, string? headerTitle = null)
+        {
+            using var capture = ChartExport.CaptureControl(pnlScope, scale);
+            int headerPx = ChartExport.HeaderPixels(headerTitle, scale);
+
+            if (headerPx > 0 && !string.IsNullOrWhiteSpace(headerTitle))
+            {
+                using var full = new System.Drawing.Bitmap(capture.Width, capture.Height + headerPx);
+                using (var g = System.Drawing.Graphics.FromImage(full))
+                    g.DrawImage(capture, 0, headerPx);
+                ChartExport.DrawHeaderOnBitmap(full, headerPx, headerTitle!, scale);
+                ChartExport.SaveBitmap(full, filePath, dpi: 300);
+            }
+            else
+            {
+                ChartExport.SaveBitmap(capture, filePath, dpi: 300);
+            }
+        }
     }
 
     internal sealed class ScopePanel : Panel

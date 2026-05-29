@@ -1236,94 +1236,41 @@ namespace AudioHexViewer
         }
 
         //
+        /// <summary>Retourne le Chart live pour copie presse-papier (résolution écran).</summary>
+        public System.Windows.Forms.DataVisualization.Charting.Chart GetChartForClipboard()
+            => chartSpectrum;
+
         public void ExportPng(string filePath, int scale = 2, string? headerTitle = null)
         {
             RebuildStatsRowsFromLabels();
 
+            int headerPx = ChartExport.HeaderPixels(headerTitle, scale);
 
             using var clone = ChartExport.CloneChart(chartSpectrum);
-
-            int headerPx = (headerTitle != null && headerTitle.Trim().Length > 0)
-            ? (int)(60 * scale)   // 80px à scale=1, donc 120px à scale=2
-            : 0;
-
-            clone.Size = new Size(chartSpectrum.Width * scale, chartSpectrum.Height * scale + headerPx);
-
+            clone.Size      = new Size(chartSpectrum.Width * scale, chartSpectrum.Height * scale);
             clone.BackColor = Color.White;
-            foreach (var a in clone.ChartAreas)
-                a.BackColor = Color.White;
+            foreach (var a in clone.ChartAreas) a.BackColor = Color.White;
 
-            // Uniformiser la taille des textes UNIQUEMENT SUR LE CLONE
-            ApplyUniformExportScaling(clone, scale);
+            ChartExport.ApplyExportScaling(clone, scale);
 
             // Même formatage chiffres/labels que la GUI
             clone.FormatNumber += ChartSpectrum_FormatNumber;
+            clone.Tag           = new ExportRenderContext { HeaderTitle = null };  // titre géré en GDI+ pur ci-dessous
 
-            // Contexte export (titre user) — uniquement pour le clone
-            clone.Tag = new ExportRenderContext { HeaderTitle = headerTitle };
-
-            // Marge stats sur le clone (tu as déjà la version reservedScale qui marche)
+            // Marge panneau stats (droite)
             ApplyChartStatsMargin(clone, invalidate: false, reservedScale: scale);
 
+            // Marge haute si titre
             if (headerPx > 0)
-                ApplyExportHeaderMargin(clone, headerPx);
+                ChartExport.ApplyChartHeaderMargin(clone, "SpectrumArea", headerPx);
 
             clone.PostPaint += ChartSpectrum_PostPaint;
 
-            ChartExport.SavePngRendered(clone, filePath, dpi: 300);
+            // Rendu clone → bytes PNG
+            var pngBytes = ChartExport.RenderChartToPngBytes(clone);
 
-            // ===== helper local =====
-            static void ApplyUniformExportScaling(System.Windows.Forms.DataVisualization.Charting.Chart c, int s)
-            {
-                if (s <= 1) return;
-
-                c.Font = new Font(c.Font.FontFamily, c.Font.SizeInPoints * s, c.Font.Style);
-
-                foreach (var area in c.ChartAreas)
-                {
-                    if (area.AxisX.LabelStyle.Font != null)
-                        area.AxisX.LabelStyle.Font = Scale(area.AxisX.LabelStyle.Font, s);
-                    if (area.AxisY.LabelStyle.Font != null)
-                        area.AxisY.LabelStyle.Font = Scale(area.AxisY.LabelStyle.Font, s);
-
-                    if (area.AxisX.TitleFont != null)
-                        area.AxisX.TitleFont = Scale(area.AxisX.TitleFont, s);
-                    if (area.AxisY.TitleFont != null)
-                        area.AxisY.TitleFont = Scale(area.AxisY.TitleFont, s);
-                }
-
-                foreach (var leg in c.Legends)
-                    if (leg.Font != null)
-                        leg.Font = Scale(leg.Font, s);
-
-                foreach (var t in c.Titles)
-                    if (t.Font != null)
-                        t.Font = Scale(t.Font, s);
-
-                static Font Scale(Font f, int s)
-                    => new Font(f.FontFamily, f.SizeInPoints * s, f.Style);
-            }
-        }
-
-        //
-        private static void ApplyExportHeaderMargin(System.Windows.Forms.DataVisualization.Charting.Chart chart, int headerPx)
-        {
-            var area = chart.ChartAreas["SpectrumArea"];
-
-            int h = chart.ClientSize.Height;
-            if (h <= 0) return;
-
-            //
-            float headerPct = 100f * headerPx / h;
-
-            // On garde la même largeur, on descend juste l’area et on réduit légèrement la hauteur
-            area.Position.Auto = false;
-            area.Position = new ElementPosition(
-                area.Position.X,
-                area.Position.Y + headerPct,
-                area.Position.Width,
-                Math.Max(5f, area.Position.Height - headerPct)
-            );
+            // Composition finale : header GDI+ pur par-dessus
+            ChartExport.SaveChartPng(pngBytes, filePath, headerPx, headerTitle, scale, dpi: 300);
         }
 
     }

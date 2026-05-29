@@ -1014,81 +1014,27 @@ namespace AudioHexViewer
         // ══════════════════════════════════════════════════════════════════════
         // Export PNG (inchangé)
         // ══════════════════════════════════════════════════════════════════════
+        /// <summary>Retourne le Chart live pour copie presse-papier (résolution écran).</summary>
+        public System.Windows.Forms.DataVisualization.Charting.Chart GetChartForClipboard()
+            => chartHistogram;
+
+        // ── Export PNG / PDF ─────────────────────────────────────────────────
         public void ExportPng(string filePath, int scale = 2, string? headerTitle = null)
         {
+            int headerPx = ChartExport.HeaderPixels(headerTitle, scale);
+
             using var clone = ChartExport.CloneChart(chartHistogram);
-            bool hasHeader = !string.IsNullOrWhiteSpace(headerTitle);
-            int  headerPx  = hasHeader ? 60 * scale : 0;
-            clone.Size = new Size(chartHistogram.Width * scale, chartHistogram.Height * scale + headerPx);
+            clone.Size      = new Size(chartHistogram.Width * scale, chartHistogram.Height * scale);
             clone.BackColor = Color.White;
             foreach (var a in clone.ChartAreas) a.BackColor = Color.White;
-            ApplyUniformExportScaling(clone, scale);
-            if (hasHeader)
-            {
-                ApplyExportHeaderMargin(clone, headerPx);
-                clone.Tag = new ExportHeaderContext { HeaderTitle = headerTitle!, HeaderPx = headerPx, Scale = scale };
-                clone.PostPaint += Clone_PostPaint_DrawHeader;
-            }
-            ChartExport.SavePngRendered(clone, filePath, dpi: 300);
-            if (hasHeader) { clone.PostPaint -= Clone_PostPaint_DrawHeader; clone.Tag = null; }
-        }
 
-        public void ExportPng(string filePath, int scale = 2)
-        {
-            using var clone = ChartExport.CloneChart(chartHistogram);
-            clone.Size = new Size(chartHistogram.Width * scale, chartHistogram.Height * scale);
-            clone.BackColor = Color.White;
-            foreach (var a in clone.ChartAreas) a.BackColor = Color.White;
-            ChartExport.SavePngRendered(clone, filePath, dpi: 300);
-        }
+            ChartExport.ApplyExportScaling(clone, scale);
 
-        private sealed class ExportHeaderContext { public string HeaderTitle = ""; public int HeaderPx, Scale; }
+            if (headerPx > 0)
+                ChartExport.ApplyChartHeaderMargin(clone, "HistogramArea", headerPx);
 
-        private static void ApplyExportHeaderMargin(Chart chart, int headerPx)
-        {
-            var area = chart.ChartAreas["HistogramArea"];
-            int h = chart.ClientSize.Height; if (h <= 0) return;
-            float pct = 100f * headerPx / h;
-            float x  = area.Position.Auto || area.Position.Width  < 1 ? 3f  : area.Position.X;
-            float ay = area.Position.Auto || area.Position.Height < 1 ? 3f  : area.Position.Y;
-            float w  = area.Position.Auto || area.Position.Width  < 1 ? 94f : area.Position.Width;
-            float ah = area.Position.Auto || area.Position.Height < 1 ? 90f : area.Position.Height;
-            area.Position.Auto = false;
-            float ny = ay + pct, nh = Math.Max(5f, ah - pct);
-            if (ny > 95) ny = 95; if (ny + nh > 99) nh = Math.Max(5f, 99f - ny);
-            area.Position = new ElementPosition(x, ny, w, nh);
-        }
-
-        private static void Clone_PostPaint_DrawHeader(object? sender, ChartPaintEventArgs e)
-        {
-            if (sender is not Chart chart || chart.Tag is not ExportHeaderContext ctx || ctx.HeaderPx <= 0) return;
-            var lines = ctx.HeaderTitle.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
-            using var font  = new Font(chart.Font.FontFamily, chart.Font.SizeInPoints * 1.20f, FontStyle.Bold);
-            using var brush = new SolidBrush(Color.Black);
-            using var sf    = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
-            float lh = font.GetHeight(e.ChartGraphics.Graphics), y = (ctx.HeaderPx - lines.Length * lh) / 2f;
-            if (y < 2f) y = 2f;
-            foreach (var line in lines)
-            {
-                e.ChartGraphics.Graphics.DrawString(line, font, brush, new RectangleF(0, y, chart.ClientSize.Width, lh + 2), sf);
-                y += lh + 2; if (y > ctx.HeaderPx) break;
-            }
-        }
-
-        private static void ApplyUniformExportScaling(Chart c, int s)
-        {
-            if (s <= 1) return;
-            c.Font = new Font(c.Font.FontFamily, c.Font.SizeInPoints * s, c.Font.Style);
-            foreach (var a in c.ChartAreas)
-            {
-                if (a.AxisX.LabelStyle.Font != null) a.AxisX.LabelStyle.Font = ScaleFont(a.AxisX.LabelStyle.Font, s);
-                if (a.AxisY.LabelStyle.Font != null) a.AxisY.LabelStyle.Font = ScaleFont(a.AxisY.LabelStyle.Font, s);
-                if (a.AxisX.TitleFont != null) a.AxisX.TitleFont = ScaleFont(a.AxisX.TitleFont, s);
-                if (a.AxisY.TitleFont != null) a.AxisY.TitleFont = ScaleFont(a.AxisY.TitleFont, s);
-            }
-            foreach (var leg in c.Legends) if (leg.Font != null) leg.Font = ScaleFont(leg.Font, s);
-            foreach (var t  in c.Titles)  if (t.Font  != null) t.Font   = ScaleFont(t.Font,  s);
-            static Font ScaleFont(Font f, int s) => new Font(f.FontFamily, f.SizeInPoints * s, f.Style);
+            var pngBytes = ChartExport.RenderChartToPngBytes(clone);
+            ChartExport.SaveChartPng(pngBytes, filePath, headerPx, headerTitle, scale, dpi: 300);
         }
     }
 }

@@ -312,7 +312,6 @@ namespace AudioHexViewer
 
         private ToolStripMenuItem? menuCursorsSetValue;
 
-        private string _lastExportPngTitle = "";
 
 
         private enum CalStage
@@ -2447,129 +2446,190 @@ namespace AudioHexViewer
         {
         }
         //
-        //
+        // ── Helpers export ────────────────────────────────────────────────────
+        private enum ActiveTab { Spectrum, Histogram, Oscilloscope }
 
+        private ActiveTab GetActiveTab()
+        {
+            if (tabAnalysis.SelectedTab == tabSpectrum)     return ActiveTab.Spectrum;
+            if (tabAnalysis.SelectedTab == tabOscilloscope) return ActiveTab.Oscilloscope;
+            return ActiveTab.Histogram;
+        }
+
+        private static string TabKindName(ActiveTab t) => t switch
+        {
+            ActiveTab.Spectrum     => "Spectrum",
+            ActiveTab.Oscilloscope => "Oscilloscope",
+            _                      => "Histogram"
+        };
+
+        private bool CheckExportReady(ActiveTab t)
+        {
+            return t switch
+            {
+                ActiveTab.Spectrum     => spectrumControl     != null,
+                ActiveTab.Oscilloscope => oscilloscopeControl != null,
+                _                      => histogramControl    != null,
+            };
+        }
+
+        private void DoExportPng(string filePath, int scale, string? title = null)
+        {
+            var tab = GetActiveTab();
+            switch (tab)
+            {
+                case ActiveTab.Spectrum:     spectrumControl!    .ExportPng(filePath, scale, title); break;
+                case ActiveTab.Oscilloscope: oscilloscopeControl!.ExportPng(filePath, scale, title); break;
+                default:                     histogramControl!   .ExportPng(filePath, scale, title); break;
+            }
+        }
 
         //
         private void ExportActiveGraphToPng()
         {
-            // Détermine quel onglet est affiché (Spectrum vs Histogram)
-            // Dans ton projet, tu as tabAnalysis et tabSpectrum.
-            bool isSpectrum = (tabAnalysis.SelectedTab == tabSpectrum);
-
-            if (isSpectrum && spectrumControl == null)
+            var tab = GetActiveTab();
+            if (!CheckExportReady(tab))
             {
-                MessageBox.Show("Le spectre n'est pas initialisé.", "Export PNG",
+                MessageBox.Show($"L'onglet {TabKindName(tab)} n'est pas initialisé.", "Export PNG",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            if (!isSpectrum && histogramControl == null)
+            using var sfd = new SaveFileDialog
             {
-                MessageBox.Show("L'histogramme n'est pas initialisé.", "Export PNG",
+                Filter     = "PNG (*.png)|*.png",
+                DefaultExt = "png",
+                FileName   = $"AudioHexViewer_{TabKindName(tab)}_{DateTime.Now:yyyyMMdd_HHmmss}.png"
+            };
+
+            if (sfd.ShowDialog(this) != DialogResult.OK) return;
+
+            try   { DoExportPng(sfd.FileName, scale: 2); }
+            catch (Exception ex) { MessageBox.Show(ex.Message, "Export PNG", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        }
+
+        // ── Copy graph to clipboard ───────────────────────────────────────────
+        private System.Windows.Forms.Timer? _clipboardFeedbackTimer;
+
+        private void menuCopyClipboard_Click(object sender, EventArgs e)
+        {
+            var tab = GetActiveTab();
+            if (!CheckExportReady(tab))
+            {
+                MessageBox.Show($"L'onglet {TabKindName(tab)} n'est pas initialisé.", "Copy",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-
-            using var sfd = new SaveFileDialog();
-            sfd.Filter = "PNG (*.png)|*.png";
-            sfd.DefaultExt = "png";
-
-            string kind = isSpectrum ? "Spectrum" : "Histogram";
-            sfd.FileName = $"AudioHexViewer_{kind}_{DateTime.Now:yyyyMMdd_HHmmss}.png";
-
-            if (sfd.ShowDialog(this) != DialogResult.OK)
-                return;
 
             try
             {
-                // Qualité recommandée :
-                // scale = 2 => très bon rendu, taille de fichier généralement raisonnable
-                const int scale = 2;
-
-                if (isSpectrum)
-                    spectrumControl!.ExportPng(sfd.FileName, scale);
-                else
-                    histogramControl!.ExportPng(sfd.FileName, scale);
+                switch (tab)
+                {
+                    case ActiveTab.Spectrum:
+                        ChartExport.CopyChartToClipboard(spectrumControl!.GetChartForClipboard());
+                        break;
+                    case ActiveTab.Histogram:
+                        ChartExport.CopyChartToClipboard(histogramControl!.GetChartForClipboard());
+                        break;
+                    case ActiveTab.Oscilloscope:
+                        ChartExport.CopyControlToClipboard(oscilloscopeControl!.GetPanelForClipboard());
+                        break;
+                }
+                ShowCopiedFeedback();
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message, "Export PNG", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.Message, "Copy to clipboard", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        private void menuExportPng_Click(object sender, EventArgs e)
+        private void ShowCopiedFeedback()
         {
-            using var dlg = new ExportPngDialog();
+            var item = menuCopyClipboard;
+            string original = item.Text;
+            item.Text = "✓ Copied!";
 
-            dlg.SetTitleText(_lastExportPngTitle);
+            _clipboardFeedbackTimer?.Stop();
+            _clipboardFeedbackTimer?.Dispose();
+            _clipboardFeedbackTimer = new System.Windows.Forms.Timer { Interval = 1200 };
+            _clipboardFeedbackTimer.Tick += (_, _) =>
+            {
+                item.Text = original;
+                _clipboardFeedbackTimer?.Stop();
+                _clipboardFeedbackTimer?.Dispose();
+                _clipboardFeedbackTimer = null;
+            };
+            _clipboardFeedbackTimer.Start();
+        }
 
-            if (dlg.ShowDialog(this) != DialogResult.OK)
-                return;
+        // ── Export to PDF ─────────────────────────────────────────────────────
+        private void menuExportPdf_Click(object sender, EventArgs e)
+        {
+            using var dlg = new AudioHexViewer.ExportPdfDialog();
+            dlg.SetAvailableTabs(
+                hasSpectrum:   spectrumControl     != null,
+                hasHistogram:  histogramControl    != null,
+                hasOscillo:    oscilloscopeControl != null);
 
-            _lastExportPngTitle = dlg.GetTitleText();
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
 
             string outPath = dlg.FilePath;
-            if (string.IsNullOrWhiteSpace(outPath))
+            if (string.IsNullOrWhiteSpace(outPath)) return;
+
+            string titleText    = dlg.GetTitleText();
+            string subtitleText = dlg.GetSubtitleText();
+            string fullTitle    = string.IsNullOrWhiteSpace(subtitleText)
+                                  ? titleText
+                                  : titleText + "\n" + subtitleText;
+            int scale = dlg.ExpScale;
+
+            var pages = new System.Collections.Generic.List<(string name, System.Action<string> export)>();
+            if (dlg.IncludeSpectrum  && spectrumControl     != null)
+                pages.Add(("Spectrum",     p => spectrumControl!    .ExportPng(p, scale, fullTitle)));
+            if (dlg.IncludeHistogram && histogramControl    != null)
+                pages.Add(("Histogram",    p => histogramControl!   .ExportPng(p, scale, fullTitle)));
+            if (dlg.IncludeOscillo   && oscilloscopeControl != null)
+                pages.Add(("Oscilloscope", p => oscilloscopeControl!.ExportPng(p, scale, fullTitle)));
+
+            if (pages.Count == 0)
+            {
+                MessageBox.Show(this, "No initialized tab selected.", "Export to PDF",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
+            }
 
-            string ext = Path.GetExtension(outPath).ToLowerInvariant();
-
+            var tmpFiles = new string[pages.Count];
             try
             {
-                // Détermine quel onglet est affiché (Spectrum vs Histogram)
-                bool isSpectrum = (tabAnalysis.SelectedTab == tabSpectrum);
-
-                if (isSpectrum && spectrumControl == null)
+                for (int i = 0; i < pages.Count; i++)
                 {
-                    MessageBox.Show("Le spectre n'est pas initialisé.", "Export",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    return;
+                    tmpFiles[i] = Path.Combine(Path.GetTempPath(),
+                        $"AudioHexViewer_{pages[i].name}_{Guid.NewGuid():N}.png");
+                    pages[i].export(tmpFiles[i]);
                 }
 
-                if (!isSpectrum && histogramControl == null)
-                {
-                    MessageBox.Show("L'histogramme n'est pas initialisé.", "Export",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    return;
-                }
+                string[] pageTitles = System.Linq.Enumerable
+                    .Range(0, pages.Count).Select(i => pages[i].name).ToArray();
 
-                if (ext == ".pdf")
-                {
-                    // 1) Génère un PNG temporaire depuis l'onglet ACTIF (rendu IDENTIQUE)
-                    string tmpPng = Path.Combine(
-                        Path.GetTempPath(),
-                        $"AudioHexViewer_{Guid.NewGuid():N}.png"
-                    );
+                PdfExport.SaveMultiPageFromPngs(tmpFiles, outPath,
+                    docTitle:   string.IsNullOrWhiteSpace(titleText) ? null : titleText,
+                    pageTitles: pageTitles);
 
-                    if (isSpectrum)
-                        spectrumControl!.ExportPng(tmpPng, dlg.ExpScale, dlg.GetTitleText());
-                    else
-                        histogramControl!.ExportPng(tmpPng, dlg.ExpScale, dlg.GetTitleText());
-
-                    // 2) Emballe dans un PDF A4 paysage, image fit largeur
-                    PdfExport.SaveA4LandscapeFromPng(tmpPng, outPath);
-
-                    // 3) Nettoyage
-                    try { File.Delete(tmpPng); } catch { /* ignore */ }
-                }
-                else
-                {
-                    // PNG par défaut
-                    if (ext != ".png")
-                        outPath = Path.ChangeExtension(outPath, ".png");
-
-                    if (isSpectrum)
-                        spectrumControl!.ExportPng(outPath, dlg.ExpScale, dlg.GetTitleText());
-                    else
-                        histogramControl!.ExportPng(outPath, dlg.ExpScale, dlg.GetTitleText());
-                }
+                if (dlg.OpenAfter)
+                    ExportPdfDialog.TryOpenFile(outPath);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Export", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.Message, "Export to PDF", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                foreach (var tmp in tmpFiles)
+                    if (tmp != null) try { File.Delete(tmp); } catch { /* ignore */ }
             }
         }
+
+
         //
         private static SpectrumFrame DecimateFrameForDisplay(SpectrumFrame src, double fMin, double fMax, int maxPoints, bool useLogX)
         {
