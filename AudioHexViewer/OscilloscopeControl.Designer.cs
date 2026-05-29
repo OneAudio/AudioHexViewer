@@ -15,6 +15,7 @@ namespace AudioHexViewer
         private Label         lblTrig;
         private ComboBox      cmbTrigMode;  private ComboBox cmbTrigEdge;
         private Label         lblTrigSrc;   private ComboBox cmbTrigSrc;
+        private Label         lblTrigSlope;
         private Label         lblTrigLvl;   private NumericUpDown nudTrigLevel;
         private Label         lblTrigPos;   private NumericUpDown nudTrigPos;
         private Label         lblGrid;      private ComboBox cmbGrid;
@@ -47,6 +48,7 @@ namespace AudioHexViewer
             lblTrig      = new Label();
             cmbTrigMode  = new ComboBox(); cmbTrigEdge = new ComboBox();
             lblTrigSrc   = new Label();   cmbTrigSrc  = new ComboBox();
+            lblTrigSlope = new Label();
             lblTrigLvl   = new Label();   nudTrigLevel= new NumericUpDown();
             lblTrigPos   = new Label();   nudTrigPos  = new NumericUpDown();
             lblGrid      = new Label();   cmbGrid     = new ComboBox();
@@ -84,7 +86,7 @@ namespace AudioHexViewer
             {
                 lblTimediv, cmbTimediv,
                 lblTrig, cmbTrigMode, cmbTrigEdge,
-                lblTrigSrc, cmbTrigSrc,
+                lblTrigSrc, cmbTrigSrc, lblTrigSlope,
                 lblTrigLvl, nudTrigLevel,
                 lblTrigPos, nudTrigPos,
                 lblGrid, cmbGrid,
@@ -94,9 +96,9 @@ namespace AudioHexViewer
                 lblVdivL, cmbVdivL, cmbCouplingL,
                 lblVdivR, cmbVdivR, cmbCouplingR,
                 chkRoll, chkVdiv,
-                lblCursors, btnC1, btnC1Chan, btnC2, btnC2Chan,
-                btnC1Peak, btnC1Prev, btnC1Next, btnC1Lock,
-                btnC2Peak, btnC2Prev, btnC2Next, btnC2Lock,
+                lblCursors,
+                btnC1, btnC1Chan, btnC1Prev, btnC1Peak, btnC1Next, btnC1Lock,
+                btnC2, btnC2Chan, btnC2Prev, btnC2Peak, btnC2Next, btnC2Lock,
                 lblTrigStatus,
                 btnRun
             });
@@ -126,30 +128,30 @@ namespace AudioHexViewer
             cmbVdivL.DropDownStyle=ComboBoxStyle.DropDownList; cmbVdivL.Font=std9;
             // ── Groupe VERTICAL déplacé à x=8 — 4 labels renommés ──────────────
             lblGainHdr.AutoSize=true; lblGainHdr.Font=gS; lblGainHdr.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblGainHdr.Location=new Point(8,4); lblGainHdr.Text="Left GAIN";
+            lblGainHdr.Location=new Point(8,4); lblGainHdr.Text="L GAIN";
             lblCoupHdr.AutoSize=true; lblCoupHdr.Font=gS; lblCoupHdr.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblCoupHdr.Location=new Point(96,4); lblCoupHdr.Text="L Coupling";
+            lblCoupHdr.Location=new Point(96,4); lblCoupHdr.Text="L COUPLING";
             lblVdivL.AutoSize=true; lblVdivL.Font=gS; lblVdivL.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblVdivL.Location=new Point(8,46); lblVdivL.Text="Right GAIN";
+            lblVdivL.Location=new Point(8,46); lblVdivL.Text="R GAIN";
             lblVdivR.AutoSize=true; lblVdivR.Font=gS; lblVdivR.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblVdivR.Location=new Point(96,46); lblVdivR.Text="R Coupling";
-            cmbVdivL.Location=new Point(8,18); cmbVdivL.Size=new Size(88,24); cmbVdivL.TabIndex=8;
+            lblVdivR.Location=new Point(96,46); lblVdivR.Text="R COUPLING";
+            cmbVdivL.Location=new Point(8,18); cmbVdivL.Size=new Size(82,24); cmbVdivL.TabIndex=8;
             cmbCouplingL.DropDownStyle=ComboBoxStyle.DropDownList; cmbCouplingL.Font=std9;
-            cmbCouplingL.Location=new Point(96,18); cmbCouplingL.Size=new Size(78,24); cmbCouplingL.TabIndex=9;
+            cmbCouplingL.Location=new Point(96,18); cmbCouplingL.Size=new Size(66,24); cmbCouplingL.TabIndex=9;
             cmbCouplingL.Items.AddRange(new object[]{"DC","AC","OFF"}); cmbCouplingL.SelectedIndex=0;
             cmbVdivR.DropDownStyle=ComboBoxStyle.DropDownList; cmbVdivR.Font=std9;
-            cmbVdivR.Location=new Point(8,60); cmbVdivR.Size=new Size(88,24); cmbVdivR.TabIndex=10;
+            cmbVdivR.Location=new Point(8,60); cmbVdivR.Size=new Size(82,24); cmbVdivR.TabIndex=10;
             cmbCouplingR.DropDownStyle=ComboBoxStyle.DropDownList; cmbCouplingR.Font=std9;
-            cmbCouplingR.Location=new Point(96,60); cmbCouplingR.Size=new Size(78,24); cmbCouplingR.TabIndex=11;
+            cmbCouplingR.Location=new Point(96,60); cmbCouplingR.Size=new Size(66,24); cmbCouplingR.TabIndex=11;
             cmbCouplingR.Items.AddRange(new object[]{"DC","AC","OFF"}); cmbCouplingR.SelectedIndex=0;
             chkVdiv.AutoSize=true; chkVdiv.Font=std9;
-            chkVdiv.Location=new Point(212,47); chkVdiv.Text="V/div"; chkVdiv.TabIndex=13;
+            chkVdiv.Location=new Point(200,20); chkVdiv.Text="V/div"; chkVdiv.TabIndex=13;
             chkVdiv.Enabled=false; chkVdiv.UseVisualStyleBackColor=true;
             // Boutons L/R sélection de l'échelle verticale (exclusifs, style C1/C2)
-            btnScaleL.Location=new Point(178,18); btnScaleL.Margin=new Padding(0);
+            btnScaleL.Location=new Point(168,18); btnScaleL.Margin=new Padding(0);
             btnScaleL.Size=new Size(28,24); btnScaleL.TabIndex=30;
             btnScaleL.Text="L"; btnScaleL.UseVisualStyleBackColor=false;
-            btnScaleR.Location=new Point(178,60); btnScaleR.Margin=new Padding(0);
+            btnScaleR.Location=new Point(168,60); btnScaleR.Margin=new Padding(0);
             btnScaleR.Size=new Size(28,24); btnScaleR.TabIndex=31;
             btnScaleR.Text="R"; btnScaleR.UseVisualStyleBackColor=false;
 
@@ -168,7 +170,7 @@ namespace AudioHexViewer
                 "1 s/div"});
             cmbTimediv.SelectedIndex=10; // 2 ms/div
             lblTrigPos.AutoSize=true; lblTrigPos.Font=gS; lblTrigPos.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblTrigPos.Location=new Point(330,46); lblTrigPos.Text="T POS (div)";
+            lblTrigPos.Location=new Point(378,46); lblTrigPos.Text="T POS (div)";
             nudTrigPos.DecimalPlaces=1; nudTrigPos.Increment=0.5m;
             nudTrigPos.Minimum=0.5m; nudTrigPos.Maximum=9.5m; nudTrigPos.Value=2.0m;
             nudTrigPos.Font=std9; nudTrigPos.Location=new Point(378,60); nudTrigPos.Size=new Size(62,24); nudTrigPos.TabIndex=18;
@@ -180,15 +182,17 @@ namespace AudioHexViewer
             cmbTrigMode.Location=new Point(452,18); cmbTrigMode.Size=new Size(72,24); cmbTrigMode.TabIndex=3;
             cmbTrigMode.Items.AddRange(new object[]{"Auto","Normal","Single"}); cmbTrigMode.SelectedIndex=0;
             cmbTrigEdge.DropDownStyle=ComboBoxStyle.DropDownList; cmbTrigEdge.Font=std9;
-            cmbTrigEdge.Location=new Point(528,18); cmbTrigEdge.Size=new Size(44,24); cmbTrigEdge.TabIndex=4;
+            cmbTrigEdge.Location=new Point(528,18); cmbTrigEdge.Size=new Size(52,24); cmbTrigEdge.TabIndex=4;
             cmbTrigEdge.Items.AddRange(new object[]{"\u2191","\u2193"}); cmbTrigEdge.SelectedIndex=0;
             lblTrigSrc.AutoSize=true; lblTrigSrc.Font=gS; lblTrigSrc.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblTrigSrc.Location=new Point(452,46); lblTrigSrc.Text="SRC";
+            lblTrigSrc.Location=new Point(452,46); lblTrigSrc.Text="SOURCE";
             cmbTrigSrc.DropDownStyle=ComboBoxStyle.DropDownList; cmbTrigSrc.Font=std9;
             cmbTrigSrc.Location=new Point(452,60); cmbTrigSrc.Size=new Size(72,24); cmbTrigSrc.TabIndex=5;
             cmbTrigSrc.Items.AddRange(new object[]{"L","R"}); cmbTrigSrc.SelectedIndex=0;
             lblTrigLvl.AutoSize=true; lblTrigLvl.Font=gS; lblTrigLvl.ForeColor=System.Drawing.SystemColors.GrayText;
             lblTrigLvl.Location=new Point(528,46); lblTrigLvl.Text="LEVEL";
+            lblTrigSlope.AutoSize=true; lblTrigSlope.Font=gS; lblTrigSlope.ForeColor=System.Drawing.SystemColors.GrayText;
+            lblTrigSlope.Location=new Point(528,4); lblTrigSlope.Text="SLOPE";
             nudTrigLevel.DecimalPlaces=3; nudTrigLevel.Increment=0.010m;
             nudTrigLevel.Minimum=-1.000m; nudTrigLevel.Maximum=1.000m; nudTrigLevel.Value=0.000m;
             nudTrigLevel.Font=std9; nudTrigLevel.Location=new Point(528,60); nudTrigLevel.Size=new Size(52,24); nudTrigLevel.TabIndex=6;
@@ -210,35 +214,37 @@ namespace AudioHexViewer
             cmbTraceMode.Items.AddRange(new object[]{"Segment","Mixed","Dot"});
             cmbTraceMode.SelectedIndex=0;
 
-            // ── 6. CURSEURS (x=734) ── C1/C2 + Peak < > Lock ─────────────────
+            // ── CURSORS : boutons individuels positionnés (alignement pixel-perfect) ─
+            // Colonnes : C/C=34 | Chan=45 | <=22 | Peak=40 | >=22 | Trk=34  (total 197px)
+            // x  :       734    | 768     | 813  | 835     | 875  | 897  → fin 931
             lblCursors.AutoSize=true; lblCursors.Font=gS; lblCursors.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblCursors.Location=new Point(734,4); lblCursors.Text="CURSORS";
-            // Ligne C1 (y=18)
-            btnC1.Location=new Point(734,18); btnC1.Margin=new Padding(0); btnC1.Size=new Size(34,23); btnC1.TabIndex=14;
+            lblCursors.Location=new Point(784,4); lblCursors.Text="CURSORS SETTINGS";
+            // ── Ligne C1 (y=18, h=24, identique aux combos de la ligne haute) ──
+            btnC1.Location=new Point(734,18); btnC1.Margin=new Padding(0); btnC1.Size=new Size(34,24); btnC1.TabIndex=14;
             btnC1.Text="C1"; btnC1.UseVisualStyleBackColor=true;
-            btnC1Chan.Location=new Point(772,18); btnC1Chan.Margin=new Padding(0); btnC1Chan.Size=new Size(45,23); btnC1Chan.TabIndex=15;
+            btnC1Chan.Location=new Point(768,18); btnC1Chan.Margin=new Padding(0); btnC1Chan.Size=new Size(45,24); btnC1Chan.TabIndex=15;
             btnC1Chan.Text="Left"; btnC1Chan.UseVisualStyleBackColor=true;
-            btnC1Peak.FlatStyle=FlatStyle.Flat; btnC1Peak.Location=new Point(822,18); btnC1Peak.Size=new Size(42,23); btnC1Peak.TabIndex=20;
-            btnC1Peak.Text="Peak"; btnC1Peak.UseVisualStyleBackColor=true;
-            btnC1Prev.FlatStyle=FlatStyle.Flat; btnC1Prev.Location=new Point(868,18); btnC1Prev.Size=new Size(24,23); btnC1Prev.TabIndex=21;
+            btnC1Prev.Location=new Point(813,18); btnC1Prev.Margin=new Padding(0); btnC1Prev.Size=new Size(22,24); btnC1Prev.TabIndex=21;
             btnC1Prev.Text="<"; btnC1Prev.UseVisualStyleBackColor=true;
-            btnC1Next.FlatStyle=FlatStyle.Flat; btnC1Next.Location=new Point(896,18); btnC1Next.Size=new Size(24,23); btnC1Next.TabIndex=22;
+            btnC1Peak.Location=new Point(835,18); btnC1Peak.Margin=new Padding(0); btnC1Peak.Size=new Size(40,24); btnC1Peak.TabIndex=20;
+            btnC1Peak.Text="Peak"; btnC1Peak.UseVisualStyleBackColor=true;
+            btnC1Next.Location=new Point(875,18); btnC1Next.Margin=new Padding(0); btnC1Next.Size=new Size(22,24); btnC1Next.TabIndex=22;
             btnC1Next.Text=">"; btnC1Next.UseVisualStyleBackColor=true;
-            btnC1Lock.Location=new Point(924,18); btnC1Lock.Size=new Size(36,23); btnC1Lock.TabIndex=23;
-            btnC1Lock.Text="\u269B"; btnC1Lock.UseVisualStyleBackColor=true;
-            // Ligne C2 (y=60)
-            btnC2.Location=new Point(734,60); btnC2.Margin=new Padding(0); btnC2.Size=new Size(34,23); btnC2.TabIndex=16;
+            btnC1Lock.Location=new Point(897,18); btnC1Lock.Margin=new Padding(0); btnC1Lock.Size=new Size(34,24); btnC1Lock.TabIndex=23;
+            btnC1Lock.Text="Trk"; btnC1Lock.UseVisualStyleBackColor=true;
+            // ── Ligne C2 (y=60, h=24, identique aux combos de la ligne basse) ──
+            btnC2.Location=new Point(734,60); btnC2.Margin=new Padding(0); btnC2.Size=new Size(34,24); btnC2.TabIndex=16;
             btnC2.Text="C2"; btnC2.UseVisualStyleBackColor=true;
-            btnC2Chan.Location=new Point(772,60); btnC2Chan.Margin=new Padding(0); btnC2Chan.Size=new Size(45,23); btnC2Chan.TabIndex=17;
+            btnC2Chan.Location=new Point(768,60); btnC2Chan.Margin=new Padding(0); btnC2Chan.Size=new Size(45,24); btnC2Chan.TabIndex=17;
             btnC2Chan.Text="Right"; btnC2Chan.UseVisualStyleBackColor=true;
-            btnC2Peak.FlatStyle=FlatStyle.Flat; btnC2Peak.Location=new Point(822,60); btnC2Peak.Size=new Size(42,23); btnC2Peak.TabIndex=24;
-            btnC2Peak.Text="Peak"; btnC2Peak.UseVisualStyleBackColor=true;
-            btnC2Prev.FlatStyle=FlatStyle.Flat; btnC2Prev.Location=new Point(868,60); btnC2Prev.Size=new Size(24,23); btnC2Prev.TabIndex=25;
+            btnC2Prev.Location=new Point(813,60); btnC2Prev.Margin=new Padding(0); btnC2Prev.Size=new Size(22,24); btnC2Prev.TabIndex=25;
             btnC2Prev.Text="<"; btnC2Prev.UseVisualStyleBackColor=true;
-            btnC2Next.FlatStyle=FlatStyle.Flat; btnC2Next.Location=new Point(896,60); btnC2Next.Size=new Size(24,23); btnC2Next.TabIndex=26;
+            btnC2Peak.Location=new Point(835,60); btnC2Peak.Margin=new Padding(0); btnC2Peak.Size=new Size(40,24); btnC2Peak.TabIndex=24;
+            btnC2Peak.Text="Peak"; btnC2Peak.UseVisualStyleBackColor=true;
+            btnC2Next.Location=new Point(875,60); btnC2Next.Margin=new Padding(0); btnC2Next.Size=new Size(22,24); btnC2Next.TabIndex=26;
             btnC2Next.Text=">"; btnC2Next.UseVisualStyleBackColor=true;
-            btnC2Lock.Location=new Point(924,60); btnC2Lock.Size=new Size(36,23); btnC2Lock.TabIndex=27;
-            btnC2Lock.Text="\u269B"; btnC2Lock.UseVisualStyleBackColor=true;
+            btnC2Lock.Location=new Point(897,60); btnC2Lock.Margin=new Padding(0); btnC2Lock.Size=new Size(34,24); btnC2Lock.TabIndex=27;
+            btnC2Lock.Text="Trk"; btnC2Lock.UseVisualStyleBackColor=true;
 
                         lblTrigStatus.Location=new Point(1060,54); lblTrigStatus.Size=new Size(70,18);
             lblTrigStatus.Text=""; lblTrigStatus.Font=new Font("Segoe UI",8.5f,FontStyle.Bold);

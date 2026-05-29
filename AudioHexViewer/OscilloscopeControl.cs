@@ -142,16 +142,17 @@ namespace AudioHexViewer
             cmbTimediv.SelectedIndexChanged += (_, _) =>
             { UpdateRollCheckbox(); if (_isRunning) pnlScope.Invalidate(); else RefreshStoppedView(); };
 
-            // Couplage (DC/AC/OFF) → voies actives recalculées + redraw
-            cmbCouplingL.SelectedIndexChanged += (_, _) => { UpdateGainCombos(); if (!_isRunning) RefreshStoppedView(); else pnlScope.Invalidate(); };
-            cmbCouplingR.SelectedIndexChanged += (_, _) => { UpdateGainCombos(); if (!_isRunning) RefreshStoppedView(); else pnlScope.Invalidate(); };
+            // Couplage (DC/AC/OFF) → redraw uniquement, PAS de UpdateGainCombos
+            // (UpdateGainCombos réinitialise les indices gain → bug ×500)
+            cmbCouplingL.SelectedIndexChanged += (_, _) => { if (!_isRunning) RefreshStoppedView(); else pnlScope.Invalidate(); };
+            cmbCouplingR.SelectedIndexChanged += (_, _) => { if (!_isRunning) RefreshStoppedView(); else pnlScope.Invalidate(); };
             cmbTrigMode.SelectedIndexChanged  += (_, _) => { };
             cmbTrigEdge.SelectedIndexChanged  += (_, _) => { };
-            cmbTrigSrc.SelectedIndexChanged   += (_, _) => { };
+            cmbTrigSrc.SelectedIndexChanged   += (_, _) => { if (_vdivMode) UpdateTrigLevelRange(); };
             nudTrigLevel.ValueChanged         += (_, _) => pnlScope.Invalidate();
             nudTrigPos.ValueChanged           += (_, _) => { if (!_isRunning) RefreshStoppedView(); else pnlScope.Invalidate(); };
-            cmbVdivL.SelectedIndexChanged     += (_, _) => pnlScope.Invalidate();
-            cmbVdivR.SelectedIndexChanged     += (_, _) => pnlScope.Invalidate();
+            cmbVdivL.SelectedIndexChanged     += (_, _) => { if (_vdivMode) UpdateTrigLevelRange(); pnlScope.Invalidate(); };
+            cmbVdivR.SelectedIndexChanged     += (_, _) => { if (_vdivMode) UpdateTrigLevelRange(); pnlScope.Invalidate(); };
             cmbGrid.SelectedIndexChanged      += (_, _) => pnlScope.Invalidate();
             chkRoll.CheckedChanged            += (_, _) => { };
             chkVdiv.CheckedChanged            += ChkVdiv_Changed;
@@ -192,12 +193,20 @@ namespace AudioHexViewer
             UpdateScaleButtons();
 
             UpdateRollCheckbox();
+            // Séparateurs visuels entre groupes (1px silver dans les gaps)
+            foreach (int sx in new[] { 270, 446, 608, 730 })
+                panelTop.Controls.Add(new Label {
+                    Location  = new System.Drawing.Point(sx, 6),
+                    Size      = new System.Drawing.Size(1, 78),
+                    BackColor = System.Drawing.Color.Silver,
+                    Text      = ""
+                });
             SetRunState(false);
         }
 
         // ─────────────────────────────────────────────────────────────────────
         public void ApplySpectrumColorSettings(SpectrumColorSettings? c)
-        { _colors = c ?? SpectrumColorSettings.Defaults(); _colors.Normalize(); pnlScope.Invalidate(); }
+        { _colors = c ?? SpectrumColorSettings.Defaults(); _colors.Normalize(); UpdateCursorButtons(); UpdateScaleButtons(); pnlScope.Invalidate(); }
         public void UpdateSampleRate(int sr) { _lastSR = sr; UpdateInfoLine(); }
 
         private bool IsAutoMode   => cmbTrigMode.SelectedIndex == 0;
@@ -214,14 +223,61 @@ namespace AudioHexViewer
         // ── Helpers curseurs ──────────────────────────────────────────────────
         // Voie(s) actives déduites des combos COUP. : DC(0)/AC(1) = actif, OFF(2) = éteint
         // Retourne 0=Left, 1=Right, 2=L+R  (compatible avec l'ancien GetCh())
-        private int GetCh()
+        // Renvoie le niveau de trigger en unités normalisées (-1…+1)
+        // Si V/div actif : convertit la valeur en Volts affichée dans le NUD → normalisé
+        private float GetTrigLevelNormalized()
+        {
+            if (!_vdivMode) return (float)nudTrigLevel.Value;
+            double vd = GetVdivForCh(cmbTrigSrc.SelectedIndex);
+            double halfRange = vd * (V_DIVS / 2.0);
+            return halfRange > 0.0 ? (float)(nudTrigLevel.Value / (decimal)halfRange) : 0f;
+        }
+
+        // Met à jour plage/incrément/valeur du NUD trigger selon le mode V/div
+        private void UpdateTrigLevelRange()
+        {
+            if (_vdivMode)
+            {
+                double vd = GetVdivForCh(cmbTrigSrc.SelectedIndex);
+                double halfRange = vd * (V_DIVS / 2.0);
+                if (halfRange < 1e-9) return;
+                // Convertit ancienne valeur normalisée → Volts
+                decimal oldNorm = GetTrigLevelNormalized() == 0f ? 0m
+                    : (decimal)GetTrigLevelNormalized() * (decimal)halfRange;
+                int dp = halfRange >= 0.1 ? 3 : 4;
+                decimal inc = (decimal)Math.Max(halfRange / 100.0, 0.0001);
+                nudTrigLevel.Minimum = -(decimal)halfRange;
+                nudTrigLevel.Maximum =  (decimal)halfRange;
+                nudTrigLevel.Increment = inc;
+                nudTrigLevel.DecimalPlaces = dp;
+                nudTrigLevel.Value = Math.Clamp(
+                    (decimal)((float)nudTrigLevel.Value * halfRange),
+                    nudTrigLevel.Minimum, nudTrigLevel.Maximum);
+            }
+            else
+            {
+                // Convertit ancienne valeur Volts → normalisé
+                double vd = GetVdivForCh(cmbTrigSrc.SelectedIndex);
+                double halfRange = vd * (V_DIVS / 2.0);
+                decimal norm = halfRange > 1e-9
+                    ? Math.Clamp(nudTrigLevel.Value / (decimal)halfRange, -1m, 1m)
+                    : 0m;
+                nudTrigLevel.Minimum = -1m;
+                nudTrigLevel.Maximum =  1m;
+                nudTrigLevel.Increment = 0.001m;
+                nudTrigLevel.DecimalPlaces = 3;
+                nudTrigLevel.Value = norm;
+            }
+        }
+
+                private int GetCh()
         {
             bool l = cmbCouplingL.SelectedIndex < 2;
             bool r = cmbCouplingR.SelectedIndex < 2;
             if (l && r) return 2;
             if (l)      return 0;
             if (r)      return 1;
-            return 2;  // les deux OFF → on affiche quand même (signal plat)
+            return -1; // les deux OFF → rien à afficher (aucune condition ch==0/1/2 ne matche)
         }
 
                 private void UpdateScaleButtons()
@@ -245,8 +301,15 @@ namespace AudioHexViewer
             btnC2.BackColor               = _c2Active ? Color.SeaGreen : SystemColors.Control;
             btnC2.ForeColor               = _c2Active ? Color.White    : SystemColors.ControlText;
             btnC2.UseVisualStyleBackColor  = !_c2Active;
-            btnC1Chan.Text  = cn[_c1Chan];
-            btnC2Chan.Text  = cn[_c2Chan];
+            btnC1Chan.Text = cn[_c1Chan];
+            btnC2Chan.Text = cn[_c2Chan];
+            // Couleur canal : Left=TraceColorL, Right=TraceColorR, Auto=neutre
+            btnC1Chan.BackColor = _c1Chan==0?TraceColorL:(_c1Chan==1?TraceColorR:SystemColors.Control);
+            btnC1Chan.ForeColor = _c1Chan==2?SystemColors.ControlText:Color.White;
+            btnC1Chan.UseVisualStyleBackColor = _c1Chan==2;
+            btnC2Chan.BackColor = _c2Chan==0?TraceColorL:(_c2Chan==1?TraceColorR:SystemColors.Control);
+            btnC2Chan.ForeColor = _c2Chan==2?SystemColors.ControlText:Color.White;
+            btnC2Chan.UseVisualStyleBackColor = _c2Chan==2;
             // Boutons Lock (vert si verrouillé comme C1/C2)
             btnC1Lock.BackColor              = _c1Locked ? Color.SeaGreen    : SystemColors.Control;
             btnC1Lock.ForeColor              = _c1Locked ? Color.White       : SystemColors.ControlText;
@@ -400,6 +463,7 @@ namespace AudioHexViewer
         {
             _vdivMode = chkVdiv.Checked;
             UpdateGainCombos();
+            UpdateTrigLevelRange();   // adapte le NUD LEVEL en V ou normalisé
             pnlScope.Invalidate();
         }
 
@@ -416,7 +480,6 @@ namespace AudioHexViewer
             cmbVdivL.Items.AddRange(items); cmbVdivR.Items.AddRange(items);
             cmbVdivL.SelectedIndex = Math.Clamp(newIdxL, 0, items.Length-1);
             cmbVdivR.SelectedIndex = Math.Clamp(newIdxR, 0, items.Length-1);
-            lblGainHdr.Text = "GAIN";
         }
 
         /// <summary>
@@ -543,15 +606,16 @@ namespace AudioHexViewer
 
         private void UpdateTrigStatus()
         {
-            if(!_isRunning){lblTrigStatus.Text="";return;}
+            if(!_isRunning){lblTrigStatus.Text=""; lblTrigStatus.Visible=true; return;}
             if(_isArmed)
             {
                 _blinkCounter++; if(_blinkCounter>=15){_blinkCounter=0;_blinkState=!_blinkState;}
-                lblTrigStatus.Text="WAIT";
-                lblTrigStatus.ForeColor=_blinkState?Color.Lime:Color.FromArgb(0,80,0);
+                lblTrigStatus.Text="WAIT"; lblTrigStatus.ForeColor=Color.SeaGreen;
+                lblTrigStatus.Visible=_blinkState;  // éteint = complètement invisible
             }
-            else if(_lastTrigOk){ lblTrigStatus.Text="TRIG'D"; lblTrigStatus.ForeColor=Color.OrangeRed; }
-            else lblTrigStatus.Text="";
+            else if(_lastTrigOk){ lblTrigStatus.Text="TRIG'D"; lblTrigStatus.ForeColor=Color.Crimson;
+                                  lblTrigStatus.Visible=_blinkState; }
+            else { lblTrigStatus.Text=""; lblTrigStatus.Visible=true; }
         }
 
         // ── Molette / navigation post-stop ────────────────────────────────────
@@ -628,7 +692,7 @@ namespace AudioHexViewer
                 StoreAndDisplay(rawL,rawR,search,rollStart,win,sr,-1);pnlScope.Invalidate();return;}
 
             var trigSrc=(cmbTrigSrc.SelectedIndex==1)?rawR:rawL;
-            float tLvl=(float)nudTrigLevel.Value; bool rising=cmbTrigEdge.SelectedIndex==0;
+            float tLvl=GetTrigLevelNormalized(); bool rising=cmbTrigEdge.SelectedIndex==0;
             float vmax=float.MinValue,vmin=float.MaxValue;
             for(int i=0;i<search;i++){if(trigSrc[i]>vmax)vmax=trigSrc[i];if(trigSrc[i]<vmin)vmin=trigSrc[i];}
             // EMA sur l'hystérésis : évite les sauts brusques de armLevel/fireLevel
@@ -1323,7 +1387,7 @@ namespace AudioHexViewer
             float ym=w.Top+w.Height/2f;
             float ys=w.Height/2f*zoom;
             float yRef=ym-offset*w.Height/2f;   // référence 0V décalée comme la courbe
-            float yT=Math.Clamp(yRef-(float)nudTrigLevel.Value*ys,w.Top,w.Bottom);
+            float yT=Math.Clamp(yRef-GetTrigLevelNormalized()*ys,w.Top,w.Bottom);
             Color tCol=Color.FromArgb(180, trigCh==0?TraceColorL:TraceColorR);
 
             // Ligne horizontale du niveau de trigger (toujours visible)
@@ -1380,7 +1444,7 @@ namespace AudioHexViewer
 
             // Statut centré en bas du panneau, italic gris
             string statTxt=""; Color statCol=Color.Gray;
-            if      (_isArmed)                     { statTxt="WAIT";          statCol=Color.DarkOrange; }
+            if      (_isArmed)                     { statTxt="WAIT";          statCol=Color.SeaGreen; }
             else if (!_isRunning && _capL != null) { statTxt="🖱 scroll/pan"; statCol=Color.Gray; }
             else if (IsRollMode)                   { statTxt="ROLL";          statCol=Color.DodgerBlue; }
             else if (!_isRunning)                  { statTxt="STOPPED";       statCol=Color.Gray; }
@@ -1591,7 +1655,15 @@ namespace AudioHexViewer
             cmbTrigMode.SelectedIndex=Math.Clamp(s.TrigModeIndex,0,2);
             cmbTrigEdge.SelectedIndex=Math.Clamp(s.TrigEdgeIndex,0,1);
             cmbTrigSrc.SelectedIndex =Math.Clamp(s.TrigSrcIndex,0,1);
-            nudTrigLevel.Value=(decimal)Math.Clamp(s.TrigLevel,-1.0,1.0);
+            // Restaure le niveau trigger dans la bonne plage selon le mode actif
+            if(_vdivMode){
+                double vd=GetVdivForCh(cmbTrigSrc.SelectedIndex);
+                double hr=vd*(V_DIVS/2.0);
+                nudTrigLevel.Minimum=-(decimal)hr; nudTrigLevel.Maximum=(decimal)hr;
+                nudTrigLevel.Value=(decimal)Math.Clamp(s.TrigLevel,-hr,hr);
+            } else {
+                nudTrigLevel.Value=(decimal)Math.Clamp(s.TrigLevel,-1.0,1.0);
+            }
             int maxZ=_vdivMode?VdivValues.Length-1:ZoomY.Length-1;
             cmbVdivL.SelectedIndex=Math.Clamp(s.ZoomYIndexL,0,maxZ);
             cmbVdivR.SelectedIndex=Math.Clamp(s.ZoomYIndexR,0,maxZ);
