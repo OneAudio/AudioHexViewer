@@ -1240,7 +1240,7 @@ namespace AudioHexViewer
         public System.Windows.Forms.DataVisualization.Charting.Chart GetChartForClipboard()
             => chartSpectrum;
 
-        public void ExportPng(string filePath, int scale = 2, string? headerTitle = null)
+        public void ExportPng(string filePath, int scale = 2, string? headerTitle = null, string? footerText = null)
         {
             RebuildStatsRowsFromLabels();
 
@@ -1269,8 +1269,8 @@ namespace AudioHexViewer
             // Rendu clone → bytes PNG
             var pngBytes = ChartExport.RenderChartToPngBytes(clone);
 
-            // Composition finale : header GDI+ pur par-dessus
-            ChartExport.SaveChartPng(pngBytes, filePath, headerPx, headerTitle, scale, dpi: 300);
+            // Composition finale : header + footer GDI+ pur par-dessus
+            ChartExport.SaveChartPng(pngBytes, filePath, headerPx, headerTitle, scale, dpi: 300, footerText: footerText);
         }
 
     }

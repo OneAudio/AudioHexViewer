@@ -143,6 +143,33 @@ namespace AudioHexViewer
             bmp.Save(filePath, ImageFormat.Png);
         }
 
+        // ── 7a. Full pipeline : Bitmap capture + header → file ───────────────
+        //  Utilisé par HistogramControl et OscilloscopeControl
+        public static void SaveChartPng(
+            Bitmap  capture,
+            string  filePath,
+            int     headerPx,
+            string? headerTitle,
+            int     scale      = 2,
+            int     dpi        = 300,
+            string? footerText = null)
+        {
+            if (headerPx > 0 && !string.IsNullOrWhiteSpace(headerTitle))
+            {
+                using var full = new Bitmap(capture.Width, capture.Height + headerPx);
+                using (var g = Graphics.FromImage(full))
+                    g.DrawImage(capture, 0, headerPx);
+                DrawHeaderOnBitmap(full, headerPx, headerTitle!, scale);
+                if (!string.IsNullOrWhiteSpace(footerText)) DrawFooterOnBitmap(full, footerText!, scale);
+                SaveBitmap(full, filePath, dpi);
+            }
+            else
+            {
+                if (!string.IsNullOrWhiteSpace(footerText)) DrawFooterOnBitmap(capture, footerText!, scale);
+                SaveBitmap(capture, filePath, dpi);
+            }
+        }
+
         // ── 7. Full pipeline : PNG bytes + header → file ─────────────────────
         //  Utilisé par SpectrumControl et HistogramControl
         public static void SaveChartPng(
@@ -150,26 +177,27 @@ namespace AudioHexViewer
             string  filePath,
             int     headerPx,
             string? headerTitle,
-            int     scale  = 2,
-            int     dpi    = 300)
+            int     scale      = 2,
+            int     dpi        = 300,
+            string? footerText = null)
         {
             using var ms  = new MemoryStream(pngBytes);
             using var src = new Bitmap(ms);
 
             if (headerPx > 0 && !string.IsNullOrWhiteSpace(headerTitle))
             {
-                // Crée un bitmap plus grand avec le bandeau
                 using var full = new Bitmap(src.Width, src.Height + headerPx);
                 using (var g = Graphics.FromImage(full))
                     g.DrawImage(src, 0, headerPx);
 
                 DrawHeaderOnBitmap(full, headerPx, headerTitle!, scale);
+                if (!string.IsNullOrWhiteSpace(footerText)) DrawFooterOnBitmap(full, footerText!, scale);
                 SaveBitmap(full, filePath, dpi);
             }
             else
             {
-                // Pas de header : save direct
                 using var bmp = new Bitmap(src);
+                if (!string.IsNullOrWhiteSpace(footerText)) DrawFooterOnBitmap(bmp, footerText!, scale);
                 SaveBitmap(bmp, filePath, dpi);
             }
         }
@@ -220,6 +248,44 @@ namespace AudioHexViewer
             using var bmp = new Bitmap(control.Width, control.Height, PixelFormat.Format32bppArgb);
             control.DrawToBitmap(bmp, new Rectangle(0, 0, control.Width, control.Height));
             Clipboard.SetImage(new Bitmap(bmp));
+        }
+
+        // ── Footer : texte en bas à gauche du bitmap (périphériques, date) ────
+        //  Placé dans les tout derniers pixels du bitmap avec fond blanc semi-opaque
+        //  pour ne jamais masquer les axes ou légendes du graphique.
+        public static void DrawFooterOnBitmap(Bitmap bmp, string footerText, int scale = 1)
+        {
+            if (string.IsNullOrWhiteSpace(footerText)) return;
+
+            using var g = Graphics.FromImage(bmp);
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+
+            // Police petite, couleur gris moyen
+            float ptSize = 7f * scale;
+            using var font  = new Font("Segoe UI", ptSize, FontStyle.Regular, GraphicsUnit.Point);
+            using var brush = new SolidBrush(Color.FromArgb(140, 60, 60, 60));
+            using var fmt   = new StringFormat
+            {
+                Alignment     = StringAlignment.Near,
+                LineAlignment = StringAlignment.Near,
+                Trimming      = StringTrimming.EllipsisCharacter
+            };
+
+            float lineH  = font.GetHeight(g);
+            int   nLines = footerText.Replace("\r\n", "\n").Count(c => c == '\n') + 1;
+            float h      = lineH * nLines + 2f;
+            float margin = 5f * scale;
+
+            // Placé dans les tout derniers pixels (y = bmp.Height - h - margin)
+            // → bien en dehors de la zone graphique, dans la marge blanche du bas
+            float textY = bmp.Height - h - margin;
+
+            // Fond blanc opaque sous le texte pour lisibilité garantie
+            using var bgBrush = new SolidBrush(Color.White);
+            g.FillRectangle(bgBrush, 0, textY - 2f, bmp.Width * 0.75f, h + margin + 2f);
+
+            var rect = new RectangleF(margin, textY, bmp.Width * 0.75f - margin, h + 4f);
+            g.DrawString(footerText, font, brush, rect, fmt);
         }
 
         // ── Helper ────────────────────────────────────────────────────────────

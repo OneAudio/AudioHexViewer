@@ -216,15 +216,7 @@ namespace AudioHexViewer
             comboAveraging.Size          = new Size(110, 24);
             comboAveraging.TabIndex      = 5;
 
-            // lblAvgProgress (averaging progress, row 1 right of combo)
-            lblAvgProgress.AutoSize  = true;
-            lblAvgProgress.Font      = new Font("Segoe UI Semibold", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            lblAvgProgress.ForeColor = SystemColors.HotTrack;
-            lblAvgProgress.Location  = new Point(266, 46);
-            lblAvgProgress.Name      = "lblAvgProgress";
-            lblAvgProgress.TabIndex  = 14;
-            lblAvgProgress.Text      = "label1";
-
+            // btnResetAvg + lblAvgProgress côte à côte en row 2
             btnResetAvg.Location = new Point(266, 60);
             btnResetAvg.Name     = "btnResetAvg";
             btnResetAvg.Size     = new Size(55, 24);
@@ -232,6 +224,17 @@ namespace AudioHexViewer
             btnResetAvg.Text     = "CLEAR";
             btnResetAvg.UseVisualStyleBackColor = true;
             btnResetAvg.Click += BtnResetAvg_Click;
+
+            // lblAvgProgress : compteur k/N à droite du bouton CLEAR
+            lblAvgProgress.AutoSize  = false;
+            lblAvgProgress.Font      = new Font("Segoe UI Semibold", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            lblAvgProgress.ForeColor = Color.Firebrick;   // rouge par défaut (en cours)
+            lblAvgProgress.Location  = new Point(325, 60);
+            lblAvgProgress.Size      = new Size(48, 24);
+            lblAvgProgress.TextAlign = ContentAlignment.MiddleLeft;
+            lblAvgProgress.Name      = "lblAvgProgress";
+            lblAvgProgress.TabIndex  = 14;
+            lblAvgProgress.Text      = "";
 
             // ── SEP 3 (after Averaging, x=382) ───────────────────────────────
             sep3.BackColor = System.Drawing.SystemColors.ControlDark;

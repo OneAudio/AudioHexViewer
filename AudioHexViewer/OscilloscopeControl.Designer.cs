@@ -16,7 +16,7 @@ namespace AudioHexViewer
         private ComboBox      cmbTrigMode;  private ComboBox cmbTrigEdge;
         private Label         lblTrigSrc;   private ComboBox cmbTrigSrc;
         private Label         lblTrigSlope;
-        private Label         lblTrigLvl;   private NumericUpDown nudTrigLevel;
+        private Label         lblTrigLvl;   private TextBox nudTrigLevel;
         private Label         lblTrigPos;   private NumericUpDown nudTrigPos;
         private Label         lblGrid;      private ComboBox cmbGrid;
         private Button        btnScaleL, btnScaleR;  // sélection voie pour échelle Y
@@ -49,7 +49,7 @@ namespace AudioHexViewer
             cmbTrigMode  = new ComboBox(); cmbTrigEdge = new ComboBox();
             lblTrigSrc   = new Label();   cmbTrigSrc  = new ComboBox();
             lblTrigSlope = new Label();
-            lblTrigLvl   = new Label();   nudTrigLevel= new NumericUpDown();
+            lblTrigLvl   = new Label();   nudTrigLevel= new TextBox();
             lblTrigPos   = new Label();   nudTrigPos  = new NumericUpDown();
             lblGrid      = new Label();   cmbGrid     = new ComboBox();
             btnScaleL    = new Button(); btnScaleR = new Button();
@@ -70,7 +70,6 @@ namespace AudioHexViewer
             lblTrigStatus= new Label();
             pnlScope     = new ScopePanel();
 
-            nudTrigLevel.BeginInit();
             nudTrigPos.BeginInit();
             panelTop.SuspendLayout();
             SuspendLayout();
@@ -193,9 +192,9 @@ namespace AudioHexViewer
             lblTrigLvl.Location=new Point(528,46); lblTrigLvl.Text="LEVEL";
             lblTrigSlope.AutoSize=true; lblTrigSlope.Font=gS; lblTrigSlope.ForeColor=System.Drawing.SystemColors.GrayText;
             lblTrigSlope.Location=new Point(528,4); lblTrigSlope.Text="SLOPE";
-            nudTrigLevel.DecimalPlaces=3; nudTrigLevel.Increment=0.010m;
-            nudTrigLevel.Minimum=-1.000m; nudTrigLevel.Maximum=1.000m; nudTrigLevel.Value=0.000m;
-            nudTrigLevel.Font=std9; nudTrigLevel.Location=new Point(528,60); nudTrigLevel.Size=new Size(52,24); nudTrigLevel.TabIndex=6;
+            nudTrigLevel.Text="0.000";
+            nudTrigLevel.Font=std9; nudTrigLevel.Location=new Point(528,60); nudTrigLevel.Size=new Size(64,24); nudTrigLevel.TabIndex=6;
+            nudTrigLevel.TextAlign=HorizontalAlignment.Right;
 
             // ── 5. DISPLAY (x=636) ── Grid + Roll ────────────────────────────
             lblGrid.AutoSize=true; lblGrid.Font=gS; lblGrid.ForeColor=System.Drawing.SystemColors.GrayText;
@@ -266,7 +265,6 @@ namespace AudioHexViewer
             AutoScaleDimensions=new SizeF(7F,15F); AutoScaleMode=AutoScaleMode.Font;
             Controls.Add(pnlScope); Controls.Add(panelTop);
 
-            nudTrigLevel.EndInit();
             nudTrigPos.EndInit();
             panelTop.ResumeLayout(false); panelTop.PerformLayout();
             ResumeLayout(false);

@@ -392,8 +392,18 @@ namespace AudioHexViewer
         {
             if (lblAvgProgress == null) return;
 
-            if (n <= 1) lblAvgProgress.Text = "";
-            else lblAvgProgress.Text = $"{k}/{n}";
+            if (n <= 1)
+            {
+                lblAvgProgress.Text      = "";
+                return;
+            }
+
+            // Affiche seulement le compteur k (pas k/n)
+            lblAvgProgress.Text = k.ToString();
+
+            // Rouge pendant le comptage, vert quand la cible est atteinte
+            bool done = (k >= n);
+            lblAvgProgress.ForeColor = done ? Color.SeaGreen : Color.Firebrick;
         }
 
         //

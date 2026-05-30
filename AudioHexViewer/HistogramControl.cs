@@ -193,7 +193,7 @@ namespace AudioHexViewer
         public AudioHexViewer.HistogramSettings GetHistogramSettingsSnapshot() =>
             new AudioHexViewer.HistogramSettings
             {
-                AC              = ChkAC.Checked,
+                AC              = chkDcMode.Checked,
                 Channel         = comboChannel.SelectedItem as string ?? "Both",
                 RangeLsb        = GetRangeLsb(),
                 BinLsb          = GetBinLsb(),
@@ -204,7 +204,7 @@ namespace AudioHexViewer
         public void ApplyHistogramSettings(AudioHexViewer.HistogramSettings s)
         {
             if (s == null) return;
-            ChkAC.Checked = s.AC;
+            chkDcMode.Checked = s.AC;
             int ci = comboChannel.Items.IndexOf(s.Channel);
             if (ci >= 0) comboChannel.SelectedIndex = ci;
             int ri = comboRangeLsb.Items.IndexOf(s.RangeLsb.ToString());
@@ -323,7 +323,7 @@ namespace AudioHexViewer
             foreach (var v in BinLsbOptions) comboBinLsb.Items.Add(v.ToString());
 
             comboChannel.SelectedItem = "Both";
-            ChkAC.Checked = true;
+            chkDcMode.Checked = true;
 
             comboRangeLsb.SelectedIndex = FindClosestIndex(RangeLsbOptions, 4194304);
             comboBinLsb.SelectedIndex   = FindClosestIndex(BinLsbOptions, 32768);
@@ -378,26 +378,28 @@ namespace AudioHexViewer
         private void ApplyChartStatsMargin()
         {
             if (chartHistogram == null || chartHistogram.ChartAreas.Count == 0) return;
-            var area = chartHistogram.ChartAreas["HistogramArea"];
             int w = chartHistogram.ClientSize.Width;
             if (w <= 0) return;
+            ApplyChartStatsMarginToChart(chartHistogram, w, scale: 1);
+            chartHistogram.Invalidate();
+        }
 
-            int reserved    = StatsWidthPx;
-            int maxReserved = Math.Max(120, w - MinPlotWidthPx);
+        private static void ApplyChartStatsMarginToChart(
+            System.Windows.Forms.DataVisualization.Charting.Chart chart, int chartWidth, int scale)
+        {
+            if (chart.ChartAreas.Count == 0) return;
+            var area = chart.ChartAreas.FindByName("HistogramArea") ?? chart.ChartAreas[0];
+
+            int reserved    = StatsWidthPx * scale;
+            int maxReserved = Math.Max(120 * scale, chartWidth - MinPlotWidthPx * scale);
             reserved = Math.Min(reserved, maxReserved);
 
-            float reservedPct = Math.Max(0f, Math.Min(45f, 100f * reserved / w));
-
-            area.Position.Auto = false;
-            // Marge gauche élargie pour loger les labels Y dans la zone grise.
-            // On utilise 100f (au lieu de 97f) pour que le bord droit de la ChartArea
-            // soit identique à SpectrumControl : right = 100 - reservedPct dans les deux cas.
-            const float LeftPct = 11f; // espace pour titre "Count" + labels numériques
+            float reservedPct = Math.Max(0f, Math.Min(45f, 100f * reserved / chartWidth));
+            const float LeftPct = 11f;
             float width = (100f - LeftPct) - reservedPct;
             if (width < 10f) width = 10f;
+            area.Position.Auto = false;
             area.Position = new ElementPosition(LeftPct, 3f, width, 94f);
-
-            chartHistogram.Invalidate();
         }
 
         // ══════════════════════════════════════════════════════════════════════
@@ -480,7 +482,7 @@ namespace AudioHexViewer
         // Événements contrôles
         // ══════════════════════════════════════════════════════════════════════
         private void ComboChannel_SelectedIndexChanged(object sender, EventArgs e) => RebuildHistogram();
-        private void ChkAC_CheckedChanged(object sender, EventArgs e)             => RebuildHistogram();
+        private void ChkDcMode_CheckedChanged(object sender, EventArgs e)             => RebuildHistogram();
         private void ChkGauss_CheckedChanged(object sender, EventArgs e)          => RebuildHistogram();
         private void ChkNorm_CheckedChanged(object sender, EventArgs e)           => RebuildHistogram();
         // Marqueurs σ : pas de recalcul des données, simple rafraîchissement du PostPaint
@@ -509,7 +511,7 @@ namespace AudioHexViewer
             }
 
             string mode = comboChannel.SelectedItem as string ?? "Both";
-            bool ac = ChkAC.Checked;
+            bool ac = !chkDcMode.Checked;
 
             int lsbRange = Math.Max(1, GetRangeLsb());
             int binWidth = Math.Max(1, GetBinLsb());
@@ -709,23 +711,23 @@ namespace AudioHexViewer
         // ══════════════════════════════════════════════════════════════════════
         private void ChartHistogram_PostPaint(object? sender, ChartPaintEventArgs e)
         {
-            if (chartHistogram.ChartAreas.Count == 0) return;
-
-            var area = chartHistogram.ChartAreas["HistogramArea"];
+            var chart = sender as System.Windows.Forms.DataVisualization.Charting.Chart ?? chartHistogram;
+            if (chart.ChartAreas.Count == 0) return;
+            var area = chart.ChartAreas.FindByName("HistogramArea") ?? chart.ChartAreas[0];
             var g    = e.ChartGraphics.Graphics;
-            var cr   = chartHistogram.ClientRectangle;
-
+            var cr   = chart.ClientRectangle;
+            float sExport = (chartHistogram.Width > 0) ? (float)chart.Width / chartHistogram.Width : 1f;
             // ── Labels Y custom dans la marge grise à gauche ─────────────────
-            DrawCustomYLabels(g, area, cr);
+            DrawCustomYLabels(g, area, cr, sExport, chart.Font);
 
             // Rectangle du panneau stats aligné sur le plot réel (comme DrawChartStatsPanel de SpectrumControl)
             var pos      = area.Position;
             float aRight = cr.Width  * (pos.X + pos.Width)  / 100f;
-            float pLeft  = aRight + 8f;
-            float pRight = cr.Right - 6f;
+            float pLeft  = aRight + 8f * sExport;
+            float pRight = cr.Right - 4f * sExport;
             float pW     = pRight - pLeft;
 
-            if (pW < 80) return;
+            if (pW < 80 * sExport) return;
 
             // Bornes VERTICALES = inner plot réel (ValueToPixelPosition)
             float pTop, pBot;
@@ -762,8 +764,9 @@ namespace AudioHexViewer
                 bool doRight = _statsRight.HasData && chanMode is "Right" or "Both";
                 bool both    = doLeft && doRight;
 
+                // chart.Font est déjà ×sExport (ApplyExportScaling)
                 using var markerFont = new Font(
-                    chartHistogram.Font ?? SystemFonts.DefaultFont, FontStyle.Regular);
+                    chart.Font ?? SystemFonts.DefaultFont, FontStyle.Regular);
 
                 void DrawSigmaMarkers(StatsData d, Color col, string pfx)
                 {
@@ -771,7 +774,7 @@ namespace AudioHexViewer
                     for (int n = 1; n <= nSigma; n++)
                     {
                         int alpha = Math.Max(70, 220 - (n - 1) * 65); // 1σ=220, 2σ=155, 3σ=90
-                        using var pen = new Pen(Color.FromArgb(alpha, col), 1f)
+                        using var pen = new Pen(Color.FromArgb(alpha, col), Math.Max(1f, sExport))
                         {
                             DashStyle = System.Drawing.Drawing2D.DashStyle.Dash
                         };
@@ -789,9 +792,9 @@ namespace AudioHexViewer
 
                             string lbl = both ? $"{pfx}{n}σ" : $"{n}σ";
                             SizeF  sz  = g.MeasureString(lbl, markerFont);
-                            float  lx  = sign > 0 ? xPx + 2f : xPx - sz.Width - 2f;
+                            float  lx  = sign > 0 ? xPx + 2f * sExport : xPx - sz.Width - 2f * sExport;
                             lx = Math.Max(innerLeft + 1f, Math.Min(innerRight - sz.Width - 1f, lx));
-                            g.DrawString(lbl, markerFont, lblBrush, lx, pTop + 2f);
+                            g.DrawString(lbl, markerFont, lblBrush, lx, pTop + 2f * sExport);
                         }
                     }
                 }
@@ -803,26 +806,27 @@ namespace AudioHexViewer
             // Fond blanc + bordure gris clair — identique à SpectrumControl.DrawChartStatsPanel
             using (var bg = new SolidBrush(Color.White))
                 g.FillRectangle(bg, panelRect);
-            using (var border = new Pen(Color.LightGray, 1f))
+            using (var border = new Pen(Color.LightGray, Math.Max(1f, sExport)))
                 g.DrawRectangle(border, panelRect.X, panelRect.Y, panelRect.Width, panelRect.Height);
 
-            // Polices & brosses — identiques à SpectrumControl
-            var baseFont = chartHistogram.Font ?? SystemFonts.DefaultFont;
-            using var fntHdr   = new Font(baseFont, FontStyle.Bold);
-            using var fntNorm  = new Font(baseFont, FontStyle.Regular);
-            using var fntBold  = new Font(baseFont, FontStyle.Bold);
-            using var fntStrg  = new Font(baseFont.FontFamily, baseFont.SizeInPoints + 1.5f, FontStyle.Bold);
+            // Polices & brosses — chart.Font est déjà ×scale (ApplyExportScaling l'a multiplié)
+            var baseFont = chart.Font ?? SystemFonts.DefaultFont;
+            float bPt    = baseFont.SizeInPoints;
+            using var fntHdr   = new Font(baseFont.FontFamily, bPt,        FontStyle.Bold);
+            using var fntNorm  = new Font(baseFont.FontFamily, bPt,        FontStyle.Regular);
+            using var fntBold  = new Font(baseFont.FontFamily, bPt,        FontStyle.Bold);
+            using var fntStrg  = new Font(baseFont.FontFamily, bPt + 1.5f, FontStyle.Bold);
             using var bText    = new SolidBrush(Color.DimGray);
             using var bLabel   = new SolidBrush(Color.DimGray);
-            using var penSep   = new Pen(Color.Gainsboro, 1f);
+            using var penSep   = new Pen(Color.Gainsboro, Math.Max(1f, sExport));
             using var fmtCtr   = new StringFormat { Alignment = StringAlignment.Center,  LineAlignment = StringAlignment.Near };
             using var fmtRight = new StringFormat { Alignment = StringAlignment.Far,     LineAlignment = StringAlignment.Near };
 
-            float pad  = 8f;
+            float pad  = 8f * sExport;
             float xL   = panelRect.X + pad;
             float xR   = panelRect.Right - pad;
             float y    = panelRect.Y + pad;
-            float rowH = fntNorm.GetHeight(g) + 4f;
+            float rowH = fntNorm.GetHeight(g) + 4f * sExport;
 
             void DrawSection(string title, Color titleColor, StatsData d)
             {
@@ -909,7 +913,7 @@ namespace AudioHexViewer
         // Labels Y custom — dessinés dans la marge grise à gauche du graphique
         // (le type Column de WinForms Chart force l'axe Y à X=0, non contournable)
         // ══════════════════════════════════════════════════════════════════════
-        private void DrawCustomYLabels(Graphics g, ChartArea area, Rectangle cr)
+        private void DrawCustomYLabels(Graphics g, ChartArea area, Rectangle cr, float sExport = 1f, Font? chartFont = null)
         {
             double yMin = area.AxisY.Minimum;
             double yMax = area.AxisY.Maximum;
@@ -923,9 +927,10 @@ namespace AudioHexViewer
             catch { return; }
             if (innerLeft < 6) return;
 
-            var baseFont  = chartHistogram.Font ?? SystemFonts.DefaultFont;
+            // baseFont: use chartFont param if provided (already ×sExport for export)
+            var baseFont  = chartFont ?? chartHistogram.Font ?? SystemFonts.DefaultFont;
             Color labelColor = LabelMajorColor;
-            using var penTick = new Pen(labelColor, 1f);
+            using var penTick = new Pen(labelColor, Math.Max(1f, sExport));
 
             // Mesure largeur max en GDI (TextRenderer = meme moteur que Chart)
             double firstTick = Math.Ceiling(yMin / interval) * interval;
@@ -939,7 +944,7 @@ namespace AudioHexViewer
             }
 
             // d) Bord droit des labels = innerLeft - 5px (colle au bord du graphique)
-            int labelRight = (int)(innerLeft - 5);
+            int labelRight = (int)(innerLeft - 5 * sExport);
             int labelLeft  = labelRight - maxLabelW;
 
             int lineH = TextRenderer.MeasureText("0", baseFont,
@@ -955,9 +960,9 @@ namespace AudioHexViewer
                 catch { continue; }
 
                 int ipy = (int)Math.Round(py);
-                g.DrawLine(penTick, innerLeft - 4f, ipy, innerLeft, ipy);
+                g.DrawLine(penTick, innerLeft - 4f * sExport, ipy, innerLeft, ipy);
 
-                if (lastDrawnPyCenter - py < lineH + 2f) continue;
+                if (lastDrawnPyCenter - py < lineH + 2f * sExport) continue;
 
                 // a) Qualite: TextRenderer (GDI) au lieu de DrawString (GDI+)
                 string lbl = FormatYCount(yVal);
@@ -1014,27 +1019,37 @@ namespace AudioHexViewer
         // ══════════════════════════════════════════════════════════════════════
         // Export PNG (inchangé)
         // ══════════════════════════════════════════════════════════════════════
-        /// <summary>Retourne le Chart live pour copie presse-papier (résolution écran).</summary>
-        public System.Windows.Forms.DataVisualization.Charting.Chart GetChartForClipboard()
-            => chartHistogram;
-
         // ── Export PNG / PDF ─────────────────────────────────────────────────
-        public void ExportPng(string filePath, int scale = 2, string? headerTitle = null)
+        public void ExportPng(string filePath, int scale = 2, string? headerTitle = null, string? footerText = null)
         {
             int headerPx = ChartExport.HeaderPixels(headerTitle, scale);
+
+            var savedBack = chartHistogram.BackColor;
+            chartHistogram.BackColor = Color.White;
+            chartHistogram.Refresh();
 
             using var clone = ChartExport.CloneChart(chartHistogram);
             clone.Size      = new Size(chartHistogram.Width * scale, chartHistogram.Height * scale);
             clone.BackColor = Color.White;
             foreach (var a in clone.ChartAreas) a.BackColor = Color.White;
 
-            ChartExport.ApplyExportScaling(clone, scale);
+            chartHistogram.BackColor = savedBack;
+            chartHistogram.Refresh();
 
+            ChartExport.ApplyExportScaling(clone, scale);
+            // Réserve la même largeur proportionnelle pour le panneau stats
+            ApplyChartStatsMarginToChart(clone, clone.Width, scale);
             if (headerPx > 0)
                 ChartExport.ApplyChartHeaderMargin(clone, "HistogramArea", headerPx);
 
+            clone.PostPaint += ChartHistogram_PostPaint;
+
             var pngBytes = ChartExport.RenderChartToPngBytes(clone);
-            ChartExport.SaveChartPng(pngBytes, filePath, headerPx, headerTitle, scale, dpi: 300);
+            ChartExport.SaveChartPng(pngBytes, filePath, headerPx, headerTitle, scale, dpi: 300, footerText: footerText);
         }
+
+        /// <summary>Retourne le Chart live pour copie presse-papier (résolution écran).</summary>
+        public System.Windows.Forms.DataVisualization.Charting.Chart GetChartForClipboard()
+            => chartHistogram;
     }
 }

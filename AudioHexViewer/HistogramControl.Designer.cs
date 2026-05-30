@@ -23,7 +23,7 @@ namespace AudioHexViewer
             comboRangeLsb  = new ComboBox();
             lblBinPow      = new Label();
             comboBinLsb    = new ComboBox();
-            ChkAC          = new CheckBox();
+            chkDcMode       = new CheckBox();
             ChkGauss       = new CheckBox();
             ChkMarkers     = new CheckBox();
             comboSigma     = new ComboBox();
@@ -72,7 +72,7 @@ namespace AudioHexViewer
                 lblChannel,   comboChannel,
                 lblRangePow,  comboRangeLsb,
                 lblBinPow,    comboBinLsb,
-                ChkAC,
+                chkDcMode,
                 ChkGauss,
                 ChkMarkers,   comboSigma,
                 ChkNorm,
@@ -101,7 +101,7 @@ namespace AudioHexViewer
             sep1.Name      = "sep1";
             sep1.Size      = new Size(1, 76);
 
-            // ── 2. RANGE LSB  (x=112) ────────────────────────────────────────
+            // ── 2. RANGE LSB (x=112, row1) + BIN LSB (x=112, row2) ───────────
             lblRangePow.AutoSize  = true;
             lblRangePow.Font      = gS;
             lblRangePow.ForeColor = SystemColors.GrayText;
@@ -112,61 +112,52 @@ namespace AudioHexViewer
             comboRangeLsb.Font              = std9;
             comboRangeLsb.FormattingEnabled = true;
             comboRangeLsb.Location = new Point(112, 18);
-            comboRangeLsb.Size     = new Size(140, 24);
+            comboRangeLsb.Size     = new Size(130, 24);
             comboRangeLsb.SelectedIndexChanged += ComboRangeLsb_SelectedIndexChanged;
 
-            // ── SEP 2 (x=258) ────────────────────────────────────────────────
-            sep2.BackColor = SystemColors.ControlDark;
-            sep2.Location  = new Point(258, 6);
-            sep2.Name      = "sep2";
-            sep2.Size      = new Size(1, 76);
-
-            // ── 3. BIN LSB  (x=266) ──────────────────────────────────────────
             lblBinPow.AutoSize  = true;
             lblBinPow.Font      = gS;
             lblBinPow.ForeColor = SystemColors.GrayText;
-            lblBinPow.Location  = new Point(266, 4);
+            lblBinPow.Location  = new Point(112, 46);
             lblBinPow.Text      = "BIN LSB";
 
             comboBinLsb.DropDownStyle     = ComboBoxStyle.DropDownList;
             comboBinLsb.Font              = std9;
             comboBinLsb.FormattingEnabled = true;
-            comboBinLsb.Location = new Point(266, 18);
-            comboBinLsb.Size     = new Size(100, 24);
+            comboBinLsb.Location = new Point(112, 60);
+            comboBinLsb.Size     = new Size(90, 24);
             comboBinLsb.SelectedIndexChanged += ComboBinLsb_SelectedIndexChanged;
 
-            // ── SEP 3 (x=372) ────────────────────────────────────────────────
+            // ── SEP 2 (x=248) ────────────────────────────────────────────────
+            sep2.BackColor = SystemColors.ControlDark;
+            sep2.Location  = new Point(248, 6);
+            sep2.Name      = "sep2";
+            sep2.Size      = new Size(1, 76);
+
+            // ── 3. DC MODE (x=256) ───────────────────────────────────────────
+            chkDcMode.AutoSize  = true;
+            chkDcMode.Font      = std9;
+            chkDcMode.Text      = "DC mode";
+            chkDcMode.Location  = new Point(256, 18);
+            chkDcMode.CheckedChanged += ChkDcMode_CheckedChanged;
+
+            // ── SEP 3 (x=348) ────────────────────────────────────────────────
             sep3.BackColor = SystemColors.ControlDark;
-            sep3.Location  = new Point(372, 6);
+            sep3.Location  = new Point(348, 6);
             sep3.Name      = "sep3";
             sep3.Size      = new Size(1, 76);
 
-            // ── 4. MODE AC  (x=380) ──────────────────────────────────────────
-            // Label row 1, checkbox row 2 — matches 2-line pattern
-            ChkAC.AutoSize  = true;
-            ChkAC.Font      = std9;
-            ChkAC.Text      = "MODE AC";
-            ChkAC.Location  = new Point(380, 18);
-            ChkAC.CheckedChanged += ChkAC_CheckedChanged;
-
-            // ── SEP 4 (x=488) ────────────────────────────────────────────────
-            sep4.BackColor = SystemColors.ControlDark;
-            sep4.Location  = new Point(488, 6);
-            sep4.Name      = "sep4";
-            sep4.Size      = new Size(1, 76);
-
-            // ── 5. DISPLAY OPTIONS  (x=496) ──────────────────────────────────
-            // Row 1 : Gaussienne   Row 2 : Marqueurs + sigma combo
+            // ── 4. GAUSSIAN FIT (row1) + nσ CURSORS (row2) ───────────────────
             ChkGauss.AutoSize  = true;
             ChkGauss.Font      = std9;
-            ChkGauss.Text      = "GAUSSIENNE";
-            ChkGauss.Location  = new Point(496, 18);
+            ChkGauss.Text      = "GAUSSIAN FIT";
+            ChkGauss.Location  = new Point(356, 18);
             ChkGauss.CheckedChanged += ChkGauss_CheckedChanged;
 
             ChkMarkers.AutoSize  = true;
             ChkMarkers.Font      = std9;
-            ChkMarkers.Text      = "MARQUEURS";
-            ChkMarkers.Location  = new Point(496, 60);
+            ChkMarkers.Text      = "nσ CURSORS";
+            ChkMarkers.Location  = new Point(356, 60);
             ChkMarkers.CheckedChanged += ChkMarkers_CheckedChanged;
 
             comboSigma.DropDownStyle     = ComboBoxStyle.DropDownList;
@@ -174,18 +165,25 @@ namespace AudioHexViewer
             comboSigma.FormattingEnabled = true;
             comboSigma.Items.AddRange(new object[] { "±1σ", "±2σ", "±3σ" });
             comboSigma.SelectedIndex = 2;
-            comboSigma.Location = new Point(610, 60);
+            comboSigma.Location = new Point(480, 60);
             comboSigma.Size     = new Size(66, 24);
             comboSigma.SelectedIndexChanged += ComboSigma_SelectedIndexChanged;
 
-            // ── 6. NORMALISÉ  (x=686) ────────────────────────────────────────
+            // ── SEP 4 (x=554) ────────────────────────────────────────────────
+            sep4.BackColor = SystemColors.ControlDark;
+            sep4.Location  = new Point(554, 6);
+            sep4.Name      = "sep4";
+            sep4.Size      = new Size(1, 76);
+
+            // ── 5. NORMALIZED (row1) + 2ⁿ labels (row2) ─────────────────────
             ChkNorm.AutoSize  = true;
             ChkNorm.Font      = std9;
-            ChkNorm.Text      = "NORMALISÉ";
-            ChkNorm.Location  = new Point(686, 18);
+            ChkNorm.Text      = "NORMALIZED";
+            ChkNorm.Location  = new Point(562, 18);
             ChkNorm.CheckedChanged += ChkNorm_CheckedChanged;
 
-            // ── RUN (anchored right) ──────────────────────────────────────────
+
+                        // ── RUN (anchored right) ──────────────────────────────────────────
             btnRun.Anchor    = AnchorStyles.Top | AnchorStyles.Right;
             btnRun.FlatStyle = FlatStyle.Flat;
             btnRun.FlatAppearance.BorderSize = 0;
@@ -229,7 +227,7 @@ namespace AudioHexViewer
         private ComboBox comboRangeLsb;
         private Label    lblBinPow;
         private ComboBox comboBinLsb;
-        private CheckBox ChkAC;
+        private CheckBox chkDcMode;
         private CheckBox ChkGauss;
         private CheckBox ChkMarkers;
         private ComboBox comboSigma;

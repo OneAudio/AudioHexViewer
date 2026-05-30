@@ -2473,15 +2473,23 @@ namespace AudioHexViewer
             };
         }
 
-        private void DoExportPng(string filePath, int scale, string? title = null)
+        private void DoExportPng(string filePath, int scale, string? title = null, string? footer = null)
         {
             var tab = GetActiveTab();
             switch (tab)
             {
-                case ActiveTab.Spectrum:     spectrumControl!    .ExportPng(filePath, scale, title); break;
-                case ActiveTab.Oscilloscope: oscilloscopeControl!.ExportPng(filePath, scale, title); break;
-                default:                     histogramControl!   .ExportPng(filePath, scale, title); break;
+                case ActiveTab.Spectrum:     spectrumControl!    .ExportPng(filePath, scale, title, footer); break;
+                case ActiveTab.Oscilloscope: oscilloscopeControl!.ExportPng(filePath, scale, title, footer); break;
+                default:                     histogramControl!   .ExportPng(filePath, scale, title, footer); break;
             }
+        }
+
+        private string GetDeviceFooterText()
+        {
+            string inName  = _selectedInputDevice?.FriendlyName  ?? "—";
+            string outName = _selectedOutputDevice?.FriendlyName ?? "—";
+            string date    = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            return $"Input: {inName}    Output: {outName}    {date}";
         }
 
         //
@@ -2509,7 +2517,6 @@ namespace AudioHexViewer
         }
 
         // ── Copy graph to clipboard ───────────────────────────────────────────
-        private System.Windows.Forms.Timer? _clipboardFeedbackTimer;
 
         private void menuCopyClipboard_Click(object sender, EventArgs e)
         {
@@ -2535,7 +2542,6 @@ namespace AudioHexViewer
                         ChartExport.CopyControlToClipboard(oscilloscopeControl!.GetPanelForClipboard());
                         break;
                 }
-                ShowCopiedFeedback();
             }
             catch (Exception ex)
             {
@@ -2543,24 +2549,6 @@ namespace AudioHexViewer
             }
         }
 
-        private void ShowCopiedFeedback()
-        {
-            var item = menuCopyClipboard;
-            string original = item.Text;
-            item.Text = "✓ Copied!";
-
-            _clipboardFeedbackTimer?.Stop();
-            _clipboardFeedbackTimer?.Dispose();
-            _clipboardFeedbackTimer = new System.Windows.Forms.Timer { Interval = 1200 };
-            _clipboardFeedbackTimer.Tick += (_, _) =>
-            {
-                item.Text = original;
-                _clipboardFeedbackTimer?.Stop();
-                _clipboardFeedbackTimer?.Dispose();
-                _clipboardFeedbackTimer = null;
-            };
-            _clipboardFeedbackTimer.Start();
-        }
 
         // ── Export to PDF ─────────────────────────────────────────────────────
         private void menuExportPdf_Click(object sender, EventArgs e)
@@ -2584,12 +2572,13 @@ namespace AudioHexViewer
             int scale = dlg.ExpScale;
 
             var pages = new System.Collections.Generic.List<(string name, System.Action<string> export)>();
+            string footer = GetDeviceFooterText();
             if (dlg.IncludeSpectrum  && spectrumControl     != null)
-                pages.Add(("Spectrum",     p => spectrumControl!    .ExportPng(p, scale, fullTitle)));
+                pages.Add(("Spectrum",     p => spectrumControl!    .ExportPng(p, scale, fullTitle, footer)));
             if (dlg.IncludeHistogram && histogramControl    != null)
-                pages.Add(("Histogram",    p => histogramControl!   .ExportPng(p, scale, fullTitle)));
+                pages.Add(("Histogram",    p => histogramControl!   .ExportPng(p, scale, fullTitle, footer)));
             if (dlg.IncludeOscillo   && oscilloscopeControl != null)
-                pages.Add(("Oscilloscope", p => oscilloscopeControl!.ExportPng(p, scale, fullTitle)));
+                pages.Add(("Oscilloscope", p => oscilloscopeControl!.ExportPng(p, scale, fullTitle, footer)));
 
             if (pages.Count == 0)
             {
@@ -2615,8 +2604,18 @@ namespace AudioHexViewer
                     docTitle:   string.IsNullOrWhiteSpace(titleText) ? null : titleText,
                     pageTitles: pageTitles);
 
+                // Confirmation de fin de génération
+                string pageWord = tmpFiles.Length > 1 ? $"{tmpFiles.Length} pages" : "1 page";
+                string msg = $"PDF generated successfully ({pageWord}).\n\n{outPath}";
                 if (dlg.OpenAfter)
+                {
                     ExportPdfDialog.TryOpenFile(outPath);
+                    MessageBox.Show(this, msg, "Export to PDF", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    MessageBox.Show(this, msg, "Export to PDF", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
             }
             catch (Exception ex)
             {

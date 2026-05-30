@@ -41,7 +41,7 @@ namespace AudioHexViewer
         private float PreTrig => nudTrigPos != null
             ? Math.Clamp((float)nudTrigPos.Value / H_DIVS, 0.05f, 0.95f)
             : PRE_TRIG_DEFAULT;
-        private const float DC_TAU        = 0.3f;
+        private const float HPF_FC         = 10f;   // fréquence de coupure AC (-3 dB) en Hz
 
         private static readonly double[] TimeDivMs =
         {
@@ -67,12 +67,57 @@ namespace AudioHexViewer
         private float _effZoomL = 1f, _effZoomR = 1f;
 
         // ── Couplage et zoom par voie ─────────────────────────────────────────
+        private void NudTrigLevel_KeyDown(object? s, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Up)   { TrigLevelValue += _trigInc; e.Handled = true; }
+            if (e.KeyCode == Keys.Down) { TrigLevelValue -= _trigInc; e.Handled = true; }
+            if (e.KeyCode == Keys.Enter){ TrigLevelValue  = TrigLevelValue; pnlScope.Invalidate(); e.Handled = true; e.SuppressKeyPress = true; }
+        }
+        private void NudTrigLevel_Leave(object? s, EventArgs e)
+        {
+            TrigLevelValue = TrigLevelValue;   // reformat + clamp
+            pnlScope.Invalidate();
+        }
+
         private bool AcL => cmbCouplingL.SelectedIndex == 1;
         private bool AcR => cmbCouplingR.SelectedIndex == 1;
+
+        // ── Trigger level TextBox helpers ──────────────────────────────────
+        private decimal _trigMin = -1m, _trigMax = 1m, _trigInc = 0.001m;
+        private int     _trigDp  = 3;
+
+        private decimal TrigLevelValue
+        {
+            get
+            {
+                if (decimal.TryParse(nudTrigLevel.Text,
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.CurrentCulture, out decimal v))
+                    return Math.Clamp(v, _trigMin, _trigMax);
+                if (decimal.TryParse(nudTrigLevel.Text,
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out decimal v2))
+                    return Math.Clamp(v2, _trigMin, _trigMax);
+                return 0m;
+            }
+            set
+            {
+                decimal clamped = Math.Clamp(value, _trigMin, _trigMax);
+                nudTrigLevel.Text = clamped.ToString("F" + _trigDp,
+                    System.Globalization.CultureInfo.CurrentCulture);
+            }
+        }
+
+        private void SetTrigRange(decimal min, decimal max, decimal inc, int dp)
+        {
+            _trigMin = min; _trigMax = max; _trigInc = inc; _trigDp = dp;
+        }
+
         private int  GridMode => Math.Clamp(cmbGrid.SelectedIndex, 0, 2); // 0=Full 1=Axes 2=None
 
         // ── État ──────────────────────────────────────────────────────────────
         private bool _isRunning, _isArmed, _lastTrigOk;
+        private bool _isExporting;   // true pendant DrawToBitmap → fond blanc
         private int  _blinkCounter; private bool _blinkState;
 
         // ── Données affichées ─────────────────────────────────────────────────
@@ -86,7 +131,10 @@ namespace AudioHexViewer
         // ── Buffer post-stop ──────────────────────────────────────────────────
         private float[]? _capL, _capR;
         private int _capSR, _capTrigIdx, _panOffset;
-        private float _dcEstL, _dcEstR;
+        // État du filtre passe-haut RII 1er ordre (couplage AC)
+        // y[n] = α × (y[n-1] + x[n] - x[n-1])   avec α = τ/(τ+1/sr)
+        private double _hpXprevL, _hpXprevR;   // x[n-1]
+        private double _hpYprevL, _hpYprevR;   // y[n-1]
 
         // ── Curseurs C1 / C2 ─────────────────────────────────────────────────
         private bool  _c1Active, _c2Active;
@@ -107,6 +155,7 @@ namespace AudioHexViewer
         private float _hystEma = 0.002f;  // EMA hystérésis → stabilise la position du trigger
         private long  _lastTrigAbsPos = -1; // position absolue du dernier déclenchement affiché
         private int   _draggingOffset    = 0;   // 0=aucun 1=L 2=R
+        private bool  _draggingTrigger   = false;
         private bool  _draggingMinimap   = false;
         private int   _scaleChannel      = 0;   // 0=L  1=R  → quelle voie commande l'échelle Y
         private int   _minimapClickOffset= 0;   // offset du clic dans la barre bleue (en samples)
@@ -149,7 +198,9 @@ namespace AudioHexViewer
             cmbTrigMode.SelectedIndexChanged  += (_, _) => { };
             cmbTrigEdge.SelectedIndexChanged  += (_, _) => { };
             cmbTrigSrc.SelectedIndexChanged   += (_, _) => { if (_vdivMode) UpdateTrigLevelRange(); };
-            nudTrigLevel.ValueChanged         += (_, _) => pnlScope.Invalidate();
+            nudTrigLevel.TextChanged          += (_, _) => pnlScope.Invalidate();
+            nudTrigLevel.KeyDown              += NudTrigLevel_KeyDown;
+            nudTrigLevel.Leave                += NudTrigLevel_Leave;
             nudTrigPos.ValueChanged           += (_, _) => { if (!_isRunning) RefreshStoppedView(); else pnlScope.Invalidate(); };
             cmbVdivL.SelectedIndexChanged     += (_, _) => { if (_vdivMode) UpdateTrigLevelRange(); pnlScope.Invalidate(); };
             cmbVdivR.SelectedIndexChanged     += (_, _) => { if (_vdivMode) UpdateTrigLevelRange(); pnlScope.Invalidate(); };
@@ -180,7 +231,9 @@ namespace AudioHexViewer
             pnlScope.MouseDown        += PnlScope_OffsetMouseDown;
             pnlScope.MouseMove        += PnlScope_CursorMouseMove;
             pnlScope.MouseMove        += PnlScope_OffsetMouseMove;
-            pnlScope.MouseUp          += (_, _) => { _cursorDragging = 0; _draggingOffset = 0; _draggingMinimap = false; };
+            pnlScope.MouseUp          += (_, _) => { _cursorDragging = 0; _draggingOffset = 0; _draggingMinimap = false; _draggingTrigger = false; };
+            pnlScope.MouseDown        += PnlScope_TrigHandleMouseDown;
+            pnlScope.MouseMove        += PnlScope_TrigHandleMouseMove;
             pnlScope.MouseDown        += PnlScope_MinimapMouseDown;
             pnlScope.MouseMove        += PnlScope_MinimapMouseMove;
             pnlScope.MouseDoubleClick += PnlScope_CursorDblClick;
@@ -227,47 +280,76 @@ namespace AudioHexViewer
         // Si V/div actif : convertit la valeur en Volts affichée dans le NUD → normalisé
         private float GetTrigLevelNormalized()
         {
-            if (!_vdivMode) return (float)nudTrigLevel.Value;
-            double vd = GetVdivForCh(cmbTrigSrc.SelectedIndex);
-            double halfRange = vd * (V_DIVS / 2.0);
-            return halfRange > 0.0 ? (float)(nudTrigLevel.Value / (decimal)halfRange) : 0f;
+            if (!_vdivMode) return (float)TrigLevelValue;
+            // Samples dans le ring buffer = float IEEE ±1 (pleine échelle dBFS).
+            // calScale = Volts correspondant à sample=1.0
+            // Donc : trigNorm = trigV / calScale
+            int ch = cmbTrigSrc.SelectedIndex;
+            if (GetInputCalibration == null) return 0f;
+            var (vL, oL, vR, oR) = GetInputCalibration();
+            bool calOk = ch == 1 ? vR : vL;
+            if (!calOk) return 0f;
+            double offDb    = ch == 1 ? oR : oL;
+            double calScale = Math.Pow(10, offDb / 20.0) * Math.Sqrt(2.0);
+            return calScale > 0 ? (float)((double)TrigLevelValue / calScale) : 0f;
         }
 
         // Met à jour plage/incrément/valeur du NUD trigger selon le mode V/div
-        private void UpdateTrigLevelRange()
+        // isConversion=true : bascule entre modes (checkbox V/div cochée/décochée)
+        //                     → convertit la valeur avec calScale
+        // isConversion=false : reste dans le même mode, juste reclamper
+        // isConversion=true  : bascule V/div ON↔OFF
+        //   norm→V : trigV    = trigNorm * calScale
+        //   V→norm : trigNorm = trigV    / calScale
+        // isConversion=false : même mode, reclamper seulement
+        private void UpdateTrigLevelRange(bool isConversion = false)
         {
+            int    ch        = cmbTrigSrc.SelectedIndex;
+            double vd        = GetVdivForCh(ch);
+            double halfRange = vd * (V_DIVS / 2.0);
+
             if (_vdivMode)
             {
-                double vd = GetVdivForCh(cmbTrigSrc.SelectedIndex);
-                double halfRange = vd * (V_DIVS / 2.0);
                 if (halfRange < 1e-9) return;
-                // Convertit ancienne valeur normalisée → Volts
-                decimal oldNorm = GetTrigLevelNormalized() == 0f ? 0m
-                    : (decimal)GetTrigLevelNormalized() * (decimal)halfRange;
-                int dp = halfRange >= 0.1 ? 3 : 4;
-                decimal inc = (decimal)Math.Max(halfRange / 100.0, 0.0001);
-                nudTrigLevel.Minimum = -(decimal)halfRange;
-                nudTrigLevel.Maximum =  (decimal)halfRange;
-                nudTrigLevel.Increment = inc;
-                nudTrigLevel.DecimalPlaces = dp;
-                nudTrigLevel.Value = Math.Clamp(
-                    (decimal)((float)nudTrigLevel.Value * halfRange),
-                    nudTrigLevel.Minimum, nudTrigLevel.Maximum);
+                int dp  = halfRange >= 1.0 ? 3 : halfRange >= 0.01 ? 4 : 5;
+                decimal inc = (decimal)Math.Max(halfRange / 200.0, 0.00001);
+                SetTrigRange(-(decimal)halfRange, (decimal)halfRange, inc, dp);
+
+                decimal newVal;
+                if (isConversion) {
+                    double cs = GetCalScaleForTrigCh(ch);
+                    newVal = cs > 0
+                        ? Math.Clamp((decimal)((double)TrigLevelValue * cs), _trigMin, _trigMax)
+                        : Math.Clamp(TrigLevelValue * (decimal)halfRange, _trigMin, _trigMax);
+                } else {
+                    newVal = Math.Clamp(TrigLevelValue, _trigMin, _trigMax);
+                }
+                TrigLevelValue = newVal;
             }
             else
             {
-                // Convertit ancienne valeur Volts → normalisé
-                double vd = GetVdivForCh(cmbTrigSrc.SelectedIndex);
-                double halfRange = vd * (V_DIVS / 2.0);
-                decimal norm = halfRange > 1e-9
-                    ? Math.Clamp(nudTrigLevel.Value / (decimal)halfRange, -1m, 1m)
-                    : 0m;
-                nudTrigLevel.Minimum = -1m;
-                nudTrigLevel.Maximum =  1m;
-                nudTrigLevel.Increment = 0.001m;
-                nudTrigLevel.DecimalPlaces = 3;
-                nudTrigLevel.Value = norm;
+                SetTrigRange(-1m, 1m, 0.001m, 3);
+                decimal norm;
+                if (isConversion) {
+                    double cs = GetCalScaleForTrigCh(ch);
+                    norm = cs > 0
+                        ? Math.Clamp((decimal)((double)TrigLevelValue / cs), -1m, 1m)
+                        : Math.Clamp(TrigLevelValue / (decimal)halfRange, -1m, 1m);
+                } else {
+                    norm = Math.Clamp(TrigLevelValue, -1m, 1m);
+                }
+                TrigLevelValue = norm;
             }
+        }
+
+        private double GetCalScaleForTrigCh(int ch)
+        {
+            if (GetInputCalibration == null) return 0;
+            var (vL, oL, vR, oR) = GetInputCalibration();
+            bool calOk = ch == 1 ? vR : vL;
+            if (!calOk) return 0;
+            double offDb = ch == 1 ? oR : oL;
+            return Math.Pow(10, offDb / 20.0) * Math.Sqrt(2.0);
         }
 
                 private int GetCh()
@@ -463,7 +545,7 @@ namespace AudioHexViewer
         {
             _vdivMode = chkVdiv.Checked;
             UpdateGainCombos();
-            UpdateTrigLevelRange();   // adapte le NUD LEVEL en V ou normalisé
+            UpdateTrigLevelRange(isConversion: true);   // convertit la valeur entre normalisé ↔ Volts
             pnlScope.Invalidate();
         }
 
@@ -575,7 +657,8 @@ namespace AudioHexViewer
 
         private void StartOscillo()
         {
-            _panOffset=0; _dcEstL=0f; _dcEstR=0f;
+            _panOffset=0;
+            _hpXprevL=0; _hpXprevR=0; _hpYprevL=0; _hpYprevR=0;
             _blinkCounter=0; _blinkState=false; _lastTrigOk=false; _lastTrigAbsPos=-1;
             RunRequested?.Invoke();
             SetRunState(true); SetArmedState(false);
@@ -644,8 +727,7 @@ namespace AudioHexViewer
             win=Math.Min(win,_capL.Length-ds); if(win<2) return;
             float[] sl=new float[win],sr2=new float[win];
             Array.Copy(_capL,ds,sl,0,win); Array.Copy(_capR,ds,sr2,0,win);
-            if(AcL) for(int i=0;i<win;i++) sl[i]-=_dcEstL;
-            if(AcR) for(int i=0;i<win;i++) sr2[i]-=_dcEstR;
+            // AC coupling applied upstream via HPF filter (no post-subtraction needed)
             _dispL=sl; _dispR=sr2;
             int rel=tref-ds; _trigPx=(rel>=0&&rel<win)?rel:-1; _trigFound=_trigPx>=0;
             _measL=ComputeMeasurements(_dispL,_capSR);
@@ -682,9 +764,39 @@ namespace AudioHexViewer
             var rawL=new float[search]; var rawR=new float[search];
             if(!ring.TryReadWindow(absEnd-search,search,rawL,rawR)){pnlScope.Invalidate();return;}
 
-            float alpha=Math.Min(1.0f,(float)search/(sr*DC_TAU));
-            if(AcL){float s2=0; for(int i=0;i<search;i++)s2+=rawL[i];_dcEstL=_dcEstL*(1f-alpha)+(s2/search)*alpha;for(int i=0;i<search;i++)rawL[i]-=_dcEstL;}
-            if(AcR){float s2=0; for(int i=0;i<search;i++)s2+=rawR[i];_dcEstR=_dcEstR*(1f-alpha)+(s2/search)*alpha;for(int i=0;i<search;i++)rawR[i]-=_dcEstR;}
+            // ── Couplage AC : filtre passe-haut RII 1er ordre (simule condensateur CR) ──
+            // H(z) = α(1 - z⁻¹) / (1 - αz⁻¹)  avec α = τ/(τ + T),  fc = HPF_FC Hz
+            if (AcL || AcR)
+            {
+                double tau = 1.0 / (2.0 * Math.PI * HPF_FC);
+                double T   = 1.0 / sr;
+                double a   = tau / (tau + T);   // ≈ 0.9994 à 768 kHz, 10 Hz
+
+                if (AcL)
+                {
+                    double xp = _hpXprevL, yp = _hpYprevL;
+                    for (int i = 0; i < search; i++)
+                    {
+                        double x = rawL[i];
+                        double y = a * (yp + x - xp);
+                        rawL[i] = (float)y;
+                        xp = x; yp = y;
+                    }
+                    _hpXprevL = xp; _hpYprevL = yp;
+                }
+                if (AcR)
+                {
+                    double xp = _hpXprevR, yp = _hpYprevR;
+                    for (int i = 0; i < search; i++)
+                    {
+                        double x = rawR[i];
+                        double y = a * (yp + x - xp);
+                        rawR[i] = (float)y;
+                        xp = x; yp = y;
+                    }
+                    _hpXprevR = xp; _hpYprevR = yp;
+                }
+            }
 
             if(IsRollMode){SetArmedState(false);
                 int rollStart=search-win;
@@ -867,7 +979,25 @@ namespace AudioHexViewer
             if(ms>=1000)return $"{ms/1000:G3} s/div";if(ms>=1)return $"{ms:G3} ms/div";return $"{ms*1000:G3} µs/div";
         }
         private static string FormatV(double v)
-        { double a=Math.Abs(v); return a>=10?$"{v:F2}":a>=1?$"{v:F3}":a>=0.1?$"{v:F4}":$"{v:G4}"; }
+        {
+            if (Math.Abs(v) < 1e-12) return "0 V";
+            double a = Math.Abs(v);
+            if (a >= 1.0)   return Sig4(v)    + " V";
+            if (a >= 0.001) return Sig4(v * 1000) + " mV";
+            return                  Sig4(v * 1e6)  + " µV";
+        }
+
+        // 4 chiffres significatifs avec zéros trailing conservés
+        private static string Sig4(double v)
+        {
+            double a = Math.Abs(v);
+            if (a == 0)      return "0,000";
+            int dec = 3 - (int)Math.Floor(Math.Log10(a));
+            if (dec < 0) dec = 0;
+            if (dec > 6) dec = 6;
+            return v.ToString("F" + dec,
+                System.Globalization.CultureInfo.CurrentCulture);
+        }
 
         private static string FormatVoltLabel(double v)
         {
@@ -892,7 +1022,9 @@ namespace AudioHexViewer
             var wave=new RectangleF(MARGIN_LEFT,MARGIN_TOP,sz.Width-MARGIN_LEFT-MEAS_W,sz.Height-MARGIN_TOP-MARGIN_BOTTOM);
             if(wave.Width<20||wave.Height<20) return;
 
-            g.FillRectangle(SystemBrushes.Control,0,0,sz.Width,sz.Height);
+            // Fond : blanc en export (pour PDF), gris système en live
+            using var bgBrush = new SolidBrush(_isExporting ? Color.White : SystemColors.Control);
+            g.FillRectangle(bgBrush, 0, 0, sz.Width, sz.Height);
 
             // ── Ligne d'info : même style que l'onglet Spectrum ──────────────
             // Segoe UI 8.25pt, couleur InfoTextColor (DarkBlue par défaut),
@@ -1155,6 +1287,57 @@ namespace AudioHexViewer
         // ── Minimap mémoire ───────────────────────────────────────────────────
         // Affiche (en haut à droite de la zone graphique) un rectangle représentant
         // la totalité du buffer capturé (_capL) et la portion actuellement visible.
+        // ── Handle trigger level (côté droit, triangle T) ───────────────────
+        private float GetTrigYPixel(RectangleF w)
+        {
+            int trigCh  = cmbTrigSrc.SelectedIndex;
+            float zoom  = trigCh == 1 ? _effZoomR : _effZoomL;
+            float offset= trigCh == 1 ? _offsetR  : _offsetL;
+            float ym    = w.Top + w.Height / 2f;
+            float ys    = w.Height / 2f * zoom;
+            float yRef  = ym - offset * w.Height / 2f;
+            return Math.Clamp(yRef - GetTrigLevelNormalized() * ys, w.Top, w.Bottom);
+        }
+
+        private void PnlScope_TrigHandleMouseDown(object? s, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            var w = GetWaveRect(); if (w.IsEmpty) return;
+            // Zone de hit : de w.Right à w.Right+20, ±12px autour de yT
+            if (e.X < w.Right || e.X > w.Right + 20) return;
+            float yT = GetTrigYPixel(w);
+            if (Math.Abs(e.Y - yT) <= 12f) _draggingTrigger = true;
+        }
+
+        private void PnlScope_TrigHandleMouseMove(object? s, MouseEventArgs e)
+        {
+            if (!_draggingTrigger) return;
+            var w = GetWaveRect(); if (w.IsEmpty) return;
+
+            int   trigCh = cmbTrigSrc.SelectedIndex;
+            float zoom   = trigCh == 1 ? _effZoomR : _effZoomL;
+            float offset = trigCh == 1 ? _offsetR  : _offsetL;
+            float ym     = w.Top + w.Height / 2f;
+            float ys     = w.Height / 2f * zoom;
+            float yRef   = ym - offset * w.Height / 2f;
+
+            // Convertit pixels → normalisé
+            float normVal = ys > 0 ? (yRef - Math.Clamp(e.Y, w.Top, w.Bottom)) / ys : 0f;
+
+            if (_vdivMode)
+            {
+                // Convertit normalisé → Volts via calScale
+                double cs = GetCalScaleForTrigCh(trigCh);
+                double trigV = cs > 0 ? normVal * cs : normVal;
+                TrigLevelValue = Math.Clamp((decimal)trigV, _trigMin, _trigMax);
+            }
+            else
+            {
+                TrigLevelValue = Math.Clamp((decimal)normVal, _trigMin, _trigMax);
+            }
+            pnlScope.Invalidate();
+        }
+
         private void PnlScope_OffsetMouseDown(object? s, MouseEventArgs e)
         {
             if(e.Button!=MouseButtons.Left) return;
@@ -1394,6 +1577,19 @@ namespace AudioHexViewer
             using var pH=new Pen(tCol,1f){DashStyle=DashStyle.Dash};
             g.DrawLine(pH,w.Left,yT,w.Right,yT);
 
+            // Handle "T" côté droit — triangle pointant à gauche + lettre T
+            float th = 7f;   // demi-hauteur du triangle
+            float tx = w.Right + 2f;     // pointe à gauche (bord droit du plot)
+            float tw = tx + 10f;          // base du triangle
+            PointF[] tTri = { new(tx, yT), new(tw, yT - th), new(tw, yT + th) };
+            using var brT = new SolidBrush(Color.FromArgb(220, tCol));
+            g.FillPolygon(brT, tTri);
+            using var penT = new Pen(Color.FromArgb(160, tCol), 1f);
+            g.DrawPolygon(penT, tTri);
+            using var fontT = new Font("Segoe UI", 7f, FontStyle.Bold);
+            using var brLblT = new SolidBrush(tCol);
+            g.DrawString("T", fontT, brLblT, tw + 2f, yT - 7f);
+
             // Ligne verticale t=0 TOUJOURS visible à la position PreTrig
             float xTrig=w.Left+PreTrig*w.Width;
             using var pV=new Pen(Color.FromArgb(160,tCol),1f){DashStyle=DashStyle.Dash};
@@ -1435,8 +1631,8 @@ namespace AudioHexViewer
             if (GetInputCalibration != null)
             { var (vL,oL,vR,oR)=GetInputCalibration(); calOkL=vL;offL=oL;calOkR=vR;offR=oR; }
 
-            if (ch==0||ch==2) DrawMeasSection(g,"LEFT",  Color.DodgerBlue, _measL, rect, ref y, calOkL, offL);
-            if (ch==1||ch==2) DrawMeasSection(g,"RIGHT", Color.OrangeRed,  _measR, rect, ref y, calOkR, offR);
+            if (ch==0||ch==2) DrawMeasSection(g,"LEFT",  TraceColorL, _measL, rect, ref y, calOkL, offL);
+            if (ch==1||ch==2) DrawMeasSection(g,"RIGHT", TraceColorR, _measR, rect, ref y, calOkR, offR);
 
             // Section curseurs (si au moins un actif)
             if (_c1Active || _c2Active)
@@ -1458,78 +1654,93 @@ namespace AudioHexViewer
             }
         }
 
-        /// Panneau section canal : titre centré coloré + séparateur Gainsboro + lignes label|valeur.
-        /// Polices identiques Spectrum : base=8.25pt Regular, header=Bold, strong=9.75pt Bold.
+        /// Panneau section canal : titre + lignes label|valeur.
+        /// Vrms et Freq mis en valeur (gras, plus gros, fond bleu) comme le panneau Spectrum.
         private static void DrawMeasSection(Graphics g, string title, Color titleColor,
             MeasResult m, RectangleF rect, ref float y, bool cal, double offDb)
         {
-            using var fontBase   = new Font("Segoe UI", 8.25f, FontStyle.Regular);
-            using var fontHeader = new Font("Segoe UI", 8.25f, FontStyle.Bold);
-            using var fontStrong = new Font("Segoe UI", 9.75f, FontStyle.Bold);
+            using var fontBase   = new Font("Segoe UI", 9f,    FontStyle.Regular);
+            using var fontHeader = new Font("Segoe UI", 9f,    FontStyle.Bold);
+            using var fontStrong = new Font("Segoe UI", 10.5f, FontStyle.Bold);
             using var brushText  = new SolidBrush(Color.DimGray);
             using var penSep     = new Pen(Color.Gainsboro, 1f);
-            using var fmtCenter  = new StringFormat{Alignment=StringAlignment.Center};
-            using var fmtRight   = new StringFormat{Alignment=StringAlignment.Far,
-                                                     LineAlignment=StringAlignment.Near};
+            using var fmtCenter  = new StringFormat { Alignment = StringAlignment.Center };
+            using var fmtRight   = new StringFormat { Alignment = StringAlignment.Far,
+                                                      LineAlignment = StringAlignment.Near };
 
-            float pad  = 8f;
-            float xL   = rect.X + pad;
-            float lineH= fontBase.GetHeight(g) + 4f;
+            float pad    = 8f;
+            float xL     = rect.X + pad;
+            float lineH  = fontBase.GetHeight(g) + 4f;
+            float strongH= fontStrong.GetHeight(g) + 4f;
 
             // Titre centré coloré
-            var headerRect = new RectangleF(rect.X+pad, y, rect.Width-2*pad, fontHeader.GetHeight(g));
+            var headerRect = new RectangleF(rect.X + pad, y, rect.Width - 2 * pad, fontHeader.GetHeight(g));
             using (var bTitle = new SolidBrush(titleColor))
                 g.DrawString(title, fontHeader, bTitle, headerRect, fmtCenter);
             y += headerRect.Height + 4f;
-
-            // Séparateur Gainsboro sous le titre (identique Spectrum)
-            g.DrawLine(penSep, rect.X+pad, y, rect.Right-pad, y);
+            g.DrawLine(penSep, rect.X + pad, y, rect.Right - pad, y);
             y += 8f;
 
-            // Largeur max labels pour aligner les valeurs
+            // Largeur labels
             float maxLW = 0f;
-            foreach (string l in new[]{"Vrms","Vpp","Vdc","Freq","Per"})
-            { float w2=g.MeasureString(l,fontBase).Width; if(w2>maxLW) maxLW=w2; }
+            foreach (string l in new[] { "Vrms", "Vpp", "Vdc", "Freq", "Per" })
+            { float w2 = g.MeasureString(l, fontBase).Width; if (w2 > maxLW) maxLW = w2; }
             float valueLeft = xL + maxLW + 8f;
             float valueW    = rect.Right - pad - valueLeft;
 
             if (!m.Valid)
             {
-                foreach (string lbl in new[]{"Vrms","Vpp","Vdc","Freq","Per"})
+                foreach (string lbl in new[] { "Vrms", "Vpp", "Vdc", "Freq", "Per" })
                 {
                     g.DrawString(lbl, fontBase, brushText, xL, y);
                     g.DrawString("---", fontBase, brushText,
-                        new RectangleF(valueLeft,y,valueW,lineH), fmtRight);
+                        new RectangleF(valueLeft, y, valueW, lineH), fmtRight);
                     y += lineH;
                 }
                 y += 4f; return;
             }
 
-            double sc = cal ? Math.Pow(10,offDb/20.0)*Math.Sqrt(2.0) : 1.0;
-            string u  = cal ? "V" : "";
-            string Fv(double v) => cal ? FormatV(v*sc)+u : $"{v:F4}";
+            double sc = cal ? Math.Pow(10, offDb / 20.0) * Math.Sqrt(2.0) : 1.0;
+            string Fv(double v) => cal ? FormatV(v * sc) : $"{v:G4}";
 
-            // Vrms en fontStrong (valeur principale mise en valeur, comme Spectrum)
-            float strongH = Math.Max(fontBase.GetHeight(g), fontStrong.GetHeight(g));
-            g.DrawString("Vrms", fontBase, brushText, xL, y);
-            g.DrawString(Fv(m.Vrms), fontStrong, brushText,
-                new RectangleF(valueLeft,y,valueW,strongH), fmtRight);
-            y += strongH + 4f;
-
-            // Autres valeurs en fontBase
-            (string lbl, string val)[] rows = {
-                ("Vpp",  Fv(m.Vpp)),
-                ("Vdc",  Fv(m.Vdc)),
-                ("Freq", m.FreqHz>0?(m.FreqHz>=1000?$"{m.FreqHz/1000:G4} kHz":$"{m.FreqHz:G4} Hz"):"---"),
-                ("Per",  m.FreqHz>0?$"{1000/m.FreqHz:G4} ms":"---")
-            };
-            foreach (var (lbl, val) in rows)
+            // ── Helper : dessine une ligne, retourne la nouvelle valeur de y ─────
+            float DrawRow(float cy, string lbl, string val, Font fVal, bool highlight)
             {
-                g.DrawString(lbl, fontBase, brushText, xL, y);
-                g.DrawString(val, fontBase, brushText,
-                    new RectangleF(valueLeft,y,valueW,lineH), fmtRight);
-                y += lineH;
+                float rh = Math.Max(fontBase.GetHeight(g), fVal.GetHeight(g)) + 4f;
+                var valRect = new RectangleF(valueLeft, cy, valueW, rh);
+                g.DrawString(lbl, fontBase, brushText, xL, cy);
+                if (highlight)
+                {
+                    using var fmtRange = (StringFormat)fmtRight.Clone();
+                    fmtRange.SetMeasurableCharacterRanges(new[] { new CharacterRange(0, val.Length) });
+                    var regions = g.MeasureCharacterRanges(val, fVal, valRect, fmtRange);
+                    var bounds  = regions[0].GetBounds(g);
+                    bounds.Inflate(4f, 0.5f);
+                    using var fill = new SolidBrush(Color.FromArgb(18, 30, 144, 255));
+                    g.FillRectangle(fill, bounds);
+                }
+                g.DrawString(val, fVal, brushText, valRect, fmtRight);
+                return cy + rh;
             }
+
+            y = DrawRow(y, "Vrms", Fv(m.Vrms), fontStrong, highlight: true);
+            y = DrawRow(y, "Vpp",  Fv(m.Vpp),  fontBase,   highlight: false);
+            y = DrawRow(y, "Vdc",  Fv(m.Vdc),  fontBase,   highlight: false);
+
+            string freqStr = m.FreqHz > 0
+                ? (m.FreqHz >= 1e6  ? $"{m.FreqHz / 1e6:G4} MHz"
+                 : m.FreqHz >= 1000 ? $"{m.FreqHz / 1000:G4} kHz"
+                                   : $"{m.FreqHz:G4} Hz")
+                : "---";
+            y = DrawRow(y, "Freq", freqStr, m.FreqHz > 0 ? fontStrong : fontBase, highlight: m.FreqHz > 0);
+
+            string perStr = m.FreqHz > 0
+                ? (m.FreqHz < 1    ? $"{1000 / m.FreqHz:G4} s"
+                 : m.FreqHz < 1000 ? $"{1000 / m.FreqHz:G4} ms"
+                                   : $"{1e6 / m.FreqHz:G4} µs")
+                : "---";
+            y = DrawRow(y, "Per", perStr, fontBase, highlight: false);
+
             y += 4f;
         }
 
@@ -1641,7 +1852,7 @@ namespace AudioHexViewer
         {
             ChannelIndex=GetCh(),TimeDivIndex=cmbTimediv.SelectedIndex,
             TrigModeIndex=cmbTrigMode.SelectedIndex,TrigEdgeIndex=cmbTrigEdge.SelectedIndex,
-            TrigSrcIndex=cmbTrigSrc.SelectedIndex,TrigLevel=(double)nudTrigLevel.Value,
+            TrigSrcIndex=cmbTrigSrc.SelectedIndex,TrigLevel=(double)TrigLevelValue,
             ZoomYIndexL=cmbVdivL.SelectedIndex,ZoomYIndexR=cmbVdivR.SelectedIndex,
             AcCouplingL=cmbCouplingL.SelectedIndex,AcCouplingR=cmbCouplingR.SelectedIndex,
             RollMode=chkRoll.Checked,VdivMode=_vdivMode,GridModeIdx=cmbGrid.SelectedIndex
@@ -1659,10 +1870,10 @@ namespace AudioHexViewer
             if(_vdivMode){
                 double vd=GetVdivForCh(cmbTrigSrc.SelectedIndex);
                 double hr=vd*(V_DIVS/2.0);
-                nudTrigLevel.Minimum=-(decimal)hr; nudTrigLevel.Maximum=(decimal)hr;
-                nudTrigLevel.Value=(decimal)Math.Clamp(s.TrigLevel,-hr,hr);
+                SetTrigRange(-(decimal)hr, (decimal)hr, (decimal)Math.Max(hr/200.0, 0.00001), hr>=1.0?3:hr>=0.01?4:5);
+                TrigLevelValue=(decimal)Math.Clamp(s.TrigLevel,-hr,hr);
             } else {
-                nudTrigLevel.Value=(decimal)Math.Clamp(s.TrigLevel,-1.0,1.0);
+                TrigLevelValue=(decimal)Math.Clamp(s.TrigLevel,-1.0,1.0);
             }
             int maxZ=_vdivMode?VdivValues.Length-1:ZoomY.Length-1;
             cmbVdivL.SelectedIndex=Math.Clamp(s.ZoomYIndexL,0,maxZ);
@@ -1681,22 +1892,35 @@ namespace AudioHexViewer
         public System.Windows.Forms.Control GetPanelForClipboard() => pnlScope;
 
         // ── Export PNG ────────────────────────────────────────────────────────
-        public void ExportPng(string filePath, int scale = 2, string? headerTitle = null)
+        public void ExportPng(string filePath, int scale = 2, string? headerTitle = null, string? footerText = null)
         {
+            _isExporting = true;
             using var capture = ChartExport.CaptureControl(pnlScope, scale);
-            int headerPx = ChartExport.HeaderPixels(headerTitle, scale);
+            _isExporting = false;
+            int headerPx  = ChartExport.HeaderPixels(headerTitle, scale);
 
-            if (headerPx > 0 && !string.IsNullOrWhiteSpace(headerTitle))
+            // Le graphique oscillo n'a pas de marge blanche en bas.
+            // On en ajoute une pour que le footer soit visible hors du graphique.
+            int footerMargin = string.IsNullOrWhiteSpace(footerText) ? 0 : (int)(28 * scale);
+
+            if (footerMargin > 0)
             {
-                using var full = new System.Drawing.Bitmap(capture.Width, capture.Height + headerPx);
-                using (var g = System.Drawing.Graphics.FromImage(full))
-                    g.DrawImage(capture, 0, headerPx);
-                ChartExport.DrawHeaderOnBitmap(full, headerPx, headerTitle!, scale);
-                ChartExport.SaveBitmap(full, filePath, dpi: 300);
+                using var expanded = new System.Drawing.Bitmap(
+                    capture.Width, capture.Height + footerMargin);
+                using (var g = System.Drawing.Graphics.FromImage(expanded))
+                {
+                    g.Clear(System.Drawing.Color.White);
+                    g.DrawImage(capture, 0, 0);
+                }
+                ChartExport.SaveChartPng(
+                    expanded, filePath, headerPx, headerTitle,
+                    scale, dpi: 300, footerText: footerText);
             }
             else
             {
-                ChartExport.SaveBitmap(capture, filePath, dpi: 300);
+                ChartExport.SaveChartPng(
+                    capture, filePath, headerPx, headerTitle,
+                    scale, dpi: 300, footerText: footerText);
             }
         }
     }
