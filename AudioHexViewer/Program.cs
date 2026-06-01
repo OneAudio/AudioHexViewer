@@ -1,35 +1,36 @@
-
 using System;
+using System.Windows.Forms;
 
 namespace AudioHexViewer
 {
     internal static class Program
     {
-        /// <summary>
-        ///  The main entry point for the application.
-        /// </summary>
+        internal static readonly int[] SampleRateOptions =
+        {
+            44100, 48000, 88200, 96000,
+            176400, 192000, 352800, 384000,
+            705600, 768000
+        };
+
         [STAThread]
         static void Main()
         {
-            
-
-            // To customize application configuration such as set high DPI settings or default font,
-            // see https://aka.ms/applicationconfiguration.
             ApplicationConfiguration.Initialize();
-            Application.Run(new Form1());
 
-            //Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            // 1. Affiche le splash
+            var splash = new SplashScreen();
+            splash.Show();
+            Application.DoEvents();
 
-            //Application.ThreadException += (s, e) =>
-            //{
-            //    MessageBox.Show(e.Exception.ToString(), "ThreadException");
-            //};
+            // 2. Scan audio intégré dans le splash (barre de progression = avancement réel)
+            splash.RunAudioScan(SampleRateOptions);
 
-            //AppDomain.CurrentDomain.UnhandledException += (s, e) =>
-            //{
-            //    MessageBox.Show(e.ExceptionObject?.ToString() ?? "Unknown", "UnhandledException");
-            //};
+            // 3. Lance Form1
+            var mainForm = new Form1();
+            mainForm.Shown += (_, _) => splash.SignalReady();
+            splash.FormClosed += (_, _) => splash.Dispose();
 
+            Application.Run(mainForm);
         }
     }
 }

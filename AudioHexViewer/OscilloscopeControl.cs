@@ -1893,6 +1893,56 @@ namespace AudioHexViewer
         public System.Windows.Forms.Control GetPanelForClipboard() => pnlScope;
 
         // ── Export PNG ────────────────────────────────────────────────────────
+        // ── Export CSV ───────────────────────────────────────────────────────
+        public System.Text.StringBuilder GetCsvData(char sep, bool header, char decSep = '.')
+        {
+            var sb  = new System.Text.StringBuilder();
+            var ic2 = System.Globalization.CultureInfo.InvariantCulture;
+            // Formate un double avec le séparateur décimal choisi
+            string Fmt(double v, string fmt) {
+                var s2 = v.ToString(fmt, ic2);
+                return decSep == ',' ? s2.Replace('.', ',') : s2;
+            }
+            string s = sep.ToString();
+
+            // Exporte toutes les voies qui ont des données affichées
+            bool hasL = _dispL != null && _dispL.Length > 0;
+            bool hasR = _dispR != null && _dispR.Length > 0;
+            if (!hasL && !hasR) return sb;
+
+            int n = Math.Max(hasL ? _dispL!.Length : 0, hasR ? _dispR!.Length : 0);
+            double dt = _capSR > 0 ? 1.0 / _capSR : 0;
+
+            // Calibration → conversion en Volts si disponible
+            double calL = 1.0, calR = 1.0;
+            bool voltMode = _vdivMode && GetInputCalibration != null;
+            if (voltMode)
+            {
+                var (vL, oL, vR, oR) = GetInputCalibration!();
+                if (vL) calL = Math.Pow(10, oL / 20.0) * Math.Sqrt(2.0);
+                if (vR) calR = Math.Pow(10, oR / 20.0) * Math.Sqrt(2.0);
+            }
+            string unitL = voltMode ? "V" : "norm";
+            string unitR = voltMode ? "V" : "norm";
+
+            if (header)
+            {
+                sb.Append("Time_s");
+                if (hasL) sb.Append($"{s}Ch_L_{unitL}");
+                if (hasR) sb.Append($"{s}Ch_R_{unitR}");
+                sb.AppendLine();
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                sb.Append(Fmt(i * dt, "G6"));
+                if (hasL) sb.Append($"{s}{(i < _dispL!.Length ? Fmt(_dispL[i] * calL, "G6") : "")}");
+                if (hasR) sb.Append($"{s}{(i < _dispR!.Length ? Fmt(_dispR[i] * calR, "G6") : "")}");
+                sb.AppendLine();
+            }
+            return sb;
+        }
+
         public void ExportPng(string filePath, int scale = 2, string? headerTitle = null, string? footerText = null)
         {
             _isExporting = true;

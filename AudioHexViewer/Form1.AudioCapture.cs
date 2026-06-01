@@ -28,6 +28,7 @@ namespace AudioHexViewer
     {
         private void StartCapture()
         {
+            _vuInTimer?.Stop();
             if (capture != null)
                 return; // déjà démarré
 
@@ -133,6 +134,7 @@ namespace AudioHexViewer
 
                 // Démarrage capture audio
                 capture.StartRecording();
+                UpdateVuInTimer();   // démarre le VU si un onglet analyse est actif
 
                 // ── Canal de découplage capture → ProcessBuffer ──────────────────
                 // Créé APRÈS StartRecording pour ne pas perdre les premiers callbacks.
@@ -221,6 +223,10 @@ namespace AudioHexViewer
 
         private void StopCapture()
         {
+            _vuInTimer?.Stop();
+            _vuInPctL = _vuInPctR = 0;
+            _vuInStrL = _vuInStrR = "-∞ dBFS";
+            if (pnlInputVu?.IsHandleCreated == true) pnlInputVu.BeginInvoke(() => pnlInputVu.Invalidate());
             if (capture == null)
                 return; // déjà arrêté
 
@@ -672,9 +678,11 @@ namespace AudioHexViewer
                     }
                 }
 
-                // Bargraphs dBFS
+                // Bargraphs dBFS (conservé pour DataViewForm)
                 UpdateLevelBar(barLeftLevel,  levelLeft);
                 UpdateLevelBar(barRightLevel, levelRight);
+                // Nouveau VU-mètre GDI+ entrée
+                SetVuInLevels(dbLeft, dbRight);
 
                 // SAT + dBFS (gauche)
                 bool satLActive = isCurrentlySatLeft ||

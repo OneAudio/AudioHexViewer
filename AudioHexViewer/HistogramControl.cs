@@ -101,6 +101,9 @@ namespace AudioHexViewer
         }
         private StatsData _statsLeft;
         private StatsData _statsRight;
+        // Derniers bins calculés — conservés pour export CSV
+        private int[]? _lastBinsLeft, _lastBinsRight;
+        private int    _lastBinWidth = 1, _lastLsbRange = 256;
 
         public delegate (int[] Left, int[] Right) SampleProvider(int sampleCount);
 
@@ -618,6 +621,11 @@ namespace AudioHexViewer
 
             double lDnl = ComputeDnlMax(binsLeft,  lCnt, lMean, lSigma, lsbRange, binWidth);
             double rDnl = ComputeDnlMax(binsRight, rCnt, rMean, rSigma, lsbRange, binWidth);
+            // Stocker pour export CSV
+            _lastBinsLeft  = binsLeft  != null ? (int[])binsLeft.Clone()  : null;
+            _lastBinsRight = binsRight != null ? (int[])binsRight.Clone() : null;
+            _lastBinWidth  = binWidth;
+            _lastLsbRange  = lsbRange;
 
             _statsLeft  = lCnt > 0
                 ? new StatsData(lCnt, dcL, lRms, lSigma, lMean, lDnl, lMin, lMax, lsbRange)
@@ -1055,6 +1063,47 @@ namespace AudioHexViewer
         // ══════════════════════════════════════════════════════════════════════
         // Export PNG (inchangé)
         // ══════════════════════════════════════════════════════════════════════
+        // ── Export CSV ───────────────────────────────────────────────────────
+        public System.Text.StringBuilder GetCsvData(char sep, bool header, char decSep = '.')
+        {
+            var sb  = new System.Text.StringBuilder();
+            var ic2 = System.Globalization.CultureInfo.InvariantCulture;
+            string s = sep.ToString();
+
+            bool hasL = _lastBinsLeft  != null && _statsLeft.HasData;
+            bool hasR = _lastBinsRight != null && _statsRight.HasData;
+
+            if (header)
+            {
+                // Stats header
+                if (hasL)
+                {
+                    sb.AppendLine($"# LEFT  — Samples:{_statsLeft.Count}{s} RMS:{_statsLeft.RmsLsb:F1} LSB{s} ENOB:{_statsLeft.Enob:F2} bits{s} DNL max:{_statsLeft.DnlMax:F3}");
+                }
+                if (hasR)
+                {
+                    sb.AppendLine($"# RIGHT — Samples:{_statsRight.Count}{s} RMS:{_statsRight.RmsLsb:F1} LSB{s} ENOB:{_statsRight.Enob:F2} bits{s} DNL max:{_statsRight.DnlMax:F3}");
+                }
+                // Column headers
+                sb.Append("Code_LSB");
+                if (hasL) sb.Append($"{s}Count_L");
+                if (hasR) sb.Append($"{s}Count_R");
+                sb.AppendLine();
+            }
+
+            int n = Math.Max(hasL ? _lastBinsLeft!.Length : 0,
+                             hasR ? _lastBinsRight!.Length : 0);
+            for (int i = 0; i < n; i++)
+            {
+                double x = -_lastLsbRange + i * _lastBinWidth + _lastBinWidth / 2.0;
+                sb.Append(decSep == ',' ? x.ToString("F1", ic2).Replace('.', ',') : x.ToString("F1", ic2));
+                if (hasL) sb.Append($"{s}{(i < _lastBinsLeft!.Length ? _lastBinsLeft[i] : 0)}");
+                if (hasR) sb.Append($"{s}{(i < _lastBinsRight!.Length ? _lastBinsRight[i] : 0)}");
+                sb.AppendLine();
+            }
+            return sb;
+        }
+
         // ── Export PNG / PDF ─────────────────────────────────────────────────
         public void ExportPng(string filePath, int scale = 2, string? headerTitle = null, string? footerText = null)
         {

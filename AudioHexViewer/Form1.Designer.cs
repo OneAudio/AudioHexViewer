@@ -52,6 +52,7 @@ namespace AudioHexViewer
             menuCopyClipboard = new ToolStripMenuItem();
             menuExportPdf = new ToolStripMenuItem();
             panelTop = new Panel();
+            pnlInputVu = new Panel();
             lblRightLevelMain = new Label();
             lblLeftLevelMain = new Label();
             label6 = new Label();
@@ -214,21 +215,20 @@ namespace AudioHexViewer
             // 
             // panelTop
             // 
-            panelTop.Controls.Add(lblRightLevelMain);
-            panelTop.Controls.Add(lblLeftLevelMain);
-            panelTop.Controls.Add(label6);
-            panelTop.Controls.Add(barLeftLevel);
-            panelTop.Controls.Add(lblFormatInfo);
-            panelTop.Controls.Add(barRightLevel);
-            panelTop.Controls.Add(label7);
-            panelTop.Controls.Add(btnRecord);
-            panelTop.Controls.Add(btnCalV);
+            panelTop.Controls.Add(pnlInputVu);
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 25);
             panelTop.Name = "panelTop";
-            panelTop.Size = new Size(1138, 73);
+            panelTop.Size = new Size(1138, 52);
             panelTop.TabIndex = 38;
             // 
+            // pnlInputVu — VU-mètre entrée (clone du GeneratorWindow)
+            pnlInputVu.Location = new Point(0, 0);
+            pnlInputVu.Size     = new Size(400, 52);
+            pnlInputVu.Name     = "pnlInputVu";
+            pnlInputVu.BackColor= Color.FromArgb(0, 0, 64);
+            pnlInputVu.TabIndex = 70;
+
             // panelDebugInfo  (barre de debug sous panelTop, cachée par défaut)
             // 
             panelDebugInfo.Controls.Add(lblDebugInfo);
@@ -339,7 +339,7 @@ namespace AudioHexViewer
             btnRecord.BackColor = Color.Firebrick;
             btnRecord.FlatAppearance.BorderSize = 0;
             btnRecord.FlatStyle = FlatStyle.Flat;
-            btnRecord.ForeColor = Color.White;
+            btnRecord.ForeColor = Color.FromArgb(0, 0, 64);
             btnRecord.Location = new Point(12, 11);
             btnRecord.Name = "btnRecord";
             btnRecord.Size = new Size(60, 23);
@@ -353,7 +353,7 @@ namespace AudioHexViewer
             btnCalV.BackColor = Color.SteelBlue;
             btnCalV.FlatAppearance.BorderSize = 0;
             btnCalV.FlatStyle = FlatStyle.Flat;
-            btnCalV.ForeColor = Color.White;
+            btnCalV.ForeColor = Color.FromArgb(0, 0, 64);
             btnCalV.Location = new Point(12, 44);
             btnCalV.Name = "btnCalV";
             btnCalV.Size = new Size(60, 23);
@@ -497,6 +497,7 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuCopyClipboard;
         private ToolStripMenuItem menuExportPdf;
         internal Label lblLeftLevelMain;
+        private Panel pnlInputVu;
         internal Label lblRightLevelMain;
     }
 }

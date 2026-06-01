@@ -168,6 +168,7 @@ namespace AudioHexViewer
         // ── Pipeline FFT (Phase 2: ring buffer + worker + stats + queue) ─────
         private FftPipelineController? _pipeline;
 
+
         // ── Logger de diagnostic FFT (F8) ────────────────────────────────────
         // Une ligne CSV par FFT produite. Détecte les discontinuités via HopActuel
         // vs HopAttendu : tout écart > 1ms indique un gap dans les données audio.
@@ -246,6 +247,16 @@ namespace AudioHexViewer
 
         // Seuils dBFS pour le bargraphe
         private const double DbMin = -80.0;      // plancher d'affichage
+        // ── VU-mètre entrée (pnlInputVu) ─────────────────────────────────────
+        private const int    VuLedCount    = 40;
+        private const double VuDbMin       = -80.0;
+        private const double VuBlueEnd     = -36.0;
+        private const double VuGreenEnd    = -12.0;
+        private const double VuOrangeEnd   = -6.0;
+        private int    _vuInPctL, _vuInPctR;
+        private string _vuInStrL = "-∞ dBFS", _vuInStrR = "-∞ dBFS";
+        private System.Windows.Forms.Timer? _vuInTimer;
+
         private const double DbBlueToGreen = -36.0;
         private const double DbGreenToOrange = -12.0;
         private const double DbOrangeToRed = -6.0;
@@ -539,18 +550,10 @@ namespace AudioHexViewer
             // Charger la calibration existante
             LoadCalibration();
 
-            // Crer les repres dBFS au-dessus des barres
-            CreateDbMarkers(
-                barLeftLevel,
-                new[] { "-80", "-36", "-12", "-6", "0" },
-                new[] { -80, DbBlueToGreen, DbGreenToOrange, DbOrangeToRed, 0.0 }
-            );
+            // dBFS markers supprimés (ancien vu-mètre remplacé par pnlInputVu)
 
-            CreateDbMarkers(
-                barRightLevel,
-                new[] { "-80", "-36", "-12", "-6", "0" },
-                new[] { -80, DbBlueToGreen, DbGreenToOrange, DbOrangeToRed, 0.0 }
-            );
+            // ── VU-mètre entrée ───────────────────────────────────────────────
+            InitInputVuMeter();
 
             // 
             InitSampleSizeMenu();
@@ -802,7 +805,21 @@ namespace AudioHexViewer
             // Ajouter au menu principal (top-level)
             menuStrip1.Items.Add(menuColors);
 
-            // "Generator" apparaît à gauche de "Colors" (ajouté après dans la collection = plus à gauche visuellement)
+            // "Export CSV" dans le menu Export
+            var menuExportCsv = new ToolStripMenuItem("Export data to CSV…");
+            menuExportCsv.Click += menuExportCsv_Click;
+            exportToolStripMenuItem.DropDownItems.Add(menuExportCsv);
+
+            // "Tools" à gauche de "Generator"
+            var menuTools        = new ToolStripMenuItem("Tools") { Alignment = ToolStripItemAlignment.Right };
+            var menuDataRecord   = new ToolStripMenuItem("Data Record (1s)");
+            var menuCalibrateIn  = new ToolStripMenuItem("Calibrate Input Device");
+            menuDataRecord.Click  += (_, _) => btnRecord_Click(menuDataRecord, EventArgs.Empty);
+            menuCalibrateIn.Click += (_, _) => btnCalV_Click(menuCalibrateIn, EventArgs.Empty);
+            menuTools.DropDownItems.AddRange(new ToolStripItem[] { menuDataRecord, menuCalibrateIn });
+            menuStrip1.Items.Add(menuTools);
+
+            // "Generator" apparaît à gauche de "Colors"
             var menuGenerator = new ToolStripMenuItem("Generator")
             {
                 Alignment = ToolStripItemAlignment.Right
@@ -1213,18 +1230,13 @@ namespace AudioHexViewer
         //
         private void menuDevices_Click(object? sender, EventArgs e)
         {
-            // Enumérer les périphériques d'entrée et de sortie
-            List<MMDevice> inputs  = new();
-            List<MMDevice> outputs = new();
-            try
+            // Utilise les listes mises en cache lors du scan au démarrage → instantané
+            var inputs  = SplashScreen.CachedInputs;
+            var outputs = SplashScreen.CachedOutputs;
+            if (inputs.Count == 0 && outputs.Count == 0)
             {
-                var en = new MMDeviceEnumerator();
-                inputs.AddRange(en.EnumerateAudioEndPoints(NAudio.CoreAudioApi.DataFlow.Capture, NAudio.CoreAudioApi.DeviceState.Active));
-                outputs.AddRange(en.EnumerateAudioEndPoints(NAudio.CoreAudioApi.DataFlow.Render,  NAudio.CoreAudioApi.DeviceState.Active));
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(this, ex.Message, "Devices", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, "No audio devices found.", "Devices",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -1398,11 +1410,8 @@ namespace AudioHexViewer
         //
         private void menuAbout_Click(object? sender, EventArgs e)
         {
-            MessageBox.Show(
-                "AudioHexViewer V0.9 01/2026\n\n" +
-                "Digital audio data Anayzer\n" +
-                "OnE Audio Projects",
-                "About");
+            using var about = new SplashScreen(aboutMode: true);
+            about.ShowDialog(this);
         }
         //
         private void comboDisplayMode_SelectedIndexChanged(object? sender, EventArgs e)
@@ -2284,6 +2293,119 @@ namespace AudioHexViewer
 
 
 
+        // ── VU-mètre entrée ───────────────────────────────────────────────────
+        private void InitInputVuMeter()
+        {
+            // Double-buffering via reflection (Panel n'expose pas SetStyle publiquement)
+            typeof(System.Windows.Forms.Control)
+                .GetMethod("SetStyle",
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)!
+                .Invoke(pnlInputVu, new object[] {
+                    ControlStyles.AllPaintingInWmPaint |
+                    ControlStyles.UserPaint |
+                    ControlStyles.DoubleBuffer, true });
+            pnlInputVu.Paint += PnlInputVu_Paint;
+
+            _vuInTimer = new System.Windows.Forms.Timer { Interval = 80 };
+            _vuInTimer.Tick += VuInTimer_Tick;
+
+            // Active/désactive le timer selon l'onglet visible
+            tabAnalysis.SelectedIndexChanged += (_, _) => UpdateVuInTimer();
+        }
+
+        private void UpdateVuInTimer()
+        {
+            bool analysisVisible = tabAnalysis.Visible &&
+                (tabAnalysis.SelectedTab == tabHistogram ||
+                 tabAnalysis.SelectedTab == tabSpectrum  ||
+                 tabAnalysis.SelectedTab == tabOscilloscope);
+            if (analysisVisible && capture != null)
+                _vuInTimer?.Start();
+            else
+            {
+                _vuInTimer?.Stop();
+                _vuInPctL = _vuInPctR = 0;
+                _vuInStrL = _vuInStrR = "-∞ dBFS";
+                pnlInputVu.Invalidate();
+            }
+        }
+
+        private void VuInTimer_Tick(object? s, EventArgs e)
+        {
+            // Timer sur le thread UI — déclenche le repaint proprement
+            pnlInputVu.Invalidate();
+        }
+
+        // Appelé depuis Form1.AudioCapture.cs — stocke seulement, le timer 80ms déclenche le repaint
+        internal void SetVuInLevels(double dbL, double dbR)
+        {
+            _vuInPctL = VuDbToPct(dbL);
+            _vuInPctR = VuDbToPct(dbR);
+            _vuInStrL = VuFmtDb(dbL);
+            _vuInStrR = VuFmtDb(dbR);
+        }
+
+        private static int VuDbToPct(double db)
+            => db <= VuDbMin ? 0 : db >= 0.0 ? 100
+             : (int)((db - VuDbMin) / -VuDbMin * 100.0);
+
+        private static string VuFmtDb(double db)
+            => double.IsNegativeInfinity(db) ? "-∞ dBFS" : $"{db:F1} dBFS";
+
+        private void PnlInputVu_Paint(object? sender, PaintEventArgs e)
+        {
+            var g  = e.Graphics;
+            var sz = pnlInputVu.ClientSize;
+            g.Clear(Color.FromArgb(0, 0, 64));
+
+            // Barre L — y=4, hauteur=16
+            PaintVuBarGdi(g, new Rectangle(22, 4, sz.Width - 116, 16), _vuInPctL);
+            // Barre R — y=28, hauteur=16
+            PaintVuBarGdi(g, new Rectangle(22, 28, sz.Width - 116, 16), _vuInPctR);
+
+            using var fSmall = new Font("Segoe UI", 7f);
+            TextRenderer.DrawText(g, "L", fSmall,
+                new Rectangle(4, 4, 16, 16), Color.FromArgb(160, 160, 180),
+                TextFormatFlags.VerticalCenter);
+            TextRenderer.DrawText(g, "R", fSmall,
+                new Rectangle(4, 28, 16, 16), Color.FromArgb(160, 160, 180),
+                TextFormatFlags.VerticalCenter);
+
+            using var fLevel = new Font("Segoe UI", 7.5f);
+            int lx = sz.Width - 112;
+            TextRenderer.DrawText(g, _vuInStrL, fLevel,
+                new Rectangle(lx, 4, 108, 16), Color.Lime,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+            TextRenderer.DrawText(g, _vuInStrR, fLevel,
+                new Rectangle(lx, 28, 108, 16), Color.Lime,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+        }
+
+        private static void PaintVuBarGdi(Graphics g, Rectangle r, int pct)
+        {
+            if (r.Width <= 4 || r.Height <= 4) return;
+            int vm   = Math.Max(1, r.Height / 6);
+            int lh   = r.Height - 2 * vm;
+            double pB = (VuBlueEnd   - VuDbMin) / -VuDbMin * 100.0;
+            double pG = (VuGreenEnd  - VuDbMin) / -VuDbMin * 100.0;
+            double pO = (VuOrangeEnd - VuDbMin) / -VuDbMin * 100.0;
+            for (int i = 0; i < VuLedCount; i++)
+            {
+                int x0 = r.X + (int)((double)i       / VuLedCount * r.Width);
+                int x1 = r.X + (int)((double)(i + 1) / VuLedCount * r.Width);
+                int w  = Math.Max(1, x1 - x0 - 2);
+                double cp = ((i + 0.5) / VuLedCount) * 100.0;
+                Color col = cp > pct           ? Color.FromArgb(30, 30, 60)
+                          : cp <= pB           ? Color.FromArgb(0, 120, 215)
+                          : cp <= pG           ? Color.Lime
+                          : cp <= pO           ? Color.Gold
+                                               : Color.Red;
+                using var br = new SolidBrush(col);
+                g.FillRectangle(br, x0, r.Y + vm, w, lh);
+            }
+        }
+
         private void CreateDbMarkers(Panel bar, string[] labels, double[] dbValues)
         {
             if (bar == null || labels == null || dbValues == null)
@@ -2424,6 +2546,9 @@ namespace AudioHexViewer
 
         private void Form1_Load(object sender, EventArgs e)
         {
+            // Pré-scan des devices pendant que le splash est encore visible
+            // (thread UI STA = objets COM WASAPI valides)
+
             // Double-buffering sur la barre de debug pour supprimer tout clignotement résiduel
             typeof(Panel)
                 .GetProperty("DoubleBuffered",
@@ -2551,6 +2676,73 @@ namespace AudioHexViewer
 
 
         // ── Export to PDF ─────────────────────────────────────────────────────
+        private void menuExportCsv_Click(object? sender, EventArgs e)
+        {
+            using var dlg = new ExportCsvDialog();
+
+            // Pré-sélectionne l'onglet actif
+            dlg.PreSelectTab(GetActiveTab() switch
+            {
+                ActiveTab.Spectrum     => "Spectrum",
+                ActiveTab.Oscilloscope => "Oscilloscope",
+                _                      => "Histogram"
+            });
+
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+            try
+            {
+                System.Text.StringBuilder? data = dlg.SelectedTab switch
+                {
+                    "Histogram"    => histogramControl?.GetCsvData(dlg.Separator, dlg.IncludeHeader, dlg.DecimalSeparator),
+                    "Spectrum"     => spectrumControl?.GetCsvData(dlg.Separator, dlg.IncludeHeader, dlg.DecimalSeparator),
+                    "Oscilloscope" => oscilloscopeControl?.GetCsvData(dlg.Separator, dlg.IncludeHeader, dlg.DecimalSeparator),
+                    _              => null
+                };
+
+                if (data == null || data.Length == 0)
+                {
+                    MessageBox.Show(this, "No data available for export.", "Export CSV",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                File.WriteAllText(dlg.FilePath, data.ToString(), System.Text.Encoding.UTF8);
+
+                // Message 1s auto-dismiss
+                ShowAutoClosingMessage($"CSV exported successfully:\n{dlg.FilePath}", 1000);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Export CSV", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void ShowAutoClosingMessage(string message, int durationMs)
+        {
+            var dlg = new Form
+            {
+                Text = "Export CSV",
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                StartPosition   = FormStartPosition.CenterParent,
+                MaximizeBox     = false, MinimizeBox = false,
+                ShowInTaskbar   = false, ControlBox = false,
+                ClientSize      = new Size(380, 70)
+            };
+            var lbl = new Label
+            {
+                Dock      = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Text      = message,
+                Font      = new Font("Segoe UI", 9f)
+            };
+            dlg.Controls.Add(lbl);
+            var t = new System.Windows.Forms.Timer { Interval = durationMs };
+            t.Tick += (_, _) => { t.Stop(); t.Dispose(); dlg.Close(); };
+            t.Start();
+            dlg.Show(this);
+        }
+
         private void menuExportPdf_Click(object sender, EventArgs e)
         {
             using var dlg = new AudioHexViewer.ExportPdfDialog();

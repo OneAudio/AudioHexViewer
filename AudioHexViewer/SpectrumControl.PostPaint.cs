@@ -1240,6 +1240,78 @@ namespace AudioHexViewer
         public System.Windows.Forms.DataVisualization.Charting.Chart GetChartForClipboard()
             => chartSpectrum;
 
+        // ── Export CSV ───────────────────────────────────────────────────────
+        public System.Text.StringBuilder GetCsvData(char sep, bool header, char decSep = '.')
+        {
+            var sb = new System.Text.StringBuilder();
+            string s = sep.ToString();
+            string ic = System.Globalization.CultureInfo.InvariantCulture.ToString();
+            var ic2 = System.Globalization.CultureInfo.InvariantCulture;
+            // Formate un double avec le séparateur décimal choisi
+            string Fmt(double v, string fmt) {
+                var s2 = v.ToString(fmt, ic2);
+                return decSep == ',' ? s2.Replace('.', ',') : s2;
+            }
+
+            bool hasL = _plotLeftSpectrum  != null && _plotLeftSpectrum.Length  > 0;
+            bool hasR = _plotRightSpectrum != null && _plotRightSpectrum.Length > 0;
+            if (_plotFreqAxis == null || _plotFreqAxis.Length == 0) return sb;
+
+            int n = _plotFreqAxis.Length;
+            if (hasL) n = Math.Min(n, _plotLeftSpectrum!.Length);
+            if (hasR) n = Math.Min(n, _plotRightSpectrum!.Length);
+
+            // Active overlays
+            var activeOverlays = new System.Collections.Generic.List<(string name, double[] freqHz, double[]? leftDb, double[]? rightDb)>();
+            foreach (var ov in _overlayCache)
+            {
+                if (!ov.Visible) continue;
+                var d = ov.Data;
+                if (d?.FreqHz == null) continue;
+                activeOverlays.Add((ov.Entry?.Name ?? "Overlay", d.FreqHz, d.LeftDbFs, d.RightDbFs));
+            }
+
+            if (header)
+            {
+                sb.Append("Freq_Hz");
+                if (hasL) sb.Append($"{s}Left_dBFS");
+                if (hasR) sb.Append($"{s}Right_dBFS");
+                foreach (var (name, _, ovL, ovR) in activeOverlays)
+                {
+                    if (ovL != null) sb.Append($"{s}{name}_L_dBFS");
+                    if (ovR != null) sb.Append($"{s}{name}_R_dBFS");
+                }
+                sb.AppendLine();
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                sb.Append(_plotFreqAxis[i].ToString("F4", ic2));
+                if (hasL) sb.Append($"{s}{_plotLeftSpectrum![i].ToString("F4", ic2)}");
+                if (hasR) sb.Append($"{s}{_plotRightSpectrum![i].ToString("F4", ic2)}");
+                foreach (var (_, ovFx, ovL, ovR) in activeOverlays)
+                {
+                    // Interpolate overlay to same freq grid
+                    if (ovL != null) sb.Append($"{s}{Fmt(InterpolateDb(ovFx, ovL, _plotFreqAxis[i]), "F4")}");
+                    if (ovR != null) sb.Append($"{s}{Fmt(InterpolateDb(ovFx, ovR, _plotFreqAxis[i]), "F4")}");
+                }
+                sb.AppendLine();
+            }
+            return sb;
+        }
+
+        private static double InterpolateDb(double[] fx, double[] db, double f)
+        {
+            if (fx.Length == 0) return double.NaN;
+            int lo = Array.BinarySearch(fx, f);
+            if (lo >= 0) return db[lo];
+            lo = ~lo;
+            if (lo == 0) return db[0];
+            if (lo >= fx.Length) return db[^1];
+            double t = (f - fx[lo-1]) / (fx[lo] - fx[lo-1]);
+            return db[lo-1] + t * (db[lo] - db[lo-1]);
+        }
+
         public void ExportPng(string filePath, int scale = 2, string? headerTitle = null, string? footerText = null)
         {
             RebuildStatsRowsFromLabels();

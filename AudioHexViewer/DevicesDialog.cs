@@ -8,6 +8,11 @@ namespace AudioHexViewer
 {
     internal partial class DevicesDialog : Form
     {
+        // Cache statique : (deviceId, sampleRate) → supported
+        // Rempli au démarrage par AudioInterfaceScanDialog, puis lu ici
+        internal static readonly Dictionary<(string id, int sr), bool> SrCache
+            = new Dictionary<(string id, int sr), bool>();
+
         // ── Résultats après OK ────────────────────────────────────────────────
         public MMDevice?              SelectedInputDevice  { get; private set; }
         public WaveFormatExtensible?  SelectedInputFormat  { get; private set; }   // null = Auto
@@ -32,26 +37,33 @@ namespace AudioHexViewer
 
             InitializeComponent();
 
-            // ── Périphériques d'entrée ────────────────────────────────────────
-            cmbInputDevice.DisplayMember = "FriendlyName";
+            // ── Périphériques d'entrée ──────────────────────────────────────────
+            // Pas de DisplayMember — on utilise DeviceItem.ToString() qui retourne
+            // le nom pré-cacché → aucun appel COM lors de l'affichage
             foreach (var d in inputDevices)
-                cmbInputDevice.Items.Add(d);
+            {
+                // Utilise le nom pré-cacché pendant le scan (évite appel COM ~300ms/device)
+                string name = SplashScreen.CachedNames.TryGetValue(d.ID, out var n) ? n : d.FriendlyName;
+                cmbInputDevice.Items.Add(new DeviceItem(d, name));
+            }
             SelectDevice(cmbInputDevice, currentInput);
 
-            // ── Périphériques de sortie ───────────────────────────────────────
-            cmbOutputDevice.DisplayMember = "FriendlyName";
+            // ── Périphériques de sortie ──────────────────────────────────────────
             foreach (var d in outputDevices)
-                cmbOutputDevice.Items.Add(d);
+            {
+                string name = SplashScreen.CachedNames.TryGetValue(d.ID, out var n) ? n : d.FriendlyName;
+                cmbOutputDevice.Items.Add(new DeviceItem(d, name));
+            }
             SelectDevice(cmbOutputDevice, currentOutput);
 
             // ── Sample rates (filtrés selon les capacités du périphérique) ────
             cmbInputDevice.SelectedIndexChanged  += (_, _) =>
-                RefreshSrCombo(cmbInputRate,  cmbInputDevice.SelectedItem  as MMDevice, currentInputFormat);
+                RefreshSrCombo(cmbInputRate,  (cmbInputDevice.SelectedItem  as DeviceItem)?.Device, currentInputFormat);
             cmbOutputDevice.SelectedIndexChanged += (_, _) =>
-                RefreshSrCombo(cmbOutputRate, cmbOutputDevice.SelectedItem as MMDevice, currentOutputFormat);
+                RefreshSrCombo(cmbOutputRate, (cmbOutputDevice.SelectedItem as DeviceItem)?.Device, currentOutputFormat);
 
-            RefreshSrCombo(cmbInputRate,  cmbInputDevice.SelectedItem  as MMDevice, currentInputFormat);
-            RefreshSrCombo(cmbOutputRate, cmbOutputDevice.SelectedItem as MMDevice, currentOutputFormat);
+            RefreshSrCombo(cmbInputRate,  (cmbInputDevice.SelectedItem  as DeviceItem)?.Device, currentInputFormat);
+            RefreshSrCombo(cmbOutputRate, (cmbOutputDevice.SelectedItem as DeviceItem)?.Device, currentOutputFormat);
 
             btnInfos.Click  += (_, _) => _onInfos?.Invoke();
             btnOk.Click     += BtnOk_Click;
@@ -92,8 +104,10 @@ namespace AudioHexViewer
 
         private static bool IsSRSupported(MMDevice device, int sampleRate)
         {
-            // Test en mode Exclusif avec les formats les plus courants.
-            // Si l'un passe → SR définitivement supporté.
+            var key = (device.ID, sampleRate);
+            if (SrCache.TryGetValue(key, out bool cached)) return cached;
+
+            // Premier appel pour ce (device, SR) : test COM réel
             WaveFormat[] cands =
             {
                 WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, 2),
@@ -104,14 +118,12 @@ namespace AudioHexViewer
             foreach (var wf in cands)
                 try { if (device.AudioClient.IsFormatSupported(
                               NAudio.CoreAudioApi.AudioClientShareMode.Exclusive, wf))
-                          return true; }
+                    { SrCache[key] = true; return true; } }
                 catch { }
 
-            // Fallback : certains drivers de capture (USB, virtuel, ASIO-proxy…) répondent
-            // incorrectement à IsFormatSupported même pour des SR réellement supportés.
-            // Pour les périphériques de sortie (Render), on reste strict : on n'affiche
-            // que les SR dont on a la confirmation. La capture validera au moment réel.
-            return device.DataFlow == NAudio.CoreAudioApi.DataFlow.Capture;
+            bool result = device.DataFlow == NAudio.CoreAudioApi.DataFlow.Capture;
+            SrCache[key] = result;
+            return result;
         }
 
         private static void SelectDevice(ComboBox cb, MMDevice? target)
@@ -120,7 +132,7 @@ namespace AudioHexViewer
             {
                 for (int i = 0; i < cb.Items.Count; i++)
                 {
-                    if (cb.Items[i] is MMDevice d && d.ID == target.ID)
+                    if (cb.Items[i] is DeviceItem di && di.Device.ID == target.ID)
                     { cb.SelectedIndex = i; return; }
                 }
             }
@@ -130,8 +142,8 @@ namespace AudioHexViewer
 
         private void BtnOk_Click(object? sender, EventArgs e)
         {
-            SelectedInputDevice  = cmbInputDevice.SelectedItem  as MMDevice;
-            SelectedOutputDevice = cmbOutputDevice.SelectedItem as MMDevice;
+            SelectedInputDevice  = (cmbInputDevice.SelectedItem  as DeviceItem)?.Device;
+            SelectedOutputDevice = (cmbOutputDevice.SelectedItem as DeviceItem)?.Device;
             SelectedInputFormat  = SrItemToFormat(cmbInputRate.SelectedItem  as SrItem);
             SelectedOutputFormat = SrItemToFormat(cmbOutputRate.SelectedItem as SrItem);
             DialogResult = DialogResult.OK;
@@ -143,6 +155,15 @@ namespace AudioHexViewer
                : new WaveFormatExtensible(item.Rate, 32, 2);
 
         // ── SrItem ────────────────────────────────────────────────────────────
+        // DeviceItem : nom pré-cacché → aucun appel COM lors de l'affichage dans le combo
+        internal sealed class DeviceItem
+        {
+            public MMDevice Device      { get; }
+            public string   DisplayName { get; }
+            public DeviceItem(MMDevice d, string name) { Device = d; DisplayName = name; }
+            public override string ToString() => DisplayName;
+        }
+
         private sealed class SrItem
         {
             public string Label { get; }
