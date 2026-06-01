@@ -546,6 +546,7 @@ namespace AudioHexViewer
             _vdivMode = chkVdiv.Checked;
             UpdateGainCombos();
             UpdateTrigLevelRange(isConversion: true);   // convertit la valeur entre normalisé ↔ Volts
+            lblTrigLvl.Text = _vdivMode ? "LEVEL (V)" : "LEVEL";
             pnlScope.Invalidate();
         }
 

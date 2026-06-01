@@ -8,14 +8,12 @@ Uniformiser la calibration d l'analyseur avec celle du générateur.
 Supprimer le bandeau du haut (Format+ vue-mêtre) + bouton REC/CAL.
 Rempaclacer par une barre horizontale d'icônes raccourcis et le même vue-mètre que le générateur.
 Réduire un peu la hauteur de la GUI du générateur.
-Uniformiser les 3 onglets.
 
 Oscilloscope:
 
 Histogramme:
-Ajouter un mode pour afficher l'axe X en 2^n pour plus de lisibilité des labels.
+
 Voir si ont peut élargir le graphique ? (même taille que les autres onglets)
-Réorganiser les commandes de ce panneau.
 
  Prévoir la normalisation de gain/phase (calibration) pour le mode FRF.(plus tard)
  Ajouter une calibration spécifique pour le mode DC - Offset + Gain ? 

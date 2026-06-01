@@ -68,6 +68,7 @@ namespace AudioHexViewer
         private System.Windows.Forms.Timer? liveTimer;
         private bool isLive;
         private bool _isNormalized;   // true quand ChkNorm est coché (mode PDF)
+        private bool _isDiff;          // true = vue différentielle (mesuré - gaussienne)
 
         // Stats pour PostPaint
         private readonly struct StatsData
@@ -78,19 +79,24 @@ namespace AudioHexViewer
             public readonly double SigmaLsb;  // σ réel des valeurs affichées
             public readonly double MeanLsb;   // μ des valeurs affichées (≈0 en AC, offset en DC)
             public readonly double DnlMax;    // max |DNL| vs modèle gaussien (en LSB)
+            public readonly double Enob;      // Effective Number Of Bits
             public readonly int    Min, Max;
             public readonly bool   HasData;
 
             public int PeakToPeak => HasData ? Max - Min : 0;
 
             public StatsData(int count, int dc, double rms, double sigma, double mean,
-                             double dnlMax, int min, int max)
+                             double dnlMax, int min, int max, int lsbRange)
             {
                 Count    = count; DcLsb    = dc;
                 RmsLsb   = rms;   SigmaLsb = sigma; MeanLsb = mean;
                 DnlMax   = dnlMax;
                 Min      = min;   Max      = max;
                 HasData  = count > 0;
+                // ENOB = log2(pleine_échelle / RMS)  avec pleine échelle = 2 × lsbRange
+                Enob = (rms > 0 && lsbRange > 0)
+                    ? Math.Log2(2.0 * lsbRange / rms)
+                    : 0;
             }
         }
         private StatsData _statsLeft;
@@ -487,6 +493,11 @@ namespace AudioHexViewer
         private void ChkNorm_CheckedChanged(object sender, EventArgs e)           => RebuildHistogram();
         // Marqueurs σ : pas de recalcul des données, simple rafraîchissement du PostPaint
         private void ChkMarkers_CheckedChanged(object sender, EventArgs e)        => chartHistogram.Invalidate();
+        private void ChkDiff_CheckedChanged(object sender, EventArgs e)
+        {
+            _isDiff = chkDiff.Checked;
+            RebuildHistogram();
+        }
         private void ComboSigma_SelectedIndexChanged(object sender, EventArgs e)  => chartHistogram.Invalidate();
 
         private void ComboRangeLsb_SelectedIndexChanged(object sender, EventArgs e)
@@ -609,11 +620,11 @@ namespace AudioHexViewer
             double rDnl = ComputeDnlMax(binsRight, rCnt, rMean, rSigma, lsbRange, binWidth);
 
             _statsLeft  = lCnt > 0
-                ? new StatsData(lCnt, dcL, lRms, lSigma, lMean, lDnl, lMin, lMax)
-                : new StatsData(0, dcL, 0, 0, 0, 0, 0, 0);
+                ? new StatsData(lCnt, dcL, lRms, lSigma, lMean, lDnl, lMin, lMax, lsbRange)
+                : new StatsData(0, dcL, 0, 0, 0, 0, 0, 0, 0);
             _statsRight = rCnt > 0
-                ? new StatsData(rCnt, dcR, rRms, rSigma, rMean, rDnl, rMin, rMax)
-                : new StatsData(0, dcR, 0, 0, 0, 0, 0, 0);
+                ? new StatsData(rCnt, dcR, rRms, rSigma, rMean, rDnl, rMin, rMax, lsbRange)
+                : new StatsData(0, dcR, 0, 0, 0, 0, 0, 0, 0);
 
             // ── Normalisation PDF ───────────────────────────────────────────
             // Quand ChkNorm est coché, chaque bin est divisé par (N·binWidth) → densité en 1/LSB.
@@ -622,18 +633,42 @@ namespace AudioHexViewer
 
             // Séries — couleurs issues de SpectrumColorSettings
             chartHistogram.Series.Clear();
+
+            // ── Helper : vue différentielle (mesuré − gaussienne idéale) ─────
+            double DiffY(int count, double n, double mu, double sigma, int binIdx, double normF)
+            {
+                double x      = -lsbRange + binIdx * binWidth + binWidth / 2.0;
+                double scale  = isNorm
+                    ? 1.0 / (sigma * Math.Sqrt(2.0 * Math.PI))
+                    : n * binWidth / (sigma * Math.Sqrt(2.0 * Math.PI));
+                double gauss  = scale * Math.Exp(-((x - mu) * (x - mu)) / (2.0 * sigma * sigma));
+                return count * normF - gauss;
+            }
+
             if (binsLeft != null)
             {
                 double normF = isNorm && lCnt > 0 ? 1.0 / ((double)lCnt * binWidth) : 1.0;
                 var s = new Series("Left") { ChartType = SeriesChartType.Column, ChartArea = "HistogramArea", Color = BarLeftColor };
-                for (int i = 0; i < binCount; i++) s.Points.AddXY(-lsbRange + i * binWidth + binWidth / 2, binsLeft[i] * normF);
+                for (int i = 0; i < binCount; i++)
+                {
+                    double y = _isDiff && _statsLeft.SigmaLsb > 1e-6
+                        ? DiffY(binsLeft[i], lCnt, _statsLeft.MeanLsb, _statsLeft.SigmaLsb, i, normF)
+                        : binsLeft[i] * normF;
+                    s.Points.AddXY(-lsbRange + i * binWidth + binWidth / 2, y);
+                }
                 chartHistogram.Series.Add(s);
             }
             if (binsRight != null)
             {
                 double normF = isNorm && rCnt > 0 ? 1.0 / ((double)rCnt * binWidth) : 1.0;
                 var s = new Series("Right") { ChartType = SeriesChartType.Column, ChartArea = "HistogramArea", Color = BarRightColor };
-                for (int i = 0; i < binCount; i++) s.Points.AddXY(-lsbRange + i * binWidth + binWidth / 2, binsRight[i] * normF);
+                for (int i = 0; i < binCount; i++)
+                {
+                    double y = _isDiff && _statsRight.SigmaLsb > 1e-6
+                        ? DiffY(binsRight[i], rCnt, _statsRight.MeanLsb, _statsRight.SigmaLsb, i, normF)
+                        : binsRight[i] * normF;
+                    s.Points.AddXY(-lsbRange + i * binWidth + binWidth / 2, y);
+                }
                 chartHistogram.Series.Add(s);
             }
 
@@ -855,6 +890,7 @@ namespace AudioHexViewer
                     Row("Max",     $"{d.Max:N0}");
                     Row("P-P",     $"{d.PeakToPeak:N0} LSB");
                     Row("DNL max", d.DnlMax > 0 ? $"{d.DnlMax:F3}" : "—");
+                    Row("ENOB",    d.Enob > 0 ? $"{d.Enob:F2} bits" : "—", bold: d.Enob > 0);
                 }
                 else
                 {

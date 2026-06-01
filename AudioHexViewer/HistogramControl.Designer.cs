@@ -28,6 +28,7 @@ namespace AudioHexViewer
             ChkMarkers     = new CheckBox();
             comboSigma     = new ComboBox();
             ChkNorm        = new CheckBox();
+            chkDiff        = new CheckBox();
             sep1           = new Label();
             sep2           = new Label();
             sep3           = new Label();
@@ -75,7 +76,7 @@ namespace AudioHexViewer
                 chkDcMode,
                 ChkGauss,
                 ChkMarkers,   comboSigma,
-                ChkNorm,
+                ChkNorm, chkDiff,
                 sep1, sep2, sep3, sep4,
                 btnRun
             });
@@ -101,7 +102,14 @@ namespace AudioHexViewer
             sep1.Name      = "sep1";
             sep1.Size      = new Size(1, 76);
 
-            // ── 2. RANGE LSB (x=112, row1) + BIN LSB (x=112, row2) ───────────
+            // ── DC MODE sous CHANNEL (x=8, row2) ─────────────────────────────
+            chkDcMode.AutoSize  = true;
+            chkDcMode.Font      = std9;
+            chkDcMode.Text      = "DC mode";
+            chkDcMode.Location  = new Point(8, 60);
+            chkDcMode.CheckedChanged += ChkDcMode_CheckedChanged;
+
+            // ── RANGE LSB (x=112, row1) + BIN LSB (x=112, row2) ─────────────
             lblRangePow.AutoSize  = true;
             lblRangePow.Font      = gS;
             lblRangePow.ForeColor = SystemColors.GrayText;
@@ -112,7 +120,7 @@ namespace AudioHexViewer
             comboRangeLsb.Font              = std9;
             comboRangeLsb.FormattingEnabled = true;
             comboRangeLsb.Location = new Point(112, 18);
-            comboRangeLsb.Size     = new Size(130, 24);
+            comboRangeLsb.Size     = new Size(90, 24);
             comboRangeLsb.SelectedIndexChanged += ComboRangeLsb_SelectedIndexChanged;
 
             lblBinPow.AutoSize  = true;
@@ -130,34 +138,30 @@ namespace AudioHexViewer
 
             // ── SEP 2 (x=248) ────────────────────────────────────────────────
             sep2.BackColor = SystemColors.ControlDark;
-            sep2.Location  = new Point(248, 6);
+            sep2.Location  = new Point(208, 6);
             sep2.Name      = "sep2";
             sep2.Size      = new Size(1, 76);
 
-            // ── 3. DC MODE (x=256) ───────────────────────────────────────────
-            chkDcMode.AutoSize  = true;
-            chkDcMode.Font      = std9;
-            chkDcMode.Text      = "DC mode";
-            chkDcMode.Location  = new Point(256, 18);
-            chkDcMode.CheckedChanged += ChkDcMode_CheckedChanged;
-
-            // ── SEP 3 (x=348) ────────────────────────────────────────────────
-            sep3.BackColor = SystemColors.ControlDark;
-            sep3.Location  = new Point(348, 6);
-            sep3.Name      = "sep3";
-            sep3.Size      = new Size(1, 76);
-
-            // ── 4. GAUSSIAN FIT (row1) + nσ CURSORS (row2) ───────────────────
+            // ── OPTIONS (x=256) — 3 cases en colonne ─────────────────────────
+            //   GAUSSIAN FIT  y=10
+            //   NORMALIZED    y=34
+            //   nσ CURSORS    y=58 + combo sigma à droite
             ChkGauss.AutoSize  = true;
             ChkGauss.Font      = std9;
-            ChkGauss.Text      = "GAUSSIAN FIT";
-            ChkGauss.Location  = new Point(356, 18);
+            ChkGauss.Text      = "Gaussian fit";
+            ChkGauss.Location  = new Point(216, 10);
             ChkGauss.CheckedChanged += ChkGauss_CheckedChanged;
+
+            ChkNorm.AutoSize  = true;
+            ChkNorm.Font      = std9;
+            ChkNorm.Text      = "Normalized";
+            ChkNorm.Location  = new Point(216, 34);
+            ChkNorm.CheckedChanged += ChkNorm_CheckedChanged;
 
             ChkMarkers.AutoSize  = true;
             ChkMarkers.Font      = std9;
-            ChkMarkers.Text      = "nσ CURSORS";
-            ChkMarkers.Location  = new Point(356, 60);
+            ChkMarkers.Text      = "nθ Cursors";
+            ChkMarkers.Location  = new Point(216, 58);
             ChkMarkers.CheckedChanged += ChkMarkers_CheckedChanged;
 
             comboSigma.DropDownStyle     = ComboBoxStyle.DropDownList;
@@ -165,23 +169,20 @@ namespace AudioHexViewer
             comboSigma.FormattingEnabled = true;
             comboSigma.Items.AddRange(new object[] { "±1σ", "±2σ", "±3σ" });
             comboSigma.SelectedIndex = 2;
-            comboSigma.Location = new Point(480, 60);
-            comboSigma.Size     = new Size(66, 24);
+            comboSigma.Location = new Point(334, 58);
+            comboSigma.Size     = new Size(62, 24);
             comboSigma.SelectedIndexChanged += ComboSigma_SelectedIndexChanged;
 
-            // ── SEP 4 (x=554) ────────────────────────────────────────────────
-            sep4.BackColor = SystemColors.ControlDark;
-            sep4.Location  = new Point(554, 6);
-            sep4.Name      = "sep4";
-            sep4.Size      = new Size(1, 76);
+            // ── VUE DIFFÉRENTIELLE (x=408, row2) ─────────────────────────────
+            chkDiff.AutoSize  = true;
+            chkDiff.Font      = std9;
+            chkDiff.Text      = "Diff view";
+            chkDiff.Location  = new Point(408, 58);
+            chkDiff.CheckedChanged += ChkDiff_CheckedChanged;
 
-            // ── 5. NORMALIZED (row1) + 2ⁿ labels (row2) ─────────────────────
-            ChkNorm.AutoSize  = true;
-            ChkNorm.Font      = std9;
-            ChkNorm.Text      = "NORMALIZED";
-            ChkNorm.Location  = new Point(562, 18);
-            ChkNorm.CheckedChanged += ChkNorm_CheckedChanged;
-
+            // sep3, sep4 — inutilisés, cachés
+            sep3.Size = new Size(0, 0);
+            sep4.Size = new Size(0, 0);
 
                         // ── RUN (anchored right) ──────────────────────────────────────────
             btnRun.Anchor    = AnchorStyles.Top | AnchorStyles.Right;
@@ -228,6 +229,7 @@ namespace AudioHexViewer
         private Label    lblBinPow;
         private ComboBox comboBinLsb;
         private CheckBox chkDcMode;
+        private CheckBox chkDiff;
         private CheckBox ChkGauss;
         private CheckBox ChkMarkers;
         private ComboBox comboSigma;

@@ -193,7 +193,7 @@ namespace AudioHexViewer
             lblTrigSlope.AutoSize=true; lblTrigSlope.Font=gS; lblTrigSlope.ForeColor=System.Drawing.SystemColors.GrayText;
             lblTrigSlope.Location=new Point(528,4); lblTrigSlope.Text="SLOPE";
             nudTrigLevel.Text="0.000";
-            nudTrigLevel.Font=std9; nudTrigLevel.Location=new Point(528,60); nudTrigLevel.Size=new Size(64,24); nudTrigLevel.TabIndex=6;
+            nudTrigLevel.Font=std9; nudTrigLevel.Location=new Point(528,60); nudTrigLevel.Size=new Size(52,24); nudTrigLevel.TabIndex=6;
             nudTrigLevel.TextAlign=HorizontalAlignment.Right;
 
             // ── 5. DISPLAY (x=636) ── Grid + Roll ────────────────────────────
