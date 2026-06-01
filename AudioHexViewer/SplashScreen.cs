@@ -174,7 +174,8 @@ namespace AudioHexViewer
                         return true;
                 }
                 catch { }
-            return device.DataFlow == NAudio.CoreAudioApi.DataFlow.Capture;
+            // SR non supporté en mode exclusif
+            return false;
         }
 
         // ── Rendu ─────────────────────────────────────────────────────────────

@@ -1305,29 +1305,18 @@ namespace AudioHexViewer
         {
             try
             {
-                string text = BuildDeviceInfoText();
-                using var f = new Form
-                {
-                    Text = "Device info",
-                    Size = new System.Drawing.Size(600, 500),
-                    StartPosition = FormStartPosition.CenterParent
-                };
-                var tb = new TextBox
-                {
-                    Multiline   = true,
-                    ScrollBars  = ScrollBars.Both,
-                    ReadOnly    = true,
-                    Dock        = DockStyle.Fill,
-                    Font        = new System.Drawing.Font("Consolas", 9),
-                    Text        = text,
-                    WordWrap    = false
-                };
-                f.Controls.Add(tb);
-                f.ShowDialog(this);
+                using var dlg = new DeviceInfoDialog(
+                    inputDevice:  _selectedInputDevice,
+                    outputDevice: _selectedOutputDevice,
+                    activeFormat: currentFormat,
+                    isCapturing:  capture != null,
+                    isLoopback:   captureOutput,
+                    srOptions:    _sampleRateOptions);
+                dlg.ShowDialog(this);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.ToString(), "Crash in DeviceInfos", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.ToString(), "Device info", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
