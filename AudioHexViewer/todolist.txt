@@ -4,13 +4,11 @@ Le 30/05/2026
 -------------
 
 Liste des petites corrections à faire :
-1- Pouvoir déplacement manuellement la position horizontal du trigger (scope)
 2- Ajouter un bouton de vérouillage de l'espace x entre les curseurs (scope) 
 3- Améliorer le mode difff view pour voir les valeurs négatives (histo)
 4- Changer le calcul de l'ENOB pour qu'il soit sur l'échelle total (histo)
 5- Rendre plus propre et aligné les élements du dialogue "colors" (general)
 6- Ajouter un mode "invert all" dans le menu "Colors" (General)
-7- Ajouter dans la barre du haut du programme les périphériques d'e/s actifs et leurs SR.
 8- Changer l'emplacement sur l'écran ou s'ouvre les différentes fenêtres.
 9- Changer la police deu logo AHV.
 10- Ajouter un système de versioning qui s'incrément dans le splashscreen.
@@ -19,6 +17,7 @@ Liste des petites corrections à faire :
 13- Voir s'il faut garder "data record 1s" ?
 14- Rendre plus joli le dialogue "Axis parameters" (Spectrum)
 15- Réaligner à gauche tout les items du menu du haut, et les organiser de manière plus logique(general)
+16- Ajouter une fonction de holdoff dans l'oscilloscope (scope)
 
 
 

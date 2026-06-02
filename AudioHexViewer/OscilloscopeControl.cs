@@ -156,6 +156,7 @@ namespace AudioHexViewer
         private long  _lastTrigAbsPos = -1; // position absolue du dernier déclenchement affiché
         private int   _draggingOffset    = 0;   // 0=aucun 1=L 2=R
         private bool  _draggingTrigger   = false;
+        private bool  _draggingTrigPos   = false;
         private bool  _draggingMinimap   = false;
         private int   _scaleChannel      = 0;   // 0=L  1=R  → quelle voie commande l'échelle Y
         private int   _minimapClickOffset= 0;   // offset du clic dans la barre bleue (en samples)
@@ -231,9 +232,11 @@ namespace AudioHexViewer
             pnlScope.MouseDown        += PnlScope_OffsetMouseDown;
             pnlScope.MouseMove        += PnlScope_CursorMouseMove;
             pnlScope.MouseMove        += PnlScope_OffsetMouseMove;
-            pnlScope.MouseUp          += (_, _) => { _cursorDragging = 0; _draggingOffset = 0; _draggingMinimap = false; _draggingTrigger = false; };
+            pnlScope.MouseUp          += (_, _) => { _cursorDragging = 0; _draggingOffset = 0; _draggingMinimap = false; _draggingTrigger = false; _draggingTrigPos = false; };
             pnlScope.MouseDown        += PnlScope_TrigHandleMouseDown;
             pnlScope.MouseMove        += PnlScope_TrigHandleMouseMove;
+            pnlScope.MouseDown        += PnlScope_TrigPosMouseDown;
+            pnlScope.MouseMove        += PnlScope_TrigPosMouseMove;
             pnlScope.MouseDown        += PnlScope_MinimapMouseDown;
             pnlScope.MouseMove        += PnlScope_MinimapMouseMove;
             pnlScope.MouseDoubleClick += PnlScope_CursorDblClick;
@@ -1339,6 +1342,35 @@ namespace AudioHexViewer
             pnlScope.Invalidate();
         }
 
+        // ── Drag horizontal de la position trigger (T POS) ──────────────────
+        private void PnlScope_TrigPosMouseDown(object? s, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            var w = GetWaveRect(); if (w.IsEmpty) return;
+            float xTrig = w.Left + PreTrig * w.Width;
+            // Zone de hit : triangle en haut (y ≤ w.Top + 10) ±8px autour de xTrig
+            if (e.Y > w.Top + 10) return;
+            if (Math.Abs(e.X - xTrig) <= 8f) _draggingTrigPos = true;
+        }
+
+        private void PnlScope_TrigPosMouseMove(object? s, MouseEventArgs e)
+        {
+            if (!_draggingTrigPos) return;
+            var w = GetWaveRect(); if (w.IsEmpty || w.Width < 1f) return;
+
+            // Convertit X pixel → divisions (0 … H_DIVS)
+            float frac = Math.Clamp((e.X - w.Left) / w.Width, 0.05f / H_DIVS * H_DIVS, 1f);
+            decimal divVal = Math.Clamp(
+                (decimal)Math.Round(frac * H_DIVS * 2f) / 2m,   // arrondi au 0.5 div
+                nudTrigPos.Minimum, nudTrigPos.Maximum);
+
+            if (nudTrigPos.Value != divVal)
+            {
+                nudTrigPos.Value = divVal;
+                // nudTrigPos.ValueChanged s'occupe du Invalidate
+            }
+        }
+
         private void PnlScope_OffsetMouseDown(object? s, MouseEventArgs e)
         {
             if(e.Button!=MouseButtons.Left) return;
@@ -1595,6 +1627,19 @@ namespace AudioHexViewer
             float xTrig=w.Left+PreTrig*w.Width;
             using var pV=new Pen(Color.FromArgb(160,tCol),1f){DashStyle=DashStyle.Dash};
             g.DrawLine(pV,xTrig,w.Top,xTrig,w.Bottom);
+
+            // Repère draggable en HAUT de la ligne de position trigger (triangle vers le bas)
+            {
+                float hx = xTrig;
+                float hy = w.Top - 1f;
+                using var brH = new SolidBrush(tCol);
+                g.FillPolygon(brH, new PointF[]
+                {
+                    new(hx,        hy + 9f),   // pointe vers le bas
+                    new(hx - 5f,   hy),
+                    new(hx + 5f,   hy)
+                });
+            }
 
             // Flèche indicatrice uniquement quand le trigger a déclenché
             if(_trigFound&&trigIdx>=0&&trigIdx<winSamples)
