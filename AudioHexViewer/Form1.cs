@@ -247,7 +247,7 @@ namespace AudioHexViewer
 
         // Seuils dBFS pour le bargraphe
         private const double DbMin = -80.0;      // plancher d'affichage
-        // ── VU-mètre entrée (pnlInputVu) ─────────────────────────────────────
+        // ── VU-mètre entrée (dans DataViewForm) ───────────────────────────────
         private const int    VuLedCount    = 40;
         private const double VuDbMin       = -80.0;
         private const double VuBlueEnd     = -36.0;
@@ -550,7 +550,7 @@ namespace AudioHexViewer
             // Charger la calibration existante
             LoadCalibration();
 
-            // dBFS markers supprimés (ancien vu-mètre remplacé par pnlInputVu)
+            // dBFS markers supprimés (ancien vu-mètre déplacé dans DataViewForm)
 
             // ── VU-mètre entrée ───────────────────────────────────────────────
             InitInputVuMeter();
@@ -586,6 +586,20 @@ namespace AudioHexViewer
             );
 
             // Ne pas afficher au démarrage
+            _dataViewForm.RunStopChanged += (_, running) =>
+            {
+                if (running && capture == null)
+                    StartCapture();
+                UpdateVuInTimer();
+                if (!running)
+                {
+                    // Clear DataView display when stopped
+                    _dataViewForm.lblLeftMainValue.Text  = "—";
+                    _dataViewForm.lblRightMainValue.Text = "—";
+                    _dataViewForm.lblLeftLevelDV.Text    = "-∞ dBFS";
+                    _dataViewForm.lblRightLevelDV.Text   = "-∞ dBFS";
+                }
+            };
             _dataViewForm.Hide();
         }
         //
@@ -1322,77 +1336,265 @@ namespace AudioHexViewer
 
         private void menuShowAllFormats_Click(object? sender, EventArgs e)
         {
-            // Si la fentre existe dj, on la raffiche simplement
             if (dataFormatsWindow != null && !dataFormatsWindow.IsDisposed)
             {
                 dataFormatsWindow.Show();
                 dataFormatsWindow.BringToFront();
+                RefreshAllFormatsWindow();
                 return;
             }
 
-            var dlg = new Form();
-            dataFormatsWindow = dlg;
+            dataFormatsWindow = BuildAllFormatsWindow();
+            dataFormatsWindow.Show(this);
+        }
 
-            dlg.Text = "All data formats";
-            dlg.StartPosition = FormStartPosition.CenterParent;
-
-            // Taille par dfaut : un peu large pour faire deux colonnes
-            dlg.Size = new Size(700, 160); // Taille de la fentre pour 2 colonnes en popu^p
-            dlg.MinimizeBox = false;
-            dlg.MaximizeBox = true;
-            dlg.ShowIcon = false;
-
-            var split = new SplitContainer
+        private Form BuildAllFormatsWindow()
+        {
+            var dlg = new Form
             {
-                Dock = DockStyle.Fill,
-                Orientation = Orientation.Vertical
+                Text            = "All data formats",
+                StartPosition   = FormStartPosition.CenterParent,
+                Size            = new Size(450, 320),
+                MinimizeBox     = false,
+                MaximizeBox     = true,
+                ShowIcon        = false,
+                Font            = new Font("Segoe UI", 9f),
+                BackColor       = SystemColors.Window
             };
 
-            // Au cas o ils auraient encore un parent (scurit)
-            if (txtLeft.Parent != null)
-                txtLeft.Parent.Controls.Remove(txtLeft);
-            if (txtRight.Parent != null)
-                txtRight.Parent.Controls.Remove(txtRight);
-
-            txtLeft.Dock = DockStyle.Fill;
-            txtRight.Dock = DockStyle.Fill;
-            txtLeft.Visible = true;
-            txtRight.Visible = true;
-
-
-            split.Panel1.Controls.Add(txtLeft);
-            split.Panel2.Controls.Add(txtRight);
-
-            dlg.Controls.Add(split);
-
-            // Sparation au milieu  l'ouverture
-            dlg.Load += (_, __) =>
+            // ── Layout 2 colonnes ─────────────────────────────────────────────
+            var table = new TableLayoutPanel
             {
-                split.SplitterDistance = dlg.ClientSize.Width / 2;
+                Dock        = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount    = 1,
+                Padding     = new Padding(10, 8, 10, 8)
+            };
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+            table.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            dlg.Controls.Add(table);
+
+            var flowL = BuildChannelRows("LEFT",  out var valsL);
+            var flowR = BuildChannelRows("RIGHT", out var valsR);
+            _fmtValuesL = valsL;
+            _fmtValuesR = valsR;
+            table.Controls.Add(flowL, 0, 0);
+            table.Controls.Add(flowR, 1, 0);
+
+            RefreshAllFormatsWindow();
+
+            // Refresh à chaque tick audio (throttlé via _lastAllFormatsDumpL change)
+            dlg.FormClosing += (_, e2) =>
+            {
+                if (e2.CloseReason == CloseReason.UserClosing)
+                { e2.Cancel = true; dlg.Hide(); }
+            };
+            return dlg;
+        }
+
+        private FlowLayoutPanel BuildChannelFlow(string title)
+        {
+            var flow = new FlowLayoutPanel
+            {
+                Dock          = DockStyle.Fill,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents  = false,
+                AutoScroll    = false,
+                Padding       = new Padding(4)
             };
 
-            // On garde ~50/50 si on redimensionne
-            dlg.Resize += (_, __) =>
+            // Title
+            flow.Controls.Add(new Label
             {
-                split.SplitterDistance = dlg.ClientSize.Width / 2;
-            };
-
-            // Trs important : ne pas dtruire les contrles  la fermeture
-            dlg.FormClosing += (s, eArgs) =>
+                Text      = title,
+                Font      = new Font("Segoe UI", 13f, FontStyle.Bold),
+                ForeColor = SystemColors.HotTrack,
+                AutoSize  = false, Width = 260, Height = 28,
+                Margin    = new Padding(0, 0, 0, 4)
+            });
+            // Separator
+            flow.Controls.Add(new Panel
             {
-                if (eArgs.CloseReason == CloseReason.UserClosing)
-                {
-                    // L'utilisateur clique sur la croix de la petite fentre :
-                    // on cache juste, mais on ne dtruit pas txtLeft / txtRight.
-                    eArgs.Cancel = true;
-                    dlg.Hide();
-                }
-                // Pour les autres cas (fermeture de l'appli, shutdown, etc.),
-                // on laisse faire (pas de Cancel).
+                Width = 260, Height = 1,
+                BackColor = Color.FromArgb(180, 210, 240),
+                Margin    = new Padding(0, 0, 0, 6)
+            });
+            return flow;
+        }
+
+        // ── All formats window — labels créés une fois, mis à jour par Text seulement ──
+        private static readonly Font _fmtLabelFont   = new("Segoe UI", 8.5f);
+        private static readonly Font _fmtValueFont   = new("Segoe UI", 8.5f);
+        private static readonly Font _fmtBinFont     = new("Courier New", 8f);
+        private static readonly Font _fmtSectionFont = new("Segoe UI Semibold", 8.5f);
+
+        // Value labels — [0=Float,1=Dec,2=Hex,3=BinMSB,4=Vrms,5=Vpeak,6=Vdc,7=BinLSB]
+        private Label[]? _fmtValuesL, _fmtValuesR;
+
+        private void RefreshAllFormatsWindow()
+        {
+            if (_fmtValuesL == null || _fmtValuesR == null) return;
+
+            // ── Gather values (no UI work) ────────────────────────────────
+            string fltL = lastLeftFloat.ToString("G9"),   fltR = lastRightFloat.ToString("G9");
+            string decL = lastLeft24.ToString(),           decR = lastRight24.ToString();
+            string hexL = lastLeftHex24,                   hexR = lastRightHex24;
+            string binL = lastLeftBits,                    binR = lastRightBits;
+
+            double? vrmsL=null, vpkL=null, vdcL=null, vrmsR=null, vpkR=null, vdcR=null;
+            bool calL=false, calR=false;
+            if (spectrumControl != null)
+            {
+                calL = spectrumControl.VoltageCalibrationValidLeft;
+                calR = spectrumControl.VoltageCalibrationValidRight;
+                spectrumControl.GetLastVoltages(out vrmsL,out vpkL,out vdcL,out vrmsR,out vpkR,out vdcR);
+            }
+            string V(bool cal, double? v) => cal && v.HasValue ? FormatVoltageWithUnit(v.Value) : "Uncalibrated";
+            Color  C(bool cal) => cal ? SystemColors.ControlText : SystemColors.GrayText;
+
+            // ── Update LEFT labels (Text only — no layout) ────────────────
+            // Split binary "xxxx xxxx xxxx xxxx xxxx xxxx" → MSB/LSB 12 bits each
+            static (string msb, string lsb) SplitBin(string b)
+            {
+                // Format: "xxxx xxxx xxxx xxxx xxxx xxxx" (4+1+4+1+4+1+4+1+4+1+4 = 29 chars)
+                // First 14 chars = bits 23-12 (MSB), last 14 = bits 11-0 (LSB)
+                if (b.Length >= 29)
+                    return (b[..14].TrimEnd(), b[15..].TrimEnd());
+                return (b, "");
+            }
+            var (msbL, lsbL) = SplitBin(binL);
+            var (msbR, lsbR) = SplitBin(binR);
+
+            _fmtValuesL[0].Text = fltL;  _fmtValuesR[0].Text = fltR;
+            _fmtValuesL[1].Text = decL;  _fmtValuesR[1].Text = decR;
+            _fmtValuesL[2].Text = hexL;  _fmtValuesR[2].Text = hexR;
+            _fmtValuesL[3].Text = msbL;  _fmtValuesR[3].Text = msbR;  // MSB bits 23-12
+            _fmtValuesL[4].Text = lsbL;  _fmtValuesR[4].Text = lsbR;  // LSB bits 11-0
+            _fmtValuesL[5].Text = V(calL, vrmsL); _fmtValuesR[5].Text = V(calR, vrmsR);
+            _fmtValuesL[6].Text = V(calL, vpkL);  _fmtValuesR[6].Text = V(calR, vpkR);
+            _fmtValuesL[7].Text = V(calL, vdcL);  _fmtValuesR[7].Text = V(calR, vdcR);
+            // Voltage color
+            for (int i = 5; i <= 7; i++)
+            { _fmtValuesL[i].ForeColor = C(calL); _fmtValuesR[i].ForeColor = C(calR); }
+        }
+
+        private FlowLayoutPanel BuildChannelRows(string title, out Label[] valueLabels)
+        {
+            var flow = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown,
+                WrapContents = false, AutoScroll = false, Padding = new Padding(4)
             };
+            valueLabels = new Label[8];
 
+            // Title + separator
+            flow.Controls.Add(new Label {
+                Text = title, Font = new Font("Segoe UI", 13f, FontStyle.Bold),
+                ForeColor = SystemColors.HotTrack,
+                AutoSize = false, Width = 260, Height = 28, Margin = new Padding(0,0,0,4)
+            });
+            flow.Controls.Add(new Panel {
+                Width = 260, Height = 1,
+                BackColor = Color.FromArgb(180, 210, 240), Margin = new Padding(0,0,0,6)
+            });
 
-            dlg.Show(this);
+            // Digital section
+            AddFmtSection(flow, "Digital");
+            valueLabels[0] = AddFmtRow(flow, "Float",         mono: false);
+            valueLabels[1] = AddFmtRow(flow, "Decimal (24b)", mono: false);
+            valueLabels[2] = AddFmtRow(flow, "Hex (24 bits)", mono: false, color: Color.FromArgb(0,100,180));
+            // Binary : 2 lignes MSB (bits 23-12) / LSB (bits 11-0)
+            valueLabels[3] = AddFmtRow(flow, "Bin MSB",       mono: true,  color: Color.FromArgb(0,130,0));
+            valueLabels[4] = AddFmtRow(flow, "Bin LSB",       mono: true,  color: Color.FromArgb(0,130,0));
+
+            // Voltage section
+            AddFmtSection(flow, "Voltage");
+            valueLabels[5] = AddFmtRow(flow, "Vrms",  mono: false, color: SystemColors.GrayText);
+            valueLabels[6] = AddFmtRow(flow, "Vpeak", mono: false, color: SystemColors.GrayText);
+            valueLabels[7] = AddFmtRow(flow, "Vdc",   mono: false, color: SystemColors.GrayText);
+
+            return flow;
+        }
+
+        private static void AddFmtSection(FlowLayoutPanel flow, string title)
+        {
+            flow.Controls.Add(new Panel { Width = 260, Height = 5, Margin = new Padding(0) });
+            flow.Controls.Add(new Label {
+                Text = title.ToUpperInvariant(), Font = _fmtSectionFont,
+                ForeColor = Color.FromArgb(0, 90, 160),
+                AutoSize = false, Width = 260, Height = 18, Margin = new Padding(0)
+            });
+            flow.Controls.Add(new Panel {
+                Width = 260, Height = 1,
+                BackColor = Color.FromArgb(180, 210, 240), Margin = new Padding(0, 0, 0, 3)
+            });
+        }
+
+        // Binary split helpers ─────────────────────────────────────────────
+        // Input format: "xxxx xxxx xxxx xxxx xxxx xxxx" (24 bits with spaces)
+        private static string BinMsb(string bin)
+        {
+            // Take first 12 significant bits (chars 0..14 of "xxxx xxxx xxxx xxxx xxxx xxxx")
+            // Format from FormatBitsWithStability: groups of 4 separated by spaces
+            // 24 bits = "b23b22b21b20 b19b18b17b16 b15b14b13b12 b11b10b9b8 b7b6b5b4 b3b2b1b0"
+            if (string.IsNullOrEmpty(bin)) return "—";
+            var parts = bin.Split(' ');
+            if (parts.Length < 6) return bin;
+            return parts[0] + " " + parts[1] + " " + parts[2]; // MSB: bits 23-12
+        }
+        private static string BinLsb(string bin)
+        {
+            if (string.IsNullOrEmpty(bin)) return "—";
+            var parts = bin.Split(' ');
+            if (parts.Length < 6) return "";
+            return parts[3] + " " + parts[4] + " " + parts[5]; // LSB: bits 11-0
+        }
+
+        // Binary row: two value labels stacked (MSB + LSB indented)
+        private static Label AddFmtRowBin(FlowLayoutPanel flow, string label, out Label lsbLabel)
+        {
+            var row = new Panel { Width = 260, Height = 36, Margin = new Padding(0, 1, 0, 1) };
+            row.Controls.Add(new Label {
+                Text = "Binary (24b) :", Font = _fmtLabelFont,
+                ForeColor = SystemColors.GrayText,
+                Location = new Point(0, 2), Width = 90, Height = 16
+            });
+            var msbLabel = new Label {
+                Text = "—", Font = _fmtBinFont,
+                ForeColor = Color.FromArgb(0, 130, 0),
+                Location = new Point(94, 1), Width = 162, Height = 16
+            };
+            lsbLabel = new Label {
+                Text = "", Font = _fmtBinFont,
+                ForeColor = Color.FromArgb(0, 130, 0),
+                Location = new Point(94, 18), Width = 162, Height = 16
+            };
+            row.Controls.Add(msbLabel);
+            row.Controls.Add(lsbLabel);
+            flow.Controls.Add(row);
+            return msbLabel;
+        }
+
+        // Returns the value Label (kept for update)
+        private static Label AddFmtRow(FlowLayoutPanel flow, string label,
+            bool mono = false, Color? color = null)
+        {
+            var row = new Panel { Width = 260, Height = 18, Margin = new Padding(0, 1, 0, 1) };
+            row.Controls.Add(new Label {
+                Text = label + " :", Font = _fmtLabelFont,
+                ForeColor = SystemColors.GrayText,
+                Location = new Point(0, 2), Width = 90, Height = 16
+            });
+            var valLbl = new Label {
+                Text = "—", Font = mono ? _fmtBinFont : _fmtValueFont,
+                ForeColor = color ?? SystemColors.ControlText,
+                Location = new Point(94, 2), Width = 162, Height = 16,
+                AutoEllipsis = true
+            };
+            row.Controls.Add(valLbl);
+            flow.Controls.Add(row);
+            return valLbl;
         }
 
         //
@@ -2082,12 +2284,12 @@ namespace AudioHexViewer
                     break;
             }
 
-            // Met  jour les labels
-            _dataViewForm!.lblLeftMainTitle.Text = $"{mode}";
-            _dataViewForm!.lblRightMainTitle.Text = $"{mode}";
-
-            _dataViewForm!.lblLeftMainValue.Text = leftText;
-            _dataViewForm!.lblRightMainValue.Text = rightText;
+            // Met à jour les labels seulement si DataView est en RUN
+            if (_dataViewForm?.IsRunning == true)
+            {
+                string? modeStr = _dataViewForm.comboDisplayMode.SelectedItem as string;
+                _dataViewForm.UpdateValues(leftText, rightText, modeStr ?? mode);
+            }
         }
         //
         [System.Runtime.InteropServices.DllImport("user32.dll")]
@@ -2285,16 +2487,7 @@ namespace AudioHexViewer
         // ── VU-mètre entrée ───────────────────────────────────────────────────
         private void InitInputVuMeter()
         {
-            // Double-buffering via reflection (Panel n'expose pas SetStyle publiquement)
-            typeof(System.Windows.Forms.Control)
-                .GetMethod("SetStyle",
-                    System.Reflection.BindingFlags.Instance |
-                    System.Reflection.BindingFlags.NonPublic)!
-                .Invoke(pnlInputVu, new object[] {
-                    ControlStyles.AllPaintingInWmPaint |
-                    ControlStyles.UserPaint |
-                    ControlStyles.DoubleBuffer, true });
-            pnlInputVu.Paint += PnlInputVu_Paint;
+            // VU-mètre déplacé dans DataViewForm
 
             _vuInTimer = new System.Windows.Forms.Timer { Interval = 80 };
             _vuInTimer.Tick += VuInTimer_Tick;
@@ -2309,21 +2502,21 @@ namespace AudioHexViewer
                 (tabAnalysis.SelectedTab == tabHistogram ||
                  tabAnalysis.SelectedTab == tabSpectrum  ||
                  tabAnalysis.SelectedTab == tabOscilloscope);
-            if (analysisVisible && capture != null)
+            bool dataViewRunning = _dataViewForm?.IsRunning == true;
+            if ((analysisVisible || dataViewRunning) && capture != null)
                 _vuInTimer?.Start();
             else
             {
                 _vuInTimer?.Stop();
                 _vuInPctL = _vuInPctR = 0;
                 _vuInStrL = _vuInStrR = "-∞ dBFS";
-                pnlInputVu.Invalidate();
+                _dataViewForm?.ResetVu();
             }
         }
 
         private void VuInTimer_Tick(object? s, EventArgs e)
         {
             // Timer sur le thread UI — déclenche le repaint proprement
-            pnlInputVu.Invalidate();
         }
 
         // Appelé depuis Form1.AudioCapture.cs — stocke seulement, le timer 80ms déclenche le repaint
@@ -2333,6 +2526,9 @@ namespace AudioHexViewer
             _vuInPctR = VuDbToPct(dbR);
             _vuInStrL = VuFmtDb(dbL);
             _vuInStrR = VuFmtDb(dbR);
+            // Forward to DataView VU if running
+            if (_dataViewForm?.IsRunning == true)
+                _dataViewForm.SetVuLevels(dbL, dbR);
         }
 
         private static int VuDbToPct(double db)
@@ -2345,7 +2541,7 @@ namespace AudioHexViewer
         private void PnlInputVu_Paint(object? sender, PaintEventArgs e)
         {
             var g  = e.Graphics;
-            var sz = pnlInputVu.ClientSize;
+            var sz = new System.Drawing.Size(400, 52);
             g.Clear(Color.FromArgb(0, 0, 64));
 
             // Barre L — y=4, hauteur=16
@@ -3023,8 +3219,8 @@ namespace AudioHexViewer
             // DataView (si ouverte / existante)
             if (_dataViewForm != null)
             {
-                if (_dataViewForm.lblLeftLevelDV != null) _dataViewForm.lblLeftLevelDV.Text = leftText;
-                if (_dataViewForm.lblRightLevelDV != null) _dataViewForm.lblRightLevelDV.Text = rightText;
+                if (_dataViewForm?.IsRunning == true && _dataViewForm.lblLeftLevelDV != null) _dataViewForm.lblLeftLevelDV.Text = leftText;
+                if (_dataViewForm?.IsRunning == true && _dataViewForm.lblRightLevelDV != null) _dataViewForm.lblRightLevelDV.Text = rightText;
             }
         }
         private void ApplyLeftLevelDisplay(string text, Color color, Font font)
@@ -3036,7 +3232,7 @@ namespace AudioHexViewer
                 lblLeftLevelMain.Font = font;
             }
 
-            if (_dataViewForm?.lblLeftLevelDV != null)
+            if (_dataViewForm?.IsRunning == true && _dataViewForm.lblLeftLevelDV != null)
             {
                 _dataViewForm.lblLeftLevelDV.Text = text;
                 _dataViewForm.lblLeftLevelDV.ForeColor = color;
@@ -3053,7 +3249,7 @@ namespace AudioHexViewer
                 lblRightLevelMain.Font = font;
             }
 
-            if (_dataViewForm?.lblRightLevelDV != null)
+            if (_dataViewForm?.IsRunning == true && _dataViewForm.lblRightLevelDV != null)
             {
                 _dataViewForm.lblRightLevelDV.Text = text;
                 _dataViewForm.lblRightLevelDV.ForeColor = color;

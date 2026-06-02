@@ -52,7 +52,6 @@ namespace AudioHexViewer
             menuCopyClipboard = new ToolStripMenuItem();
             menuExportPdf = new ToolStripMenuItem();
             panelTop = new Panel();
-            pnlInputVu = new Panel();
             lblRightLevelMain = new Label();
             lblLeftLevelMain = new Label();
             label6 = new Label();
@@ -215,20 +214,12 @@ namespace AudioHexViewer
             // 
             // panelTop
             // 
-            panelTop.Controls.Add(pnlInputVu);
             panelTop.Dock = DockStyle.Top;
             panelTop.Location = new Point(0, 25);
             panelTop.Name = "panelTop";
             panelTop.Size = new Size(1138, 52);
             panelTop.TabIndex = 38;
             // 
-            // pnlInputVu — VU-mètre entrée (clone du GeneratorWindow)
-            pnlInputVu.Location = new Point(0, 0);
-            pnlInputVu.Size     = new Size(400, 52);
-            pnlInputVu.Name     = "pnlInputVu";
-            pnlInputVu.BackColor= Color.FromArgb(0, 0, 64);
-            pnlInputVu.TabIndex = 70;
-
             // panelDebugInfo  (barre de debug sous panelTop, cachée par défaut)
             // 
             panelDebugInfo.Controls.Add(lblDebugInfo);
@@ -497,7 +488,6 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuCopyClipboard;
         private ToolStripMenuItem menuExportPdf;
         internal Label lblLeftLevelMain;
-        private Panel pnlInputVu;
         internal Label lblRightLevelMain;
     }
 }

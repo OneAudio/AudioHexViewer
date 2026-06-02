@@ -1,187 +1,180 @@
-﻿using System.Windows.Forms;
+using System.Drawing;
+using System.Windows.Forms;
 
 namespace AudioHexViewer
 {
     partial class DataViewForm
     {
-        private System.ComponentModel.IContainer components = null;
-        private Panel panelHost;
+        private System.ComponentModel.IContainer? components = null;
+
+        // ── VU-mètre ──────────────────────────────────────────────────────────
+        internal Panel pnlVu;
+
+        // ── Canal L ───────────────────────────────────────────────────────────
+        internal Label lblLeftTitle;       // "LEFT"
+        internal Label lblLeftLevelDV;     // "-26.5 dBFS"
+        internal Label lblLeftMainTitle;   // "Float"
+        internal Label lblLeftMainValue;   // "-0.00888062"
+
+        // ── Canal R ───────────────────────────────────────────────────────────
+        internal Label lblRightTitle;      // "RIGHT"
+        internal Label lblRightLevelDV;    // "-29.0 dBFS"
+        internal Label lblRightMainTitle;  // "Float"
+        internal Label lblRightMainValue;  // "-0.00286865"
+
+        // ── Barre inférieure ──────────────────────────────────────────────────
+        internal Label    label4;           // "Main data format"
+        internal ComboBox comboDisplayMode;
+        internal Button   btnRunStop;
+
+        // Aliases for legacy code
+        internal Label label2 => lblLeftTitle;
+        internal Label label3 => lblRightTitle;
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && (components != null))
-                components.Dispose();
+            if (disposing) components?.Dispose();
             base.Dispose(disposing);
         }
 
         private void InitializeComponent()
         {
-            panelHost = new Panel();
-            label3 = new Label();
-            label2 = new Label();
-            lblLeftLevelDV = new Label();
-            lblRightLevelDV = new Label();
-            lblLeftMainTitle = new Label();
-            lblLeftMainValue = new Label();
+            // Width = 400 (VU-mètre width)
+            // Layout:
+            //   y=  0..52  : pnlVu (400×52, fond noir)
+            //   y= 52.. 58  : séparateur implicite
+            //   y= 58..100  : ligne L/R — titre + dBFS
+            //   y=100..130  : ligne L/R — format title
+            //   y=130..168  : ligne L/R — valeur principale
+            //   y=168..204  : barre bas (format combo + RUN/STOP)
+
+            const int W  = 400;
+            const int CW = W / 2;  // 200 par colonne
+
+            pnlVu             = new Panel();
+            lblLeftTitle      = new Label();
+            lblLeftLevelDV    = new Label();
+            lblLeftMainTitle  = new Label();
+            lblLeftMainValue  = new Label();
+            lblRightTitle     = new Label();
+            lblRightLevelDV   = new Label();
             lblRightMainTitle = new Label();
             lblRightMainValue = new Label();
-            label4 = new Label();
-            comboDisplayMode = new ComboBox();
-            panelHost.SuspendLayout();
+            label4            = new Label();
+            comboDisplayMode  = new ComboBox();
+            btnRunStop        = new Button();
+
             SuspendLayout();
-            // 
-            // panelHost
-            // 
-            panelHost.Controls.Add(label3);
-            panelHost.Controls.Add(label2);
-            panelHost.Controls.Add(lblLeftLevelDV);
-            panelHost.Controls.Add(lblRightLevelDV);
-            panelHost.Controls.Add(lblLeftMainTitle);
-            panelHost.Controls.Add(lblLeftMainValue);
-            panelHost.Controls.Add(lblRightMainTitle);
-            panelHost.Controls.Add(lblRightMainValue);
-            panelHost.Controls.Add(label4);
-            panelHost.Controls.Add(comboDisplayMode);
-            panelHost.Dock = DockStyle.Fill;
-            panelHost.Location = new Point(0, 0);
-            panelHost.Name = "panelHost";
-            panelHost.Size = new Size(742, 129);
-            panelHost.TabIndex = 0;
-            // 
-            // label3
-            // 
-            label3.AutoSize = true;
-            label3.Font = new Font("Tahoma", 15.75F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            label3.ForeColor = SystemColors.HotTrack;
-            label3.Location = new Point(379, 4);
-            label3.Name = "label3";
-            label3.Size = new Size(82, 25);
-            label3.TabIndex = 68;
-            label3.Text = "RIGHT";
-            label3.TextAlign = ContentAlignment.TopCenter;
-            // 
-            // label2
-            // 
-            label2.AutoSize = true;
-            label2.Font = new Font("Tahoma", 15.75F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            label2.ForeColor = SystemColors.HotTrack;
-            label2.Location = new Point(3, 4);
-            label2.Name = "label2";
-            label2.Size = new Size(62, 25);
-            label2.TabIndex = 67;
-            label2.Text = "LEFT";
-            label2.TextAlign = ContentAlignment.TopCenter;
-            // 
-            // lblLeftLevelDV
-            // 
-            lblLeftLevelDV.BackColor = SystemColors.GradientInactiveCaption;
-            lblLeftLevelDV.Font = new Font("Tahoma", 12F, FontStyle.Regular, GraphicsUnit.Point, 0);
+
+            // ── VU-mètre ─────────────────────────────────────────────────────
+            pnlVu.Location  = new Point(0, 0);
+            pnlVu.Size      = new Size(W, 52);
+            pnlVu.BackColor = Color.Black;
+            pnlVu.Name      = "pnlVu";
+
+            // ── LEFT title + dBFS ─────────────────────────────────────────────
+            lblLeftTitle.Location  = new Point(4, 58);
+            lblLeftTitle.Size      = new Size(80, 26);
+            lblLeftTitle.Text      = "LEFT";
+            lblLeftTitle.Font      = new Font("Segoe UI", 12f, FontStyle.Bold);
+            lblLeftTitle.ForeColor = SystemColors.HotTrack;
+            lblLeftTitle.TextAlign = ContentAlignment.MiddleLeft;
+
+            lblLeftLevelDV.Location  = new Point(CW - 96, 58);
+            lblLeftLevelDV.Size      = new Size(92, 26);
+            lblLeftLevelDV.Text      = "-∞ dBFS";
+            lblLeftLevelDV.Font      = new Font("Segoe UI", 10f);
             lblLeftLevelDV.ForeColor = SystemColors.HotTrack;
-            lblLeftLevelDV.Location = new Point(263, 1);
-            lblLeftLevelDV.Name = "lblLeftLevelDV";
-            lblLeftLevelDV.Size = new Size(100, 30);
-            lblLeftLevelDV.TabIndex = 65;
-            lblLeftLevelDV.Text = "-∞ dBFS";
+            lblLeftLevelDV.BackColor = SystemColors.GradientInactiveCaption;
             lblLeftLevelDV.TextAlign = ContentAlignment.MiddleCenter;
-            // 
-            // lblRightLevelDV
-            // 
-            lblRightLevelDV.BackColor = SystemColors.GradientInactiveCaption;
-            lblRightLevelDV.Font = new Font("Tahoma", 12F, FontStyle.Regular, GraphicsUnit.Point, 0);
+
+            // ── RIGHT title + dBFS ────────────────────────────────────────────
+            lblRightTitle.Location  = new Point(CW + 4, 58);
+            lblRightTitle.Size      = new Size(80, 26);
+            lblRightTitle.Text      = "RIGHT";
+            lblRightTitle.Font      = new Font("Segoe UI", 12f, FontStyle.Bold);
+            lblRightTitle.ForeColor = SystemColors.HotTrack;
+            lblRightTitle.TextAlign = ContentAlignment.MiddleLeft;
+
+            lblRightLevelDV.Location  = new Point(W - 96, 58);
+            lblRightLevelDV.Size      = new Size(92, 26);
+            lblRightLevelDV.Text      = "-∞ dBFS";
+            lblRightLevelDV.Font      = new Font("Segoe UI", 10f);
             lblRightLevelDV.ForeColor = SystemColors.HotTrack;
-            lblRightLevelDV.Location = new Point(639, 1);
-            lblRightLevelDV.Name = "lblRightLevelDV";
-            lblRightLevelDV.Size = new Size(100, 30);
-            lblRightLevelDV.TabIndex = 66;
-            lblRightLevelDV.Text = "-∞ dBFS";
+            lblRightLevelDV.BackColor = SystemColors.GradientInactiveCaption;
             lblRightLevelDV.TextAlign = ContentAlignment.MiddleCenter;
-            // 
-            // lblLeftMainTitle
-            // 
+
+            // ── Format title L / R ────────────────────────────────────────────
+            lblLeftMainTitle.Location  = new Point(0, 90);
+            lblLeftMainTitle.Size      = new Size(CW, 26);
+            lblLeftMainTitle.Text      = "Float";
+            lblLeftMainTitle.Font      = new Font("Segoe UI", 10f);
             lblLeftMainTitle.BackColor = SystemColors.ControlLight;
-            lblLeftMainTitle.Font = new Font("Tahoma", 12F);
-            lblLeftMainTitle.Location = new Point(3, 32);
-            lblLeftMainTitle.Name = "lblLeftMainTitle";
-            lblLeftMainTitle.Size = new Size(360, 30);
-            lblLeftMainTitle.TabIndex = 69;
-            lblLeftMainTitle.Text = "Float";
             lblLeftMainTitle.TextAlign = ContentAlignment.MiddleCenter;
-            // 
-            // lblLeftMainValue
-            // 
-            lblLeftMainValue.BackColor = SystemColors.InactiveCaption;
-            lblLeftMainValue.Font = new Font("Segoe UI", 16F, FontStyle.Bold);
-            lblLeftMainValue.Location = new Point(3, 62);
-            lblLeftMainValue.Name = "lblLeftMainValue";
-            lblLeftMainValue.Size = new Size(360, 35);
-            lblLeftMainValue.TabIndex = 70;
-            lblLeftMainValue.Text = "0.000000";
-            lblLeftMainValue.TextAlign = ContentAlignment.MiddleCenter;
-            // 
-            // lblRightMainTitle
-            // 
+
+            lblRightMainTitle.Location  = new Point(CW, 90);
+            lblRightMainTitle.Size      = new Size(CW, 26);
+            lblRightMainTitle.Text      = "Float";
+            lblRightMainTitle.Font      = new Font("Segoe UI", 10f);
             lblRightMainTitle.BackColor = SystemColors.ControlLight;
-            lblRightMainTitle.Font = new Font("Tahoma", 12F);
-            lblRightMainTitle.Location = new Point(379, 32);
-            lblRightMainTitle.Name = "lblRightMainTitle";
-            lblRightMainTitle.Size = new Size(360, 30);
-            lblRightMainTitle.TabIndex = 71;
-            lblRightMainTitle.Text = "Float";
             lblRightMainTitle.TextAlign = ContentAlignment.MiddleCenter;
-            // 
-            // lblRightMainValue
-            // 
+
+            // ── Valeur principale L / R ───────────────────────────────────────
+            lblLeftMainValue.Location  = new Point(0, 116);
+            lblLeftMainValue.Size      = new Size(CW, 36);
+            lblLeftMainValue.Text      = "0.000000";
+            lblLeftMainValue.Font      = new Font("Segoe UI", 14f, FontStyle.Bold);
+            lblLeftMainValue.BackColor = SystemColors.InactiveCaption;
+            lblLeftMainValue.TextAlign = ContentAlignment.MiddleCenter;
+
+            lblRightMainValue.Location  = new Point(CW, 116);
+            lblRightMainValue.Size      = new Size(CW, 36);
+            lblRightMainValue.Text      = "0.000000";
+            lblRightMainValue.Font      = new Font("Segoe UI", 14f, FontStyle.Bold);
             lblRightMainValue.BackColor = SystemColors.InactiveCaption;
-            lblRightMainValue.Font = new Font("Segoe UI", 16F, FontStyle.Bold);
-            lblRightMainValue.Location = new Point(379, 62);
-            lblRightMainValue.Name = "lblRightMainValue";
-            lblRightMainValue.Size = new Size(360, 35);
-            lblRightMainValue.TabIndex = 72;
-            lblRightMainValue.Text = "0.000000";
             lblRightMainValue.TextAlign = ContentAlignment.MiddleCenter;
-            // 
-            // label4
-            // 
+
+            // ── Barre inférieure ──────────────────────────────────────────────
+            label4.Location = new Point(6, 162);
             label4.AutoSize = true;
-            label4.Location = new Point(447, 105);
-            label4.Name = "label4";
-            label4.Size = new Size(99, 15);
-            label4.TabIndex = 64;
-            label4.Text = "Main data format";
-            // 
-            // comboDisplayMode
-            // 
+            label4.Text     = "Format";
+            label4.Font     = new Font("Segoe UI", 8.5f);
+            label4.ForeColor= SystemColors.GrayText;
+
+            comboDisplayMode.Location      = new Point(54, 158);
+            comboDisplayMode.Size          = new Size(150, 23);
             comboDisplayMode.DropDownStyle = ComboBoxStyle.DropDownList;
-            comboDisplayMode.FormattingEnabled = true;
-            comboDisplayMode.Location = new Point(552, 100);
-            comboDisplayMode.Name = "comboDisplayMode";
-            comboDisplayMode.Size = new Size(187, 23);
-            comboDisplayMode.TabIndex = 63;
-            // 
-            // DataViewForm
-            // 
+            comboDisplayMode.Font          = new Font("Segoe UI", 9f);
+
+            btnRunStop.Location  = new Point(W - 70, 152);
+            btnRunStop.Size      = new Size(70, 40);
+            btnRunStop.Text      = "▶  RUN";
+            btnRunStop.Font      = new Font("Segoe UI", 10f, FontStyle.Bold);
+            btnRunStop.BackColor = Color.SeaGreen;
+            btnRunStop.ForeColor = Color.White;
+            btnRunStop.FlatStyle = FlatStyle.Flat;
+            btnRunStop.FlatAppearance.BorderSize = 0;
+            btnRunStop.UseVisualStyleBackColor = false;
+
+            // ── Form ──────────────────────────────────────────────────────────
             AutoScaleDimensions = new SizeF(7F, 15F);
-            AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(742, 129);
-            Controls.Add(panelHost);
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            Name = "DataViewForm";
-            SizeGripStyle = SizeGripStyle.Hide;
-            StartPosition = FormStartPosition.Manual;
-            Text = "DataView";
-            panelHost.ResumeLayout(false);
-            panelHost.PerformLayout();
+            AutoScaleMode       = AutoScaleMode.Font;
+            ClientSize          = new Size(W, 192);
+            FormBorderStyle     = FormBorderStyle.FixedSingle;
+            MaximizeBox         = false;
+            SizeGripStyle       = SizeGripStyle.Hide;
+            StartPosition       = FormStartPosition.Manual;
+            Text                = "DataView";
+
+            Controls.AddRange(new Control[]
+            {
+                pnlVu,
+                lblLeftTitle,  lblLeftLevelDV,  lblLeftMainTitle,  lblLeftMainValue,
+                lblRightTitle, lblRightLevelDV, lblRightMainTitle, lblRightMainValue,
+                label4, comboDisplayMode, btnRunStop
+            });
+
             ResumeLayout(false);
         }
-        internal ComboBox comboDisplayMode;
-        internal Label lblLeftLevelDV;
-        internal Label lblRightLevelDV;
-        internal Label lblLeftMainTitle;
-        internal Label lblLeftMainValue;
-        internal Label lblRightMainTitle;
-        internal Label lblRightMainValue;
-        internal Label label3;
-        internal Label label2;
-        internal Label label4;
     }
 }

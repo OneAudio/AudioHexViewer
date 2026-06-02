@@ -226,7 +226,6 @@ namespace AudioHexViewer
             _vuInTimer?.Stop();
             _vuInPctL = _vuInPctR = 0;
             _vuInStrL = _vuInStrR = "-∞ dBFS";
-            if (pnlInputVu?.IsHandleCreated == true) pnlInputVu.BeginInvoke(() => pnlInputVu.Invalidate());
             if (capture == null)
                 return; // déjà arrêté
 
@@ -719,6 +718,9 @@ namespace AudioHexViewer
                 }
 
                 UpdateMainDisplayFromLastValues();
+                // Refresh All formats window if open
+                if (dataFormatsWindow?.Visible == true)
+                    RefreshAllFormatsWindow();
             }));
         }
 
