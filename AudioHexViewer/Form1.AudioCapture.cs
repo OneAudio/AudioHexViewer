@@ -135,6 +135,7 @@ namespace AudioHexViewer
                 // Démarrage capture audio
                 capture.StartRecording();
                 UpdateVuInTimer();   // démarre le VU si un onglet analyse est actif
+                UpdateTitleBar();
 
                 // ── Canal de découplage capture → ProcessBuffer ──────────────────
                 // Créé APRÈS StartRecording pour ne pas perdre les premiers callbacks.
@@ -215,6 +216,7 @@ namespace AudioHexViewer
                 MessageBox.Show(errMsg, "Erreur capture", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 capture = null;
                 currentFormat = null;
+                UpdateTitleBar();
 
                 UpdateDeviceInfo();
                 UpdateDeviceSummary();
@@ -300,6 +302,7 @@ namespace AudioHexViewer
             System.Runtime.GCSettings.LatencyMode =
                 System.Runtime.GCLatencyMode.Interactive;
 
+            UpdateTitleBar();
             UpdateDeviceInfo();
             UpdateDeviceSummary();
         }

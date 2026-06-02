@@ -412,9 +412,8 @@ namespace AudioHexViewer
                     _lastDebugBarText =
                         $"FFT/s act={snap.FftPerSec:F1} | FFT={snap.FftAvgMs:F3} ms{fullErrStr}";
 
-                    // Titre de fenêtre : nom de l'appli uniquement (stable, jamais tronqué)
-                    if (this.Text != "AudioHexViewer")
-                        this.Text = "AudioHexViewer";
+                    // Titre de fenêtre : toujours à jour
+                    UpdateTitleBar();
 
                     // Mise à jour de la barre debug interne — uniquement si le texte a changé
                     // (évite le clignotement causé par une réaffectation inutile)

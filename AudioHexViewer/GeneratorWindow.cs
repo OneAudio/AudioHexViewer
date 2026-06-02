@@ -22,6 +22,7 @@ namespace AudioHexViewer
         // ── Calibration de niveau de sortie ──────────────────────────────────
         private readonly SessionSettings              _settings;
         private readonly Action                       _saveSettings;
+        private readonly Action?                      _onRunStateChanged;
         private GeneratorCalibrationDialog?           _calDialog;
 
         // Propriétés de calibration (raccourcis vers _settings)
@@ -34,6 +35,10 @@ namespace AudioHexViewer
         private ExclusiveWasapiPlayback? _wasapiExclusive;
         private IWaveProvider?           _provider;
         private bool                     _isRunning;
+        private int                      _currentSR;
+
+        public bool IsGenerating      => _isRunning;
+        public int  CurrentSampleRate => _currentSR;
         private bool                     _loopbackActive;
         private readonly System.Windows.Forms.Timer _doneTimer;
         private readonly System.Windows.Forms.Timer _levelTimer;
@@ -50,7 +55,8 @@ namespace AudioHexViewer
             Func<int>                   getAnalyzerN,
             Action<IWaveProvider?>      onLoopbackRequest,
             SessionSettings             settings,
-            Action                      saveSettings)
+            Action                      saveSettings,
+            Action?                     onRunStateChanged = null)
         {
             _getOutputDevice   = getOutputDevice;
             _getInputDevice    = getInputDevice;
@@ -59,7 +65,8 @@ namespace AudioHexViewer
             _getAnalyzerN      = getAnalyzerN;
             _onLoopbackRequest = onLoopbackRequest;
             _settings          = settings;
-            _saveSettings      = saveSettings;
+            _saveSettings          = saveSettings;
+            _onRunStateChanged     = onRunStateChanged;
 
             InitializeComponent();
             InitVuBars();   // ← WAS MISSING: wire pnlVuMeter.Paint event
@@ -301,6 +308,7 @@ namespace AudioHexViewer
             try
             {
                 int sr = fmt?.SampleRate > 0 ? fmt.SampleRate : MixSR(outDev);
+                _currentSR = sr;
                 var rawProv = SignalProviderFactory.Create(p, sr);
                 _rawProvider = rawProv;
                 _levelProbe = new LevelMeasuringProvider(rawProv);
@@ -308,6 +316,7 @@ namespace AudioHexViewer
                 if (fmt != null) StartExclusive(outDev, fmt, _provider);
                 else             StartShared(outDev, _provider);
                 SetRunState(true);
+                _onRunStateChanged?.Invoke();
                 StartDoneTimerIfOneShot(type, p);
             }
             catch (Exception ex) { Cleanup(); MessageBox.Show(this, $"Cannot start:\n{ex.Message}", "Generator", MessageBoxButtons.OK, MessageBoxIcon.Error); }
@@ -369,10 +378,12 @@ namespace AudioHexViewer
 
         private void StopGenerator()
         {
+            _currentSR = 0;
             _doneTimer.Stop();
             if (_loopbackActive) { _onLoopbackRequest(null); _loopbackActive = false; }
             Cleanup();
             SetRunState(false);
+            _onRunStateChanged?.Invoke();
         }
 
         private void Cleanup()

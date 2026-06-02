@@ -593,12 +593,17 @@ namespace AudioHexViewer
                 UpdateVuInTimer();
                 if (!running)
                 {
-                    // Clear DataView display when stopped
+                    // Si aucun autre onglet n'utilise la capture, on l'arrête
+                    // → capture devient null → UpdateTitleBar() efface le texte IN
+                    if (!_histogramRunning && !_spectrumRunning && !_oscilloscopeRunning)
+                        StopCapture();
+                    // Clear DataView display
                     _dataViewForm.lblLeftMainValue.Text  = "—";
                     _dataViewForm.lblRightMainValue.Text = "—";
                     _dataViewForm.lblLeftLevelDV.Text    = "-∞ dBFS";
                     _dataViewForm.lblRightLevelDV.Text   = "-∞ dBFS";
                 }
+                UpdateTitleBar();
             };
             _dataViewForm.Hide();
         }
@@ -1302,7 +1307,8 @@ namespace AudioHexViewer
                     getAnalyzerN:       () => spectrumControl?.CurrentFftSize ?? 0,
                     onLoopbackRequest:  HandleLoopbackRequest,
                     settings:           _session,
-                    saveSettings:       SaveSessionSettingsSilently);
+                    saveSettings:       SaveSessionSettingsSilently,
+                    onRunStateChanged:  UpdateTitleBar);
 
                 // Positionner à côté de la fenêtre principale
                 _generatorWindow.Location = new System.Drawing.Point(
@@ -1354,7 +1360,7 @@ namespace AudioHexViewer
             {
                 Text            = "All data formats",
                 StartPosition   = FormStartPosition.CenterParent,
-                Size            = new Size(450, 320),
+                Size            = new Size(440, 310),
                 MinimizeBox     = false,
                 MaximizeBox     = true,
                 ShowIcon        = false,
@@ -2494,6 +2500,39 @@ namespace AudioHexViewer
 
             // Active/désactive le timer selon l'onglet visible
             tabAnalysis.SelectedIndexChanged += (_, _) => UpdateVuInTimer();
+        }
+
+        // ── Barre de titre ────────────────────────────────────────────────
+        private void UpdateTitleBar()
+        {
+            var parts = new System.Collections.Generic.List<string>();
+
+            // Entrée active
+            if (capture != null && currentFormat != null)
+            {
+                string devName = selectedDevice?.FriendlyName ?? "Loopback";
+                if (devName.Length > 30) devName = devName[..27] + "…";
+                string sr = currentFormat.SampleRate >= 1000
+                    ? $"{currentFormat.SampleRate / 1000.0:0.###} kHz"
+                    : $"{currentFormat.SampleRate} Hz";
+                parts.Add($"IN : {devName}  {sr}");
+            }
+
+            // Sortie active (générateur)
+            if (_generatorWindow?.IsGenerating == true)
+            {
+                string devOut = _selectedOutputDevice?.FriendlyName ?? "Output";
+                if (devOut.Length > 30) devOut = devOut[..27] + "…";
+                string srOut = _generatorWindow.CurrentSampleRate >= 1000
+                    ? $"{_generatorWindow.CurrentSampleRate / 1000.0:0.###} kHz"
+                    : $"{_generatorWindow.CurrentSampleRate} Hz";
+                parts.Add($"OUT : {devOut}  {srOut}");
+            }
+
+            // Titre : "AudioHexViewer" seul si rien d'actif, sinon ajoute les infos
+            Text = parts.Count > 0
+                ? $"AudioHexViewer  —  {string.Join("   |   ", parts)}"
+                : "AudioHexViewer";
         }
 
         private void UpdateVuInTimer()
