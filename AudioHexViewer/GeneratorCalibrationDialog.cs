@@ -38,8 +38,9 @@ namespace AudioHexViewer
             _refreshTimer = new System.Windows.Forms.Timer { Interval = 200 };
             _refreshTimer.Tick += (_, _) => RefreshAmplitudeLabel();
 
-            btnApply.Click += BtnApply_Click;
-            btnClose.Click += (_, _) => Close();
+            btnApply.Click    += BtnApply_Click;
+            btnClearCal.Click += BtnClear_Click;
+            btnClose.Click    += (_, _) => Close();
 
             Shown    += (_, _) => _refreshTimer.Start();
             FormClosed += (_, _) => _refreshTimer.Stop();
@@ -111,13 +112,21 @@ namespace AudioHexViewer
             // 4) Notifier GeneratorWindow
             OnCalibrationApplied?.Invoke(vrmsFS_L, vrmsFS_R);
 
-            // 5) Feedback
-            MessageBox.Show(this,
-                $"Calibration applied:\n\n" +
-                $"  L:  FS = {vrmsFS_L:F4} Vrms  (at {db.Value:F1} dBFS → {vrmsL:F4} Vrms measured)\n" +
-                $"  R:  FS = {vrmsFS_R:F4} Vrms  (at {db.Value:F1} dBFS → {vrmsR:F4} Vrms measured)",
-                "Calibration",
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            // 5) Mise à jour des status labels
+            lblVrmsLStatus.Text = $"0 dBFS = {vrmsFS_L:F4} Vrms";
+            lblVrmsRStatus.Text = $"0 dBFS = {vrmsFS_R:F4} Vrms";
+            lblCurrentGen.Text      = $"Calibration applied  — L: {vrmsFS_L:F4} Vrms  |  R: {vrmsFS_R:F4} Vrms";
+            lblCurrentGen.ForeColor = System.Drawing.Color.SeaGreen;
+        }
+
+        // ── Clear ────────────────────────────────────────────────────────────
+        private void BtnClear_Click(object? sender, EventArgs e)
+        {
+            OnCalibrationApplied?.Invoke(1.0, 1.0);
+            lblVrmsLStatus.Text     = "0 dBFS = 1.000 Vrms";
+            lblVrmsRStatus.Text     = "0 dBFS = 1.000 Vrms";
+            lblCurrentGen.Text      = "Calibration cleared";
+            lblCurrentGen.ForeColor = System.Drawing.Color.DarkOrange;
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────

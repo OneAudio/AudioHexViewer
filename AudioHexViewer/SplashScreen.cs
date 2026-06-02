@@ -168,8 +168,6 @@ namespace AudioHexViewer
                 // On sonde alors via Initialize réel, plus fiable.
                 if (confirmedPhase1 == 0)
                 {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[Scan] Device {device.FriendlyName} : Phase 1 zero → Phase 2 probe");
 
                     // Récupère le MixFormat pour l'utiliser comme template de format
                     NAudio.Wave.WaveFormat? mixFmt = null;
@@ -216,6 +214,11 @@ namespace AudioHexViewer
                 new NAudio.Wave.WaveFormatExtensible(sampleRate, 32, 2),
                 new NAudio.Wave.WaveFormatExtensible(sampleRate, 24, 2),
                 new NAudio.Wave.WaveFormatExtensible(sampleRate, 16, 2),
+                // Formats PCM non-extensibles (tag 0x0001) — requis par certains
+                // drivers embarqués (ex: STM32 USB Audio, ST libs)
+                new NAudio.Wave.WaveFormat(sampleRate, 32, 2),
+                new NAudio.Wave.WaveFormat(sampleRate, 24, 2),
+                new NAudio.Wave.WaveFormat(sampleRate, 16, 2),
             };
 
             // Phase 1 : IsFormatSupported
@@ -267,9 +270,6 @@ namespace AudioHexViewer
                 ac = fresh.AudioClient;
                 long period = ac.DefaultDevicePeriod;
 
-                System.Diagnostics.Debug.WriteLine(
-                    $"[Probe] {device.FriendlyName} SR={fmt.SampleRate} "
-                    + $"bits={fmt.BitsPerSample} period={period/10000.0:F2}ms (fresh)");
 
                 try
                 {
@@ -277,7 +277,6 @@ namespace AudioHexViewer
                         NAudio.CoreAudioApi.AudioClientShareMode.Exclusive,
                         NAudio.CoreAudioApi.AudioClientStreamFlags.EventCallback,
                         period, period, fmt, Guid.Empty);
-                    System.Diagnostics.Debug.WriteLine("[Probe] SUCCESS");
                     return true;
                 }
                 catch (System.Runtime.InteropServices.COMException ex)
@@ -286,7 +285,6 @@ namespace AudioHexViewer
                     int bufSize;
                     try { bufSize = ac.BufferSize; } catch { return false; }
                     long aligned = (long)Math.Round(10_000_000.0 * bufSize / fmt.SampleRate);
-                    System.Diagnostics.Debug.WriteLine($"[Probe] NOT_ALIGNED → {aligned/10000.0:F2}ms");
                     ac.Dispose();    ac    = null;
                     fresh.Dispose(); fresh = null;
                     fresh = new NAudio.CoreAudioApi.MMDeviceEnumerator().GetDevice(device.ID);
@@ -296,19 +294,15 @@ namespace AudioHexViewer
                         NAudio.CoreAudioApi.AudioClientShareMode.Exclusive,
                         NAudio.CoreAudioApi.AudioClientStreamFlags.EventCallback,
                         aligned, aligned, fmt, Guid.Empty);
-                    System.Diagnostics.Debug.WriteLine("[Probe] SUCCESS after align");
                     return true;
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[Probe] FAIL hr=0x{unchecked((uint)ex.HResult):X8}");
                     return false;
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[Probe] OUTER FAIL {ex.Message}");
                 return false;
             }
             finally

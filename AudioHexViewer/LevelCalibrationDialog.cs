@@ -5,11 +5,6 @@ using System.ComponentModel;
 
 namespace AudioHexViewer
 {
-    /// <summary>
-    /// Calibration de niveau pour le spectre :
-    /// l'utilisateur applique un signal AC connu (Vrms) sur l'entrée, et on calcule
-    /// un offset tel que : dBV = dBFS + offset, avec 0 dBV = 1 Vrms.
-    /// </summary>
     internal sealed partial class LevelCalibrationDialog : Form
     {
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -18,114 +13,115 @@ namespace AudioHexViewer
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Func<double, (bool ok, string message)>? CalibrateRight { get; set; }
 
-        // Callback fourni par SpectrumControl
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Action? ResetCalibration { get; set; }
 
-        private void _ResetCalibration_Click(object sender, EventArgs e)
-        {
-            ResetCalibration?.Invoke();
-
-            // Optionnel : feedback utilisateur
-            MessageBox.Show(this, "Calibration cleared.", "ResetCAL", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-            // Rafraîchir l’affichage du dialog si tu affiches l'état (valid/offset/gain)
-            // (voir point 1.3)
-        }
+        // Aliases for backward compat with callers using SetCurrentCalibration
+        private Label _lblLeftStatus  => lblVrmsLStatus;
+        private Label _lblRightStatus => lblVrmsRStatus;
 
         public LevelCalibrationDialog()
         {
             InitializeComponent();
 
-            _btnCalLeft.Click += (_, __) => CalibrateOne(isRight: false);
-            _btnCalRight.Click += (_, __) => CalibrateOne(isRight: true);
-            _btnClose.Click += (_, __) => Close();
+            btnApply .Click += BtnApply_Click;
+            btnClear .Click += BtnClear_Click;
+            _btnClose.Click += (_, _) => Close();
 
-            AcceptButton = _btnClose;
+            AcceptButton = btnApply;
+            CancelButton = _btnClose;
         }
 
+        // ── Mise à jour initiale des status ───────────────────────────────────
         public void SetCurrentCalibration(
-            bool validLeft, double offsetLeft,
+            bool validLeft,  double offsetLeft,
             bool validRight, double offsetRight,
             double? lastRmsLeftDbfs, double? lastRmsRightDbfs)
         {
-            _lblLeftStatus.Text = BuildStatus(validLeft, offsetLeft, lastRmsLeftDbfs);
-            _lblRightStatus.Text = BuildStatus(validRight, offsetRight, lastRmsRightDbfs);
+            lblVrmsLStatus.Text = BuildFsLine(validLeft,  offsetLeft);
+            lblVrmsRStatus.Text = BuildFsLine(validRight, offsetRight);
+
+            // Ligne de statut général
+            if (validLeft || validRight)
+            {
+                lblCurrentStatus.Text      = "Calibration active";
+                lblCurrentStatus.ForeColor = System.Drawing.Color.SeaGreen;
+            }
+            else
+            {
+                lblCurrentStatus.Text      = "";
+            }
         }
 
-        private static string BuildStatus(bool valid, double offset, double? lastRmsDbfs)
+        // "0 dBFS = X.XXX Vrms" avec 4 chiffres significatifs
+        private static string BuildFsLine(bool valid, double offset)
         {
-            if (!valid)
-            {
-                if (lastRmsDbfs != null)
-                    return $"(last RMS: {lastRmsDbfs.Value:F2} dBFS)\r\nNot calibrated";
-                return "Not calibrated";
-            }
-
+            if (!valid) return "0 dBFS = 1.000 Vrms  (not calibrated)";
             double vrmsFs = Math.Pow(10.0, offset / 20.0);
-            string rms = (lastRmsDbfs != null) ? $"(last RMS: {lastRmsDbfs.Value:F2} dBFS)\r\n" : "";
-            return $"{rms}Offset: {offset:+0.00;-0.00;0.00} dB\r\n0 dBFS ≈ {vrmsFs:F4} Vrms";
+            return $"0 dBFS = {Sig4(vrmsFs)} Vrms";
         }
 
-        private void CalibrateOne(bool isRight)
+        // ── Apply (les deux voies) ────────────────────────────────────────────
+        private void BtnApply_Click(object? sender, EventArgs e)
         {
-            var txt = isRight ? _txtRight.Text : _txtLeft.Text;
+            bool okL = TryParseDouble(_txtLeft.Text,  out double vrmsL);
+            bool okR = TryParseDouble(_txtRight.Text, out double vrmsR);
 
-            if (!TryParseDouble(txt, out double vrms))
+            if (!okL && !okR)
             {
                 MessageBox.Show(this,
-                    "Valeur Vrms invalide. Utilise un nombre (ex: 1.0 ou 1,0).",
+                    "Enter at least one valid Vrms value (positive number, e.g. 1.414).",
                     "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            var func = isRight ? CalibrateRight : CalibrateLeft;
-            if (func == null)
+            // Calibre L si une valeur est saisie
+            if (okL && CalibrateLeft != null)
             {
-                MessageBox.Show(this,
-                    "Calibration handler not set.",
-                    "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
+                var (ok, msg) = CalibrateLeft(vrmsL);
+                if (!ok) { MessageBox.Show(this, msg, "Calibration L",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+                lblVrmsLStatus.Text = msg;
             }
 
-            var (ok, message) = func(vrms);
-
-            if (!ok)
+            // Calibre R si une valeur est saisie
+            if (okR && CalibrateRight != null)
             {
-                MessageBox.Show(this,
-                    message,
-                    "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                var (ok, msg) = CalibrateRight(vrmsR);
+                if (!ok) { MessageBox.Show(this, msg, "Calibration R",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+                lblVrmsRStatus.Text = msg;
             }
 
-            // Refresh status text (message is already detailed)
-            if (isRight) _lblRightStatus.Text = message;
-            else _lblLeftStatus.Text = message;
+            lblCurrentStatus.Text      = "Calibration active";
+            lblCurrentStatus.ForeColor = System.Drawing.Color.SeaGreen;
+        }
+
+        // ── Clear ─────────────────────────────────────────────────────────────
+        private void BtnClear_Click(object? sender, EventArgs e)
+        {
+            ResetCalibration?.Invoke();
+            lblVrmsLStatus.Text      = "0 dBFS = 1.000 Vrms  (not calibrated)";
+            lblVrmsRStatus.Text      = "0 dBFS = 1.000 Vrms  (not calibrated)";
+            lblCurrentStatus.Text    = "";
+        }
+
+        // ── Helpers ───────────────────────────────────────────────────────────
+        private static string Sig4(double v)
+        {
+            if (v <= 0) return "0";
+            int mag      = (int)Math.Floor(Math.Log10(v));
+            int decimals = Math.Max(0, 3 - mag);
+            return v.ToString("F" + decimals, CultureInfo.InvariantCulture);
         }
 
         private static bool TryParseDouble(string s, out double value)
         {
-            // Accepte virgule ou point, selon culture
-            if (double.TryParse(s, NumberStyles.Float, CultureInfo.CurrentCulture, out value))
-                return true;
-
-            if (double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out value))
-                return true;
-
-            // fallback : remplace comma/dot
+            s = s.Trim();
+            if (double.TryParse(s, NumberStyles.Float, CultureInfo.CurrentCulture,   out value) && value > 0) return true;
+            if (double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out value) && value > 0) return true;
             s = s.Replace(',', '.');
-            return double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+            return double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out value) && value > 0;
         }
-
-        private void _lblRightStatus_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void _lblLeftStatus_Click(object sender, EventArgs e)
-        {
-
-        }
-
     }
 }

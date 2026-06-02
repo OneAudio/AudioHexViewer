@@ -19,6 +19,9 @@ namespace AudioHexViewer
         private Label   lblVrmsRUnit;
         private Button  btnApply;
         private Button  btnClose;
+        private Button  btnClearCal;
+        private Label   lblVrmsLStatus;
+        private Label   lblVrmsRStatus;
 
         protected override void Dispose(bool disposing)
         {
@@ -39,6 +42,9 @@ namespace AudioHexViewer
             lblVrmsRUnit   = new Label();
             btnApply       = new Button();
             btnClose       = new Button();
+            btnClearCal    = new Button();
+            lblVrmsLStatus = new Label();
+            lblVrmsRStatus = new Label();
 
             SuspendLayout();
 
@@ -82,26 +88,44 @@ namespace AudioHexViewer
             lblVrmsLUnit.Font      = new Font("Segoe UI", 9f);
             lblVrmsLUnit.ForeColor = SystemColors.GrayText;
 
+            lblVrmsLStatus.Location  = new Point(192, 155);
+            lblVrmsLStatus.Size      = new Size(180, 16);
+            lblVrmsLStatus.Text      = "0 dBFS = 1.000 Vrms";
+            lblVrmsLStatus.Font      = new Font("Segoe UI", 8f);
+            lblVrmsLStatus.ForeColor = SystemColors.GrayText;
+
             // ── R Channel ─────────────────────────────────────────────────────
-            lblVrmsRTitle.Location  = new Point(12, 166);
+            lblVrmsRTitle.Location  = new Point(12, 178);
             lblVrmsRTitle.AutoSize  = true;
             lblVrmsRTitle.Text      = "R  —  measured Vrms:";
             lblVrmsRTitle.Font      = new Font("Segoe UI", 9.5f);
 
-            txtVrmsR.Location  = new Point(192, 163);
+            txtVrmsR.Location  = new Point(192, 175);
             txtVrmsR.Size      = new Size(110, 23);
             txtVrmsR.Font      = new Font("Segoe UI", 10f);
             txtVrmsR.Text      = "";
             txtVrmsR.TabIndex  = 1;
 
-            lblVrmsRUnit.Location  = new Point(308, 166);
+            lblVrmsRUnit.Location  = new Point(308, 178);
             lblVrmsRUnit.AutoSize  = true;
             lblVrmsRUnit.Text      = "Vrms";
             lblVrmsRUnit.Font      = new Font("Segoe UI", 9f);
             lblVrmsRUnit.ForeColor = SystemColors.GrayText;
 
+            lblVrmsRStatus.Location  = new Point(192, 201);
+            lblVrmsRStatus.Size      = new Size(180, 16);
+            lblVrmsRStatus.Text      = "0 dBFS = 1.000 Vrms";
+            lblVrmsRStatus.Font      = new Font("Segoe UI", 8f);
+            lblVrmsRStatus.ForeColor = SystemColors.GrayText;
+
             // ── Boutons ───────────────────────────────────────────────────────
-            btnApply.Location  = new Point(192, 204);
+            btnClearCal.Location  = new Point(12, 228);
+            btnClearCal.Size      = new Size(90, 32);
+            btnClearCal.Text      = "CLEAR";
+            btnClearCal.TabIndex  = 4;
+            btnClearCal.UseVisualStyleBackColor = true;
+
+            btnApply.Location  = new Point(192, 228);
             btnApply.Size      = new Size(110, 32);
             btnApply.Text      = "Apply";
             btnApply.BackColor = Color.SeaGreen;
@@ -112,7 +136,7 @@ namespace AudioHexViewer
             btnApply.TabIndex  = 2;
             btnApply.UseVisualStyleBackColor = false;
 
-            btnClose.Location  = new Point(312, 204);
+            btnClose.Location  = new Point(312, 228);
             btnClose.Size      = new Size(60, 32);
             btnClose.Text      = "Close";
             btnClose.TabIndex  = 3;
@@ -121,7 +145,7 @@ namespace AudioHexViewer
             // ── Form ──────────────────────────────────────────────────────────
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode       = AutoScaleMode.Font;
-            ClientSize          = new Size(384, 250);
+            ClientSize          = new Size(384, 274);
             FormBorderStyle     = FormBorderStyle.FixedDialog;
             MaximizeBox         = false; MinimizeBox = false;
             StartPosition       = FormStartPosition.Manual;
@@ -130,9 +154,9 @@ namespace AudioHexViewer
             Controls.AddRange(new Control[]
             {
                 lblInstruction, lblCurrentGen, lblSeparator,
-                lblVrmsLTitle,  txtVrmsL, lblVrmsLUnit,
-                lblVrmsRTitle,  txtVrmsR, lblVrmsRUnit,
-                btnApply, btnClose
+                lblVrmsLTitle,  txtVrmsL, lblVrmsLUnit, lblVrmsLStatus,
+                lblVrmsRTitle,  txtVrmsR, lblVrmsRUnit, lblVrmsRStatus,
+                btnClearCal, btnApply, btnClose
             });
 
             ResumeLayout(false);

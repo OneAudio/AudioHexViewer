@@ -134,6 +134,11 @@ namespace AudioHexViewer
                 new WaveFormatExtensible(sampleRate, 32, 2),
                 new WaveFormatExtensible(sampleRate, 24, 2),
                 new WaveFormatExtensible(sampleRate, 16, 2),
+                // Formats PCM non-extensibles (tag 0x0001) — requis par certains
+                // drivers embarqués (ex: STM32 USB Audio, ST libs)
+                new WaveFormat(sampleRate, 32, 2),
+                new WaveFormat(sampleRate, 24, 2),
+                new WaveFormat(sampleRate, 16, 2),
             };
 
             bool allWereComErrors = true;
