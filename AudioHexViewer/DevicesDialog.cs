@@ -105,10 +105,29 @@ namespace AudioHexViewer
             cb.SelectedIndex = 0;
         }
 
+        // ── Réflexion : reset du cache AudioClient entre les tests ────────
+        private static readonly System.Reflection.FieldInfo? _acField =
+            typeof(MMDevice).GetField(
+                "audioClient",
+                System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Instance);
+
+        private static void ResetAudioClient(MMDevice device)
+        {
+            try
+            {
+                var old = _acField?.GetValue(device) as NAudio.CoreAudioApi.AudioClient;
+                if (old != null) try { old.Dispose(); } catch { }
+                _acField?.SetValue(device, null);
+            }
+            catch { }
+        }
+
         private static bool IsSRSupported(MMDevice device, int sampleRate)
         {
             var key = (device.ID, sampleRate);
             if (SrCache.TryGetValue(key, out bool cached)) return cached;
+
             WaveFormat[] cands =
             {
                 WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, 2),
@@ -116,14 +135,60 @@ namespace AudioHexViewer
                 new WaveFormatExtensible(sampleRate, 24, 2),
                 new WaveFormatExtensible(sampleRate, 16, 2),
             };
+
+            bool allWereComErrors = true;
             foreach (var wf in cands)
-                try { if (device.AudioClient.IsFormatSupported(
-                              AudioClientShareMode.Exclusive, wf))
-                    { SrCache[key] = true; return true; } }
-                catch { }
-            // SR non supporté en mode exclusif sur ce device
+            {
+                try
+                {
+                    if (device.AudioClient.IsFormatSupported(
+                            AudioClientShareMode.Exclusive, wf))
+                    { SrCache[key] = true; return true; }
+                    allWereComErrors = false;
+                }
+                catch (System.Runtime.InteropServices.COMException ex)
+                {
+                    if (unchecked((uint)ex.HResult) == 0x88890008u)
+                        allWereComErrors = false;
+                    else
+                        ResetAudioClient(device);
+                }
+                catch { ResetAudioClient(device); }
+            }
+
+            if (allWereComErrors)
+            {
+                foreach (var wf in cands)
+                {
+                    if (ProbeExclusiveInit(device, wf))
+                    { SrCache[key] = true; return true; }
+                }
+            }
+
             SrCache[key] = false;
             return false;
+        }
+
+        private static bool ProbeExclusiveInit(MMDevice device, WaveFormat fmt)
+        {
+            NAudio.CoreAudioApi.AudioClient? ac = null;
+            try
+            {
+                ResetAudioClient(device);
+                ac = device.AudioClient;
+                long period = ac.DefaultDevicePeriod;
+                ac.Initialize(
+                    AudioClientShareMode.Exclusive,
+                    NAudio.CoreAudioApi.AudioClientStreamFlags.EventCallback,
+                    period, period, fmt, Guid.Empty);
+                return true;
+            }
+            catch { return false; }
+            finally
+            {
+                if (ac != null) try { ac.Dispose(); } catch { }
+                ResetAudioClient(device);
+            }
         }
 
         private static void SelectDevice(ComboBox cb, MMDevice? target)

@@ -140,22 +140,73 @@ namespace AudioHexViewer
 
             foreach (var device in all)
             {
-                // Pré-cache FriendlyName maintenant — l'accès COM est lent,
-                // on le fait une fois ici pendant le scan (splash visible)
+                // Pré-cache FriendlyName
                 if (!CachedNames.ContainsKey(device.ID))
                     CachedNames[device.ID] = device.FriendlyName;
 
+                // ── Phase 1 : IsFormatSupported pour chaque SR ──────────────
+                int confirmedPhase1 = 0;
                 foreach (int sr in srOptions)
                 {
                     var key = (device.ID, sr);
                     if (!AudioHexViewer.DevicesDialog.SrCache.ContainsKey(key))
-                        AudioHexViewer.DevicesDialog.SrCache[key] = TestAudioFormat(device, sr);
+                    {
+                        bool ok = TestAudioFormat(device, sr);
+                        AudioHexViewer.DevicesDialog.SrCache[key] = ok;
+                        if (ok) confirmedPhase1++;
+                    }
+                    else if (AudioHexViewer.DevicesDialog.SrCache[(device.ID, sr)])
+                        confirmedPhase1++;
                     done++;
                     if (total > 0) _progress = Math.Min(0.95f, (float)done / total);
                     Application.DoEvents();
                 }
+
+                // ── Phase 2 : si Phase 1 ne confirme RIEN pour ce device ────
+                // Certains drivers (ex: MKADC1) répondent toujours "non supporté"
+                // à IsFormatSupported même pour leurs SR natifs (bug driver).
+                // On sonde alors via Initialize réel, plus fiable.
+                if (confirmedPhase1 == 0)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Scan] Device {device.FriendlyName} : Phase 1 zero → Phase 2 probe");
+
+                    // Récupère le MixFormat pour l'utiliser comme template de format
+                    NAudio.Wave.WaveFormat? mixFmt = null;
+                    try { mixFmt = device.AudioClient.MixFormat; } catch { }
+
+                    foreach (int sr in srOptions)
+                    {
+                        var key = (device.ID, sr);
+                        bool ok = false;
+
+                        // Candidat 1 : même encoding/bits que le MixFormat, SR variable
+                        if (!ok && mixFmt != null)
+                        {
+                            var fmt = mixFmt.Encoding == NAudio.Wave.WaveFormatEncoding.IeeeFloat
+                                ? NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(sr, mixFmt.Channels)
+                                : (NAudio.Wave.WaveFormat)new NAudio.Wave.WaveFormatExtensible(
+                                    sr, mixFmt.BitsPerSample, mixFmt.Channels);
+                            ok = ProbeExclusiveInit(device, fmt);
+                        }
+                        // Candidat 2 : 32-bit PCM extensible
+                        if (!ok) ok = ProbeExclusiveInit(device,
+                            new NAudio.Wave.WaveFormatExtensible(sr, 32, 2));
+                        // Candidat 3 : IEEE Float non-extensible
+                        if (!ok) ok = ProbeExclusiveInit(device,
+                            NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(sr, 2));
+
+                        AudioHexViewer.DevicesDialog.SrCache[key] = ok;
+                        done++;
+                        if (total > 0) _progress = Math.Min(0.95f, (float)done / total);
+                        Application.DoEvents();
+                    }
+                }
             }
         }
+
+        // Pas de réflexion — on crée un MMDevice FRAIS via GetDevice(id)
+        // pour éviter tout état corrompu du cache AudioClient
 
         private static bool TestAudioFormat(NAudio.CoreAudioApi.MMDevice device, int sampleRate)
         {
@@ -166,16 +217,105 @@ namespace AudioHexViewer
                 new NAudio.Wave.WaveFormatExtensible(sampleRate, 24, 2),
                 new NAudio.Wave.WaveFormatExtensible(sampleRate, 16, 2),
             };
+
+            // Phase 1 : IsFormatSupported
+            // AUDCLNT_E_UNSUPPORTED_FORMAT (0x88890008) = réponse propre "non supporté"
+            // Autre exception COM = driver bugué (ex: MKADC1) → tente la phase 2
+            bool allWereComErrors = true;
             foreach (var wf in cands)
+            {
                 try
                 {
                     if (device.AudioClient.IsFormatSupported(
-                        NAudio.CoreAudioApi.AudioClientShareMode.Exclusive, wf))
+                            NAudio.CoreAudioApi.AudioClientShareMode.Exclusive, wf))
                         return true;
+                    allWereComErrors = false;  // réponse propre "non supporté"
                 }
-                catch { }
-            // SR non supporté en mode exclusif
+                catch (System.Runtime.InteropServices.COMException ex)
+                {
+                    if (unchecked((uint)ex.HResult) == 0x88890008u)
+                        allWereComErrors = false;  // AUDCLNT_E_UNSUPPORTED_FORMAT → propre
+                    // Autre erreur COM → allWereComErrors reste true
+                }
+                catch { /* allWereComErrors reste true */ }
+            }
+
+            // Phase 2 : Si tous les appels ont levé des erreurs COM non-format
+            // (driver ne supporte pas IsFormatSupported), sonde via Initialize
+            if (allWereComErrors)
+            {
+                foreach (var wf in cands)
+                    if (ProbeExclusiveInit(device, wf)) return true;
+            }
+
             return false;
+        }
+
+        private static bool ProbeExclusiveInit(NAudio.CoreAudioApi.MMDevice device,
+                                               NAudio.Wave.WaveFormat fmt)
+        {
+            const uint E_NOT_ALIGNED = 0x88890019u;
+
+            // Crée un MMDevice FRAIS via GetDevice(id) — évite tout état corrompu
+            // du cache AudioClient (le champ privé NAudio n'est pas accessible en .NET 10)
+            NAudio.CoreAudioApi.MMDevice? fresh = null;
+            NAudio.CoreAudioApi.AudioClient? ac  = null;
+            try
+            {
+                fresh = new NAudio.CoreAudioApi.MMDeviceEnumerator().GetDevice(device.ID);
+                if (fresh == null) return false;
+                ac = fresh.AudioClient;
+                long period = ac.DefaultDevicePeriod;
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[Probe] {device.FriendlyName} SR={fmt.SampleRate} "
+                    + $"bits={fmt.BitsPerSample} period={period/10000.0:F2}ms (fresh)");
+
+                try
+                {
+                    ac.Initialize(
+                        NAudio.CoreAudioApi.AudioClientShareMode.Exclusive,
+                        NAudio.CoreAudioApi.AudioClientStreamFlags.EventCallback,
+                        period, period, fmt, Guid.Empty);
+                    System.Diagnostics.Debug.WriteLine("[Probe] SUCCESS");
+                    return true;
+                }
+                catch (System.Runtime.InteropServices.COMException ex)
+                    when (unchecked((uint)ex.HResult) == E_NOT_ALIGNED)
+                {
+                    int bufSize;
+                    try { bufSize = ac.BufferSize; } catch { return false; }
+                    long aligned = (long)Math.Round(10_000_000.0 * bufSize / fmt.SampleRate);
+                    System.Diagnostics.Debug.WriteLine($"[Probe] NOT_ALIGNED → {aligned/10000.0:F2}ms");
+                    ac.Dispose();    ac    = null;
+                    fresh.Dispose(); fresh = null;
+                    fresh = new NAudio.CoreAudioApi.MMDeviceEnumerator().GetDevice(device.ID);
+                    if (fresh == null) return false;
+                    ac = fresh.AudioClient;
+                    ac.Initialize(
+                        NAudio.CoreAudioApi.AudioClientShareMode.Exclusive,
+                        NAudio.CoreAudioApi.AudioClientStreamFlags.EventCallback,
+                        aligned, aligned, fmt, Guid.Empty);
+                    System.Diagnostics.Debug.WriteLine("[Probe] SUCCESS after align");
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Probe] FAIL hr=0x{unchecked((uint)ex.HResult):X8}");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Probe] OUTER FAIL {ex.Message}");
+                return false;
+            }
+            finally
+            {
+                if (ac    != null) try { ac.Dispose();    } catch { }
+                if (fresh != null) try { fresh.Dispose(); } catch { }
+            }
         }
 
         // ── Rendu ─────────────────────────────────────────────────────────────
