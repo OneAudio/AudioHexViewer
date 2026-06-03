@@ -29,7 +29,7 @@ namespace AudioHexViewer
         {
             var arr = _colors.OverlaySlotArgb;
             if (arr != null && slotIndex >= 0 && slotIndex < arr.Length)
-                return Color.FromArgb(arr[slotIndex]);
+                return NegO(arr[slotIndex]);
             // fallback compat
             return Color.FromArgb(_colors.OverlayArgb);
         }

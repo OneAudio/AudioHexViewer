@@ -7,7 +7,6 @@ Liste des petites corrections à faire :
 2- Ajouter un bouton de vérouillage de l'espace x entre les curseurs (scope) 
 3- Améliorer le mode difff view pour voir les valeurs négatives (histo)
 4- Changer le calcul de l'ENOB pour qu'il soit sur l'échelle total (histo)
-5- Rendre plus propre et aligné les élements du dialogue "colors" (general)
 6- Ajouter un mode "invert all" dans le menu "Colors" (General)
 8- Changer l'emplacement sur l'écran ou s'ouvre les différentes fenêtres.
 9- Changer la police deu logo AHV.

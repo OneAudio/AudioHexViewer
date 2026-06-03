@@ -36,15 +36,17 @@ namespace AudioHexViewer
         // Couleurs — synchronisées avec SpectrumColorSettings (via ApplySpectrumColorSettings)
         // ══════════════════════════════════════════════════════════════════════
         private SpectrumColorSettings _colors = SpectrumColorSettings.Defaults();
+        private static Color NegApply(int argb, bool inv)
+        { var col = Color.FromArgb(argb); return inv ? Color.FromArgb(col.A,255-col.R,255-col.G,255-col.B) : col; }
 
         // Accesseurs identiques à SpectrumControl pour faciliter la mise à jour
-        private Color BackgroundColor  => Color.FromArgb(_colors.BackgroundArgb);
-        private Color GridMajorColor   => Color.FromArgb(_colors.GridArgb);
-        private Color GridMinorColor   => Color.FromArgb(_colors.GridMinorArgb);
-        private Color LabelMajorColor  => Color.FromArgb(_colors.LabelMajorArgb);
-        private Color LabelMinorColor  => Color.FromArgb(_colors.LabelMinorArgb);
-        private Color BarLeftColor     => Color.FromArgb(_colors.FftLeftArgb);
-        private Color BarRightColor    => Color.FromArgb(_colors.FftRightArgb);
+        private Color BackgroundColor  => NegApply(_colors.BackgroundArgb, _colors.NegativeChart);
+        private Color GridMajorColor   => NegApply(_colors.GridArgb,       _colors.NegativeChart);
+        private Color GridMinorColor   => NegApply(_colors.GridMinorArgb,  _colors.NegativeChart);
+        private Color LabelMajorColor  => NegApply(_colors.LabelMajorArgb, _colors.NegativeChart);
+        private Color LabelMinorColor  => NegApply(_colors.LabelMinorArgb, _colors.NegativeChart);
+        private Color BarLeftColor     => NegApply(_colors.FftLeftArgb,  _colors.NegativeTraces);
+        private Color BarRightColor    => NegApply(_colors.FftRightArgb, _colors.NegativeTraces);
 
         // ══════════════════════════════════════════════════════════════════════
         // État & données

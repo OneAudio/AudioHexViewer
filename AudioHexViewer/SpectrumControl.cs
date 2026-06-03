@@ -135,22 +135,32 @@ namespace AudioHexViewer
         // --- Couleurs / thème du graphe (persistées via SessionSettings.Spectrum.Colors) ---
         private SpectrumColorSettings _colors = new SpectrumColorSettings();
 
-        private Color FftLeftColor => Color.FromArgb(_colors.FftLeftArgb);
-        private Color FftRightColor => Color.FromArgb(_colors.FftRightArgb);
-        private Color PeakHoldLeftColor => Color.FromArgb(_colors.PeakHoldLeftArgb);
-        private Color PeakHoldRightColor => Color.FromArgb(_colors.PeakHoldRightArgb);
+        // Inversion couleur par groupe
+        private static Color NegApply(int argb, bool invert)
+        {
+            var col = Color.FromArgb(argb);
+            return invert ? Color.FromArgb(col.A, 255-col.R, 255-col.G, 255-col.B) : col;
+        }
+        private Color Neg(int argb)  => NegApply(argb, _colors.NegativeTraces);    // Traces
+        private Color NegO(int argb) => NegApply(argb, _colors.NegativeOverlays);  // Overlays
+        private Color NegC(int argb) => NegApply(argb, _colors.NegativeChart);     // Chart
 
-        private Color GridMajorColor => Color.FromArgb(_colors.GridArgb);
-        private Color GridMinorColor => Color.FromArgb(_colors.GridMinorArgb);
-        private Color BackgroundColor => Color.FromArgb(_colors.BackgroundArgb);
+        private Color FftLeftColor => Neg(_colors.FftLeftArgb);
+        private Color FftRightColor => Neg(_colors.FftRightArgb);
+        private Color PeakHoldLeftColor => Neg(_colors.PeakHoldLeftArgb);
+        private Color PeakHoldRightColor => Neg(_colors.PeakHoldRightArgb);
 
-        private Color LabelMajorColor => Color.FromArgb(_colors.LabelMajorArgb);
-        private Color LabelMinorColor => Color.FromArgb(_colors.LabelMinorArgb);
+        private Color GridMajorColor => NegC(_colors.GridArgb);
+        private Color GridMinorColor => NegC(_colors.GridMinorArgb);
+        private Color BackgroundColor => NegC(_colors.BackgroundArgb);
+
+        private Color LabelMajorColor => NegC(_colors.LabelMajorArgb);
+        private Color LabelMinorColor => NegC(_colors.LabelMinorArgb);
 
         public Label FftTickerLabel => lblFftTicker;
 
 
-        private Color InfoTextColor => Color.FromArgb(_colors.InfoTextArgb);
+        private Color InfoTextColor => NegC(_colors.InfoTextArgb);
 
         // Couleur d’un overlay selon son index de slot
         //

@@ -1,3 +1,4 @@
+#nullable enable
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -5,382 +6,250 @@ namespace AudioHexViewer
 {
     partial class SpectrumColorsDialog
     {
-        private System.ComponentModel.IContainer components = null;
+        private System.ComponentModel.IContainer? components = null;
 
-        private TableLayoutPanel tlpRoot;
-        private GroupBox grpTraces;
-        private GroupBox grpOverlays;
-        private GroupBox grpChart;
-
-        private TableLayoutPanel tlpTraces;
-        private TableLayoutPanel tlpOverlays;
-        private TableLayoutPanel tlpChart;
-        private TableLayoutPanel tlpButtons;
-
-        private Label lblFftL;
-        private Button btnFftL;
-        private Label lblFftR;
-        private Button btnFftR;
-        private NumericUpDown nudFftWidth;
-
-        private Label lblPkL;
-        private Button btnPkL;
-        private Label lblPkR;
-        private Button btnPkR;
-        private NumericUpDown nudPkWidth;
-        private Label lblFftWidthText;
-        private Label lblPkWidthText;
-
-
-        private Label lblOv1;
-        private Button btnOv1;
-        private Label lblOv2;
-        private Button btnOv2;
-        private Label lblOv3;
-        private Button btnOv3;
-        private Label lblOv4;
-        private Button btnOv4;
-        private Label lblOv5;
-        private Button btnOv5;
-        private Label lblOv6;
-        private Button btnOv6;
-        private Label lblOv7;
-        private Button btnOv7;
-        private Label lblOv8;
-        private Button btnOv8;
-        private Label lblOvWidth;
-        private NumericUpDown nudOvWidth;
-        private Label lblOvStyle;
-        private ComboBox cmbOvStyle;
-        private Label lblGridMaj;
-        private Button btnGridMaj;
-        private Label lblGridMin;
-        private Button btnGridMin;
-        private Label lblBack;
-        private Button btnBack;
-        private Label lblInfoText;
-        private Button btnInfoText;
-        private Label lblLabMaj;
-        private Button btnLabMaj;
-        private Label lblLabMin;
-        private Button btnLabMin;
-
-        private Button btnSetDefault;
-        private Button btnDefault;
-        private Button btnOk;
+        internal Button btnFftL, btnFftR, btnPkL, btnPkR;
+        internal NumericUpDown nudFftWidth, nudPkWidth;
+        internal CheckBox chkNegTraces;
+        internal Button btnOv1, btnOv2, btnOv3, btnOv4;
+        internal Button btnOv5, btnOv6, btnOv7, btnOv8;
+        internal NumericUpDown nudOvWidth;
+        internal ComboBox cmbOvStyle;
+        internal CheckBox chkNegOverlays;
+        internal Button btnGridMaj, btnGridMin, btnBack;
+        internal Button btnInfoText, btnLabMaj, btnLabMin;
+        internal CheckBox chkNegChart;
+        internal Button btnSaveDefault, btnRestoreDefault, btnOk;
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && (components != null)) components.Dispose();
+            if (disposing) components?.Dispose();
             base.Dispose(disposing);
         }
 
         private void InitializeComponent()
         {
-            this.components = new System.ComponentModel.Container();
+            SuspendLayout();
 
-            this.tlpRoot = new TableLayoutPanel();
-            this.grpTraces = new GroupBox();
-            this.grpOverlays = new GroupBox();
-            this.grpChart = new GroupBox();
+            Font stdFont   = new("Segoe UI", 9f);
+            Font smallGray = new("Segoe UI", 8f);
+            Font boldSec   = new("Segoe UI Semibold", 8.5f);
+            Color blue     = Color.FromArgb(0, 90, 160);
+            Color blueLine = Color.FromArgb(180, 210, 240);
+            Color bdrCol   = Color.FromArgb(100, 100, 100);
 
-            this.tlpTraces = new TableLayoutPanel();
-            this.tlpOverlays = new TableLayoutPanel();
-            this.tlpChart = new TableLayoutPanel();
-            this.tlpButtons = new TableLayoutPanel();
+            // Column geometry — right column shifted 12px left vs previous version
+            // → right margin within content = 12px = form left/right padding
+            const int LW  = 74;   // label width
+            const int SW  = 22;   // swatch size
+            const int S1  = LW + 2;           // left swatch x = 76
+            const int LCR = S1 + SW;           // left col right = 98
 
-            // Form
-            this.AutoScaleMode = AutoScaleMode.Font;
-            this.AutoScaleMode = AutoScaleMode.Font;
-            // IMPORTANT : on laisse AutoSize grer la taille
-            this.AutoSize = true;
-            this.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            this.FormBorderStyle = FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
-            this.MinimizeBox = false;
-            this.ShowInTaskbar = false;
-            this.StartPosition = FormStartPosition.CenterParent;
-            this.Text = "Colors";
-            this.Padding = new Padding(10);
-            // optionnel : une largeur mini pour viter les retours  la ligne bizarres
-            this.MinimumSize = new Size(300, 0);
+            const int MID = 166;              // right column label x (was 178, -12)
+            const int S2  = MID + LW + 2;    // right swatch x = 242
+            const int RCR = S2 + SW;          // right col right = 264 = W
 
+            const int NUD1X = LCR - 44;       // 54  (right = LCR = 98)
+            const int NUD2X = RCR - 44;       // 220 (right = RCR = 264)
+            const int TH1X  = NUD1X - 52;     // 2
+            const int TH2X  = NUD2X - 52;     // 168
 
-            // Root layout
-            this.tlpRoot.ColumnCount = 1;
-            this.tlpRoot.RowCount = 4;
-            this.tlpRoot.Dock = DockStyle.Fill;
-            this.tlpRoot.AutoSize = true;
-            this.tlpRoot.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            this.tlpRoot.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            this.tlpRoot.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            this.tlpRoot.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            this.tlpRoot.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            // Invert checkbox: right = RCR, "Invert" label before it
+            const int CHKX = RCR - 16;        // 248
+            const int INVX = CHKX - 52;       // 196
 
-            // GroupBoxes
-            this.grpTraces.Text = "Traces";
-            this.grpOverlays.Text = "Overlays";
-            this.grpChart.Text = "Chart";
-            this.grpTraces.Dock = DockStyle.Top;
-            this.grpOverlays.Dock = DockStyle.Top;
-            this.grpChart.Dock = DockStyle.Top;
+            // Overlay common controls — LEFT-aligned, same x
+            // Line style combo right = RCR, width = 90
+            // Thickness NUD: same x, reduced to 44px (standard NUD size)
+            const int CMB_W  = 90;            // line style combo width
+            const int OV_CMB_X = RCR - CMB_W; // 174 (same x for both controls)
+            const int OV_LW  = 70;            // overlay label width
+            const int OV_LX  = OV_CMB_X - 2 - OV_LW; // 102
 
-            this.grpTraces.AutoSize = true;
-            this.grpTraces.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            this.grpOverlays.AutoSize = true;
-            this.grpOverlays.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            this.grpChart.AutoSize = true;
-            this.grpChart.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            const int W = RCR;                // 264 — content width = RCR
 
+            // ── Helpers ───────────────────────────────────────────────────────
+            Panel MakeSection(string title, CheckBox chk)
+            {
+                var p = new Panel { Width = W, Height = 22, Margin = new Padding(0, 10, 0, 2) };
+                p.Controls.Add(new Label {
+                    Text = title, Font = boldSec, ForeColor = blue,
+                    AutoSize = false, Location = new Point(0, 1), Size = new Size(INVX - 4, 16)
+                });
+                p.Controls.Add(new Panel {
+                    Location = new Point(0, 18), Size = new Size(W, 1), BackColor = blueLine
+                });
+                p.Controls.Add(new Label {
+                    Text = "Invert", Font = smallGray, ForeColor = Color.Gray,
+                    AutoSize = false, Location = new Point(INVX, 3),
+                    Size = new Size(48, 14), TextAlign = ContentAlignment.MiddleRight
+                });
+                chk.Text = ""; chk.AutoSize = false;
+                chk.Location = new Point(CHKX, 2); chk.Size = new Size(16, 16);
+                p.Controls.Add(chk);
+                return p;
+            }
 
-            // --- Traces table: 6 cols (labelL, swatchL, nudL, labelR, swatchR, nudR) ---
-this.tlpTraces.ColumnCount = 6;
-this.tlpTraces.RowCount = 3;
-this.tlpTraces.Dock = DockStyle.Fill;
-this.tlpTraces.AutoSize = true;
-this.tlpTraces.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-this.tlpTraces.Padding = new Padding(4, 6, 4, 4);
+            Panel MakeRow(int h = 24) =>
+                new Panel { Width = W, Height = h, Margin = new Padding(0, 1, 0, 1) };
 
-// Fixed label columns to keep the dialog compact AND align swatch columns between groups
-this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label L
-this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 46F)); // value L (swatch / nud)
-this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 0F));  // spacer
-this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label R
-this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 46F)); // value R (swatch / nud)
-this.tlpTraces.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 0F));  // spacer
+            Label MakeLbl(string text, int x, int w = LW) => new Label {
+                Text = text, Location = new Point(x, 4),
+                Size = new Size(w, 16), TextAlign = ContentAlignment.MiddleRight,
+                Font = stdFont
+            };
 
+            Button MakeSwatch(int x) {
+                var b = new Button {
+                    Location = new Point(x, 3), Size = new Size(SW, SW),
+                    FlatStyle = FlatStyle.Flat, Text = "", TabStop = false,
+                    Cursor = Cursors.Hand, UseVisualStyleBackColor = false
+                };
+                b.FlatAppearance.BorderSize = 1;
+                b.FlatAppearance.BorderColor = bdrCol;
+                return b;
+            }
 
-this.tlpTraces.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
-this.tlpTraces.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
-this.tlpTraces.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
-            this.lblFftL = MakeLabel("FFT Left");
+            NumericUpDown MakeNud(int x, int w = 44) => new NumericUpDown {
+                Location = new Point(x, 2), Size = new Size(w, 22),
+                Minimum = 1, Maximum = 3, Value = 1, DecimalPlaces = 0,
+                Increment = 1, TextAlign = HorizontalAlignment.Center, Font = stdFont
+            };
 
-            this.btnFftL = new Button();
-            SetupColorButton(this.btnFftL);
+            Label MakeSmall(string t, int x) => new Label {
+                Text = t, Location = new Point(x, 6), AutoSize = false,
+                Size = new Size(50, 14), TextAlign = ContentAlignment.MiddleRight,
+                Font = smallGray, ForeColor = Color.Gray
+            };
 
-            this.lblFftR = MakeLabel("FFT Right");
+            var root = new FlowLayoutPanel {
+                Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown,
+                WrapContents = false, AutoScroll = false, Padding = new Padding(0)
+            };
+            Controls.Add(root);
 
-            this.btnFftR = new Button();
-            SetupColorButton(this.btnFftR);
+            // ═══ TRACES ═══════════════════════════════════════════════════════
+            chkNegTraces = new CheckBox();
+            root.Controls.Add(MakeSection("TRACES", chkNegTraces));
 
-            this.nudFftWidth = new NumericUpDown();
-            SetupWidthNud(this.nudFftWidth);
+            btnFftL = MakeSwatch(S1); btnPkL = MakeSwatch(S2);
+            var rT0 = MakeRow();
+            rT0.Controls.AddRange(new Control[] {
+                MakeLbl("Data Left",    0),  btnFftL,
+                MakeLbl("PkHold Left", MID), btnPkL
+            });
+            root.Controls.Add(rT0);
 
-            this.lblPkL = MakeLabel("PkHold Left");
+            btnFftR = MakeSwatch(S1); btnPkR = MakeSwatch(S2);
+            var rT1 = MakeRow();
+            rT1.Controls.AddRange(new Control[] {
+                MakeLbl("Data Right",   0),   btnFftR,
+                MakeLbl("PkHold Right", MID), btnPkR
+            });
+            root.Controls.Add(rT1);
 
-            this.btnPkL = new Button();
-            SetupColorButton(this.btnPkL);
+            nudFftWidth = MakeNud(NUD1X); nudPkWidth = MakeNud(NUD2X);
+            var rTThick = MakeRow(26);
+            rTThick.Controls.AddRange(new Control[] {
+                MakeSmall("Thick:", TH1X), nudFftWidth,
+                MakeSmall("Thick:", TH2X), nudPkWidth
+            });
+            root.Controls.Add(rTThick);
 
-            this.lblPkR = MakeLabel("PkHold Right");
+            // ═══ OVERLAYS ═════════════════════════════════════════════════════
+            chkNegOverlays = new CheckBox();
+            root.Controls.Add(MakeSection("OVERLAYS", chkNegOverlays));
 
-            this.btnPkR = new Button();
-            SetupColorButton(this.btnPkR);
+            (string lL, string lR)[] ovNames = {
+                ("Overlay 1","Overlay 5"),("Overlay 2","Overlay 6"),
+                ("Overlay 3","Overlay 7"),("Overlay 4","Overlay 8")
+            };
+            Button[] bArr = new Button[8];
+            for (int i = 0; i < 4; i++) {
+                bArr[i] = MakeSwatch(S1); bArr[i+4] = MakeSwatch(S2);
+                var r = MakeRow();
+                r.Controls.AddRange(new Control[] {
+                    MakeLbl(ovNames[i].lL, 0), bArr[i],
+                    MakeLbl(ovNames[i].lR, MID), bArr[i+4]
+                });
+                root.Controls.Add(r);
+            }
+            btnOv1=bArr[0]; btnOv2=bArr[1]; btnOv3=bArr[2]; btnOv4=bArr[3];
+            btnOv5=bArr[4]; btnOv6=bArr[5]; btnOv7=bArr[6]; btnOv8=bArr[7];
 
-            this.nudPkWidth = new NumericUpDown();
-            SetupWidthNud(this.nudPkWidth);
+            var rSep = new Panel { Width = W, Height = 7, Margin = new Padding(0, 3, 0, 0) };
+            rSep.Controls.Add(new Panel {
+                Location = new Point(20, 4), Size = new Size(W-40, 1),
+                BackColor = Color.FromArgb(215, 215, 215)
+            });
+            root.Controls.Add(rSep);
 
+            // Overlay common: Thick + Style on ONE row, both labels in gray
+            // "Thick:" label + NUD on left, "Style" label + combo on right
+            nudOvWidth = MakeNud(NUD1X, 44);   // same x as Traces left NUD
+            cmbOvStyle = new ComboBox {
+                Location = new Point(OV_CMB_X, 2), Size = new Size(CMB_W, 22),
+                DropDownStyle = ComboBoxStyle.DropDownList, Font = stdFont
+            };
+            var rOvCommon = MakeRow(26);
+            rOvCommon.Controls.AddRange(new Control[] {
+                MakeSmall("Thick:", TH1X),  nudOvWidth,
+                MakeSmall("Style",  110),   cmbOvStyle
+            });
+            root.Controls.Add(rOvCommon);
 
-            this.lblFftWidthText = MakeLabel("FFT Thick");
-            this.lblPkWidthText = MakeLabel ("PkH Thick");
-            this.tlpTraces.Controls.Add(this.lblFftL, 0, 0);
-this.tlpTraces.Controls.Add(this.btnFftL, 1, 0);
-this.tlpTraces.Controls.Add(this.lblPkL, 3, 0);
-this.tlpTraces.Controls.Add(this.btnPkL, 4, 0);
+            // ═══ CHART ════════════════════════════════════════════════════════
+            chkNegChart = new CheckBox();
+            root.Controls.Add(MakeSection("CHART", chkNegChart));
 
-this.tlpTraces.Controls.Add(this.lblFftR, 0, 1);
-this.tlpTraces.Controls.Add(this.btnFftR, 1, 1);
-this.tlpTraces.Controls.Add(this.lblPkR, 3, 1);
-this.tlpTraces.Controls.Add(this.btnPkR, 4, 1);
+            (string lL, string lR, Button bL, Button bR)[] chartRows = {
+                ("Grid Major",  "Background", btnGridMaj = MakeSwatch(S1), btnBack     = MakeSwatch(S2)),
+                ("Grid Minor",  "Info Text",  btnGridMin = MakeSwatch(S1), btnInfoText = MakeSwatch(S2)),
+                ("Label Major", "Label Minor",btnLabMaj  = MakeSwatch(S1), btnLabMin   = MakeSwatch(S2)),
+            };
+            foreach (var (lL, lR, bL, bR) in chartRows) {
+                var r = MakeRow();
+                r.Controls.AddRange(new Control[] { MakeLbl(lL,0), bL, MakeLbl(lR,MID), bR });
+                root.Controls.Add(r);
+            }
 
-// Thickness row (one setting per trace type)
-this.tlpTraces.Controls.Add(this.lblFftWidthText, 0, 2);
-this.tlpTraces.Controls.Add(this.nudFftWidth, 1, 2);
-this.tlpTraces.Controls.Add(this.lblPkWidthText, 3, 2);
-this.tlpTraces.Controls.Add(this.nudPkWidth, 4, 2);
+            // ═══ BUTTONS ══════════════════════════════════════════════════════
+            // Save + Restore: small, left. OK right = RCR = W
+            const int SB_W = 64;
+            const int OK_W = 62;
+            var rBot = new Panel { Width = W, Height = 32, Margin = new Padding(0, 34, 0, 0) };
+            btnSaveDefault = new Button {
+                Text = "Save", Location = new Point(0, 2),
+                Size = new Size(SB_W, 28), UseVisualStyleBackColor = true
+            };
+            btnRestoreDefault = new Button {
+                Text = "Restore", Location = new Point(SB_W + 6, 2),
+                Size = new Size(SB_W, 28), UseVisualStyleBackColor = true
+            };
+            btnOk = new Button {
+                Text = "OK", Location = new Point(W - OK_W, 2), Size = new Size(OK_W, 28),
+                DialogResult = DialogResult.OK, UseVisualStyleBackColor = false,
+                BackColor = Color.FromArgb(0, 90, 160), ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat
+            };
+            btnOk.FlatAppearance.BorderSize = 0;
+            rBot.Controls.AddRange(new Control[] { btnSaveDefault, btnRestoreDefault, btnOk });
+            root.Controls.Add(rBot);
 
-// Span label over the empty swatch column so the text sits closer to the numeric up/down
-this.grpTraces.Controls.Add(this.tlpTraces);
-
-            // --- Overlays table: 6 cols (labelL, swatchL, nudL, labelR, swatchR, nudR) ---
-this.tlpOverlays.ColumnCount = 6;
-this.tlpOverlays.RowCount = 5;
-this.tlpOverlays.Dock = DockStyle.Fill;
-this.tlpOverlays.AutoSize = true;
-this.tlpOverlays.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-this.tlpOverlays.Padding = new Padding(4, 6, 4, 4);
-
-this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label L
-this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70F)); // value L (swatch / nud)
-this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 0F));  // spacer
-this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label R
-this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70F)); // value R (swatch / nud)
-this.tlpOverlays.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 0F));  // spacer
-
-
-this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
-this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
-this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
-this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
-this.tlpOverlays.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
-            this.lblOv1 = MakeLabel("Overlay 1");
-            this.btnOv1 = MakeColorButton();
-            this.lblOv5 = MakeLabel("Overlay 5");
-            this.btnOv5 = MakeColorButton();
-
-            this.lblOv2 = MakeLabel("Overlay 2");
-            this.btnOv2 = MakeColorButton();
-            this.lblOv6 = MakeLabel("Overlay 6");
-            this.btnOv6 = MakeColorButton();
-
-            this.lblOv3 = MakeLabel("Overlay 3");
-            this.btnOv3 = MakeColorButton();
-            this.lblOv7 = MakeLabel("Overlay 7");
-            this.btnOv7 = MakeColorButton();
-
-            this.lblOv4 = MakeLabel("Overlay 4");
-            this.btnOv4 = MakeColorButton();
-            this.lblOv8 = MakeLabel("Overlay 8");
-            this.btnOv8 = MakeColorButton();
-
-            this.lblOvWidth = MakeLabel("Ovl Thick");
-
-            this.nudOvWidth = new NumericUpDown();
-            SetupWidthNud(this.nudOvWidth);
-            this.lblOvStyle = MakeLabel("Ovl Style");
-
-            this.cmbOvStyle = new ComboBox();
-            this.cmbOvStyle.DropDownStyle = ComboBoxStyle.DropDownList;
-            this.cmbOvStyle.Dock = DockStyle.Fill;
-            this.cmbOvStyle.Margin = new Padding(0, 2, 0, 2);
-
-
-            this.tlpOverlays.Controls.Add(this.lblOv1, 0, 0);
-this.tlpOverlays.Controls.Add(this.btnOv1, 1, 0);
-this.tlpOverlays.Controls.Add(this.lblOv5, 3, 0);
-this.tlpOverlays.Controls.Add(this.btnOv5, 4, 0);
-
-this.tlpOverlays.Controls.Add(this.lblOv2, 0, 1);
-this.tlpOverlays.Controls.Add(this.btnOv2, 1, 1);
-this.tlpOverlays.Controls.Add(this.lblOv6, 3, 1);
-this.tlpOverlays.Controls.Add(this.btnOv6, 4, 1);
-
-this.tlpOverlays.Controls.Add(this.lblOv3, 0, 2);
-this.tlpOverlays.Controls.Add(this.btnOv3, 1, 2);
-this.tlpOverlays.Controls.Add(this.lblOv7, 3, 2);
-this.tlpOverlays.Controls.Add(this.btnOv7, 4, 2);
-
-this.tlpOverlays.Controls.Add(this.lblOv4, 0, 3);
-this.tlpOverlays.Controls.Add(this.btnOv4, 1, 3);
-this.tlpOverlays.Controls.Add(this.lblOv8, 3, 3);
-this.tlpOverlays.Controls.Add(this.btnOv8, 4, 3);
-
-// Thickness (one setting for all overlays)
-this.tlpOverlays.Controls.Add(this.lblOvWidth, 0, 4);
-this.tlpOverlays.Controls.Add(this.nudOvWidth, 1, 4);
-// Overlay line style (one setting for all overlays)
-this.tlpOverlays.Controls.Add(this.lblOvStyle, 3, 4);
-this.tlpOverlays.Controls.Add(this.cmbOvStyle, 4, 4);
-
-
-// Same alignment trick as above
-this.grpOverlays.Controls.Add(this.tlpOverlays);
-
-// --- Chart table: 6 cols (labelL, swatchL, nudL, labelR, swatchR, nudR) ---
-this.tlpChart.ColumnCount = 6;
-this.tlpChart.RowCount = 3;
-this.tlpChart.Dock = DockStyle.Fill;
-this.tlpChart.AutoSize = true;
-this.tlpChart.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-this.tlpChart.Padding = new Padding(4, 6, 4, 4);
-
-this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label L
-this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 46F)); // value L (swatch)
-this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 0F));  // spacer
-this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90F)); // label R
-this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 46F)); // value R (swatch)
-this.tlpChart.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 0F));  // spacer
-
-
-this.tlpChart.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
-this.tlpChart.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
-this.tlpChart.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
-            this.lblGridMaj = MakeLabel("Grid Major");
-            this.btnGridMaj = MakeColorButton();
-            this.lblBack = MakeLabel("Background");
-            this.btnBack = MakeColorButton();
-
-            this.lblGridMin = MakeLabel("Grid Minor");
-            this.btnGridMin = MakeColorButton();
-
-            this.lblInfoText = MakeLabel("Info Text");
-            this.btnInfoText = MakeColorButton();
-            // right cell row2 used for labels
-            this.lblLabMaj = MakeLabel("Label Major");
-            this.btnLabMaj = MakeColorButton();
-            this.lblLabMin = MakeLabel("Label Minor");
-            this.btnLabMin = MakeColorButton();
-
-            this.tlpChart.Controls.Add(this.lblGridMaj, 0, 0);
-this.tlpChart.Controls.Add(this.btnGridMaj, 1, 0);
-this.tlpChart.Controls.Add(this.lblBack, 3, 0);
-this.tlpChart.Controls.Add(this.btnBack, 4, 0);
-
-this.tlpChart.Controls.Add(this.lblGridMin, 0, 1);
-this.tlpChart.Controls.Add(this.btnGridMin, 1, 1);
-this.tlpChart.Controls.Add(this.lblInfoText, 3, 1);
-this.tlpChart.Controls.Add(this.btnInfoText, 4, 1);
-
-this.tlpChart.Controls.Add(this.lblLabMaj, 0, 2);
-this.tlpChart.Controls.Add(this.btnLabMaj, 1, 2);
-this.tlpChart.Controls.Add(this.lblLabMin, 3, 2);
-this.tlpChart.Controls.Add(this.btnLabMin, 4, 2);
-            this.grpChart.Controls.Add(this.tlpChart);
-
-            // Buttons row
-            this.tlpButtons.ColumnCount = 3;
-            this.tlpButtons.RowCount = 1;
-            this.tlpButtons.Dock = DockStyle.Fill;
-            this.tlpButtons.AutoSize = true;
-            this.tlpButtons.Padding = new Padding(0, 6, 0, 0);
-            this.tlpButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
-            this.tlpButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
-            this.tlpButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
-
-            this.btnSetDefault = new Button();
-            this.btnSetDefault.Text = "SetDefault";
-            this.btnSetDefault.AutoSize = true;
-            this.btnSetDefault.Anchor = AnchorStyles.None;
-            this.btnSetDefault.Padding = new Padding(6, 2, 6, 2);
-
-            this.btnDefault = new Button();
-            this.btnDefault.Text = "Default";
-            this.btnDefault.AutoSize = true;
-            this.btnDefault.Anchor = AnchorStyles.None;
-            this.btnDefault.Padding = new Padding(6, 2, 6, 2);
-
-            this.btnOk = new Button();
-            this.btnOk.Text = "OK";
-            this.btnOk.DialogResult = DialogResult.OK;
-            this.btnOk.AutoSize = true;
-            this.btnOk.Anchor = AnchorStyles.None;
-            this.btnOk.Padding = new Padding(6, 2, 6, 2);
-
-            // ordre : SetDefault | Default | OK
-            this.tlpButtons.Controls.Add(this.btnSetDefault, 0, 0);
-            this.tlpButtons.Controls.Add(this.btnDefault, 1, 0);
-            this.tlpButtons.Controls.Add(this.btnOk, 2, 0);
-
-
-            // Add to root
-            this.tlpRoot.Controls.Add(this.grpTraces, 0, 0);
-            this.tlpRoot.Controls.Add(this.grpOverlays, 0, 1);
-            this.tlpRoot.Controls.Add(this.grpChart, 0, 2);
-            this.tlpRoot.Controls.Add(this.tlpButtons, 0, 3);
-
-            this.Controls.Add(this.tlpRoot);
-
-            this.AcceptButton = this.btnOk;
+            // W=264, form = 264+24 = 288 — right margin = left margin = 12px
+            AutoScaleMode   = AutoScaleMode.Font;
+            ClientSize      = new Size(W + 24, 488);
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox     = false; MinimizeBox = false;
+            ShowInTaskbar   = false;
+            StartPosition   = FormStartPosition.CenterParent;
+            Text            = "Display setup";
+            Padding         = new Padding(12, 10, 12, 10);
+            Font            = stdFont;
+            BackColor       = SystemColors.Window;
+            AcceptButton    = btnOk;
+            ResumeLayout(false);
         }
-
     }
 }
+#nullable restore

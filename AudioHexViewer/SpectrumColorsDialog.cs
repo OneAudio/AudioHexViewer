@@ -8,247 +8,161 @@ namespace AudioHexViewer
     public partial class SpectrumColorsDialog : Form
     {
         private SpectrumColorSettings _colors;
-
-        public SpectrumColorSettings SelectedColors => Clone(_colors);
-
         private SpectrumColorSettings _defaults;
 
+        public SpectrumColorSettings SelectedColors   => Clone(_colors);
         public bool DefaultsChanged { get; private set; }
         public SpectrumColorSettings SelectedDefaults => Clone(_defaults);
 
-        public SpectrumColorsDialog(SpectrumColorSettings initial, SpectrumColorSettings? defaults = null)
+        public SpectrumColorsDialog(SpectrumColorSettings initial,
+                                    SpectrumColorSettings? defaults = null)
         {
             InitializeComponent();
 
-            _colors = Clone(initial ?? SpectrumColorSettings.Defaults());
+            _colors   = Clone(initial ?? SpectrumColorSettings.Defaults());
             _colors.Normalize();
-
             _defaults = Clone(defaults ?? SpectrumColorSettings.Defaults());
             _defaults.Normalize();
             DefaultsChanged = false;
 
-            // Click handlers (color swatches)
-            btnFftL.Click += (_, __) => Pick(() => _colors.FftLeftArgb, v => _colors.FftLeftArgb = v, btnFftL);
-            btnFftR.Click += (_, __) => Pick(() => _colors.FftRightArgb, v => _colors.FftRightArgb = v, btnFftR);
+            // ── Traces swatches ───────────────────────────────────────────────
+            btnFftL.Click += (_, _) => Pick(() => _colors.FftLeftArgb,       v => _colors.FftLeftArgb = v,       btnFftL);
+            btnFftR.Click += (_, _) => Pick(() => _colors.FftRightArgb,      v => _colors.FftRightArgb = v,      btnFftR);
+            btnPkL.Click  += (_, _) => Pick(() => _colors.PeakHoldLeftArgb,  v => _colors.PeakHoldLeftArgb = v,  btnPkL);
+            btnPkR.Click  += (_, _) => Pick(() => _colors.PeakHoldRightArgb, v => _colors.PeakHoldRightArgb = v, btnPkR);
 
-            btnPkL.Click += (_, __) => Pick(() => _colors.PeakHoldLeftArgb, v => _colors.PeakHoldLeftArgb = v, btnPkL);
-            btnPkR.Click += (_, __) => Pick(() => _colors.PeakHoldRightArgb, v => _colors.PeakHoldRightArgb = v, btnPkR);
+            // ── Overlay swatches ──────────────────────────────────────────────
+            btnOv1.Click += (_, _) => PickOverlay(0, btnOv1); btnOv2.Click += (_, _) => PickOverlay(1, btnOv2);
+            btnOv3.Click += (_, _) => PickOverlay(2, btnOv3); btnOv4.Click += (_, _) => PickOverlay(3, btnOv4);
+            btnOv5.Click += (_, _) => PickOverlay(4, btnOv5); btnOv6.Click += (_, _) => PickOverlay(5, btnOv6);
+            btnOv7.Click += (_, _) => PickOverlay(6, btnOv7); btnOv8.Click += (_, _) => PickOverlay(7, btnOv8);
 
-            btnOv1.Click += (_, __) => PickOverlay(0, btnOv1);
-            btnOv2.Click += (_, __) => PickOverlay(1, btnOv2);
-            btnOv3.Click += (_, __) => PickOverlay(2, btnOv3);
-            btnOv4.Click += (_, __) => PickOverlay(3, btnOv4);
-            btnOv5.Click += (_, __) => PickOverlay(4, btnOv5);
-            btnOv6.Click += (_, __) => PickOverlay(5, btnOv6);
-            btnOv7.Click += (_, __) => PickOverlay(6, btnOv7);
-            btnOv8.Click += (_, __) => PickOverlay(7, btnOv8);
+            // ── Chart swatches ────────────────────────────────────────────────
+            btnGridMaj.Click  += (_, _) => Pick(() => _colors.GridArgb,       v => _colors.GridArgb = v,       btnGridMaj);
+            btnGridMin.Click  += (_, _) => Pick(() => _colors.GridMinorArgb,  v => _colors.GridMinorArgb = v,  btnGridMin);
+            btnBack.Click     += (_, _) => Pick(() => _colors.BackgroundArgb, v => _colors.BackgroundArgb = v, btnBack);
+            btnLabMaj.Click   += (_, _) => Pick(() => _colors.LabelMajorArgb, v => _colors.LabelMajorArgb = v, btnLabMaj);
+            btnLabMin.Click   += (_, _) => Pick(() => _colors.LabelMinorArgb, v => _colors.LabelMinorArgb = v, btnLabMin);
+            btnInfoText.Click += (_, _) => Pick(() => _colors.InfoTextArgb,   v => _colors.InfoTextArgb = v,   btnInfoText);
 
-            btnGridMaj.Click += (_, __) => Pick(() => _colors.GridArgb, v => _colors.GridArgb = v, btnGridMaj);
-            btnGridMin.Click += (_, __) => Pick(() => _colors.GridMinorArgb, v => _colors.GridMinorArgb = v, btnGridMin);
-            btnBack.Click += (_, __) => Pick(() => _colors.BackgroundArgb, v => _colors.BackgroundArgb = v, btnBack);
-            btnLabMaj.Click += (_, __) => Pick(() => _colors.LabelMajorArgb, v => _colors.LabelMajorArgb = v, btnLabMaj);
-            btnLabMin.Click += (_, __) => Pick(() => _colors.LabelMinorArgb, v => _colors.LabelMinorArgb = v, btnLabMin);
-            btnInfoText.Click += (_, __) => Pick(() => _colors.InfoTextArgb, v => _colors.InfoTextArgb = v, btnInfoText);
+            // ── Thickness NUDs ────────────────────────────────────────────────
+            nudFftWidth.Value = Clamp3(_colors.FftWidth);
+            nudPkWidth.Value  = Clamp3(_colors.PeakHoldWidth);
+            nudOvWidth.Value  = Clamp3(_colors.OverlayWidth);
+            nudFftWidth.ValueChanged += (_, _) => _colors.FftWidth      = (int)nudFftWidth.Value;
+            nudPkWidth.ValueChanged  += (_, _) => _colors.PeakHoldWidth = (int)nudPkWidth.Value;
+            nudOvWidth.ValueChanged  += (_, _) => _colors.OverlayWidth  = (int)nudOvWidth.Value;
 
-            // Thickness
-            nudFftWidth.Value = ClampToRange(_colors.FftWidth);
-            nudPkWidth.Value = ClampToRange(_colors.PeakHoldWidth);
-            nudOvWidth.Value = ClampToRange(_colors.OverlayWidth);
-
-            nudFftWidth.ValueChanged += (_, __) => _colors.FftWidth = (int)nudFftWidth.Value;
-            nudPkWidth.ValueChanged += (_, __) => _colors.PeakHoldWidth = (int)nudPkWidth.Value;
-            nudOvWidth.ValueChanged += (_, __) => _colors.OverlayWidth = (int)nudOvWidth.Value;
-
-            // Overlay line style choices (mapped to ChartDashStyle)
-            cmbOvStyle.Items.Clear();
-            cmbOvStyle.Items.Add(ChartDashStyle.Solid);
-            cmbOvStyle.Items.Add(ChartDashStyle.Dash);
-            cmbOvStyle.Items.Add(ChartDashStyle.Dot);
-            cmbOvStyle.Items.Add(ChartDashStyle.DashDot);
-            cmbOvStyle.Items.Add(ChartDashStyle.DashDotDot);
-
-            cmbOvStyle.SelectedIndexChanged += (_, __) =>
+            // ── Overlay line style ────────────────────────────────────────────
+            cmbOvStyle.Items.AddRange(new object[] {
+                ChartDashStyle.Solid, ChartDashStyle.Dash, ChartDashStyle.Dot,
+                ChartDashStyle.DashDot, ChartDashStyle.DashDotDot
+            });
+            cmbOvStyle.SelectedIndexChanged += (_, _) =>
             {
                 if (cmbOvStyle.SelectedItem is ChartDashStyle s)
                     _colors.OverlayDashStyle = (int)s;
             };
 
+            // ── Negative per group — live preview ────────────────────────────
+            chkNegTraces.CheckedChanged += (_, _) =>
+            { _colors.NegativeTraces   = chkNegTraces.Checked;   UpdateSwatchDisplay(); };
+            chkNegOverlays.CheckedChanged += (_, _) =>
+            { _colors.NegativeOverlays = chkNegOverlays.Checked; UpdateSwatchDisplay(); };
+            chkNegChart.CheckedChanged += (_, _) =>
+            { _colors.NegativeChart    = chkNegChart.Checked;    UpdateSwatchDisplay(); };
 
-            btnSetDefault.Click += (_, __) =>
-            {
-                _defaults = Clone(_colors);
-                DefaultsChanged = true;
-            };
-
-            btnDefault.Click += (_, __) =>
-            {
-                _colors = Clone(_defaults);
-                UpdateUiFromSettings();
-            };
+            // ── Action buttons ────────────────────────────────────────────────
+            btnSaveDefault.Click    += (_, _) => { _defaults = Clone(_colors); DefaultsChanged = true; };
+            btnRestoreDefault.Click += (_, _) => { _colors = Clone(_defaults); UpdateUiFromSettings(); };
 
             UpdateUiFromSettings();
-        }
-
-        private static decimal ClampToRange(int v)
-        {
-            if (v < 1) v = 1;
-            if (v > 3) v = 3;
-            return v;
-        }
-
-        private void PickOverlay(int idx, Button swatch)
-        {
-            _colors.Normalize();
-            int[] arr = _colors.OverlaySlotArgb;
-
-            int current = (idx >= 0 && idx < arr.Length) ? arr[idx] : _colors.OverlayArgb;
-            using var cd = new ColorDialog { Color = Color.FromArgb(current), FullOpen = true };
-            if (cd.ShowDialog(this) == DialogResult.OK)
-            {
-                if (idx >= 0 && idx < arr.Length)
-                    arr[idx] = cd.Color.ToArgb();
-                swatch.BackColor = cd.Color;
-            }
-        }
-
-        private static void Pick(Func<int> getArgb, Action<int> setArgb, Button swatch)
-        {
-            using var cd = new ColorDialog { Color = Color.FromArgb(getArgb()), FullOpen = true };
-            if (cd.ShowDialog() == DialogResult.OK)
-            {
-                setArgb(cd.Color.ToArgb());
-                swatch.BackColor = cd.Color;
-            }
         }
 
         private void UpdateUiFromSettings()
         {
             _colors.Normalize();
 
-            btnFftL.BackColor = Color.FromArgb(_colors.FftLeftArgb);
-            btnFftR.BackColor = Color.FromArgb(_colors.FftRightArgb);
+            btnFftL.BackColor = ShowColor(_colors.FftLeftArgb,   _colors.NegativeTraces);
+            btnFftR.BackColor = ShowColor(_colors.FftRightArgb,  _colors.NegativeTraces);
+            btnPkL.BackColor  = ShowColor(_colors.PeakHoldLeftArgb,  _colors.NegativeTraces);
+            btnPkR.BackColor  = ShowColor(_colors.PeakHoldRightArgb, _colors.NegativeTraces);
 
-            btnPkL.BackColor = Color.FromArgb(_colors.PeakHoldLeftArgb);
-            btnPkR.BackColor = Color.FromArgb(_colors.PeakHoldRightArgb);
-
-            btnGridMaj.BackColor = Color.FromArgb(_colors.GridArgb);
-            btnGridMin.BackColor = Color.FromArgb(_colors.GridMinorArgb);
-            btnBack.BackColor = Color.FromArgb(_colors.BackgroundArgb);
-            btnLabMaj.BackColor = Color.FromArgb(_colors.LabelMajorArgb);
-            btnLabMin.BackColor = Color.FromArgb(_colors.LabelMinorArgb);
-            btnInfoText.BackColor = Color.FromArgb(_colors.InfoTextArgb);
+            btnGridMaj.BackColor  = ShowColor(_colors.GridArgb,       _colors.NegativeChart);
+            btnGridMin.BackColor  = ShowColor(_colors.GridMinorArgb,  _colors.NegativeChart);
+            btnBack.BackColor     = ShowColor(_colors.BackgroundArgb, _colors.NegativeChart);
+            btnLabMaj.BackColor   = ShowColor(_colors.LabelMajorArgb, _colors.NegativeChart);
+            btnLabMin.BackColor   = ShowColor(_colors.LabelMinorArgb, _colors.NegativeChart);
+            btnInfoText.BackColor = ShowColor(_colors.InfoTextArgb,   _colors.NegativeChart);
 
             var ov = _colors.OverlaySlotArgb;
-            btnOv1.BackColor = Color.FromArgb(ov[0]);
-            btnOv2.BackColor = Color.FromArgb(ov[1]);
-            btnOv3.BackColor = Color.FromArgb(ov[2]);
-            btnOv4.BackColor = Color.FromArgb(ov[3]);
-            btnOv5.BackColor = Color.FromArgb(ov[4]);
-            btnOv6.BackColor = Color.FromArgb(ov[5]);
-            btnOv7.BackColor = Color.FromArgb(ov[6]);
-            btnOv8.BackColor = Color.FromArgb(ov[7]);
+            bool no = _colors.NegativeOverlays;
+            btnOv1.BackColor=ShowColor(ov[0],no); btnOv2.BackColor=ShowColor(ov[1],no);
+            btnOv3.BackColor=ShowColor(ov[2],no); btnOv4.BackColor=ShowColor(ov[3],no);
+            btnOv5.BackColor=ShowColor(ov[4],no); btnOv6.BackColor=ShowColor(ov[5],no);
+            btnOv7.BackColor=ShowColor(ov[6],no); btnOv8.BackColor=ShowColor(ov[7],no);
 
-            nudFftWidth.Value = ClampToRange(_colors.FftWidth);
-            nudPkWidth.Value = ClampToRange(_colors.PeakHoldWidth);
-            nudOvWidth.Value = ClampToRange(_colors.OverlayWidth);
+            nudFftWidth.Value = Clamp3(_colors.FftWidth);
+            nudPkWidth.Value  = Clamp3(_colors.PeakHoldWidth);
+            nudOvWidth.Value  = Clamp3(_colors.OverlayWidth);
 
-            // Ovl Style
             var style = (ChartDashStyle)_colors.OverlayDashStyle;
-            if (!Enum.IsDefined(typeof(ChartDashStyle), style))
-                style = ChartDashStyle.Dot;
-
+            if (!Enum.IsDefined(typeof(ChartDashStyle), style)) style = ChartDashStyle.Dot;
             cmbOvStyle.SelectedItem = style;
 
+            chkNegTraces.Checked   = _colors.NegativeTraces;
+            chkNegOverlays.Checked = _colors.NegativeOverlays;
+            chkNegChart.Checked    = _colors.NegativeChart;
         }
 
-
-        // --- UI helpers (called from Designer) ---
-        private static void SetupColorButton(Button b)
+        // ── Helpers ───────────────────────────────────────────────────────────
+        private void PickOverlay(int idx, Button swatch)
         {
-            b.Size = new Size(18, 18);
-            b.Margin = new Padding(0, 6, 3, 6);   // marge droite = 3
-            b.Anchor = AnchorStyles.Right;        // <<< important
-            b.FlatStyle = FlatStyle.Flat;
-            b.FlatAppearance.BorderSize = 1;
-            b.Text = "";
-            b.TabStop = false;
-            b.Cursor = Cursors.Hand;
-            b.UseVisualStyleBackColor = false;
+            _colors.Normalize();
+            int[] arr = _colors.OverlaySlotArgb;
+            using var cd = new ColorDialog {
+                Color = Color.FromArgb(idx < arr.Length ? arr[idx] : _colors.OverlayArgb),
+                FullOpen = true
+            };
+            if (cd.ShowDialog(this) != DialogResult.OK) return;
+            if (idx < arr.Length) arr[idx] = cd.Color.ToArgb();
+            swatch.BackColor = cd.Color;
         }
 
-
-        private static void SetupWidthNud(NumericUpDown nud)
+        private static void Pick(Func<int> getArgb, Action<int> setArgb, Button swatch)
         {
-            nud.Minimum = 1;
-            nud.Maximum = 3;
-            nud.Value = 2;
-            nud.DecimalPlaces = 0;
-            nud.Increment = 1;
-
-            nud.Size = new Size(42, 22);          // <= doit tenir dans la colonne 46
-            nud.Margin = new Padding(0, 4, 3, 4); // marge droite = 3 (comme les carrs)
-            nud.Anchor = AnchorStyles.Right;      // <<< important
-            nud.TextAlign = HorizontalAlignment.Center;
+            using var cd = new ColorDialog { Color = Color.FromArgb(getArgb()), FullOpen = true };
+            if (cd.ShowDialog() != DialogResult.OK) return;
+            setArgb(cd.Color.ToArgb());
+            swatch.BackColor = cd.Color;
         }
 
 
-        private static Label MakeLabel(string text)
-        {
-            var l = new Label();
-            l.Text = text;
-            l.AutoSize = true;
-            l.Anchor = AnchorStyles.Right;
-
-            // Align text close to the color square (requested UI alignment)
-            l.TextAlign = ContentAlignment.MiddleRight;
-            l.Padding = new Padding(0, 0, 4, 0);
-
-            return l;
-        }
-
-        private static Button MakeColorButton()
-        {
-            var b = new Button();
-            SetupColorButton(b);
-            return b;
-        }
+        private void UpdateSwatchDisplay() => UpdateUiFromSettings();
+        private static Color ShowColor(int argb, bool inv) { var c = Color.FromArgb(argb); return inv ? Color.FromArgb(c.A,255-c.R,255-c.G,255-c.B) : c; }
+        private static decimal Clamp3(int v) => v < 1 ? 1 : v > 3 ? 3 : v;
 
         private static SpectrumColorSettings Clone(SpectrumColorSettings src)
         {
-            // clone profond (array overlay)
-            var dst = new SpectrumColorSettings
-            {
-                FftLeftArgb = src.FftLeftArgb,
-                FftRightArgb = src.FftRightArgb,
-                FftWidth = src.FftWidth,
-
-                PeakHoldLeftArgb = src.PeakHoldLeftArgb,
-                PeakHoldRightArgb = src.PeakHoldRightArgb,
-                PeakHoldWidth = src.PeakHoldWidth,
-
-                OverlayArgb = src.OverlayArgb,
-                OverlayWidth = src.OverlayWidth,
-
-                GridArgb = src.GridArgb,
-                GridMinorArgb = src.GridMinorArgb,
-                BackgroundArgb = src.BackgroundArgb,
-
-                LabelMajorArgb = src.LabelMajorArgb,
-                LabelMinorArgb = src.LabelMinorArgb,
-                InfoTextArgb = src.InfoTextArgb,
-                OverlayDashStyle = src.OverlayDashStyle
+            var dst = new SpectrumColorSettings {
+                FftLeftArgb      = src.FftLeftArgb,   FftRightArgb      = src.FftRightArgb,
+                FftWidth         = src.FftWidth,       PeakHoldLeftArgb  = src.PeakHoldLeftArgb,
+                PeakHoldRightArgb= src.PeakHoldRightArgb, PeakHoldWidth = src.PeakHoldWidth,
+                OverlayArgb      = src.OverlayArgb,   OverlayWidth      = src.OverlayWidth,
+                GridArgb         = src.GridArgb,       GridMinorArgb     = src.GridMinorArgb,
+                BackgroundArgb   = src.BackgroundArgb, LabelMajorArgb    = src.LabelMajorArgb,
+                LabelMinorArgb   = src.LabelMinorArgb, InfoTextArgb      = src.InfoTextArgb,
+                OverlayDashStyle = src.OverlayDashStyle,
+                NegativeTraces   = src.NegativeTraces,
+                NegativeOverlays = src.NegativeOverlays,
+                NegativeChart    = src.NegativeChart,
             };
-
             if (src.OverlaySlotArgb != null)
             {
                 dst.OverlaySlotArgb = new int[src.OverlaySlotArgb.Length];
                 Array.Copy(src.OverlaySlotArgb, dst.OverlaySlotArgb, src.OverlaySlotArgb.Length);
             }
-            else
-            {
-                dst.OverlaySlotArgb = SpectrumColorSettings.Defaults().OverlaySlotArgb;
-            }
-
+            else dst.OverlaySlotArgb = SpectrumColorSettings.Defaults().OverlaySlotArgb;
             dst.Normalize();
             return dst;
         }

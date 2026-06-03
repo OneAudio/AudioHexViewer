@@ -20,12 +20,14 @@ namespace AudioHexViewer
 
         // ── Couleurs ──────────────────────────────────────────────────────────
         private SpectrumColorSettings _colors = SpectrumColorSettings.Defaults();
-        private Color BgColor       => Color.FromArgb(_colors.BackgroundArgb);
-        private Color GridMajColor  => Color.FromArgb(_colors.GridArgb);
-        private Color GridMinColor  => Color.FromArgb(_colors.GridMinorArgb);
-        private Color TraceColorL   => Color.FromArgb(_colors.FftLeftArgb);
-        private Color TraceColorR   => Color.FromArgb(_colors.FftRightArgb);
-        private Color InfoTextColor => Color.FromArgb(_colors.InfoTextArgb);
+        private static Color NegApply(int argb, bool inv)
+        { var col = Color.FromArgb(argb); return inv ? Color.FromArgb(col.A,255-col.R,255-col.G,255-col.B) : col; }
+        private Color BgColor       => NegApply(_colors.BackgroundArgb, _colors.NegativeChart);
+        private Color GridMajColor  => NegApply(_colors.GridArgb, _colors.NegativeChart);
+        private Color GridMinColor  => NegApply(_colors.GridMinorArgb, _colors.NegativeChart);
+        private Color TraceColorL   => NegApply(_colors.FftLeftArgb,  _colors.NegativeTraces);
+        private Color TraceColorR   => NegApply(_colors.FftRightArgb, _colors.NegativeTraces);
+        private Color InfoTextColor => NegApply(_colors.InfoTextArgb, _colors.NegativeChart);
 
         // ── Constantes ────────────────────────────────────────────────────────
         private const int   H_DIVS        = 10;

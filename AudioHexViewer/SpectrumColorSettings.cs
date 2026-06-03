@@ -43,6 +43,11 @@ public sealed class SpectrumColorSettings
     public int LabelMinorArgb { get; set; } = Color.DimGray.ToArgb();
     public int InfoTextArgb { get; set; } = Color.DarkBlue.ToArgb();
 
+    // --- Négatif par groupe ---
+    public bool NegativeTraces   { get; set; } = false;
+    public bool NegativeOverlays { get; set; } = false;
+    public bool NegativeChart    { get; set; } = false;
+
     public static SpectrumColorSettings Defaults()
     {
         var s = new SpectrumColorSettings();
