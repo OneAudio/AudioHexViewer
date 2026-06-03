@@ -70,6 +70,8 @@ namespace AudioHexViewer
         private System.Windows.Forms.Timer? liveTimer;
         private bool isLive;
         private bool _isNormalized;   // true quand ChkNorm est coché (mode PDF)
+        private bool   _isScaleLocked;
+        private double _lockedYMin, _lockedYMax, _lockedYInterval;
         private bool _isDiff;          // true = vue différentielle (mesuré - gaussienne)
 
         // Stats pour PostPaint
@@ -95,9 +97,12 @@ namespace AudioHexViewer
                 DnlMax   = dnlMax;
                 Min      = min;   Max      = max;
                 HasData  = count > 0;
-                // ENOB = log2(pleine_échelle / RMS)  avec pleine échelle = 2 × lsbRange
-                Enob = (rms > 0 && lsbRange > 0)
-                    ? Math.Log2(2.0 * lsbRange / rms)
+                // ENOB = log2(pleine_échelle / RMS)
+                // Pleine échelle = 2^23 = 8 388 608 LSB (ADC 24-bit signé)
+                // Indépendant de la plage affichée — toujours rapporté à la résolution ADC.
+                const double FullScaleLsb = 8_388_608.0;
+                Enob = (rms > 0)
+                    ? Math.Log2(FullScaleLsb / rms)
                     : 0;
             }
         }
@@ -406,7 +411,7 @@ namespace AudioHexViewer
             reserved = Math.Min(reserved, maxReserved);
 
             float reservedPct = Math.Max(0f, Math.Min(45f, 100f * reserved / chartWidth));
-            const float LeftPct = 11f;
+            const float LeftPct = 7.5f;  // réduit la zone grise gauche
             float width = (100f - LeftPct) - reservedPct;
             if (width < 10f) width = 10f;
             area.Position.Auto = false;
@@ -494,6 +499,19 @@ namespace AudioHexViewer
         // ══════════════════════════════════════════════════════════════════════
         private void ComboChannel_SelectedIndexChanged(object sender, EventArgs e) => RebuildHistogram();
         private void ChkDcMode_CheckedChanged(object sender, EventArgs e)             => RebuildHistogram();
+        private void ChkLockScale_CheckedChanged(object sender, EventArgs e)
+        {
+            _isScaleLocked = chkLockScale.Checked;
+            if (_isScaleLocked && chartHistogram.ChartAreas.Count > 0)
+            {
+                // Capture l'échelle actuelle au moment du verrouillage
+                var axY = (chartHistogram.ChartAreas.FindByName("HistogramArea") ?? chartHistogram.ChartAreas[0]).AxisY;
+                _lockedYMin      = axY.Minimum;
+                _lockedYMax      = axY.Maximum;
+                _lockedYInterval = axY.Interval;
+            }
+        }
+
         private void ChkGauss_CheckedChanged(object sender, EventArgs e)          => RebuildHistogram();
         private void ChkNorm_CheckedChanged(object sender, EventArgs e)           => RebuildHistogram();
         // Marqueurs σ : pas de recalcul des données, simple rafraîchissement du PostPaint
@@ -686,7 +704,7 @@ namespace AudioHexViewer
             // Dessinée APRÈS les barres pour passer au premier plan.
             // Formule : y = (N·bw / (σ·√(2π))) · exp(−(x−μ)²/(2σ²))
             // N = count en fenêtre, bw = binWidth → le pic correspond au count max attendu.
-            if (ChkGauss.Checked)
+            if (ChkGauss.Checked && !_isDiff)
             {
                 void AddGaussSeries(string name, StatsData d, Color baseColor)
                 {
@@ -736,16 +754,39 @@ namespace AudioHexViewer
             double xStep = lsbRange / 8.0;
             area.AxisX.Interval = xStep <= 0 ? 1 : xStep;
 
-            // Axe Y : max calculé depuis les valeurs réellement tracées (normalisées ou brutes)
-            double maxYValue = 0;
-            if (binsLeft  != null) { double nf = isNorm && lCnt > 0 ? 1.0 / ((double)lCnt * binWidth) : 1.0; foreach (int c in binsLeft)  { double v = c * nf; if (v > maxYValue) maxYValue = v; } }
-            if (binsRight != null) { double nf = isNorm && rCnt > 0 ? 1.0 / ((double)rCnt * binWidth) : 1.0; foreach (int c in binsRight) { double v = c * nf; if (v > maxYValue) maxYValue = v; } }
-
-            var (yMax, yInterval) = ComputeNiceYScale(maxYValue);
-            area.AxisY.Minimum  = 0;
-            area.AxisY.Maximum  = yMax;
-            area.AxisY.Interval = yInterval;
-            area.AxisY.IsStartedFromZero = true;
+            // Axe Y — priorité : scale verrouillée → diff → auto
+            if (_isScaleLocked && _lockedYMax > _lockedYMin)
+            {
+                area.AxisY.Minimum  = _lockedYMin;
+                area.AxisY.Maximum  = _lockedYMax;
+                area.AxisY.Interval = _lockedYInterval;
+                area.AxisY.IsStartedFromZero = (_lockedYMin >= 0);
+            }
+            else if (_isDiff)
+            {
+                double yMinD = 0, yMaxD = 0;
+                foreach (var ser in chartHistogram.Series)
+                    foreach (var pt in ser.Points)
+                    { if (pt.YValues[0] < yMinD) yMinD = pt.YValues[0];
+                      if (pt.YValues[0] > yMaxD) yMaxD = pt.YValues[0]; }
+                double absMax = Math.Max(Math.Abs(yMinD), yMaxD);
+                var (ySymMax, ySymInterval) = ComputeNiceYScale(absMax > 0 ? absMax : 1.0);
+                area.AxisY.Minimum  = -ySymMax;
+                area.AxisY.Maximum  =  ySymMax;
+                area.AxisY.Interval = ySymInterval;
+                area.AxisY.IsStartedFromZero = false;
+            }
+            else
+            {
+                double maxYValue = 0;
+                if (binsLeft  != null) { double nf = isNorm && lCnt > 0 ? 1.0 / ((double)lCnt * binWidth) : 1.0; foreach (int c in binsLeft)  { double v = c * nf; if (v > maxYValue) maxYValue = v; } }
+                if (binsRight != null) { double nf = isNorm && rCnt > 0 ? 1.0 / ((double)rCnt * binWidth) : 1.0; foreach (int c in binsRight) { double v = c * nf; if (v > maxYValue) maxYValue = v; } }
+                var (yMax, yInterval) = ComputeNiceYScale(maxYValue);
+                area.AxisY.Minimum  = 0;
+                area.AxisY.Maximum  = yMax;
+                area.AxisY.Interval = yInterval;
+                area.AxisY.IsStartedFromZero = true;
+            }
 
             area.RecalculateAxesScale();
             chartHistogram.Invalidate();
@@ -1033,21 +1074,35 @@ namespace AudioHexViewer
             }
             catch { return; }
 
-            using var titleFont  = new Font(baseFont.FontFamily, baseFont.SizeInPoints, FontStyle.Regular);
-            float titleH = titleFont.GetHeight(g); // epaisseur horizontale du titre une fois tourne
-            float titleCx = labelLeft - titleH / 2f - 4f;
-            if (titleCx < 2) titleCx = 2f;
+            // Titre "Count" — rendu via bitmap GDI (TextRenderer) pour qualité identique
+            // aux labels numériques, puis rotation 90° du bitmap sur le Graphics GDI+.
+            using var titleFont = new Font(baseFont.FontFamily, baseFont.SizeInPoints, FontStyle.Regular);
+            const string titleText = "Count";
+            Size tSz = TextRenderer.MeasureText(titleText, titleFont,
+                new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding);
+            if (tSz.Width > 0 && tSz.Height > 0)
+            {
+                // Bitmap en format 32bpp pour interpolation propre
+                using var bmp = new Bitmap(tSz.Width + 2, tSz.Height + 2,
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                using (var bg = Graphics.FromImage(bmp))
+                {
+                    bg.Clear(SystemColors.Control); // fond = couleur marge chart
+                    TextRenderer.DrawText(bg, titleText, titleFont, new Point(1, 1),
+                        labelColor, SystemColors.Control, TextFormatFlags.NoPadding);
+                }
+                float titleH = tSz.Height + 2;
+                float titleCx = labelLeft - titleH / 2f - 4f;
+                if (titleCx < 2) titleCx = 2f;
+                float titleCy = (pTop + pBot) / 2f;
 
-            var prevHint = g.TextRenderingHint;
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-            var state = g.Save();
-            g.TranslateTransform(titleCx, (pTop + pBot) / 2f);
-            g.RotateTransform(-90f);
-            using var titleBrush = new SolidBrush(labelColor);
-            using var fmtC = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-            g.DrawString("Count", titleFont, titleBrush, 0f, 0f, fmtC);
-            g.Restore(state);
-            g.TextRenderingHint = prevHint;
+                var state = g.Save();
+                g.TranslateTransform(titleCx, titleCy);
+                g.RotateTransform(-90f);
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+                g.DrawImage(bmp, -(tSz.Width + 2) / 2f, -(tSz.Height + 2) / 2f);
+                g.Restore(state);
+            }
         }
 
          private string FormatYLabel(double v)

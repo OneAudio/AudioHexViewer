@@ -29,6 +29,7 @@ namespace AudioHexViewer
             comboSigma     = new ComboBox();
             ChkNorm        = new CheckBox();
             chkDiff        = new CheckBox();
+            chkLockScale   = new CheckBox();
             sep1           = new Label();
             sep2           = new Label();
             sep3           = new Label();
@@ -76,7 +77,7 @@ namespace AudioHexViewer
                 chkDcMode,
                 ChkGauss,
                 ChkMarkers,   comboSigma,
-                ChkNorm, chkDiff,
+                ChkNorm, chkDiff, chkLockScale,
                 sep1, sep2, sep3, sep4,
                 btnRun
             });
@@ -180,6 +181,13 @@ namespace AudioHexViewer
             chkDiff.Location  = new Point(408, 58);
             chkDiff.CheckedChanged += ChkDiff_CheckedChanged;
 
+            // ── LOCK SCALE (x=408, row1) ──────────────────────────────────────
+            chkLockScale.AutoSize  = true;
+            chkLockScale.Font      = std9;
+            chkLockScale.Text      = "Lock scale";
+            chkLockScale.Location  = new Point(408, 10);
+            chkLockScale.CheckedChanged += ChkLockScale_CheckedChanged;
+
             // sep3, sep4 — inutilisés, cachés
             sep3.Size = new Size(0, 0);
             sep4.Size = new Size(0, 0);
@@ -229,6 +237,7 @@ namespace AudioHexViewer
         private Label    lblBinPow;
         private ComboBox comboBinLsb;
         private CheckBox chkDcMode;
+        private CheckBox chkLockScale;
         private CheckBox chkDiff;
         private CheckBox ChkGauss;
         private CheckBox ChkMarkers;
