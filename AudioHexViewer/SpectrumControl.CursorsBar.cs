@@ -470,27 +470,34 @@ namespace AudioHexViewer
             double minHz = log ? 1.0 : 0.0;
             double maxHz = Math.Max(minHz + 1.0, nyq);
 
+            // Sauvegarde position initiale pour restauration si Cancel
+            double originalHz = current ?? 0.0;
+
+            // Preview live : chaque changement de valeur déplace le curseur
+            Action<double> onPreview = hz =>
+            {
+                if (isC1) { CursorLeftEnabled  = true; SetCursor1FrequencyHz(hz); }
+                else      { CursorRightEnabled = true; SetCursor2FrequencyHz(hz); }
+                SyncCursorUiFromModel();
+            };
+
             using var dlg = new CursorFrequencyDialog(
                 title: isC1 ? "Set C1 frequency (Hz)" : "Set C2 frequency (Hz)",
                 minHz: minHz,
                 maxHz: maxHz,
-                initialHz: current);
+                initialHz: current,
+                onPreview: onPreview);
 
             var owner = this.FindForm();
             var r = owner != null ? dlg.ShowDialog(owner) : dlg.ShowDialog();
-            if (r != DialogResult.OK) return;
 
-            if (isC1)
+            if (r != DialogResult.OK)
             {
-                CursorLeftEnabled = true;
-                SetCursor1FrequencyHz(dlg.SelectedHz);
+                // Restaure la position originale
+                if (isC1) SetCursor1FrequencyHz(originalHz);
+                else      SetCursor2FrequencyHz(originalHz);
             }
-            else
-            {
-                CursorRightEnabled = true;
-                SetCursor2FrequencyHz(dlg.SelectedHz);
-            }
-
+            // OK : curseur déjà à la bonne position via preview
             SyncCursorUiFromModel();
         }
     }

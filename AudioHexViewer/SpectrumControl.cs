@@ -1614,99 +1614,120 @@ namespace AudioHexViewer
         /// </summary>
         private sealed class NoiseToPeakThresholdDialog : Form
         {
-            private readonly NumericUpDown _nud;
-            private readonly Button _btnOk;
-            private readonly Button _btnCancel;
-            private readonly double _minDb;
-            private readonly double _maxDb;
-
+            private readonly TextBox _txt;
+            private double _value;
+            private readonly double _minDb, _maxDb;
             public double ValueDb { get; private set; }
+
+            private void SetValue(double v)
+            {
+                _value = Math.Max(_minDb, Math.Min(_maxDb, v));
+                _txt.Text = _value.ToString("N0", System.Globalization.CultureInfo.CurrentCulture);
+            }
+
+            private void CommitText()
+            {
+                if (double.TryParse(_txt.Text, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.CurrentCulture, out double v))
+                    SetValue(v);
+                else
+                    SetValue(_value);
+            }
 
             public NoiseToPeakThresholdDialog(double currentValueDb, double minDb, double maxDb)
             {
-                _minDb = minDb;
-                _maxDb = maxDb;
+                _minDb = minDb; _maxDb = maxDb;
 
-                Text = "Noise→Peak Thres (dB)";
+                var std    = new Font("Segoe UI", 9f);
+                var fStep  = new Font("Segoe UI", 8.5f);
+                var fBig   = new Font("Segoe UI", 13f, FontStyle.Bold);
+                var fUnit  = new Font("Segoe UI", 8f);
+                var blue   = Color.FromArgb(0, 90, 160);
+                var bdrClr = Color.FromArgb(180, 180, 180);
+
+                Text            = "Noise→Peak Thres (dB)";
                 FormBorderStyle = FormBorderStyle.FixedDialog;
-                StartPosition = FormStartPosition.CenterParent;
-                MinimizeBox = false;
-                MaximizeBox = false;
-                ShowInTaskbar = false;
-                AutoSize = true;
-                AutoSizeMode = AutoSizeMode.GrowAndShrink;
-                Padding = new Padding(10);
+                StartPosition   = FormStartPosition.CenterParent;
+                MinimizeBox     = false; MaximizeBox = false;
+                ShowInTaskbar   = false;
+                ClientSize      = new Size(300, 100);
+                Font            = std;
+                BackColor       = SystemColors.Control;
 
-                var lbl = new Label
+                // ── Value display panel ───────────────────────────────────────
+                var pnlVal = new Panel
                 {
-                    AutoSize = true,
-                    Text = $"Threshold dB [{_minDb:0}..{_maxDb:0}] :",
-                    Margin = new Padding(0, 0, 0, 6)
+                    Location    = new Point(100, 8),
+                    Size        = new Size(100, 46),
+                    BorderStyle = BorderStyle.FixedSingle,
+                    BackColor   = SystemColors.Window
                 };
-
-                _nud = new NumericUpDown
+                _txt = new TextBox
                 {
-                    Width = 120,
-                    Minimum = (decimal)minDb,
-                    Maximum = (decimal)maxDb,
-
-                    // Incréments de 2 dB demandés
-                    Increment = 2m,
-
-                    // Valeurs en dB : on reste en entier (si tu veux 0.5 dB un jour => DecimalPlaces=1 et Increment=0.5m)
-                    DecimalPlaces = 0,
-
-                    // Confort visuel
-                    TextAlign = HorizontalAlignment.Right,
+                    BorderStyle = BorderStyle.None,
+                    Font        = fBig,
+                    TextAlign   = HorizontalAlignment.Center,
+                    Location    = new Point(2, 4),
+                    Size        = new Size(96, 24),
+                    BackColor   = SystemColors.Window
                 };
-                _nud.Value = (decimal)Math.Max(minDb, Math.Min(maxDb, currentValueDb));
-
-                _btnOk = new Button { Text = "OK", DialogResult = DialogResult.OK, AutoSize = true };
-                _btnCancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };
-
-                AcceptButton = _btnOk;
-                CancelButton = _btnCancel;
-
-                var buttons = new FlowLayoutPanel
+                var lblUnit = new Label
                 {
-                    FlowDirection = FlowDirection.RightToLeft,
-                    AutoSize = true,
-                    Dock = DockStyle.Bottom,
-                    Margin = new Padding(0, 10, 0, 0)
+                    Text      = "dB",
+                    Font      = fUnit, ForeColor = SystemColors.GrayText,
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    Location  = new Point(0, 29), Size = new Size(98, 14),
+                    BackColor = SystemColors.Window
                 };
-                buttons.Controls.Add(_btnCancel);
-                buttons.Controls.Add(_btnOk);
+                pnlVal.Controls.Add(_txt);
+                pnlVal.Controls.Add(lblUnit);
+                Controls.Add(pnlVal);
 
-                var panel = new FlowLayoutPanel
+                // ── Step buttons: −10  −1  [display]  +1  +10 ────────────────
+                Button MakeBtn(string label, int x, double delta)
                 {
-                    FlowDirection = FlowDirection.TopDown,
-                    AutoSize = true,
-                    Dock = DockStyle.Fill
-                };
-                panel.Controls.Add(lbl); panel.Controls.Add(_nud);
-
-                panel.Controls.Add(buttons);
-
-                Controls.Add(panel);
-
-                // Validation au OK
-                _btnOk.Click += (_, __) =>
-                {
-                    double v = (double)_nud.Value;
-                    ValueDb = v;
-                    DialogResult = DialogResult.OK;
-                    Close();
-
-                    if (v < _minDb || v > _maxDb)
+                    var b = new Button
                     {
-                        MessageBox.Show(this, $"Value must be between {_minDb:0} and {_maxDb:0} dB.",
-                            "Out of range", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        DialogResult = DialogResult.None;
-                        return;
-                    }
+                        Text = label, Location = new Point(x, 8), Size = new Size(40, 46),
+                        Font = fStep, FlatStyle = FlatStyle.Flat, BackColor = SystemColors.Control
+                    };
+                    b.FlatAppearance.BorderColor = bdrClr;
+                    b.Click += (_, __) => { CommitText(); SetValue(_value + delta); };
+                    Controls.Add(b);
+                    return b;
+                }
 
-                    ValueDb = v;
+                MakeBtn("−10",  8, -10);
+                MakeBtn("−1",  52,  -1);
+                MakeBtn("+1",      204,  +1);
+                MakeBtn("+10",     248, +10);
+
+                // ── Buttons ───────────────────────────────────────────────────
+                var btnCancel = new Button
+                {
+                    Text = "Cancel", DialogResult = DialogResult.Cancel,
+                    Location = new Point(10, 64), Size = new Size(78, 27),
+                    Font = std, UseVisualStyleBackColor = true
                 };
+                var btnOk = new Button
+                {
+                    Text = "OK", DialogResult = DialogResult.OK,
+                    Location = new Point(212, 64), Size = new Size(78, 27),
+                    Font = std, BackColor = blue, ForeColor = Color.White,
+                    FlatStyle = FlatStyle.Flat, UseVisualStyleBackColor = false
+                };
+                btnOk.FlatAppearance.BorderSize = 0;
+                AcceptButton = btnOk; CancelButton = btnCancel;
+                Controls.Add(btnCancel); Controls.Add(btnOk);
+
+                SetValue(currentValueDb);
+
+                _txt.Leave   += (_, __) => CommitText();
+                _txt.KeyDown += (_, e) =>
+                {
+                    if (e.KeyCode == Keys.Enter) { CommitText(); e.SuppressKeyPress = true; }
+                };
+                btnOk.Click += (_, __) => { CommitText(); ValueDb = _value; };
             }
         }
 

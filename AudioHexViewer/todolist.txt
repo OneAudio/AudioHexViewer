@@ -8,11 +8,9 @@ Liste des petites corrections à faire :
 8- Changer l'emplacement sur l'écran ou s'ouvre les différentes fenêtres.
 9- Changer la police du logo AHV.
 10- Ajouter un système de versioning qui s'incrément dans le splashscreen.
-11- Vérifier l'utilité de l'option "Buffer" dans le meu principal.
 13- Voir s'il faut garder "data record 1s" ?
 15- Réaligner à gauche tout les items du menu du haut, et les organiser de manière plus logique(general)
 16- Ajouter une fonction de holdoff dans l'oscilloscope (scope)
-17- Agrandir un peu la hauteur de la fenêtre "All data format"
 18- Rajouter l'ombre entre contrôle/graphique que l'on voit sur oscilloscope mais pas sur histo et Spectre.
 19- Changer l'ordre des onglets pour avoir Spectrum->Scope->Histogramme.
 20- Uniformiser avec le reste les fenêtres THD settings et overlays.

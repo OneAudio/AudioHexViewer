@@ -349,9 +349,9 @@ namespace AudioHexViewer
             // 
             // tabAnalysis
             // 
-            tabAnalysis.Controls.Add(tabHistogram);
             tabAnalysis.Controls.Add(tabSpectrum);
             tabAnalysis.Controls.Add(tabOscilloscope);
+            tabAnalysis.Controls.Add(tabHistogram);
             tabAnalysis.Dock = DockStyle.Fill;
             tabAnalysis.Location = new Point(0, 98);
             tabAnalysis.Name = "tabAnalysis";
@@ -365,7 +365,7 @@ namespace AudioHexViewer
             tabHistogram.Location = new Point(4, 24);
             tabHistogram.Name = "tabHistogram";
             tabHistogram.Size = new Size(1130, 623);
-            tabHistogram.TabIndex = 0;
+            tabHistogram.TabIndex = 2;
             tabHistogram.Text = "Histogram";
             tabHistogram.UseVisualStyleBackColor = true;
             // 
@@ -383,14 +383,14 @@ namespace AudioHexViewer
             tabSpectrum.Location = new Point(4, 24);
             tabSpectrum.Name = "tabSpectrum";
             tabSpectrum.Size = new Size(1130, 623);
-            tabSpectrum.TabIndex = 1;
+            tabSpectrum.TabIndex = 0;
             tabSpectrum.Text = "Spectrum";
             tabSpectrum.UseVisualStyleBackColor = true;
             // tabOscilloscope
             tabOscilloscope.Location = new Point(4, 24);
             tabOscilloscope.Name = "tabOscilloscope";
             tabOscilloscope.Size = new Size(1130, 623);
-            tabOscilloscope.TabIndex = 2;
+            tabOscilloscope.TabIndex = 1;
             tabOscilloscope.Text = "Oscilloscope";
             tabOscilloscope.UseVisualStyleBackColor = true;
             // 

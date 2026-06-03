@@ -10,7 +10,6 @@ namespace AudioHexViewer
         private IContainer? components = null;
 
         // THD frequency limits
-        private GroupBox grpThd;
         private Label lblFlow;
         private NumericUpDown nudFlow;
         private CheckBox chkHPF;
@@ -19,7 +18,6 @@ namespace AudioHexViewer
         private CheckBox chkLPF;
 
         // SFDR frequency limits
-        private GroupBox grpSfdr;
         private Label lblSfdrFlow;
         private NumericUpDown nudSfdrFlow;
         private CheckBox chkSfdrHPF;
@@ -27,8 +25,7 @@ namespace AudioHexViewer
         private NumericUpDown nudSfdrFhigh;
         private CheckBox chkSfdrLPF;
 
-        // Harmonics group
-        private GroupBox grpHarmonics;
+        // Harmonics
         private Label lblHarms;
         private NumericUpDown nudHarms;
         private CheckBox chkShowHarms;
@@ -43,265 +40,180 @@ namespace AudioHexViewer
         private Button btnOk;
         private Button btnCancel;
 
+        // GroupBox stubs — kept for .cs compatibility (not shown)
+        private GroupBox grpThd      = new GroupBox { Visible = false };
+        private GroupBox grpSfdr     = new GroupBox { Visible = false };
+        private GroupBox grpHarmonics= new GroupBox { Visible = false };
+
         protected override void Dispose(bool disposing)
         {
-            if (disposing && (components != null))
-                components.Dispose();
+            if (disposing && components != null) components.Dispose();
             base.Dispose(disposing);
         }
 
         private void InitializeComponent()
         {
-            grpThd       = new GroupBox();
-            lblFlow      = new Label();
-            nudFlow      = new NumericUpDown();
-            chkHPF       = new CheckBox();
-            lblFhigh     = new Label();
-            nudFhigh     = new NumericUpDown();
-            chkLPF       = new CheckBox();
-
-            grpSfdr      = new GroupBox();
-            lblSfdrFlow  = new Label();
-            nudSfdrFlow  = new NumericUpDown();
-            chkSfdrHPF   = new CheckBox();
-            lblSfdrFhigh = new Label();
-            nudSfdrFhigh = new NumericUpDown();
-            chkSfdrLPF   = new CheckBox();
-
-            grpHarmonics  = new GroupBox();
-            lblHarms      = new Label();
-            nudHarms      = new NumericUpDown();
-            chkShowHarms  = new CheckBox();
-            chkShowPhase  = new CheckBox();
-            lblUnit       = new Label();
-            rbDb          = new RadioButton();
-            rbPct         = new RadioButton();
-            lblCohAvg     = new Label();
-            chkCohAvg     = new CheckBox();
-            lblCohAvgHint = new Label();
-
-            btnOk     = new Button();
-            btnCancel = new Button();
-
+            nudFlow      = new NumericUpDown(); nudFhigh     = new NumericUpDown();
+            nudSfdrFlow  = new NumericUpDown(); nudSfdrFhigh = new NumericUpDown();
+            nudHarms     = new NumericUpDown();
             ((ISupportInitialize)nudFlow).BeginInit();
             ((ISupportInitialize)nudFhigh).BeginInit();
             ((ISupportInitialize)nudSfdrFlow).BeginInit();
             ((ISupportInitialize)nudSfdrFhigh).BeginInit();
             ((ISupportInitialize)nudHarms).BeginInit();
-            grpThd.SuspendLayout();
-            grpSfdr.SuspendLayout();
-            grpHarmonics.SuspendLayout();
             SuspendLayout();
 
-            // ── grpThd (y=6) ─────────────────────────────────────────────────
-            grpThd.Location = new Point(8, 6);
-            grpThd.Size     = new Size(272, 95);
-            grpThd.TabStop  = false;
-            grpThd.Text     = "THD frequency limits";
+            // ── Fonts / colors ────────────────────────────────────────────────
+            Font std     = new("Segoe UI", 9f);
+            Font gS      = new("Segoe UI", 7.5f);
+            Font secFont = new("Segoe UI Semibold", 8.5f);
+            Color blue     = Color.FromArgb(0, 90, 160);
+            Color blueLine = Color.FromArgb(180, 210, 240);
 
-            lblFlow.AutoSize = true;
-            lblFlow.Location = new Point(8, 26);
-            lblFlow.Text     = "Flow (Hz)";
+            // ── Layout constants ──────────────────────────────────────────────
+            const int PL   = 12;   // left padding
+            const int CW   = 272;  // content width
+            const int LW   = 76;   // label width (right-aligned)
+            const int CTLX = PL + LW + 4;  // 92 — NUD / combo x
+            const int NUDW = 90;            // NUD width → right = 182
+            const int CHKX = CTLX + NUDW + 8; // 190 — HPF/LPF checkbox x
 
-            nudFlow.DecimalPlaces = 1;
-            nudFlow.Location      = new Point(95, 23);
-            nudFlow.Maximum       = new decimal(new int[] { 768000, 0, 0, 0 });
-            nudFlow.Size          = new Size(96, 23);
-            nudFlow.TabIndex      = 0;
+            // ── Section header helper ─────────────────────────────────────────
+            Panel MakeSec(string title, int y)
+            {
+                var p = new Panel { Location = new Point(PL, y), Size = new Size(CW, 17),
+                    BackColor = SystemColors.Window };
+                p.Controls.Add(new Label {
+                    Text = title, Font = secFont, ForeColor = blue,
+                    AutoSize = false, Location = new Point(0, 0), Size = new Size(CW, 14)
+                });
+                p.Controls.Add(new Panel {
+                    Location = new Point(0, 15), Size = new Size(CW, 1), BackColor = blueLine
+                });
+                return p;
+            }
 
-            chkHPF.AutoSize = true;
-            chkHPF.Location = new Point(205, 25);
-            chkHPF.Text     = "HPF";
-            chkHPF.TabIndex = 1;
-            chkHPF.UseVisualStyleBackColor = true;
+            Label RowLbl(string text, int y) => new Label {
+                Text = text, Font = std, Location = new Point(PL, y + 4),
+                Size = new Size(LW, 14), TextAlign = ContentAlignment.MiddleRight,
+                AutoSize = false
+            };
 
-            lblFhigh.AutoSize = true;
-            lblFhigh.Location = new Point(8, 62);
-            lblFhigh.Text     = "Fhigh (Hz)";
+            void SetNud(NumericUpDown n, int y, decimal max, decimal inc = 10m, int dp = 1) {
+                n.Location = new Point(CTLX, y); n.Size = new Size(NUDW, 22); n.Font = std;
+                n.DecimalPlaces = dp; n.Maximum = max; n.Increment = inc;
+            }
 
-            nudFhigh.DecimalPlaces = 1;
-            nudFhigh.Increment     = new decimal(new int[] { 10, 0, 0, 0 });
-            nudFhigh.Location      = new Point(95, 59);
-            nudFhigh.Maximum       = new decimal(new int[] { 768000, 0, 0, 0 });
-            nudFhigh.Size          = new Size(96, 23);
-            nudFhigh.TabIndex      = 2;
+            CheckBox MakeChk(string text, int x, int y, int tab) => new CheckBox {
+                Text = text, AutoSize = true, Font = std,
+                Location = new Point(x, y + 3), TabIndex = tab,
+                UseVisualStyleBackColor = true
+            };
 
-            chkLPF.AutoSize = true;
-            chkLPF.Location = new Point(205, 61);
-            chkLPF.Text     = "LPF";
-            chkLPF.TabIndex = 3;
-            chkLPF.UseVisualStyleBackColor = true;
+            // ══ THD FREQUENCY LIMITS ══════════════════════════════════════════
+            int y = 10;
+            Controls.Add(MakeSec("THD FREQUENCY LIMITS", y));
 
-            grpThd.Controls.Add(lblFlow);
-            grpThd.Controls.Add(nudFlow);
-            grpThd.Controls.Add(chkHPF);
-            grpThd.Controls.Add(lblFhigh);
-            grpThd.Controls.Add(nudFhigh);
-            grpThd.Controls.Add(chkLPF);
+            y += 20; // 30
+            lblFlow  = RowLbl("Flow (Hz)", y);
+            SetNud(nudFlow, y, 768000m, 10m);
+            chkHPF   = MakeChk("HPF", CHKX, y, 1);
 
-            // ── grpSfdr (y=109) ───────────────────────────────────────────────
-            grpSfdr.Location = new Point(8, 109);
-            grpSfdr.Size     = new Size(272, 95);
-            grpSfdr.TabStop  = false;
-            grpSfdr.Text     = "SFDR frequency limits";
+            y += 26; // 56
+            lblFhigh = RowLbl("Fhigh (Hz)", y);
+            SetNud(nudFhigh, y, 768000m, 10m);
+            chkLPF   = MakeChk("LPF", CHKX, y, 3);
 
-            lblSfdrFlow.AutoSize = true;
-            lblSfdrFlow.Location = new Point(8, 26);
-            lblSfdrFlow.Text     = "Flow (Hz)";
+            Controls.AddRange(new Control[] { lblFlow, nudFlow, chkHPF, lblFhigh, nudFhigh, chkLPF });
 
-            nudSfdrFlow.DecimalPlaces = 1;
-            nudSfdrFlow.Location      = new Point(95, 23);
-            nudSfdrFlow.Maximum       = new decimal(new int[] { 768000, 0, 0, 0 });
-            nudSfdrFlow.Size          = new Size(96, 23);
-            nudSfdrFlow.TabIndex      = 4;
+            // ══ SFDR FREQUENCY LIMITS ═════════════════════════════════════════
+            y += 30; // 86
+            Controls.Add(MakeSec("SFDR FREQUENCY LIMITS", y));
 
-            chkSfdrHPF.AutoSize = true;
-            chkSfdrHPF.Location = new Point(205, 25);
-            chkSfdrHPF.Text     = "HPF";
-            chkSfdrHPF.TabIndex = 5;
-            chkSfdrHPF.UseVisualStyleBackColor = true;
+            y += 20; // 106
+            lblSfdrFlow  = RowLbl("Flow (Hz)", y);
+            SetNud(nudSfdrFlow, y, 768000m, 10m);
+            chkSfdrHPF   = MakeChk("HPF", CHKX, y, 5);
 
-            lblSfdrFhigh.AutoSize = true;
-            lblSfdrFhigh.Location = new Point(8, 62);
-            lblSfdrFhigh.Text     = "Fhigh (Hz)";
+            y += 26; // 132
+            lblSfdrFhigh = RowLbl("Fhigh (Hz)", y);
+            SetNud(nudSfdrFhigh, y, 768000m, 10m);
+            chkSfdrLPF   = MakeChk("LPF", CHKX, y, 7);
 
-            nudSfdrFhigh.DecimalPlaces = 1;
-            nudSfdrFhigh.Increment     = new decimal(new int[] { 10, 0, 0, 0 });
-            nudSfdrFhigh.Location      = new Point(95, 59);
-            nudSfdrFhigh.Maximum       = new decimal(new int[] { 768000, 0, 0, 0 });
-            nudSfdrFhigh.Size          = new Size(96, 23);
-            nudSfdrFhigh.TabIndex      = 6;
+            Controls.AddRange(new Control[] { lblSfdrFlow, nudSfdrFlow, chkSfdrHPF,
+                                               lblSfdrFhigh, nudSfdrFhigh, chkSfdrLPF });
 
-            chkSfdrLPF.AutoSize = true;
-            chkSfdrLPF.Location = new Point(205, 61);
-            chkSfdrLPF.Text     = "LPF";
-            chkSfdrLPF.TabIndex = 7;
-            chkSfdrLPF.UseVisualStyleBackColor = true;
+            // ══ HARMONICS ═════════════════════════════════════════════════════
+            y += 30; // 162
+            Controls.Add(MakeSec("HARMONICS", y));
 
-            grpSfdr.Controls.Add(lblSfdrFlow);
-            grpSfdr.Controls.Add(nudSfdrFlow);
-            grpSfdr.Controls.Add(chkSfdrHPF);
-            grpSfdr.Controls.Add(lblSfdrFhigh);
-            grpSfdr.Controls.Add(nudSfdrFhigh);
-            grpSfdr.Controls.Add(chkSfdrLPF);
-
-            // ── grpHarmonics (y=212) ──────────────────────────────────────────
-            // Regroupe : Harmonics number+Show+Phase / THD unit / Coherent avg
-            grpHarmonics.Location = new Point(8, 212);
-            grpHarmonics.Size     = new Size(272, 120);
-            grpHarmonics.TabStop  = false;
-            grpHarmonics.Text     = "Harmonics";
-
-            // Row 1 — number + Show + Phase  (y=24)
-            lblHarms.AutoSize = true;
-            lblHarms.Location = new Point(8, 26);
-            lblHarms.Text     = "Number";
-
-            nudHarms.Location = new Point(72, 23);
-            nudHarms.Maximum  = new decimal(new int[] { 20, 0, 0, 0 });
-            nudHarms.Minimum  = new decimal(new int[] { 2, 0, 0, 0 });
-            nudHarms.Size     = new Size(44, 23);
+            // Row: Number [nud]  ☑ Show  ☑ Phase
+            y += 20; // 182
+            lblHarms = RowLbl("Number", y);
+            nudHarms.Location = new Point(CTLX, y); nudHarms.Size = new Size(44, 22);
+            nudHarms.Font = std; nudHarms.Minimum = 2; nudHarms.Maximum = 20; nudHarms.Value = 5;
             nudHarms.TabIndex = 8;
-            nudHarms.Value    = new decimal(new int[] { 5, 0, 0, 0 });
+            chkShowHarms = MakeChk("Show",  CTLX + 44 + 8, y, 9);
+            chkShowPhase = MakeChk("Phase", CTLX + 44 + 8 + 62, y, 10);
 
-            chkShowHarms.AutoSize = true;
-            chkShowHarms.Location = new Point(128, 26);
-            chkShowHarms.Text     = "Show";
-            chkShowHarms.TabIndex = 9;
-            chkShowHarms.UseVisualStyleBackColor = true;
+            Controls.AddRange(new Control[] { lblHarms, nudHarms, chkShowHarms, chkShowPhase });
 
-            chkShowPhase.AutoSize = true;
-            chkShowPhase.Location = new Point(192, 26);
-            chkShowPhase.Text     = "Phase";
-            chkShowPhase.TabIndex = 10;
-            chkShowPhase.UseVisualStyleBackColor = true;
+            // Row: THD unit  ● dB  ○ %
+            y += 26; // 208
+            lblUnit = RowLbl("THD unit", y);
+            rbDb  = new RadioButton { Text = "dB", AutoSize = true, Font = std,
+                Location = new Point(CTLX, y + 3), TabIndex = 11, UseVisualStyleBackColor = true };
+            rbPct = new RadioButton { Text = "%",  AutoSize = true, Font = std,
+                Location = new Point(CTLX + 52, y + 3), TabIndex = 12, UseVisualStyleBackColor = true };
 
-            // Row 2 — Unit  (y=56)
-            lblUnit.AutoSize = true;
-            lblUnit.Location = new Point(8, 59);
-            lblUnit.Text     = "THD unit";
+            Controls.AddRange(new Control[] { lblUnit, rbDb, rbPct });
 
-            rbDb.AutoSize = true;
-            rbDb.Location = new Point(95, 57);
-            rbDb.Text     = "dB";
-            rbDb.TabIndex = 11;
-            rbDb.UseVisualStyleBackColor = true;
+            // Row: Coherent avg  □ Active  (uses Avg count)
+            y += 26; // 234
+            lblCohAvg = RowLbl("Coherent avg", y);
+            chkCohAvg = MakeChk("Active", CTLX, y, 13);
+            lblCohAvgHint = new Label {
+                Text = "(uses Avg count)", AutoSize = true, Font = gS,
+                ForeColor = SystemColors.GrayText,
+                Location = new Point(CTLX + 66, y + 5)
+            };
 
-            rbPct.AutoSize = true;
-            rbPct.Location = new Point(150, 57);
-            rbPct.Text     = "%";
-            rbPct.TabIndex = 12;
-            rbPct.UseVisualStyleBackColor = true;
+            Controls.AddRange(new Control[] { lblCohAvg, chkCohAvg, lblCohAvgHint });
 
-            // Row 3 — Coherent avg  (y=88)
-            lblCohAvg.AutoSize = true;
-            lblCohAvg.Location = new Point(8, 91);
-            lblCohAvg.Text     = "Coherent avg";
-
-            chkCohAvg.AutoSize = true;
-            chkCohAvg.Location = new Point(103, 89);
-            chkCohAvg.Text     = "Active";
-            chkCohAvg.TabIndex = 13;
-            chkCohAvg.UseVisualStyleBackColor = true;
-
-            lblCohAvgHint.AutoSize   = true;
-            lblCohAvgHint.Location   = new Point(166, 91);
-            lblCohAvgHint.ForeColor  = System.Drawing.SystemColors.GrayText;
-            lblCohAvgHint.Text       = "(uses Avg count)";
-
-            grpHarmonics.Controls.Add(lblHarms);
-            grpHarmonics.Controls.Add(nudHarms);
-            grpHarmonics.Controls.Add(chkShowHarms);
-            grpHarmonics.Controls.Add(chkShowPhase);
-            grpHarmonics.Controls.Add(lblUnit);
-            grpHarmonics.Controls.Add(rbDb);
-            grpHarmonics.Controls.Add(rbPct);
-            grpHarmonics.Controls.Add(lblCohAvg);
-            grpHarmonics.Controls.Add(chkCohAvg);
-            grpHarmonics.Controls.Add(lblCohAvgHint);
-
-            // ── Buttons (y=342) ───────────────────────────────────────────────
-            btnCancel.DialogResult = DialogResult.Cancel;
-            btnCancel.Location     = new Point(29, 342);
-            btnCancel.Size         = new Size(90, 27);
-            btnCancel.TabIndex     = 14;
-            btnCancel.Text         = "Cancel";
-            btnCancel.UseVisualStyleBackColor = true;
-
-            btnOk.DialogResult = DialogResult.OK;
-            btnOk.Location     = new Point(161, 342);
-            btnOk.Size         = new Size(90, 27);
-            btnOk.TabIndex     = 15;
-            btnOk.Text         = "OK";
-            btnOk.UseVisualStyleBackColor = true;
+            // ══ BUTTONS ═══════════════════════════════════════════════════════
+            y += 32; // 266
+            btnCancel = new Button {
+                DialogResult = DialogResult.Cancel, Text = "Cancel", Font = std,
+                Location = new Point(PL, y), Size = new Size(88, 27),
+                UseVisualStyleBackColor = true, TabIndex = 14
+            };
+            btnOk = new Button {
+                DialogResult = DialogResult.OK, Text = "OK", Font = std,
+                Location = new Point(PL + CW - 88, y), Size = new Size(88, 27),
+                BackColor = Color.FromArgb(0, 90, 160), ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat, TabIndex = 15
+            };
+            btnOk.FlatAppearance.BorderSize = 0;
             btnOk.Click += btnOk_Click;
 
-            // ── ThdSettingsDialog ─────────────────────────────────────────────
+            Controls.AddRange(new Control[] { btnCancel, btnOk });
+
+            // ── Form ──────────────────────────────────────────────────────────
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode       = AutoScaleMode.Font;
-            ClientSize          = new Size(292, 380);
-            Controls.Add(grpThd);
-            Controls.Add(grpSfdr);
-            Controls.Add(grpHarmonics);
-            Controls.Add(btnCancel);
-            Controls.Add(btnOk);
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox     = false;
-            MinimizeBox     = false;
-            StartPosition   = FormStartPosition.CenterParent;
-            Text            = "THD Settings";
+            ClientSize          = new Size(PL + CW + PL, y + 27 + 10); // 296 × 303
+            FormBorderStyle     = FormBorderStyle.FixedDialog;
+            MaximizeBox         = false; MinimizeBox = false;
+            StartPosition       = FormStartPosition.CenterParent;
+            Text                = "THD Settings";
+            Font                = std;
+            BackColor           = SystemColors.Window;
 
             ((ISupportInitialize)nudFlow).EndInit();
             ((ISupportInitialize)nudFhigh).EndInit();
             ((ISupportInitialize)nudSfdrFlow).EndInit();
             ((ISupportInitialize)nudSfdrFhigh).EndInit();
             ((ISupportInitialize)nudHarms).EndInit();
-            grpThd.ResumeLayout(false);
-            grpThd.PerformLayout();
-            grpSfdr.ResumeLayout(false);
-            grpSfdr.PerformLayout();
-            grpHarmonics.ResumeLayout(false);
-            grpHarmonics.PerformLayout();
             ResumeLayout(false);
             PerformLayout();
         }
