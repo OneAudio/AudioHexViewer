@@ -195,53 +195,11 @@ namespace AudioHexViewer
 
         //
         private void InitBufferMenu()
-        {
-            if (menuBuffer == null) return;
-
-            menuBuffer.DropDownItems.Clear();
-
-            foreach (int n in _bufferOptions)
-            {
-                string label = (n / 1024).ToString() + "k";
-
-                var it = new ToolStripMenuItem(label)
-                {
-                    Tag = n,
-                    CheckOnClick = true
-                };
-
-                it.Click += (s, e) =>
-                {
-                    if (_updatingBufferMenuUi) return;
-
-                    int chosen = (int)((ToolStripMenuItem)s!).Tag!;
-                    _updatingBufferMenuUi = true;
-                    try
-                    {
-                        SetAnalysisBufferSize(chosen);
-                        UpdateBufferMenuChecks();
-                    }
-                    finally
-                    {
-                        _updatingBufferMenuUi = false;
-                    }
-                };
-
-                menuBuffer.DropDownItems.Add(it);
-            }
-        }
+        { } // menuBuffer removed — buffer is now in DevicesDialog
 
         //
         private void UpdateBufferMenuChecks()
-        {
-            if (menuBuffer == null) return;
-
-            foreach (ToolStripMenuItem it in menuBuffer.DropDownItems)
-            {
-                int n = (int)it.Tag!;
-                it.Checked = (n == analysisBufferSize);
-            }
-        }
+        { } // menuBuffer removed — buffer is now in DevicesDialog
 
         //
         private void SetAnalysisBufferSize(int bufferSize)

@@ -287,6 +287,7 @@ namespace AudioHexViewer
         private OscilloscopeControl? oscilloscopeControl;
         private bool _oscilloscopeRunning;
         private ToolStripMenuItem? menuColors;
+        private ToolStripMenuItem? menuBuffer = null; // removed from menustrip — kept for null-safe FftPipeline stubs
 
         // Fenêtres non-modales persistantes
         private GeneratorWindow? _generatorWindow;
@@ -1267,10 +1268,15 @@ namespace AudioHexViewer
                 sampleRateOptions:   _sampleRateOptions,
                 currentInputFormat:  _requestedCaptureFormat as WaveFormatExtensible,
                 currentOutputFormat: _requestedOutputFormat,
-                onInfosClick:        ShowDeviceInfoDialog);
+                onInfosClick:        ShowDeviceInfoDialog,
+                currentBufferSize:   analysisBufferSize);
 
             if (dlg.ShowDialog(this) == DialogResult.OK)
             {
+                // Apply buffer size if changed
+                if (dlg.SelectedBufferSize != analysisBufferSize)
+                    SetAnalysisBufferSize(dlg.SelectedBufferSize);
+
                 bool deviceChanged = dlg.SelectedInputDevice?.ID != _selectedInputDevice?.ID;
                 bool srChanged     = (dlg.SelectedInputFormat?.SampleRate ?? 0) != (_requestedCaptureFormat?.SampleRate ?? 0);
 
@@ -1360,9 +1366,10 @@ namespace AudioHexViewer
             {
                 Text            = "All data formats",
                 StartPosition   = FormStartPosition.CenterParent,
-                Size            = new Size(440, 310),
+                Size            = new Size(460, 330),
+                FormBorderStyle = FormBorderStyle.FixedSingle,
                 MinimizeBox     = false,
-                MaximizeBox     = true,
+                MaximizeBox     = false,
                 ShowIcon        = false,
                 Font            = new Font("Segoe UI", 9f),
                 BackColor       = SystemColors.Window

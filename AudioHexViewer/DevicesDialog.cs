@@ -18,6 +18,10 @@ namespace AudioHexViewer
         public WaveFormatExtensible? SelectedInputFormat  { get; private set; }
         public MMDevice?             SelectedOutputDevice { get; private set; }
         public WaveFormatExtensible? SelectedOutputFormat { get; private set; }
+        public int                   SelectedBufferSize   { get; private set; } = 128 * 1024;
+
+        private static readonly int[] BufferOptions =
+            { 16*1024, 32*1024, 64*1024, 128*1024, 256*1024, 512*1024 };
 
         private readonly int[]   _srOptions;
         private readonly Action  _onInfos;
@@ -30,11 +34,24 @@ namespace AudioHexViewer
             int[]                    sampleRateOptions,
             WaveFormatExtensible?    currentInputFormat,
             WaveFormatExtensible?    currentOutputFormat,
-            Action                   onInfosClick)
+            Action                   onInfosClick,
+            int                      currentBufferSize = 128 * 1024)
         {
             _srOptions = sampleRateOptions;
             _onInfos   = onInfosClick;
             InitializeComponent();
+
+            // ── Buffer combo ─────────────────────────────────────────────
+            foreach (int n in BufferOptions)
+                cmbBuffer.Items.Add(new BufferItem(n));
+            SelectedBufferSize = currentBufferSize;
+            int selIdx = Array.IndexOf(BufferOptions, currentBufferSize);
+            cmbBuffer.SelectedIndex = selIdx >= 0 ? selIdx : 3; // default 128k
+            cmbBuffer.SelectedIndexChanged += (_, _) =>
+            {
+                if (cmbBuffer.SelectedItem is BufferItem bi)
+                    SelectedBufferSize = bi.Value;
+            };
 
             // ── Remplissage combos ────────────────────────────────────────────
             foreach (var d in inputDevices)
@@ -217,6 +234,13 @@ namespace AudioHexViewer
         private static WaveFormatExtensible? SrItemToFormat(SrItem? item)
             => (item == null || item.Rate == 0) ? null
              : new WaveFormatExtensible(item.Rate, 32, 2);
+
+        private sealed class BufferItem
+        {
+            public int    Value { get; }
+            public BufferItem(int v) { Value = v; }
+            public override string ToString() => (Value / 1024) + " k";
+        }
 
         internal sealed class DeviceItem
         {
