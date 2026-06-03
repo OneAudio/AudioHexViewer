@@ -85,7 +85,6 @@ namespace AudioHexViewer
 
             btnDefault.Click += BtnDefault_Click;
             btnFitY.Click += BtnFitY_Click;
-            btnFitX.Click += BtnFitX_Click;
             btnFitY2.Click += BtnFitY2_Click;
 
             // synchro X
@@ -814,9 +813,10 @@ namespace AudioHexViewer
 
         private void BtnDefault_Click(object? sender, EventArgs e)
         {
-            // X = 1 Hz .. Fs/2 (comme avant)
+            // X : première raie FFT (Fs/N) .. Fs/2
             double fs = SampleRateHz;
-            double fMin = 1.0;
+            int    n  = FftSizeN;
+            double fMin = (fs > 0.0 && n > 0) ? (fs / n) : 1.0;
             double fMax = (fs > 0.0) ? (fs / 2.0) : (double)numFMax.Maximum;
 
             fMin = Math.Max((double)numFMin.Minimum, Math.Min((double)numFMin.Maximum, fMin));
@@ -824,7 +824,7 @@ namespace AudioHexViewer
 
             // Y defaults depend on the main Y unit
             double yMaxDefault = (_yScaleMode == YScaleMode.Dbfs) ? 0.0 : 100.0;
-            int yRangeDefault = (_yScaleMode == YScaleMode.Dbfs) ? 180 : 200;
+            int yRangeDefault = 200;
 
             _updating = true;
             try
@@ -898,47 +898,6 @@ namespace AudioHexViewer
             //
             
 
-        }
-
-
-        private void BtnFitX_Click(object? sender, EventArgs e)
-        {
-            double fs = SampleRateHz;
-            int n = FftSizeN;
-
-            if (fs <= 0.0 || n <= 0)
-            {
-                System.Media.SystemSounds.Beep.Play();
-                return;
-            }
-
-            double fMax = fs / 2.0;
-            double fMin = fs / n;
-
-            if (double.IsNaN(fMin) || double.IsInfinity(fMin) || fMin <= 0.0 || fMin >= fMax)
-            {
-                System.Media.SystemSounds.Beep.Play();
-                return;
-            }
-
-            fMin = Math.Max((double)numFMin.Minimum, Math.Min((double)numFMin.Maximum, fMin));
-            fMax = Math.Max((double)numFMax.Minimum, Math.Min((double)numFMax.Maximum, fMax));
-
-            if (fMin >= fMax)
-            {
-                System.Media.SystemSounds.Beep.Play();
-                return;
-            }
-
-            _updating = true;
-            try
-            {
-                numFMin.Value = (decimal)fMin;
-                numFMax.Value = (decimal)fMax;
-            }
-            finally { _updating = false; }
-
-            SyncFromMinMax();
         }
 
         // --------- Escape key handling to cancel the dialog ---------

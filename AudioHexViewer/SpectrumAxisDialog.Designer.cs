@@ -1,352 +1,228 @@
-﻿namespace AudioHexViewer
+#nullable enable
+using System.ComponentModel;
+using System.Drawing;
+using System.Windows.Forms;
+
+namespace AudioHexViewer
 {
     partial class SpectrumAxisDialog
     {
-        private System.ComponentModel.IContainer components = null;
+        private System.ComponentModel.IContainer? components = null;
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && (components != null))
-                components.Dispose();
+            if (disposing && components != null) components.Dispose();
             base.Dispose(disposing);
         }
 
-        #region Windows Form Designer generated code
-
         private void InitializeComponent()
         {
-            lblYMax = new Label();
-            lblYMin = new Label();
-            numYMax = new NumericUpDown();
-            cmbYRange = new ComboBox();
-            lblY2Max = new Label();
-            lblY2Min = new Label();
-            numY2Max = new NumericUpDown();
-            cmbY2Range = new ComboBox();
-            tabX = new TabControl();
-            tabMinMax = new TabPage();
-            lblFMin = new Label();
-            numFMin = new NumericUpDown();
-            lblFMax = new Label();
-            numFMax = new NumericUpDown();
-            tabCenterSpan = new TabPage();
-            lblCenter = new Label();
-            numCenter = new NumericUpDown();
-            lblSpan = new Label();
-            numSpan = new NumericUpDown();
-            btnOk = new Button();
-            btnDefault = new Button();
-            btnFitY = new Button();
-            btnFitX = new Button();
-            btnFitY2 = new Button();
-            ((System.ComponentModel.ISupportInitialize)numYMax).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)numY2Max).BeginInit();
-            tabX.SuspendLayout();
-            tabMinMax.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)numFMin).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)numFMax).BeginInit();
-            tabCenterSpan.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)numCenter).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)numSpan).BeginInit();
+            // NUDs first (BeginInit required)
+            numYMax   = new NumericUpDown(); numY2Max  = new NumericUpDown();
+            numFMin   = new NumericUpDown(); numFMax   = new NumericUpDown();
+            numCenter = new NumericUpDown(); numSpan   = new NumericUpDown();
+            ((ISupportInitialize)numYMax).BeginInit();
+            ((ISupportInitialize)numY2Max).BeginInit();
+            ((ISupportInitialize)numFMin).BeginInit();
+            ((ISupportInitialize)numFMax).BeginInit();
+            ((ISupportInitialize)numCenter).BeginInit();
+            ((ISupportInitialize)numSpan).BeginInit();
             SuspendLayout();
-            // 
-            // lblYMax
-            // 
-            lblYMax.AutoSize = true;
-            lblYMax.Location = new Point(12, 15);
-            lblYMax.Name = "lblYMax";
-            lblYMax.Size = new Size(85, 15);
-            lblYMax.TabIndex = 0;
-            lblYMax.Text = "Level max (dB)";
-            // 
-            // lblYMin
-            // 
-            lblYMin.AutoSize = true;
-            lblYMin.Location = new Point(12, 50);
-            lblYMin.Name = "lblYMin";
-            lblYMin.Size = new Size(83, 15);
-            lblYMin.TabIndex = 1;
-            lblYMin.Text = "Level min (dB)";
-            // 
-            // numYMax
-            // 
-            numYMax.Increment = new decimal(new int[] { 10, 0, 0, 0 });
-            numYMax.Location = new Point(114, 12);
-            numYMax.Name = "numYMax";
-            numYMax.Size = new Size(90, 23);
-            numYMax.TabIndex = 2;
-            // 
-            // cmbYRange
-            // 
-            cmbYRange.DropDownStyle = ComboBoxStyle.DropDownList;
-            cmbYRange.FormattingEnabled = true;
-            cmbYRange.Location = new Point(114, 47);
-            cmbYRange.Name = "cmbYRange";
-            cmbYRange.Size = new Size(90, 23);
-            cmbYRange.TabIndex = 3;
-            // 
-            // lblY2Max
-            // 
-            lblY2Max.AutoSize = true;
-            lblY2Max.Location = new Point(12, 85);
-            lblY2Max.Name = "lblY2Max";
-            lblY2Max.Size = new Size(80, 15);
-            lblY2Max.TabIndex = 20;
-            lblY2Max.Text = "Phase max (°)";
-            // 
-            // lblY2Min
-            // 
-            lblY2Min.AutoSize = true;
-            lblY2Min.Location = new Point(12, 120);
-            lblY2Min.Name = "lblY2Min";
-            lblY2Min.Size = new Size(87, 15);
-            lblY2Min.TabIndex = 21;
-            lblY2Min.Text = "Phase range (°)";
-            // 
-            // numY2Max
-            // 
-            numY2Max.Increment = new decimal(new int[] { 15, 0, 0, 0 });
-            numY2Max.Location = new Point(114, 82);
-            numY2Max.Name = "numY2Max";
-            numY2Max.Size = new Size(90, 23);
-            numY2Max.TabIndex = 22;
-            // 
-            // cmbY2Range
-            // 
-            cmbY2Range.DropDownStyle = ComboBoxStyle.DropDownList;
-            cmbY2Range.FormattingEnabled = true;
-            cmbY2Range.Location = new Point(114, 117);
-            cmbY2Range.Name = "cmbY2Range";
-            cmbY2Range.Size = new Size(90, 23);
-            cmbY2Range.TabIndex = 23;
-            // 
-            // tabX
-            // 
-            tabX.Controls.Add(tabMinMax);
-            tabX.Controls.Add(tabCenterSpan);
-            tabX.Location = new Point(12, 150);
-            tabX.Name = "tabX";
-            tabX.SelectedIndex = 0;
-            tabX.Size = new Size(196, 97);
-            tabX.TabIndex = 4;
-            // 
-            // tabMinMax
-            // 
-            tabMinMax.Controls.Add(lblFMin);
-            tabMinMax.Controls.Add(numFMin);
-            tabMinMax.Controls.Add(lblFMax);
-            tabMinMax.Controls.Add(numFMax);
-            tabMinMax.Location = new Point(4, 24);
-            tabMinMax.Name = "tabMinMax";
-            tabMinMax.Padding = new Padding(3);
-            tabMinMax.Size = new Size(188, 69);
-            tabMinMax.TabIndex = 0;
-            tabMinMax.Text = "Mini/Maxi";
-            tabMinMax.UseVisualStyleBackColor = true;
-            // 
-            // lblFMin
-            // 
-            lblFMin.AutoSize = true;
-            lblFMin.Location = new Point(6, 9);
-            lblFMin.Name = "lblFMin";
-            lblFMin.Size = new Size(62, 15);
-            lblFMin.TabIndex = 0;
-            lblFMin.Text = "F min (Hz)";
-            // 
-            // numFMin
-            // 
-            numFMin.Location = new Point(80, 7);
-            numFMin.Maximum = new decimal(new int[] { 1000000, 0, 0, 0 });
-            numFMin.DecimalPlaces = 3;
+
+            // ── Fonts / colors ────────────────────────────────────────────
+            Font std     = new("Segoe UI", 9f);
+            Font secFont = new("Segoe UI Semibold", 8.5f);
+            Font fitFont = new("Segoe UI", 7.5f);
+            Color blue     = Color.FromArgb(0, 90, 160);
+            Color blueLine = Color.FromArgb(180, 210, 240);
+
+            // ── Layout constants ──────────────────────────────────────────
+            const int PL   = 12;           // left/right form padding
+            const int CW   = 224;          // content width
+            const int LW   = 110;          // label width (right-aligned)
+            const int CTLX = PL + LW + 2;  // 124 — NUD / combo left
+            const int CTLW = 76;           // NUD / combo width  → right = 200
+            const int FITX = CTLX + CTLW + 4; // 204 — [Fit] button x
+            const int FITW = 32;           //         right = 268 = PL+CW ✓
+            const int ROW  = 22;           // row height
+
+            // ── Section header helper ──────────────────────────────────────
+            Panel MakeSec(string title, int secY, Button? rb = null)
+            {
+                var p = new Panel {
+                    Location = new Point(PL, secY), Size = new Size(CW, 20),
+                    BackColor = SystemColors.Window
+                };
+                int tw = rb == null ? CW : (CW - rb.Width - 6);
+                p.Controls.Add(new Label {
+                    Text = title, Font = secFont, ForeColor = blue,
+                    AutoSize = false, Location = new Point(0, 0), Size = new Size(tw, 14)
+                });
+                p.Controls.Add(new Panel {
+                    Location = new Point(0, 18), Size = new Size(CW, 1), BackColor = blueLine
+                });
+                if (rb != null) {
+                    rb.Location = new Point(CW - rb.Width, 0);
+                    rb.Height = 16; rb.FlatStyle = FlatStyle.Flat;
+                    rb.Font = fitFont; rb.FlatAppearance.BorderSize = 1;
+                    rb.UseVisualStyleBackColor = true;
+                    p.Controls.Add(rb);
+                }
+                return p;
+            }
+
+            // ── Row label helper ───────────────────────────────────────────
+            Label RowLbl(string text, int rowY) => new Label {
+                Text = text, Location = new Point(PL, rowY + 4),
+                Size = new Size(LW, 14), TextAlign = ContentAlignment.MiddleRight,
+                Font = std, AutoSize = false
+            };
+
+            // ── Fit button helper ──────────────────────────────────────────
+            Button FitBtn(int rowY) => new Button {
+                Location = new Point(FITX, rowY), Size = new Size(FITW, ROW),
+                Text = "Fit", Font = std, UseVisualStyleBackColor = true
+            };
+
+            // ════════════════════════════════════════════════════════════════
+            //  LEVEL
+            // ════════════════════════════════════════════════════════════════
+            int y = 10;
+            Controls.Add(MakeSec("LEVEL", y));
+
+            y += 20; // 30 — Level Top row
+            lblYMax = RowLbl("Level Top (dBFS)", y);
+            numYMax.Location = new Point(CTLX, y); numYMax.Size = new Size(CTLW, ROW);
+            numYMax.Increment = 10; numYMax.DecimalPlaces = 0;
+            numYMax.Minimum = -200; numYMax.Maximum = 0; numYMax.Font = std;
+            btnFitY = FitBtn(y);
+
+            y += 25; // 54 — Range row
+            lblYMin = RowLbl("Range (dBFS)", y);
+            cmbYRange = new ComboBox {
+                Location = new Point(CTLX, y), Size = new Size(CTLW, ROW),
+                DropDownStyle = ComboBoxStyle.DropDownList, Font = std
+            };
+
+            Controls.AddRange(new Control[] { lblYMax, numYMax, btnFitY, lblYMin, cmbYRange });
+
+            // ════════════════════════════════════════════════════════════════
+            //  PHASE
+            // ════════════════════════════════════════════════════════════════
+            y += 27; // 81
+            Controls.Add(MakeSec("PHASE", y));
+
+            y += 20; // 104 — Phase max row
+            lblY2Max = RowLbl("Phase max (°)", y);
+            numY2Max.Location = new Point(CTLX, y); numY2Max.Size = new Size(CTLW, ROW);
+            numY2Max.Increment = 15; numY2Max.DecimalPlaces = 0;
+            numY2Max.Minimum = -360; numY2Max.Maximum = 360; numY2Max.Font = std;
+            btnFitY2 = FitBtn(y);
+
+            y += 25; // 125 — Phase range row
+            lblY2Min = RowLbl("Phase range (°)", y);
+            cmbY2Range = new ComboBox {
+                Location = new Point(CTLX, y), Size = new Size(CTLW, ROW),
+                DropDownStyle = ComboBoxStyle.DropDownList, Font = std
+            };
+
+            Controls.AddRange(new Control[] { lblY2Max, numY2Max, btnFitY2, lblY2Min, cmbY2Range });
+
+            // ════════════════════════════════════════════════════════════════
+            //  FREQUENCY RANGE
+            // ════════════════════════════════════════════════════════════════
+            y += 27; // 152
+            Controls.Add(MakeSec("FREQUENCY RANGE", y));
+
+            y += 20; // 178 — TabControl
+            tabX = new TabControl {
+                Location = new Point(PL, y), Size = new Size(CW, 83),
+                Font = std, TabIndex = 4, SelectedIndex = 0
+            };
+
+            // ── Mini/Maxi tab ─────────────────────────────────────────────
+            tabMinMax = new TabPage { Text = "Mini/Maxi", UseVisualStyleBackColor = true };
+            tabMinMax.SuspendLayout();
+            lblFMin = new Label { Text = "F min (Hz)", AutoSize = true, Location = new Point(6, 10), Font = std };
+            numFMin.Location = new Point(80, 7); numFMin.Size = new Size(92, ROW); numFMin.Font = std;
+            numFMin.Maximum = 1_000_000m; numFMin.DecimalPlaces = 3;
             numFMin.Increment = new decimal(new int[] { 1, 0, 0, 131072 }); // 0.001
-            numFMin.Name = "numFMin";
-            numFMin.Size = new Size(90, 23);
-            numFMin.TabIndex = 1;
-            // 
-            // lblFMax
-            // 
-            lblFMax.AutoSize = true;
-            lblFMax.Location = new Point(6, 38);
-            lblFMax.Name = "lblFMax";
-            lblFMax.Size = new Size(64, 15);
-            lblFMax.TabIndex = 2;
-            lblFMax.Text = "F max (Hz)";
-            // 
-            // numFMax
-            // 
-            numFMax.Location = new Point(80, 36);
-            numFMax.Maximum = new decimal(new int[] { 1000000, 0, 0, 0 });
-            numFMax.Name = "numFMax";
-            numFMax.Size = new Size(90, 23);
-            numFMax.TabIndex = 3;
-            numFMax.Value = new decimal(new int[] { 20000, 0, 0, 0 });
-            // 
-            // tabCenterSpan
-            // 
-            tabCenterSpan.Controls.Add(lblCenter);
-            tabCenterSpan.Controls.Add(numCenter);
-            tabCenterSpan.Controls.Add(lblSpan);
-            tabCenterSpan.Controls.Add(numSpan);
-            tabCenterSpan.Location = new Point(4, 24);
-            tabCenterSpan.Name = "tabCenterSpan";
-            tabCenterSpan.Padding = new Padding(3);
-            tabCenterSpan.Size = new Size(188, 69);
-            tabCenterSpan.TabIndex = 1;
-            tabCenterSpan.Text = "Center/Span";
-            tabCenterSpan.UseVisualStyleBackColor = true;
-            // 
-            // lblCenter
-            // 
-            lblCenter.AutoSize = true;
-            lblCenter.Location = new Point(6, 9);
-            lblCenter.Name = "lblCenter";
-            lblCenter.Size = new Size(67, 15);
-            lblCenter.TabIndex = 0;
-            lblCenter.Text = "Center (Hz)";
-            // 
-            // numCenter
-            // 
-            numCenter.Location = new Point(80, 7);
-            numCenter.Maximum = new decimal(new int[] { 1000000, 0, 0, 0 });
-            numCenter.Name = "numCenter";
-            numCenter.Size = new Size(90, 23);
-            numCenter.TabIndex = 1;
-            // 
-            // lblSpan
-            // 
-            lblSpan.AutoSize = true;
-            lblSpan.Location = new Point(6, 38);
-            lblSpan.Name = "lblSpan";
-            lblSpan.Size = new Size(58, 15);
-            lblSpan.TabIndex = 2;
-            lblSpan.Text = "Span (Hz)";
-            // 
-            // numSpan
-            // 
-            numSpan.Location = new Point(80, 36);
-            numSpan.Maximum = new decimal(new int[] { 1000000, 0, 0, 0 });
-            numSpan.Name = "numSpan";
-            numSpan.Size = new Size(90, 23);
-            numSpan.TabIndex = 3;
-            // 
-            // btnOk
-            // 
-            btnOk.DialogResult = DialogResult.OK;
-            btnOk.Location = new Point(189, 253);
-            btnOk.Name = "btnOk";
-            btnOk.Size = new Size(75, 23);
-            btnOk.TabIndex = 8;
-            btnOk.Text = "OK";
-            btnOk.UseVisualStyleBackColor = true;
-            // 
-            // btnDefault
-            // 
-            btnDefault.Location = new Point(16, 253);
-            btnDefault.Name = "btnDefault";
-            btnDefault.Size = new Size(75, 23);
-            btnDefault.TabIndex = 6;
-            btnDefault.Text = "Default";
-            btnDefault.UseVisualStyleBackColor = true;
-            // 
-            // btnFitY
-            // 
-            btnFitY.Location = new Point(210, 12);
-            btnFitY.Name = "btnFitY";
-            btnFitY.Size = new Size(54, 58);
-            btnFitY.TabIndex = 5;
-            btnFitY.Text = "Auto Fit Level";
-            btnFitY.UseVisualStyleBackColor = true;
-            // 
-            // btnFitX
-            // 
-            btnFitX.Location = new Point(210, 174);
-            btnFitX.Name = "btnFitX";
-            btnFitX.Size = new Size(54, 58);
-            btnFitX.TabIndex = 7;
-            btnFitX.Text = "Fit to Fs/2";
-            btnFitX.UseVisualStyleBackColor = true;
-            // 
-            // btnFitY2
-            // 
-            btnFitY2.Location = new Point(210, 82);
-            btnFitY2.Name = "btnFitY2";
-            btnFitY2.Size = new Size(54, 58);
-            btnFitY2.TabIndex = 24;
-            btnFitY2.Text = "Auto Fit Phase";
-            btnFitY2.UseVisualStyleBackColor = true;
-            btnFitY2.Click += BtnFitY2_Click;
-            // 
-            // SpectrumAxisDialog
-            // 
-            AcceptButton = btnOk;
-            AutoScaleDimensions = new SizeF(7F, 15F);
-            AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(271, 287);
-            Controls.Add(btnFitY2);
-            Controls.Add(btnOk);
-            Controls.Add(btnFitX);
-            Controls.Add(btnDefault);
-            Controls.Add(btnFitY);
-            Controls.Add(cmbY2Range);
-            Controls.Add(numY2Max);
-            Controls.Add(lblY2Min);
-            Controls.Add(lblY2Max);
+            lblFMax = new Label { Text = "F max (Hz)", AutoSize = true, Location = new Point(6, 36), Font = std };
+            numFMax.Location = new Point(80, 33); numFMax.Size = new Size(92, ROW); numFMax.Font = std;
+            numFMax.Maximum = 1_000_000m; numFMax.Value = 20000;
+            tabMinMax.Controls.AddRange(new Control[] { lblFMin, numFMin, lblFMax, numFMax });
+            tabMinMax.ResumeLayout(false); tabMinMax.PerformLayout();
+
+            // ── Center/Span tab ───────────────────────────────────────────
+            tabCenterSpan = new TabPage { Text = "Center/Span", UseVisualStyleBackColor = true };
+            tabCenterSpan.SuspendLayout();
+            lblCenter = new Label { Text = "Center (Hz)", AutoSize = true, Location = new Point(6, 10), Font = std };
+            numCenter.Location = new Point(80, 7); numCenter.Size = new Size(92, ROW); numCenter.Font = std;
+            numCenter.Maximum = 1_000_000m;
+            lblSpan = new Label { Text = "Span (Hz)", AutoSize = true, Location = new Point(6, 36), Font = std };
+            numSpan.Location = new Point(80, 33); numSpan.Size = new Size(92, ROW); numSpan.Font = std;
+            numSpan.Maximum = 1_000_000m;
+            tabCenterSpan.Controls.AddRange(new Control[] { lblCenter, numCenter, lblSpan, numSpan });
+            tabCenterSpan.ResumeLayout(false); tabCenterSpan.PerformLayout();
+
+            tabX.Controls.AddRange(new Control[] { tabMinMax, tabCenterSpan });
             Controls.Add(tabX);
-            Controls.Add(cmbYRange);
-            Controls.Add(numYMax);
-            Controls.Add(lblYMin);
-            Controls.Add(lblYMax);
+
+            // ════════════════════════════════════════════════════════════════
+            //  BUTTONS
+            // ════════════════════════════════════════════════════════════════
+            y += 90; // 261
+            btnDefault = new Button {
+                Location = new Point(PL, y), Size = new Size(80, 26),
+                Text = "Default", Font = std, UseVisualStyleBackColor = true
+            };
+            btnOk = new Button {
+                Location = new Point(PL + CW - 64, y), Size = new Size(64, 26),
+                Text = "OK", Font = std, DialogResult = DialogResult.OK,
+                UseVisualStyleBackColor = false,
+                BackColor = blue, ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat
+            };
+            btnOk.FlatAppearance.BorderSize = 0;
+            Controls.AddRange(new Control[] { btnDefault, btnOk });
+
+            // ── Form ──────────────────────────────────────────────────────
+            AutoScaleMode   = AutoScaleMode.Font;
+            ClientSize      = new Size(PL + CW + PL, y + 26 + 10); // 280 × 297
             FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            Name = "SpectrumAxisDialog";
-            StartPosition = FormStartPosition.CenterParent;
-            Text = "Axis Parameters";
-            ((System.ComponentModel.ISupportInitialize)numYMax).EndInit();
-            ((System.ComponentModel.ISupportInitialize)numY2Max).EndInit();
-            tabX.ResumeLayout(false);
-            tabMinMax.ResumeLayout(false);
-            tabMinMax.PerformLayout();
-            ((System.ComponentModel.ISupportInitialize)numFMin).EndInit();
-            ((System.ComponentModel.ISupportInitialize)numFMax).EndInit();
-            tabCenterSpan.ResumeLayout(false);
-            tabCenterSpan.PerformLayout();
-            ((System.ComponentModel.ISupportInitialize)numCenter).EndInit();
-            ((System.ComponentModel.ISupportInitialize)numSpan).EndInit();
+            MaximizeBox     = false; MinimizeBox = false;
+            ShowInTaskbar   = false;
+            StartPosition   = FormStartPosition.CenterParent;
+            Text            = "Axis Parameters";
+            Font            = std;
+            BackColor       = SystemColors.Window;
+            AcceptButton    = btnOk;
+
+            ((ISupportInitialize)numYMax).EndInit();
+            ((ISupportInitialize)numY2Max).EndInit();
+            ((ISupportInitialize)numFMin).EndInit();
+            ((ISupportInitialize)numFMax).EndInit();
+            ((ISupportInitialize)numCenter).EndInit();
+            ((ISupportInitialize)numSpan).EndInit();
             ResumeLayout(false);
             PerformLayout();
         }
 
-        #endregion
-
-        private Label lblYMax;
-        private Label lblYMin;
-        private NumericUpDown numYMax;
-        private ComboBox cmbYRange;
-
-        private Label lblY2Max;
-        private Label lblY2Min;
-        private NumericUpDown numY2Max;
-        private ComboBox cmbY2Range;
-
-        private TabControl tabX;
-        private TabPage tabMinMax;
-        private TabPage tabCenterSpan;
-
-        private Label lblFMin;
-        private Label lblFMax;
-        private NumericUpDown numFMin;
-        private NumericUpDown numFMax;
-
-        private Label lblCenter;
-        private Label lblSpan;
-        private NumericUpDown numCenter;
-        private NumericUpDown numSpan;
-
-        private Button btnOk;
-        private Button btnDefault;
-        private Button btnFitY;
-        private Button btnFitX;
-        private Button btnFitY2;
+        // ── Field declarations ────────────────────────────────────────────
+        private Label lblYMax = null!, lblYMin = null!;
+        private NumericUpDown numYMax = null!;
+        private ComboBox cmbYRange = null!;
+        private Label lblY2Max = null!, lblY2Min = null!;
+        private NumericUpDown numY2Max = null!;
+        private ComboBox cmbY2Range = null!;
+        private TabControl tabX = null!;
+        private TabPage tabMinMax = null!, tabCenterSpan = null!;
+        private Label lblFMin = null!, lblFMax = null!;
+        private NumericUpDown numFMin = null!, numFMax = null!;
+        private Label lblCenter = null!, lblSpan = null!;
+        private NumericUpDown numCenter = null!, numSpan = null!;
+        private Button btnOk = null!, btnDefault = null!;
+        private Button btnFitY = null!, btnFitY2 = null!;
     }
 }
+#nullable restore
