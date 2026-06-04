@@ -411,11 +411,18 @@ namespace AudioHexViewer
             reserved = Math.Min(reserved, maxReserved);
 
             float reservedPct = Math.Max(0f, Math.Min(45f, 100f * reserved / chartWidth));
-            const float LeftPct = 7.5f;  // réduit la zone grise gauche
+            const float LeftPct = 5.5f;  // réduit avec labels en k
             float width = (100f - LeftPct) - reservedPct;
             if (width < 10f) width = 10f;
             area.Position.Auto = false;
             area.Position = new ElementPosition(LeftPct, 3f, width, 94f);
+
+            // InnerPlotPosition : utiliser quasi toute la ChartArea (supprime marge droite auto)
+            area.InnerPlotPosition.Auto   = false;
+            area.InnerPlotPosition.X      = 1f;
+            area.InnerPlotPosition.Y      = 3f;
+            area.InnerPlotPosition.Width  = 98f;
+            area.InnerPlotPosition.Height = 91f;
         }
 
         // ══════════════════════════════════════════════════════════════════════
@@ -809,7 +816,7 @@ namespace AudioHexViewer
             // Rectangle du panneau stats aligné sur le plot réel (comme DrawChartStatsPanel de SpectrumControl)
             var pos      = area.Position;
             float aRight = cr.Width  * (pos.X + pos.Width)  / 100f;
-            float pLeft  = aRight + 8f * sExport;
+            float pLeft  = aRight + 4f * sExport;
             float pRight = cr.Right - 4f * sExport;
             float pW     = pRight - pLeft;
 
@@ -1108,10 +1115,17 @@ namespace AudioHexViewer
          private string FormatYLabel(double v)
         {
             if (_isNormalized)
-                // Mode PDF : valeurs petites (ex. 5.3e-3) → notation scientifique 3 chiffres sig.
                 return v == 0 ? "0" : v.ToString("G3", System.Globalization.CultureInfo.InvariantCulture);
-            else
-                return ((long)Math.Round(v)).ToString("N0");
+            long n = (long)Math.Round(v);
+            if (n == 0) return "0";
+            long abs = Math.Abs(n);
+            if (abs >= 1_000_000) return (n / 1_000_000.0).ToString("0.#") + " M";
+            if (abs >= 1_000)
+            {
+                double k = n / 1000.0;
+                return (k % 1 == 0 ? k.ToString("0") : k.ToString("0.#")) + " k";
+            }
+            return n.ToString();
         }
 
         // Alias conservé pour la compatibilité des appels depuis DrawCustomYLabels
@@ -1193,5 +1207,6 @@ namespace AudioHexViewer
         /// <summary>Retourne le Chart live pour copie presse-papier (résolution écran).</summary>
         public System.Windows.Forms.DataVisualization.Charting.Chart GetChartForClipboard()
             => chartHistogram;
+
     }
 }

@@ -178,6 +178,13 @@ namespace AudioHexViewer
             // devienne noire.
             BackColor = Color.Black;
             Padding   = new Padding(1);
+            // ── Bordure blanche 2px ───────────────────────────────────
+            { var bc = Color.White;
+              panelTop.Controls.Add(new Panel { Dock = DockStyle.Top,    Height = 2, BackColor = bc });
+              panelTop.Controls.Add(new Panel { Dock = DockStyle.Bottom, Height = 2, BackColor = bc });
+              panelTop.Controls.Add(new Panel { Dock = DockStyle.Left,   Width  = 2, BackColor = bc });
+              panelTop.Controls.Add(new Panel { Dock = DockStyle.Right,  Width  = 2, BackColor = bc }); }
+
 
             _timer = new System.Windows.Forms.Timer { Interval = 33 };
             _timer.Tick += Timer_Tick;
@@ -2021,6 +2028,7 @@ namespace AudioHexViewer
                     scale, dpi: 300, footerText: footerText);
             }
         }
+
     }
 
     internal sealed class ScopePanel : Panel
@@ -2043,5 +2051,6 @@ namespace AudioHexViewer
         public bool   RollMode      { get; set; } = false;
         public bool   VdivMode      { get; set; } = false;
         public int    GridModeIdx   { get; set; } = 0;
+
     }
 }

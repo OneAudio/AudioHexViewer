@@ -9,38 +9,22 @@ namespace AudioHexViewer
     {
         private IContainer? components = null;
 
-        // THD frequency limits
-        private Label lblFlow;
-        private NumericUpDown nudFlow;
-        private CheckBox chkHPF;
-        private Label lblFhigh;
-        private NumericUpDown nudFhigh;
-        private CheckBox chkLPF;
+        private Label lblFlow,    lblFhigh;
+        private NumericUpDown nudFlow, nudFhigh;
+        private CheckBox chkHPF,  chkLPF;
 
-        // SFDR frequency limits
-        private Label lblSfdrFlow;
-        private NumericUpDown nudSfdrFlow;
-        private CheckBox chkSfdrHPF;
-        private Label lblSfdrFhigh;
-        private NumericUpDown nudSfdrFhigh;
-        private CheckBox chkSfdrLPF;
+        private Label lblSfdrFlow,  lblSfdrFhigh;
+        private NumericUpDown nudSfdrFlow, nudSfdrFhigh;
+        private CheckBox chkSfdrHPF, chkSfdrLPF;
 
-        // Harmonics
-        private Label lblHarms;
+        private Label lblHarms, lblUnit, lblCohAvg;
         private NumericUpDown nudHarms;
-        private CheckBox chkShowHarms;
-        private CheckBox chkShowPhase;
-        private Label lblUnit;
-        private RadioButton rbDb;
-        private RadioButton rbPct;
-        private Label lblCohAvg;
+        private CheckBox chkShowHarms, chkShowPhase;
+        private RadioButton rbDb, rbPct;
         private CheckBox chkCohAvg;
-        private Label lblCohAvgHint;
 
-        private Button btnOk;
-        private Button btnCancel;
+        private Button btnOk, btnCancel;
 
-        // GroupBox stubs — kept for .cs compatibility (not shown)
         private GroupBox grpThd      = new GroupBox { Visible = false };
         private GroupBox grpSfdr     = new GroupBox { Visible = false };
         private GroupBox grpHarmonics= new GroupBox { Visible = false };
@@ -63,22 +47,20 @@ namespace AudioHexViewer
             ((ISupportInitialize)nudHarms).BeginInit();
             SuspendLayout();
 
-            // ── Fonts / colors ────────────────────────────────────────────────
             Font std     = new("Segoe UI", 9f);
             Font gS      = new("Segoe UI", 7.5f);
             Font secFont = new("Segoe UI Semibold", 8.5f);
             Color blue     = Color.FromArgb(0, 90, 160);
             Color blueLine = Color.FromArgb(180, 210, 240);
 
-            // ── Layout constants ──────────────────────────────────────────────
-            const int PL   = 12;   // left padding
-            const int CW   = 272;  // content width
-            const int LW   = 76;   // label width (right-aligned)
-            const int CTLX = PL + LW + 4;  // 92 — NUD / combo x
-            const int NUDW = 90;            // NUD width → right = 182
-            const int CHKX = CTLX + NUDW + 8; // 190 — HPF/LPF checkbox x
+            const int PL   = 12;
+            const int CW   = 248;               // content width (réduit)
+            const int LW   = 76;                // label width right-aligned
+            const int CTLX = PL + LW + 4;       // 92 — NUD x
+            const int NUDW = 90;                 // NUD width → right=182
+            // All checkboxes (HPF/LPF + Phase + Coherent) aligned at CHKX
+            const int CHKX = 206;               // aligned with Phase checkbox
 
-            // ── Section header helper ─────────────────────────────────────────
             Panel MakeSec(string title, int y)
             {
                 var p = new Panel { Location = new Point(PL, y), Size = new Size(CW, 17),
@@ -102,6 +84,8 @@ namespace AudioHexViewer
             void SetNud(NumericUpDown n, int y, decimal max, decimal inc = 10m, int dp = 1) {
                 n.Location = new Point(CTLX, y); n.Size = new Size(NUDW, 22); n.Font = std;
                 n.DecimalPlaces = dp; n.Maximum = max; n.Increment = inc;
+                // Enter validates without closing (no AcceptButton on form)
+                n.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) e.SuppressKeyPress = true; };
             }
 
             CheckBox MakeChk(string text, int x, int y, int tab) => new CheckBox {
@@ -147,67 +131,68 @@ namespace AudioHexViewer
             y += 30; // 162
             Controls.Add(MakeSec("HARMONICS", y));
 
-            // Row: Number [nud]  ☑ Show  ☑ Phase
+            // Number [nud] ☑ Show ☑ Phase  — Phase at CHKX=206
             y += 20; // 182
             lblHarms = RowLbl("Number", y);
             nudHarms.Location = new Point(CTLX, y); nudHarms.Size = new Size(44, 22);
             nudHarms.Font = std; nudHarms.Minimum = 2; nudHarms.Maximum = 20; nudHarms.Value = 5;
             nudHarms.TabIndex = 8;
-            chkShowHarms = MakeChk("Show",  CTLX + 44 + 8, y, 9);
-            chkShowPhase = MakeChk("Phase", CTLX + 44 + 8 + 62, y, 10);
+            int showX = CTLX + 44 + 6;               // 142
+            int phaseX = CHKX;                        // 206 — aligned with HPF/LPF
+            chkShowHarms = MakeChk("Show",  showX,  y, 9);
+            chkShowPhase = MakeChk("Phase", phaseX, y, 10);
 
             Controls.AddRange(new Control[] { lblHarms, nudHarms, chkShowHarms, chkShowPhase });
 
-            // Row: THD unit  ● dB  ○ %
+            // THD unit  ● dB  ○ %
             y += 26; // 208
             lblUnit = RowLbl("THD unit", y);
             rbDb  = new RadioButton { Text = "dB", AutoSize = true, Font = std,
                 Location = new Point(CTLX, y + 3), TabIndex = 11, UseVisualStyleBackColor = true };
             rbPct = new RadioButton { Text = "%",  AutoSize = true, Font = std,
                 Location = new Point(CTLX + 52, y + 3), TabIndex = 12, UseVisualStyleBackColor = true };
-
             Controls.AddRange(new Control[] { lblUnit, rbDb, rbPct });
 
-            // Row: Coherent avg  □ Active  (uses Avg count)
+            // Coherent averaging  □ — checkbox at CHKX, no text, label AutoSize
             y += 26; // 234
-            lblCohAvg = RowLbl("Coherent avg", y);
-            chkCohAvg = MakeChk("Active", CTLX, y, 13);
-            lblCohAvgHint = new Label {
-                Text = "(uses Avg count)", AutoSize = true, Font = gS,
-                ForeColor = SystemColors.GrayText,
-                Location = new Point(CTLX + 66, y + 5)
+            lblCohAvg = new Label {
+                Text = "Coherent averaging", Font = std,
+                Location = new Point(PL, y + 4), AutoSize = true
             };
-
-            Controls.AddRange(new Control[] { lblCohAvg, chkCohAvg, lblCohAvgHint });
+            chkCohAvg = new CheckBox {
+                Text = "", AutoSize = false, Size = new Size(16, 16),
+                Location = new Point(CHKX, y + 5), TabIndex = 13,
+                UseVisualStyleBackColor = true
+            };
+            Controls.AddRange(new Control[] { lblCohAvg, chkCohAvg });
 
             // ══ BUTTONS ═══════════════════════════════════════════════════════
             y += 32; // 266
             btnCancel = new Button {
                 DialogResult = DialogResult.Cancel, Text = "Cancel", Font = std,
-                Location = new Point(PL, y), Size = new Size(88, 27),
+                Location = new Point(PL, y), Size = new Size(76, 27),
                 UseVisualStyleBackColor = true, TabIndex = 14
             };
             btnOk = new Button {
                 DialogResult = DialogResult.OK, Text = "OK", Font = std,
-                Location = new Point(PL + CW - 88, y), Size = new Size(88, 27),
-                BackColor = Color.FromArgb(0, 90, 160), ForeColor = Color.White,
+                Location = new Point(PL + CW - 76, y), Size = new Size(76, 27),
+                BackColor = blue, ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat, TabIndex = 15
             };
             btnOk.FlatAppearance.BorderSize = 0;
             btnOk.Click += btnOk_Click;
-
             Controls.AddRange(new Control[] { btnCancel, btnOk });
 
-            // ── Form ──────────────────────────────────────────────────────────
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode       = AutoScaleMode.Font;
-            ClientSize          = new Size(PL + CW + PL, y + 27 + 10); // 296 × 303
+            ClientSize          = new Size(PL + CW + PL, y + 27 + 10); // 272 × 303
             FormBorderStyle     = FormBorderStyle.FixedDialog;
             MaximizeBox         = false; MinimizeBox = false;
             StartPosition       = FormStartPosition.CenterParent;
             Text                = "THD Settings";
             Font                = std;
             BackColor           = SystemColors.Window;
+            // Pas d'AcceptButton : Enter valide les NUD sans fermer le dialog
 
             ((ISupportInitialize)nudFlow).EndInit();
             ((ISupportInitialize)nudFhigh).EndInit();

@@ -110,6 +110,12 @@ namespace AudioHexViewer
 
             // ── panelTop ─────────────────────────────────────────────────────
             panelTop.BackColor = System.Drawing.SystemColors.Control;
+            // ── Bordure blanche 2px ───────────────────────────────────
+            { var bc = Color.White;
+              panelTop.Controls.Add(new Panel { Dock = DockStyle.Top,    Height = 2, BackColor = bc });
+              panelTop.Controls.Add(new Panel { Dock = DockStyle.Bottom, Height = 2, BackColor = bc });
+              panelTop.Controls.Add(new Panel { Dock = DockStyle.Left,   Width  = 2, BackColor = bc });
+              panelTop.Controls.Add(new Panel { Dock = DockStyle.Right,  Width  = 2, BackColor = bc }); }
             panelTop.Dock      = DockStyle.Top;
             panelTop.Location  = new Point(0, 0);
             panelTop.Name      = "panelTop";

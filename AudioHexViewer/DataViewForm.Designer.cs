@@ -21,6 +21,11 @@ namespace AudioHexViewer
         internal Label lblRightLevelDV;    // "-29.0 dBFS"
         internal Label lblRightMainTitle;  // "Float"
         internal Label lblRightMainValue;  // "-0.00286865"
+        // 4-row binary display (MSB bits, MSB hex, LSB bits, LSB hex)
+        internal Label lblLeftMsbBits,  lblLeftMsbHex;
+        internal Label lblLeftLsbBits,  lblLeftLsbHex;
+        internal Label lblRightMsbBits, lblRightMsbHex;
+        internal Label lblRightLsbBits, lblRightLsbHex;
 
         // ── Barre inférieure ──────────────────────────────────────────────────
         internal Label    label4;           // "Main data format"
@@ -60,6 +65,10 @@ namespace AudioHexViewer
             lblRightLevelDV   = new Label();
             lblRightMainTitle = new Label();
             lblRightMainValue = new Label();
+            lblLeftMsbBits  = new Label(); lblLeftMsbHex  = new Label();
+            lblLeftLsbBits  = new Label(); lblLeftLsbHex  = new Label();
+            lblRightMsbBits = new Label(); lblRightMsbHex = new Label();
+            lblRightLsbBits = new Label(); lblRightLsbHex = new Label();
             label4            = new Label();
             comboDisplayMode  = new ComboBox();
             btnRunStop        = new Button();
@@ -121,32 +130,58 @@ namespace AudioHexViewer
 
             // ── Valeur principale L / R ───────────────────────────────────────
             lblLeftMainValue.Location  = new Point(0, 116);
-            lblLeftMainValue.Size      = new Size(CW, 36);
+            lblLeftMainValue.Size      = new Size(CW, 65);
             lblLeftMainValue.Text      = "0.000000";
             lblLeftMainValue.Font      = new Font("Segoe UI", 14f, FontStyle.Bold);
             lblLeftMainValue.BackColor = SystemColors.InactiveCaption;
             lblLeftMainValue.TextAlign = ContentAlignment.MiddleCenter;
 
             lblRightMainValue.Location  = new Point(CW, 116);
-            lblRightMainValue.Size      = new Size(CW, 36);
+            lblRightMainValue.Size      = new Size(CW, 65);
             lblRightMainValue.Text      = "0.000000";
             lblRightMainValue.Font      = new Font("Segoe UI", 14f, FontStyle.Bold);
             lblRightMainValue.BackColor = SystemColors.InactiveCaption;
             lblRightMainValue.TextAlign = ContentAlignment.MiddleCenter;
 
             // ── Barre inférieure ──────────────────────────────────────────────
-            label4.Location = new Point(6, 162);
+            // ── 4-row binary labels (MSB bits, MSB hex, LSB bits, LSB hex) ─
+            // y=116..181 (65px) same footprint as extended lblMainValue
+            Font binFont = new Font("Courier New", 9f, FontStyle.Bold);
+            var  binBG   = SystemColors.InactiveCaption;
+            var  hexClr  = System.Drawing.Color.FromArgb(0, 80, 200);
+            var  binClr  = System.Drawing.Color.FromArgb(0, 120, 0);
+
+            void SetBinLbl(Label l, int x, int y, bool isHex) {
+                l.Location  = new Point(x, y);
+                l.Size      = new Size(CW, 16);
+                l.Font      = binFont;
+                l.BackColor = binBG;
+                l.ForeColor = isHex ? hexClr : binClr;
+                l.Visible   = false;
+            }
+
+            SetBinLbl(lblLeftMsbBits,  0,  116, false);
+            SetBinLbl(lblLeftMsbHex,   0,  133, true);
+            SetBinLbl(lblLeftLsbBits,  0,  150, false);
+            SetBinLbl(lblLeftLsbHex,   0,  167, true);
+            SetBinLbl(lblRightMsbBits, CW, 116, false);
+            SetBinLbl(lblRightMsbHex,  CW, 133, true);
+            SetBinLbl(lblRightLsbBits, CW, 150, false);
+            SetBinLbl(lblRightLsbHex,  CW, 167, true);
+
+            // ── Format row position ────────────────────────────────────────
+            label4.Location = new Point(6, 198);
             label4.AutoSize = true;
             label4.Text     = "Format";
             label4.Font     = new Font("Segoe UI", 8.5f);
             label4.ForeColor= SystemColors.GrayText;
 
-            comboDisplayMode.Location      = new Point(54, 158);
+            comboDisplayMode.Location      = new Point(54, 194);
             comboDisplayMode.Size          = new Size(150, 23);
             comboDisplayMode.DropDownStyle = ComboBoxStyle.DropDownList;
             comboDisplayMode.Font          = new Font("Segoe UI", 9f);
 
-            btnRunStop.Location  = new Point(W - 70, 152);
+            btnRunStop.Location  = new Point(W - 70, 188);
             btnRunStop.Size      = new Size(70, 40);
             btnRunStop.Text      = "▶  RUN";
             btnRunStop.Font      = new Font("Segoe UI", 10f, FontStyle.Bold);
@@ -155,11 +190,22 @@ namespace AudioHexViewer
             btnRunStop.FlatStyle = FlatStyle.Flat;
             btnRunStop.FlatAppearance.BorderSize = 0;
             btnRunStop.UseVisualStyleBackColor = false;
+            btnRunStop.TextAlign = ContentAlignment.MiddleCenter;
+            // Paint override : rendu stable quel que soit l'état focus/combo
+            btnRunStop.Paint += (s, e) =>
+            {
+                var b = (Button)s!;
+                e.Graphics.Clear(b.BackColor);
+                TextRenderer.DrawText(e.Graphics, b.Text, b.Font,
+                    b.ClientRectangle, b.ForeColor,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.NoPadding);
+            };
 
             // ── Form ──────────────────────────────────────────────────────────
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode       = AutoScaleMode.Font;
-            ClientSize          = new Size(W, 192);
+            ClientSize          = new Size(W, 234);
             FormBorderStyle     = FormBorderStyle.FixedSingle;
             MaximizeBox         = false;
             SizeGripStyle       = SizeGripStyle.Hide;
@@ -171,6 +217,8 @@ namespace AudioHexViewer
                 pnlVu,
                 lblLeftTitle,  lblLeftLevelDV,  lblLeftMainTitle,  lblLeftMainValue,
                 lblRightTitle, lblRightLevelDV, lblRightMainTitle, lblRightMainValue,
+                lblLeftMsbBits,  lblLeftMsbHex,  lblLeftLsbBits,  lblLeftLsbHex,
+                lblRightMsbBits, lblRightMsbHex, lblRightLsbBits, lblRightLsbHex,
                 label4, comboDisplayMode, btnRunStop
             });
 

@@ -69,6 +69,12 @@ namespace AudioHexViewer
             panelTop.Dock      = DockStyle.Top;
             panelTop.Size      = new Size(1138, 90);
             panelTop.BackColor = SystemColors.Control;
+            // ── Bordure blanche 2px ───────────────────────────────────
+            { var bc = Color.White;
+              panelTop.Controls.Add(new Panel { Dock = DockStyle.Top,    Height = 2, BackColor = bc });
+              panelTop.Controls.Add(new Panel { Dock = DockStyle.Bottom, Height = 2, BackColor = bc });
+              panelTop.Controls.Add(new Panel { Dock = DockStyle.Left,   Width  = 2, BackColor = bc });
+              panelTop.Controls.Add(new Panel { Dock = DockStyle.Right,  Width  = 2, BackColor = bc }); }
             panelTop.Controls.AddRange(new Control[]
             {
                 lblChannel,   comboChannel,

@@ -49,7 +49,7 @@ namespace AudioHexViewer
 
             chkCohAvg.Checked = Result.UseCohAvg;
 
-            AcceptButton = btnOk;
+            // AcceptButton intentionnellement absent : Enter valide les NUD sans fermer
             CancelButton = btnCancel;
         }
 

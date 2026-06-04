@@ -73,22 +73,109 @@ namespace AudioHexViewer
         {
             if (!_isRunning) return;
 
-            // Police adaptée : Binary 24b = 36 bits (+espaces) → police plus petite
-            Font valFont = mode == "Binary (24b)"
-                ? new Font("Courier New", 9f, FontStyle.Bold)
-                : new Font("Segoe UI",   14f, FontStyle.Bold);
+            lblLeftMainTitle.Text  = mode;
+            lblRightMainTitle.Text = mode;
 
-            if (!lblLeftMainValue.Font.Equals(valFont))
+            if (mode == "Binary (24b)")
             {
-                lblLeftMainValue.Font  = valFont;
-                lblRightMainValue.Font = valFont;
-            }
-            else valFont.Dispose();
+                // Passe en mode 4 lignes (MSB bits / MSB hex / LSB bits / LSB hex)
+                var gL = leftVal.Split(' ');
+                var gR = rightVal.Split(' ');
 
-            lblLeftMainTitle.Text   = mode;
-            lblRightMainTitle.Text  = mode;
-            lblLeftMainValue.Text   = leftVal;
-            lblRightMainValue.Text  = rightVal;
+                lblLeftMainValue.Visible  = false;
+                lblRightMainValue.Visible = false;
+
+                if (gL.Length == 6)
+                {
+                    var f = new Font("Courier New", 9f, System.Drawing.FontStyle.Bold);
+                    if (!lblLeftMsbBits.Font.Equals(f))
+                    {
+                        foreach (var l in new[]{lblLeftMsbBits,lblLeftMsbHex,lblLeftLsbBits,lblLeftLsbHex,
+                                                lblRightMsbBits,lblRightMsbHex,lblRightLsbBits,lblRightLsbHex})
+                            l.Font = f;
+                    }
+                    else f.Dispose();
+
+                    lblLeftMsbBits.Text = "MSB  " + gL[0] + "." + gL[1] + "." + gL[2];
+                    lblLeftMsbHex.Text  = HexLine(gL[0], gL[1], gL[2]);
+                    lblLeftLsbBits.Text = "LSB  " + gL[3] + "." + gL[4] + "." + gL[5];
+                    lblLeftLsbHex.Text  = HexLine(gL[3], gL[4], gL[5]);
+                }
+                if (gR.Length == 6)
+                {
+                    lblRightMsbBits.Text = "MSB  " + gR[0] + "." + gR[1] + "." + gR[2];
+                    lblRightMsbHex.Text  = HexLine(gR[0], gR[1], gR[2]);
+                    lblRightLsbBits.Text = "LSB  " + gR[3] + "." + gR[4] + "." + gR[5];
+                    lblRightLsbHex.Text  = HexLine(gR[3], gR[4], gR[5]);
+                }
+
+                lblLeftMsbBits.Visible  = true;  lblLeftMsbHex.Visible   = true;
+                lblLeftLsbBits.Visible  = true;  lblLeftLsbHex.Visible   = true;
+                lblRightMsbBits.Visible = true;  lblRightMsbHex.Visible  = true;
+                lblRightLsbBits.Visible = true;  lblRightLsbHex.Visible  = true;
+            }
+            else
+            {
+                var f = new Font("Segoe UI", 14f, System.Drawing.FontStyle.Bold);
+                if (!lblLeftMainValue.Font.Equals(f))
+                    { lblLeftMainValue.Font = f; lblRightMainValue.Font = f; }
+                else f.Dispose();
+
+                lblLeftMainValue.Text    = leftVal;
+                lblRightMainValue.Text   = rightVal;
+                lblLeftMainValue.Visible  = true;
+                lblRightMainValue.Visible = true;
+
+                lblLeftMsbBits.Visible  = false; lblLeftMsbHex.Visible   = false;
+                lblLeftLsbBits.Visible  = false; lblLeftLsbHex.Visible   = false;
+                lblRightMsbBits.Visible = false; lblRightMsbHex.Visible  = false;
+                lblRightLsbBits.Visible = false; lblRightLsbHex.Visible  = false;
+            }
+        }
+
+        // "MSB  xxxx.xxxx.xxxx" → hex line "      A    F    1"
+        // (6 leading spaces → hex digit centred under each 4-bit group)
+        private static string HexLine(string g0, string g1, string g2)
+            => $"      {Nibble(g0)}    {Nibble(g1)}    {Nibble(g2)}";
+
+        private static char Nibble(string g)
+        {
+            bool allX = true; int val = 0;
+            foreach (char c in g)
+            {
+                val <<= 1;
+                if (c == '1') { val |= 1; allX = false; }
+                else if (c == '0') allX = false;
+            }
+            return allX ? '-' : "0123456789ABCDEF"[val];
+        }
+
+        private static (string bits, string hex) FormatBinaryWithHex(string rawBin)
+        {
+            if (string.IsNullOrWhiteSpace(rawBin)) return ("—", "");
+            var groups = rawBin.Split(' ');
+            if (groups.Length != 6) return (rawBin, "");
+
+            string bits = string.Join(".", groups);
+
+            // Hex ligne : chaque nibble centré sous son groupe de 4 bits
+            // "  X    X    X    X    X    X" (pos 2,7,12,17,22,27)
+            var sb = new System.Text.StringBuilder("  ");
+            for (int i = 0; i < 6; i++)
+            {
+                string g = groups[i];
+                bool allX = true;
+                int val = 0;
+                foreach (char ch in g)
+                {
+                    val <<= 1;
+                    if (ch == '1') { val |= 1; allX = false; }
+                    else if (ch == '0') allX = false;
+                }
+                sb.Append(allX ? '·' : "0123456789ABCDEF"[val]);
+                if (i < 5) sb.Append("    ");
+            }
+            return (bits, sb.ToString());
         }
 
         public void UpdateDbfs(string leftDbfs, Color leftColor,
