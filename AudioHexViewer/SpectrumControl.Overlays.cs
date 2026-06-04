@@ -357,7 +357,16 @@ namespace AudioHexViewer
             if (_overlaysForm == null || _overlaysForm.IsDisposed)
                 _overlaysForm = new OverlaysForm(this);
 
-            _overlaysForm.Show(FindForm());
+            // CenterParent ne fonctionne pas pour Show() non-modal → centrage manuel
+            var owner = FindForm();
+            if (owner != null && !_overlaysForm.Visible)
+            {
+                _overlaysForm.StartPosition = System.Windows.Forms.FormStartPosition.Manual;
+                _overlaysForm.Location = new System.Drawing.Point(
+                    owner.Left + (owner.Width  - _overlaysForm.Width)  / 2,
+                    owner.Top  + (owner.Height - _overlaysForm.Height) / 2);
+            }
+            _overlaysForm.Show(owner ?? (System.Windows.Forms.IWin32Window)this);
             _overlaysForm.BringToFront();
             _overlaysForm.Activate();
         }

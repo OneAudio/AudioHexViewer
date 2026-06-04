@@ -571,10 +571,7 @@ namespace AudioHexViewer
         {
             _dataViewForm = new DataViewForm();
 
-            // Optionnel mais pratique : la placer près de Form1
             _dataViewForm.StartPosition = FormStartPosition.Manual;
-            _dataViewForm.Left = this.Right + 10;
-            _dataViewForm.Top = this.Top;
 
             // ✅ Déplacement des contrôles demandés
             // MainDataFormat = label4 + comboDisplayMode (dans ton Designer, label4 = "Main data format")
@@ -614,7 +611,19 @@ namespace AudioHexViewer
             if (_dataViewForm == null)
                 InitDataView();
 
-            _dataViewForm!.Show();
+            // Positionner à gauche de Form1, sous "All data formats"
+            if (!_dataViewForm!.Visible)
+            {
+                var sc = System.Windows.Forms.Screen.FromControl(this).WorkingArea;
+                int allFmtH = (dataFormatsWindow != null && !dataFormatsWindow.IsDisposed && dataFormatsWindow.Visible)
+                    ? dataFormatsWindow.Height : 0;
+                int allFmtX = (dataFormatsWindow != null && !dataFormatsWindow.IsDisposed && dataFormatsWindow.Visible)
+                    ? dataFormatsWindow.Left : Math.Max(sc.X, this.Left - _dataViewForm.Width);
+                int dvX = Math.Max(sc.X, this.Left - _dataViewForm.Width);
+                int dvY = Math.Max(sc.Y, Math.Min(this.Top + allFmtH, sc.Bottom - _dataViewForm.Height));
+                _dataViewForm.Location = new System.Drawing.Point(dvX, dvY);
+            }
+            _dataViewForm.Show();
             _dataViewForm.BringToFront();
         }
 
@@ -1354,6 +1363,11 @@ namespace AudioHexViewer
             }
 
             dataFormatsWindow = BuildAllFormatsWindow();
+            // À gauche de Form1, aligné sur le haut de Form1
+            var sc1 = System.Windows.Forms.Screen.FromControl(this).WorkingArea;
+            int fmtX = Math.Max(sc1.X, this.Left - dataFormatsWindow.Width);
+            int fmtY = Math.Max(sc1.Y, Math.Min(this.Top, sc1.Bottom - dataFormatsWindow.Height));
+            dataFormatsWindow.Location = new System.Drawing.Point(fmtX, fmtY);
             dataFormatsWindow.Show(this);
         }
 
@@ -1362,7 +1376,7 @@ namespace AudioHexViewer
             var dlg = new Form
             {
                 Text            = "All data formats",
-                StartPosition   = FormStartPosition.CenterParent,
+                StartPosition   = FormStartPosition.Manual,
                 Size            = new Size(460, 330),
                 FormBorderStyle = FormBorderStyle.FixedSingle,
                 MinimizeBox     = false,

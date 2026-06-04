@@ -97,6 +97,7 @@ namespace AudioHexViewer
             ClientSize          = new Size(402, 371);
             Font                = std9;
             FormBorderStyle     = FormBorderStyle.FixedToolWindow;
+            StartPosition       = FormStartPosition.CenterParent;
             Text                = "Overlays";
             Controls.AddRange(new Control[]
             {

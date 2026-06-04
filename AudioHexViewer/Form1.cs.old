@@ -1,13 +1,26 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// Form1.cs  —  UI pure : constructor, menus, VU-mètres, calibration, affichage
+//
+// La classe Form1 est découpée en fichiers partiels (Phase 3) :
+//   Form1.AudioCapture.cs   — capture WASAPI, ProcessBuffer, enregistrement
+//   Form1.FftPipeline.cs    — pipeline FFT, analyse, timer
+//   Form1.FftDiagnostics.cs — log de diagnostic (F8)
+//   Form1.TestSignals.cs    — sources de test (F9/F10)
+//   Form1.FftTicker.cs      — ticker de progression FFT (UX)
+// ═══════════════════════════════════════════════════════════════════════════
+using AudioHexViewer.Core;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
-using System.Globalization;
-using System.Text;
-using System.IO;
+using System.Buffers;
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
+using System.IO;// ...
+using System.Linq;
+using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 
-
-// ...
 
 
 namespace AudioHexViewer
@@ -16,9 +29,54 @@ namespace AudioHexViewer
 
     {
         // --- CHAMPS PRIVS ---
-        private WasapiCapture? capture;   // pour la capture audio
+        private IWaveIn? capture;   // WasapiCapture (shared) ou ExclusiveWasapiCapture
         private MMDevice? selectedDevice; // priphrique audio choisi
         private WaveFormat? currentFormat;
+
+        // Format demandé explicitement par l'utilisateur (null = auto / Windows Shared Mode)
+        private WaveFormat? _requestedCaptureFormat = null;
+        private WaveFormatExtensible? _requestedOutputFormat = null;   // SR générateur (null = Auto/Shared)
+
+        /// <summary>
+        /// Source pour le mode Loopback Test : le générateur alimente directement l'analyseur.
+        /// null = mode normal (périphérique physique).
+        /// </summary>
+        private IWaveProvider? _loopbackSource = null;
+
+        /// <summary>Appelé par GeneratorWindow pour activer/désactiver le loopback logiciel.</summary>
+        private void HandleLoopbackRequest(IWaveProvider? source)
+        {
+            bool wasCapturing = capture != null;
+
+            // Arrêter la capture actuelle (physique ou loopback précédent)
+            if (wasCapturing) StopCapture();
+
+            _loopbackSource = source;
+
+            if (source != null)
+            {
+                // Démarrer la capture en mode loopback
+                StartCapture();
+                // Auto-démarrer le spectre et l'histogramme pour voir immédiatement le signal
+                if (spectrumControl != null && !_spectrumRunning)
+                {
+                    spectrumControl.StartFromRun(false);
+                    _spectrumRunning = true;
+                }
+                if (histogramControl != null && !_histogramRunning)
+                {
+                    histogramControl.StartFromRun(false);
+                    _histogramRunning = true;
+                }
+            }
+            else if (wasCapturing)
+            {
+                // Loopback désactivé → reprendre capture physique si possible
+                StartCapture();
+            }
+        }
+
+
 
 
         // Suivi de stabilit des bits (24 bits) sur 1 seconde
@@ -27,6 +85,9 @@ namespace AudioHexViewer
         private readonly DateTime[] lastChangeLeft = new DateTime[24];
         private readonly DateTime[] lastChangeRight = new DateTime[24];
         private readonly TimeSpan bitStabilityThreshold = TimeSpan.FromSeconds(0.4);
+
+        private string _lastAllFormatsLeft = "";
+        private string _lastAllFormatsRight = "";
 
         // Saturation par voie
         private DateTime? lastSatLeft = null;
@@ -60,16 +121,20 @@ namespace AudioHexViewer
 
         private bool captureOutput = false; // false = IN (capture), true = OUT (loopback)
 
+        // Périphérique sélectionné (remplace l'ancien comboDevices.SelectedItem)
+        private MMDevice? _selectedInputDevice;
+        private MMDevice? _selectedOutputDevice;  // pour le futur générateur
+
         // Taille de la fentre principale (avec/sans graphes)
-        private int _heightWithGraphs;
-        private bool _hasHeightWithGraphs;
+        //private int _heightWithGraphs;
+        //private bool _hasHeightWithGraphs;
         // Hauteur minimale de la fentre
         private int _minWidth;
         private int _minHeightNoGraphs;
         // Dsactivation temporaire du redimensionnement
-        private FormBorderStyle _borderStyleWithGraphs;
-        private bool _borderStyleSaved;
+        //private bool _borderStyleSaved;
 
+        private SessionSettings _session = SessionSettingsManager.LoadOrNull() ?? new SessionSettings();
 
         // --- Enregistrement 1 seconde ---
         private bool isRecordingOneSecond = false;
@@ -77,37 +142,121 @@ namespace AudioHexViewer
         private int recordSamplesCollected = 0;
         private List<RecordFrame> recordBuffer = new List<RecordFrame>();
 
-        // --- Capture 1 seconde pour histogramme ---
-        private List<RecordFrame> histBuffer = new List<RecordFrame>();
+        private readonly object _recordLock = new object();
 
-        // Historique continu (tampon roulant) alimenté par la carte son
-        private readonly object histLock = new object();
+        // =============================================================
+        // Pipeline float stéréo [-1..1]
+        // _audioRing et StereoRingBuffer (int24) supprimés : jamais lus hors ProcessBuffer.
+        // =============================================================
 
-        // Index absolu du premier échantillon présent dans histBuffer (sert à gérer les RemoveRange)
-        private long histBaseIndex = 0;
+        // ── Canal de découplage : thread de capture → ProcessBuffer ──────────
+        // Le thread de capture (ExclusiveWasapi, période 10 ms) ne doit faire
+        // QUE copier les bytes dans ce canal et revenir à WaitOne immédiatement.
+        // ProcessBuffer, qui peut dépasser 10 ms, s'exécute sur _processTask.
+        private Channel<(byte[] Buffer, int Count)>? _captureChannel;
+        private Task? _processTask;
+        private CancellationTokenSource? _processCts;
+        // ─────────────────────────────────────────────────────────────────────
+
+        // ── Diagnostic débit audio ─────────────────────────────────────
+        private long _diagSamplesReceived;
+        private long _diagSamplesExpected;
+        private DateTime _diagLastTime = DateTime.MinValue;
+        private double _diagDeficitMs;         // déficit cumulé en ms
+        private long _diagDropCount; // paquets perdus (canal plein, DropNewest) — reset toutes les 2s
+        // ─────────────────────────────────────────────────────────────
+        // ── Pipeline FFT (Phase 2: ring buffer + worker + stats + queue) ─────
+        private FftPipelineController? _pipeline;
+
+
+        // ── Logger de diagnostic FFT (F8) ────────────────────────────────────
+        // Une ligne CSV par FFT produite. Détecte les discontinuités via HopActuel
+        // vs HopAttendu : tout écart > 1ms indique un gap dans les données audio.
+        private volatile bool   _diagLogEnabled;
+        private StreamWriter?   _diagLogWriter;
+        private string?         _diagLogPath;
+        private readonly object _diagLogLock    = new object();
+        private long            _diagLogFftIndex;        // numéro séquentiel de FFT dans le log
+        private long            _diagLogAbsEndPrev = -1; // AbsEnd de la FFT précédente
+        private long            _diagDropForLog;         // drops depuis la dernière FFT loguée
+        private string          _lastDebugBarText = "";  // dernier texte de la barre debug (pour le log F8)
+        // ─────────────────────────────────────────────────────────────────────
+
+        // --- Test source: sine 1 kHz -> écrit dans _pipeline?.Ring à la place de la carte son ---
+        private bool _useSineTest = false;
+        // --- Test source: signal de référence "mesures" (THD/SINAD/SNR/SFDR) ---
+        private bool _useMetricsRefTest = false;
+        private CancellationTokenSource? _sineCts;
+        private Task? _sineTask;
+
+
+
+        private SpectrumFrame? _lastFrameUi; // dernier frame affiché
+        private long _uiFramesDrained = 0;
+        private readonly System.Diagnostics.Stopwatch _uiSw = System.Diagnostics.Stopwatch.StartNew();
+        private double _uiLastRateT = 0;
+
+        // --- FFT Progress Ticker (UX) ---
+        // Reset à chaque affichage de courbe, animation autonome sur une durée = hop/Fs
+        private System.Windows.Forms.Label? _lblFftTicker;
+        private double _fftTickerPeriodSec = 0.0;
+        private double _fftTickerStartSec = 0.0;
+        private bool _fftTickerEnabled = false;
+
+        // --- Params "source de vérité" pour le ticker (mis à jour à chaque RestartSfftFromUi) ---
+        private int _tickerFs = 0;
+        private int _tickerN = 0;
+        private int _tickerHop = 0;
+        private double _tickerOverlap01 = 0.0;
+
+        // Phase : tant qu'on n'a pas affiché la 1ère FFT, on est en priming (période = N/Fs si overlap>0)
+        private bool _tickerPriming = true;
+
+        // Throttle affichage UI (10 Hz => 0.10 s)
+        private double _uiLastDisplayT = 0.0;
+        private const double UiDisplayPeriodSec = 0.10; // 10 Hz
+
+        // NOTE Phase 2: fenêtre d'analyse lue depuis FftPipelineController.Ring
+
+        // \u2500\u2500 Buffers snapshot pré-alloués (supprime 32 MB LOH à chaque tick UI) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        // \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+        // Pour le cas N > Buffer : accumulation dans une “fenêtre FFT” logique (taille N)
+
 
         // --- Fenêtre d'analyse commune Histogram + Spectrum ---
         private int analysisSampleSize = 131072;  // défaut
         private double analysisOverlap = 0.0;     // 0..1
         private int analysisHopSamples = 131072;  // = N*(1-overlap)
-        private long analysisCursorStart = 0;     // index absolu de début de la dernière fenêtre utilisée
+        //private bool _updatingSampleSizeUi = false;
+        //private long analysisCursorStart = 0;     // index absolu de début de la dernière fenêtre utilisée
 
         private System.Windows.Forms.Timer? analysisTimer;
 
-        private int[] lastAnalysisLeft = Array.Empty<int>();
-        private int[] lastAnalysisRight = Array.Empty<int>();
-        private readonly object analysisLock = new object();
+        // --- UI -> paramètres SFFT (source unique de vérité) ---
+
+
 
         //     1048576 samples / 44100 Hz = 23,78 s 
         private const int MaxHistogramSeconds = 24; // on garde jusqu' 24 s d'historique
 
         // --- Mode "Once" pour l'histogramme ---
-        private bool histOnceActive = false;
-        private int histOnceTargetSamples = 0;
-        private int histOnceAccumSamples = 0;
+        //private bool histOnceActive = false;
+        //private int histOnceTargetSamples = 0;
+        //private int histOnceAccumSamples = 0;
 
         // Seuils dBFS pour le bargraphe
         private const double DbMin = -80.0;      // plancher d'affichage
+        // ── VU-mètre entrée (dans DataViewForm) ───────────────────────────────
+        private const int    VuLedCount    = 40;
+        private const double VuDbMin       = -80.0;
+        private const double VuBlueEnd     = -36.0;
+        private const double VuGreenEnd    = -12.0;
+        private const double VuOrangeEnd   = -6.0;
+        private int    _vuInPctL, _vuInPctR;
+        private string _vuInStrL = "-∞ dBFS", _vuInStrR = "-∞ dBFS";
+        private System.Windows.Forms.Timer? _vuInTimer;
+
         private const double DbBlueToGreen = -36.0;
         private const double DbGreenToOrange = -12.0;
         private const double DbOrangeToRed = -6.0;
@@ -134,24 +283,47 @@ namespace AudioHexViewer
         private long calibAccum = 0;
 
         private HistogramControl? histogramControl;
-        private SpectrumControl? spectrumControl;
+        private SpectrumControl?  spectrumControl;
+        private OscilloscopeControl? oscilloscopeControl;
+        private bool _oscilloscopeRunning;
+        private ToolStripMenuItem? menuColors;
+        private ToolStripMenuItem? menuBuffer = null; // removed from menustrip — kept for null-safe FftPipeline stubs
 
+        // Fenêtres non-modales persistantes
+        private GeneratorWindow? _generatorWindow;
+
+        private bool _spectrumRunning;
+        private bool _histogramRunning;
 
         // Limitation de frquence pour la mise  jour des textes (pour viter le scintillement)
         private DateTime lastTextDump = DateTime.MinValue;
-        private readonly TimeSpan textDumpInterval = TimeSpan.FromMilliseconds(0); // ~5 fps
+        private readonly TimeSpan textDumpInterval = TimeSpan.FromMilliseconds(200); // ~2 fps
 
+        private SessionSettings? _loadedSessionSettings;
 
         private Form? dataFormatsWindow;
 
-        private bool histogramVisible = false;
+        private DataViewForm? _dataViewForm;
 
-        private class UiHistogramSettings
-        {
-            public string? DeviceId { get; set; }
-            public bool CaptureOutput { get; set; }
-            public string? MainDataFormat { get; set; }
-        }
+        //private bool histogramVisible = false;
+
+        // Cursors menu
+        private ToolStripMenuItem? menuCursors;
+
+        private ToolStripMenuItem? menuC1Cursor;
+        private ToolStripMenuItem? menuC1Enabled;
+        private ToolStripMenuItem? menuC1TrackAuto;
+        private ToolStripMenuItem? menuC1TrackLeft;
+        private ToolStripMenuItem? menuC1TrackRight;
+
+        private ToolStripMenuItem? menuC2Cursor;
+        private ToolStripMenuItem? menuC2Enabled;
+        private ToolStripMenuItem? menuC2TrackAuto;
+        private ToolStripMenuItem? menuC2TrackLeft;
+        private ToolStripMenuItem? menuC2TrackRight;
+
+        private ToolStripMenuItem? menuCursorsSetValue;
+
 
 
         private enum CalStage
@@ -195,262 +367,162 @@ namespace AudioHexViewer
             return (db - DbMin) / (0.0 - DbMin) * 100.0;
         }
 
+
+
+
+        //
+        // Formatage tension (évite la notation scientifique, garde une mantisse "stable")
+        // - V si >= 1 V
+        // - mV si < 1 V et >= 1 mV
+        // - µV si < 1 mV
+        // Mantisse affichée avec ~4 chiffres significatifs et zéros conservés.
+        private static string FormatVoltageWithUnit(double volts)
+        {
+            double a = Math.Abs(volts);
+
+            string unit;
+            double v;
+            if (a >= 1.0)
+            {
+                unit = "V";
+                v = volts;
+            }
+            else if (a >= 1e-3)
+            {
+                unit = "mV";
+                v = volts * 1e3;
+            }
+            else
+            {
+                unit = "µV";
+                v = volts * 1e6;
+            }
+
+            double av = Math.Abs(v);
+
+            // 4 chiffres significatifs avec zéros conservés
+            string fmt = av >= 100 ? "F1"
+                      : av >= 10 ? "F2"
+                      : "F3";
+
+            return $"{v.ToString(fmt, CultureInfo.InvariantCulture)} {unit}";
+        }
+
         private class RecordFrame
         {
             public int Left;
             public int Right;
         }
+
+
+        private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
+        {
+            SaveSessionSettingsSilently();
+        }
         //
-        
-        // Fournit la DERNIÈRE fenêtre d'analyse commune (Histogram + Spectrum).
-        // Les contrôles appellent ce provider avec sampleCount (= analysisSampleSize).
-        // Fournit la DERNIÈRE fenêtre d'analyse commune (Histogram + Spectrum).
-        // Les contrôles appellent ce provider avec sampleCount (= analysisSampleSize).
-        private (int[] Left, int[] Right) GetAnalysisFrame(int sampleCount)
+        //
+        private readonly int[] _sampleSizeOptions = new[] { 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304 };
+
+        // Sample rates proposés dans le menu Sample Rate
+        private readonly int[] _sampleRateOptions = new[]
         {
-            lock (analysisLock)
-            {
-                if (sampleCount <= 0)
-                    return (Array.Empty<int>(), Array.Empty<int>());
+            44100, 48000, 88200, 96000,
+            176400, 192000, 352800, 384000,
+            705600, 768000
+        };
 
-                // Chemin rapide : tailles identiques
-                if (lastAnalysisLeft.Length == sampleCount && lastAnalysisRight.Length == sampleCount)
-                    return ((int[])lastAnalysisLeft.Clone(), (int[])lastAnalysisRight.Clone());
+        // Options REW-style (en samples)
+        private readonly int[] _bufferOptions = new[] { 16 * 1024, 32 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024 };
 
-                // Sinon : tronque / zero-pad (on prend toujours les derniers échantillons disponibles)
-                int[] l = new int[sampleCount];
-                int[] r = new int[sampleCount];
+        private bool _updatingBufferMenuUi = false;
 
-                int copy = Math.Min(sampleCount, lastAnalysisLeft.Length);
-                if (copy > 0)
-                    Array.Copy(lastAnalysisLeft, lastAnalysisLeft.Length - copy, l, sampleCount - copy, copy);
+        // Valeur courante (on l’utilisera à l’étape suivante pour le ring-buffer)
+        private int analysisBufferSize = 128 * 1024;
 
-                copy = Math.Min(sampleCount, lastAnalysisRight.Length);
-                if (copy > 0)
-                    Array.Copy(lastAnalysisRight, lastAnalysisRight.Length - copy, r, sampleCount - copy, copy);
 
-                return (l, r);
-            }
-        }
-        private void InitAnalysisUi()
-        {
-            // Combo "Samples size" (dans la barre du haut)
-            if (comboSamplesSize != null)
-            {
-                comboSamplesSize.Items.Clear();
-                int[] opts = new[] { 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576 };
-                foreach (int n in opts)
-                    comboSamplesSize.Items.Add(n.ToString("N0"));
 
-                // défaut : 131072
-                int idx = Array.IndexOf(opts, analysisSampleSize);
-                comboSamplesSize.SelectedIndex = idx >= 0 ? idx : 6;
+        // évite les boucles (menu -> combo -> menu)
+        private bool _updatingSampleSizeMenuUi = false;
+        //
+        private readonly (string Label, double Value)[] _overlapOptions =
+{
+            ("0%", 0.0),
+            ("50%", 0.5),
+            ("75%", 0.75),
+            ("87.5%", 0.875),
+            ("93.75%", 0.9375),
+        };
 
-                comboSamplesSize.SelectedIndexChanged += (s, e) =>
-                {
-                    if (comboSamplesSize.SelectedIndex < 0) return;
-                    int nSamples = opts[comboSamplesSize.SelectedIndex];
-                    SetAnalysisSampleSize(nSamples);
-                };
-            }
+        private bool _updatingOverlapMenuUi = false;
 
-            // Combo "Overlap"
-            if (comboOverlap != null)
-            {
-                comboOverlap.Items.Clear();
-                comboOverlap.Items.AddRange(new object[] { "0%", "50%", "75%", "87.5%", "93.75%" });
-                comboOverlap.SelectedIndex = 0;
+        //
 
-                comboOverlap.SelectedIndexChanged += (s, e) =>
-                {
-                    SetAnalysisOverlap(ParseOverlapPercent(comboOverlap.SelectedItem as string));
-                };
-            }
 
-            // Init hop + timer
-            RecomputeHopAndTimer();
+        //
 
-            // Pousse les valeurs aux contrôles si déjà créés
-            histogramControl?.SetGlobalSampleSize(analysisSampleSize);
-            histogramControl?.UpdateHopSamples(analysisHopSamples);
+        // Appelé sur le thread audio (à chaque sample)
 
-            spectrumControl?.SetGlobalSampleSize(analysisSampleSize);
-            spectrumControl?.UpdateHopSamples(analysisHopSamples);
-        }
+        // Snapshot des N derniers samples (thread UI)
 
-        private static double ParseOverlapPercent(string? s)
-        {
-            if (string.IsNullOrWhiteSpace(s)) return 0.0;
-            s = s.Trim().Replace("%", "");
-            if (double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v))
-                return v / 100.0;
-            // cas fr (virgule)
-            if (double.TryParse(s, out v))
-                return v / 100.0;
-            return 0.0;
-        }
+        //
 
-        private void SetAnalysisSampleSize(int nSamples)
-        {
-            if (nSamples < 2048) nSamples = 2048;
-            if (nSamples > 1048576) nSamples = 1048576;
 
-            analysisSampleSize = nSamples;
-            analysisCursorStart = 0; // repart sur la fin du buffer
-
-            RecomputeHopAndTimer();
-
-            histogramControl?.SetGlobalSampleSize(analysisSampleSize);
-            histogramControl?.UpdateHopSamples(analysisHopSamples);
-
-            spectrumControl?.SetGlobalSampleSize(analysisSampleSize);
-            spectrumControl?.UpdateHopSamples(analysisHopSamples);
-        }
-
-        private void SetAnalysisOverlap(double overlap)
-        {
-            if (overlap < 0.0) overlap = 0.0;
-            if (overlap > 0.99) overlap = 0.99;
-
-            analysisOverlap = overlap;
-            analysisCursorStart = 0;
-
-            RecomputeHopAndTimer();
-
-            histogramControl?.UpdateHopSamples(analysisHopSamples);
-            spectrumControl?.UpdateHopSamples(analysisHopSamples);
-        }
-
-        private void RecomputeHopAndTimer()
-        {
-            analysisHopSamples = (int)Math.Round(analysisSampleSize * (1.0 - analysisOverlap));
-            if (analysisHopSamples < 1) analysisHopSamples = 1;
-
-            if (analysisTimer == null)
-            {
-                analysisTimer = new System.Windows.Forms.Timer();
-                analysisTimer.Tick += (s, e) => UpdateAnalysisFrame();
-            }
-
-            int intervalMs = 100;
-            if (currentFormat != null && currentFormat.SampleRate > 0)
-            {
-                intervalMs = (int)Math.Max(10, Math.Round((double)analysisHopSamples * 1000.0 / currentFormat.SampleRate));
-            }
-            analysisTimer.Interval = intervalMs;
-
-            // Le timer ne tourne que quand la capture est active
-            if (capture != null && capture.CaptureState == CaptureState.Capturing)
-                analysisTimer.Start();
-            else
-                analysisTimer.Stop();
-        }
-
-        private void UpdateAnalysisFrame()
-        {
-            // Si pas de capture => rien
-            if (currentFormat == null || currentFormat.SampleRate <= 0)
-                return;
-
-            int N = analysisSampleSize;
-            if (N <= 0) return;
-
-            int[] left = new int[N];
-            int[] right = new int[N];
-
-            lock (histLock)
-            {
-                long absEnd = histBaseIndex + histBuffer.Count; // index absolu "one past last"
-                if (absEnd < N)
-                    return; // pas encore assez de données
-
-                long start;
-                if (analysisCursorStart == 0)
-                {
-                    start = absEnd - N; // première fois : dernière fenêtre dispo
-                }
-                else
-                {
-                    start = analysisCursorStart + analysisHopSamples;
-                    if (start + N > absEnd)
-                        start = absEnd - N;
-                }
-
-                // Si on a purgé le buffer et qu'on a perdu la référence, on recolle en fin
-                if (start < histBaseIndex)
-                    start = absEnd - N;
-
-                int localStart = (int)(start - histBaseIndex);
-                if (localStart < 0) localStart = 0;
-                if (localStart + N > histBuffer.Count)
-                    return;
-
-                for (int i = 0; i < N; i++)
-                {
-                    var f = histBuffer[localStart + i];
-                    left[i] = f.Left;
-                    right[i] = f.Right;
-                }
-
-                analysisCursorStart = start;
-            }
-
-            lock (analysisLock)
-            {
-                lastAnalysisLeft = left;
-                lastAnalysisRight = right;
-            }
-        }
 
 
         public Form1()
         {
             InitializeComponent();
 
+            levelFontRegular = new Font(this.Font, FontStyle.Regular);
+            levelFontBold = new Font(this.Font, FontStyle.Bold);
+
+            // Libération propre
+            this.FormClosed += (_, __) =>
+            {
+                levelFontRegular.Dispose();
+                levelFontBold.Dispose();
+            };
+
+
+            _dataViewForm = new DataViewForm();
+            _dataViewForm.Hide();
+
+            // IMPORTANT : on rebranche l’event du combo (car il n’est plus sur Form1)
+            _dataViewForm.comboDisplayMode.SelectedIndexChanged += comboDisplayMode_SelectedIndexChanged;
+
+
+            InitDataView();
+
             InitAnalysisUi();
+           
+            InitColorsMenu();
 
             //this.WindowState = FormWindowState.Maximized; // Plein cran au dmarrage
             ShowHistogramArea();
             ShowSpectrumArea();
+            ShowOscilloscopeArea();
 
             // Verrouille la largeur minimale  la largeur par dfaut
             this.MinimumSize = new Size(this.Width, this.MinimumSize.Height);
 
-            // Largeur et hauteur minimales = taille par dfaut au dmarrage
             _minWidth = this.Width;
-            // Calcule la hauteur minimale "sans graphs" (sans bouger la fentre)
-            _minHeightNoGraphs = ComputeNoGraphsHeight();
-            // Hauteur avec graphs
-            _borderStyleWithGraphs = this.FormBorderStyle;
-            _borderStyleSaved = true;
+            _minHeightNoGraphs = this.Height; // minimum = taille initiale
 
-            // Verrouille largeur min + hauteur min (sans graphs)
             this.MinimumSize = new Size(_minWidth, _minHeightNoGraphs);
 
-
-            chkHistoOnce.CheckAlign = ContentAlignment.MiddleRight;
-            chkHistoOnce.TextAlign = ContentAlignment.MiddleLeft;
-
-            levelFontRegular = new Font("Tahoma", 12F, FontStyle.Regular);
-            levelFontBold = new Font("Tahoma", 12F, FontStyle.Bold);
-
-            lblLeftLevel.Font = levelFontRegular;
-            lblRightLevel.Font = levelFontRegular;
-
-            // Assurer que l'tat du split correspond au menu au dmarrage
-            splitMain.Panel2Collapsed = !menuShowGraphs.Checked;
-
             // Modes possibles pour la valeur mise en avant
-            comboDisplayMode.Items.AddRange(new object[]
+            _dataViewForm!.comboDisplayMode.Items.AddRange(new object[]
             {
                 "Decimal (24b)",
                 "Hex (24 bits)",
                 "Binary (24b)",
                 "Float",
-                "Voltage (V)"
+                "Voltage (Vrms)",
+                "Voltage (Vpeak)",
+                "Voltage (Vdc)"
             });
-            comboDisplayMode.SelectedIndex = 0;
-            comboDisplayMode.SelectedIndexChanged += comboDisplayMode_SelectedIndexChanged;
+            _dataViewForm!.comboDisplayMode.SelectedIndex = 0;
+            _dataViewForm!.comboDisplayMode.SelectedIndexChanged += comboDisplayMode_SelectedIndexChanged;
 
             // Init des horodatages de changements de bits
             var now = DateTime.Now;
@@ -462,12 +534,14 @@ namespace AudioHexViewer
                 lastBitsRight[i] = false;
             }
 
-            comboDevices.DisplayMember = "FriendlyName";
-            LoadDevices();
-
-            UpdateStartButtonAppearance();
-
-            comboDevices.SelectedIndexChanged += comboDevices_SelectedIndexChanged;
+            // Charger les périphériques d'entrée et sélectionner le premier disponible
+            try
+            {
+                var enumerator = new MMDeviceEnumerator();
+                var caps = enumerator.EnumerateAudioEndPoints(NAudio.CoreAudioApi.DataFlow.Capture, NAudio.CoreAudioApi.DeviceState.Active);
+                if (caps.Count > 0) _selectedInputDevice = caps[0];
+            }
+            catch { }
 
             // Timer calibration
             calibTimer = new System.Windows.Forms.Timer();
@@ -477,84 +551,547 @@ namespace AudioHexViewer
             // Charger la calibration existante
             LoadCalibration();
 
-            // Crer les repres dBFS au-dessus des barres
-            CreateDbMarkers(
-                barLeftLevel,
-                new[] { "-80", "-36", "-12", "-6", "0" },
-                new[] { -80, DbBlueToGreen, DbGreenToOrange, DbOrangeToRed, 0.0 }
+            // dBFS markers supprimés (ancien vu-mètre déplacé dans DataViewForm)
+
+            // ── VU-mètre entrée ───────────────────────────────────────────────
+            InitInputVuMeter();
+
+            // 
+            InitSampleSizeMenu();
+            InitOverlapMenu();
+            UpdateSampleSizeMenuChecks();
+            UpdateOverlapMenuChecks();
+            InitBufferMenu();
+            UpdateBufferMenuChecks();
+
+            this.FormClosing += Form1_FormClosing;
+        }
+        //
+        private void InitDataView()
+        {
+            _dataViewForm = new DataViewForm();
+
+            _dataViewForm.StartPosition = FormStartPosition.Manual;
+
+            // ✅ Déplacement des contrôles demandés
+            // MainDataFormat = label4 + comboDisplayMode (dans ton Designer, label4 = "Main data format")
+            _dataViewForm.AttachControls(
+                _dataViewForm!.lblLeftMainTitle, _dataViewForm!.lblRightMainTitle,
+                _dataViewForm!.lblLeftMainValue, _dataViewForm!.lblRightMainValue,
+                _dataViewForm!.label2, _dataViewForm!.label3,
+                _dataViewForm!.lblLeftLevelDV, _dataViewForm!.lblRightLevelDV,
+                _dataViewForm!.label4, _dataViewForm!.comboDisplayMode
             );
 
-            CreateDbMarkers(
-                barRightLevel,
-                new[] { "-80", "-36", "-12", "-6", "0" },
-                new[] { -80, DbBlueToGreen, DbGreenToOrange, DbOrangeToRed, 0.0 }
-            );
+            // Ne pas afficher au démarrage
+            _dataViewForm.RunStopChanged += (_, running) =>
+            {
+                if (running && capture == null)
+                    StartCapture();
+                UpdateVuInTimer();
+                if (!running)
+                {
+                    // Si aucun autre onglet n'utilise la capture, on l'arrête
+                    // → capture devient null → UpdateTitleBar() efface le texte IN
+                    if (!_histogramRunning && !_spectrumRunning && !_oscilloscopeRunning)
+                        StopCapture();
+                    // Clear DataView display
+                    _dataViewForm.lblLeftMainValue.Text  = "—";
+                    _dataViewForm.lblRightMainValue.Text = "—";
+                    _dataViewForm.lblLeftLevelDV.Text    = "-∞ dBFS";
+                    _dataViewForm.lblRightLevelDV.Text   = "-∞ dBFS";
+                }
+                UpdateTitleBar();
+            };
+            _dataViewForm.Hide();
+        }
+        //
+        private void menuDataView_Click(object? sender, EventArgs e)
+        {
+            if (_dataViewForm == null)
+                InitDataView();
 
+            // Positionner sur le même écran que Form1, à gauche, sous "All data formats"
+            if (!_dataViewForm!.Visible)
+            {
+                var sc = System.Windows.Forms.Screen.FromControl(this).WorkingArea;
+                int allFmtH = (dataFormatsWindow != null && !dataFormatsWindow.IsDisposed)
+                    ? dataFormatsWindow.Height : 0;
+                _dataViewForm.Location = new System.Drawing.Point(
+                    sc.X,
+                    Math.Min(this.Top + allFmtH, sc.Bottom - _dataViewForm.Height));
+            }
+            _dataViewForm.Show();
+            _dataViewForm.BringToFront();
         }
 
-        private void LoadUiSettingsFromHistogramFile()
+        /// <summary>
+        /// View > Debug info : affiche/cache la barre de debug interne (sans troncature).
+        /// </summary>
+        private void menuDebugInfo_Click(object? sender, EventArgs e)
+        {
+            bool visible = menuDebugInfo.Checked;
+            panelDebugInfo.Visible = visible;
+            if (!visible)
+                lblDebugInfo.Text = "";
+            else
+                lblDebugInfo.Text = _lastDebugBarText; // affiche immédiatement le dernier texte connu
+        }
+
+        //
+        private void InitCursorsMenu()
+        {
+            menuCursors = new ToolStripMenuItem("Cursors")
+            {
+                Alignment = ToolStripItemAlignment.Right
+            };
+
+            // ---------- C1 ----------
+            menuC1Cursor = new ToolStripMenuItem("C1 Cursor");
+
+            menuC1Enabled = new ToolStripMenuItem("Enabled") { CheckOnClick = true };
+            menuC1Enabled.CheckedChanged += (_, __) =>
+            {
+                if (spectrumControl != null)
+                    spectrumControl.CursorLeftEnabled = menuC1Enabled.Checked;
+            };
+
+            menuC1TrackAuto = new ToolStripMenuItem("Track: Auto") { CheckOnClick = true };
+            menuC1TrackLeft = new ToolStripMenuItem("Track: Left") { CheckOnClick = true };
+            menuC1TrackRight = new ToolStripMenuItem("Track: Right") { CheckOnClick = true };
+
+            void SetC1Track(SpectrumControl.CursorTrackMode mode)
+            {
+                // radio check
+                menuC1TrackAuto.Checked = (mode == SpectrumControl.CursorTrackMode.Auto);
+                menuC1TrackLeft.Checked = (mode == SpectrumControl.CursorTrackMode.Left);
+                menuC1TrackRight.Checked = (mode == SpectrumControl.CursorTrackMode.Right);
+
+                if (spectrumControl != null)
+                    spectrumControl.C1TrackMode = mode;
+            }
+
+            menuC1TrackAuto.Click += (_, __) => SetC1Track(SpectrumControl.CursorTrackMode.Auto);
+            menuC1TrackLeft.Click += (_, __) => SetC1Track(SpectrumControl.CursorTrackMode.Left);
+            menuC1TrackRight.Click += (_, __) => SetC1Track(SpectrumControl.CursorTrackMode.Right);
+
+            menuC1Cursor.DropDownItems.Add(menuC1Enabled);
+            menuC1Cursor.DropDownItems.Add(new ToolStripSeparator());
+            menuC1Cursor.DropDownItems.Add(menuC1TrackAuto);
+            menuC1Cursor.DropDownItems.Add(menuC1TrackLeft);
+            menuC1Cursor.DropDownItems.Add(menuC1TrackRight);
+
+            // ---------- C2 ----------
+            menuC2Cursor = new ToolStripMenuItem("C2 Cursor");
+
+            menuC2Enabled = new ToolStripMenuItem("Enabled") { CheckOnClick = true };
+            menuC2Enabled.CheckedChanged += (_, __) =>
+            {
+                if (spectrumControl != null)
+                    spectrumControl.CursorRightEnabled = menuC2Enabled.Checked;
+            };
+
+            menuC2TrackAuto = new ToolStripMenuItem("Track: Auto") { CheckOnClick = true };
+            menuC2TrackLeft = new ToolStripMenuItem("Track: Left") { CheckOnClick = true };
+            menuC2TrackRight = new ToolStripMenuItem("Track: Right") { CheckOnClick = true };
+
+            void SetC2Track(SpectrumControl.CursorTrackMode mode)
+            {
+                // radio check
+                menuC2TrackAuto.Checked = (mode == SpectrumControl.CursorTrackMode.Auto);
+                menuC2TrackLeft.Checked = (mode == SpectrumControl.CursorTrackMode.Left);
+                menuC2TrackRight.Checked = (mode == SpectrumControl.CursorTrackMode.Right);
+
+                if (spectrumControl != null)
+                    spectrumControl.C2TrackMode = mode;
+            }
+
+            menuC2TrackAuto.Click += (_, __) => SetC2Track(SpectrumControl.CursorTrackMode.Auto);
+            menuC2TrackLeft.Click += (_, __) => SetC2Track(SpectrumControl.CursorTrackMode.Left);
+            menuC2TrackRight.Click += (_, __) => SetC2Track(SpectrumControl.CursorTrackMode.Right);
+
+            menuC2Cursor.DropDownItems.Add(menuC2Enabled);
+            menuC2Cursor.DropDownItems.Add(new ToolStripSeparator());
+            menuC2Cursor.DropDownItems.Add(menuC2TrackAuto);
+            menuC2Cursor.DropDownItems.Add(menuC2TrackLeft);
+            menuC2Cursor.DropDownItems.Add(menuC2TrackRight);
+
+            // ---------- Set Value (Étape 4) ----------
+            menuCursorsSetValue = new ToolStripMenuItem("Set Value...");
+            menuCursorsSetValue.Click += (_, __) =>
+            {
+                if (spectrumControl == null) return;
+
+                // valeurs actuelles
+                double? c1 = spectrumControl.TryGetCursor1FrequencyHz(out var f1) ? f1 : (double?)null;
+                double? c2 = spectrumControl.TryGetCursor2FrequencyHz(out var f2) ? f2 : (double?)null;
+
+                using var dlg = new CursorSetValueDialog(
+                    c1Enabled: spectrumControl.CursorLeftEnabled,
+                    c2Enabled: spectrumControl.CursorRightEnabled,
+                    c1CurrentHz: c1,
+                    c2CurrentHz: c2,
+                    getPeakC1Hz: () =>
+                    {
+                        return spectrumControl.TryFindPeakFrequencyForCursor1(out var p) ? p : (double?)null;
+                    },
+                    getPeakC2Hz: () =>
+                    {
+                        return spectrumControl.TryFindPeakFrequencyForCursor2(out var p) ? p : (double?)null;
+                    }
+                );
+
+                if (dlg.ShowDialog(this) == DialogResult.OK)
+                {
+                    if (dlg.C1Hz.HasValue)
+                        spectrumControl.SetCursor1FrequencyHz(dlg.C1Hz.Value);
+
+                    if (dlg.C2Hz.HasValue)
+                        spectrumControl.SetCursor2FrequencyHz(dlg.C2Hz.Value);
+                }
+            };
+
+
+            // Assemblage menu
+            menuCursors.DropDownItems.Add(menuC1Cursor);
+            menuCursors.DropDownItems.Add(menuC2Cursor);
+            menuCursors.DropDownItems.Add(new ToolStripSeparator());
+            menuCursors.DropDownItems.Add(menuCursorsSetValue);
+
+            // Valeurs par défaut (radio)
+            menuC1TrackAuto.Checked = true;
+            menuC2TrackAuto.Checked = true;
+
+            // Ajouter au menu principal (top-level)
+            menuStrip1.Items.Add(menuCursors);
+        }
+
+        //
+
+        // --------------------------------------------------------------------
+        // THD : logique + persistance (UI lives in SpectrumControl)
+        // --------------------------------------------------------------------
+
+        private void ApplyThdEnabled(bool enabled)
+        {
+            _session.Spectrum.EnableThdMeasures = enabled;
+
+            if (spectrumControl != null)
+            {
+                spectrumControl.SetThdMeasuresEnabled(enabled);
+                spectrumControl.SetThdEnabledUi(enabled);
+            }
+
+            if (!SessionSettingsManager.Save(_session, out string? err) && !string.IsNullOrWhiteSpace(err))
+                MessageBox.Show(this, err, "Save settings failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
+
+        private void ShowThdSettings()
         {
             try
             {
-                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                string path = Path.Combine(baseDir, "HistogramSettings.json");
+                int sr = currentFormat != null ? currentFormat.SampleRate : 0;
 
-                if (!File.Exists(path))
-                    return;
-
-                string json = File.ReadAllText(path);
-                var settings = JsonSerializer.Deserialize<UiHistogramSettings>(json);
-
-                if (settings == null)
-                    return;
-
-                // 1) IN / OUT
-                // On met  jour le bool avant de cocher les boutons
-                captureOutput = settings.CaptureOutput;
-
-                if (settings.CaptureOutput)
+                using (var dlg = new ThdSettingsDialog(_session.Spectrum.Thd, sr))
                 {
-                    rbOutput.Checked = true;   // levent CheckedChanged appellera LoadDevices()
-                }
-                else
-                {
-                    rbInput.Checked = true;
-                }
+                    if (dlg.ShowDialog(this) != DialogResult.OK)
+                        return;
 
-                //  ce stade, LoadDevices() a recharg comboDevices avec IN ou OUT
+                    _session.Spectrum.Thd = dlg.Result;
 
-                // 2) Slection du device par ID
-                if (!string.IsNullOrEmpty(settings.DeviceId))
-                {
-                    for (int i = 0; i < comboDevices.Items.Count; i++)
-                    {
-                        if (comboDevices.Items[i] is MMDevice dev && dev.ID == settings.DeviceId)
-                        {
-                            comboDevices.SelectedIndex = i;
-                            break;
-                        }
-                    }
-                }
+                    if (spectrumControl != null)
+                        spectrumControl.ApplyThdSettings(_session.Spectrum.Thd);
 
-                // 3) Mode daffichage principal (MainDataFormat)
-                if (!string.IsNullOrEmpty(settings.MainDataFormat))
-                {
-                    int idx = comboDisplayMode.Items.IndexOf(settings.MainDataFormat);
-                    if (idx >= 0)
-                        comboDisplayMode.SelectedIndex = idx;
+                    if (!SessionSettingsManager.Save(_session, out string? err) && !string.IsNullOrWhiteSpace(err))
+                        MessageBox.Show(this, err, "Save settings failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Erreur lors du chargement des rglages d'interface : " + ex.Message,
-                                "Histogram settings",
-                                MessageBoxButtons.OK,
-                                MessageBoxIcon.Error);
+                MessageBox.Show(this, ex.ToString(), "Crash in THD setting", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
+        //
 
 
+
+        //
+        // --- Colors menu (FFT/Overlay/PeakHold/Grid/Background) ---
+        private void InitColorsMenu()
+        {
+            // ── Ordre final : Devices|Generator|Overlap|Sample size|Colors|View|Export|Tools|Help
+            // Designer a chargé : [0]Devices [1]Overlap [2]SampleSize [3]View [4]Export [5]Help
+
+            // Generator → index 1  (entre Devices et Overlap)
+            var menuGenerator = new ToolStripMenuItem("Generator");
+            menuGenerator.Click += menuGenerator_Click;
+            menuStrip1.Items.Insert(1, menuGenerator);
+            // Après insert : [0]Devices [1]Generator [2]Overlap [3]SampleSize [4]View [5]Export [6]Help
+
+            // Colors → index 4  (entre SampleSize et View)
+            menuColors = new ToolStripMenuItem("Colors");
+            menuColors.Click += (_, __) => ShowColorsDialog();
+            menuStrip1.Items.Insert(4, menuColors);
+            // Après insert : [0]Devices [1]Generator [2]Overlap [3]SampleSize [4]Colors [5]View [6]Export [7]Help
+
+            // Export CSV (sous-menu Export)
+            var menuExportCsv = new ToolStripMenuItem("Export data to CSV…");
+            menuExportCsv.Click += menuExportCsv_Click;
+            exportToolStripMenuItem.DropDownItems.Add(menuExportCsv);
+
+            // Tools → index 7  (entre Export et Help)
+            var menuTools       = new ToolStripMenuItem("Tools");
+            var menuDataRecord  = new ToolStripMenuItem("Data Record (1s)");
+            var menuCalibrateIn = new ToolStripMenuItem("Calibrate Input Device");
+            menuDataRecord.Click  += (_, _) => btnRecord_Click(menuDataRecord, EventArgs.Empty);
+            menuCalibrateIn.Click += (_, _) => btnCalV_Click(menuCalibrateIn, EventArgs.Empty);
+            menuTools.DropDownItems.AddRange(new ToolStripItem[] { menuDataRecord, menuCalibrateIn });
+            menuStrip1.Items.Insert(7, menuTools);
+            // Résultat final : [0]Devices [1]Generator [2]Overlap [3]SampleSize [4]Colors [5]View [6]Export [7]Tools [8]Help
+        }
+
+        private void ShowColorsDialog()
+        {
+            if (spectrumControl == null)
+                return;
+
+            // Current colors from the control
+            var current = spectrumControl.GetSpectrumColorSettingsSnapshot();
+
+            // Persisted defaults (used when clicking "Default" in the dialog)
+            var persistedDefaults =
+                _loadedSessionSettings?.Spectrum?.DefaultColors
+                ?? _session?.Spectrum?.DefaultColors
+                ?? SpectrumColorSettings.Defaults();
+
+            using var dlg = new SpectrumColorsDialog(current, persistedDefaults);
+            if (dlg.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            spectrumControl.ApplySpectrumColorSettings(dlg.SelectedColors);
+
+            // Propagation des couleurs à l'onglet Histogramme (fond, grilles, labels, barres L/R)
+            histogramControl?.ApplySpectrumColorSettings(dlg.SelectedColors);
+
+            // Propagation des couleurs à l'oscilloscope
+            oscilloscopeControl?.ApplySpectrumColorSettings(dlg.SelectedColors);
+
+            // Keep settings in sync (used when re-applying settings later + for persistence)
+            if (_loadedSessionSettings != null)
+            {
+                _loadedSessionSettings.Spectrum.Colors = dlg.SelectedColors;
+
+                if (dlg.DefaultsChanged)
+                    _loadedSessionSettings.Spectrum.DefaultColors = dlg.SelectedDefaults;
+            }
+
+            // Also keep the always-present in-memory session in sync
+            if (_session.Spectrum != null)
+            {
+                _session.Spectrum.Colors = dlg.SelectedColors;
+                if (dlg.DefaultsChanged)
+                    _session.Spectrum.DefaultColors = dlg.SelectedDefaults;
+            }
+
+            // Persist via existing snapshot mechanism
+            SaveSessionSettingsSilently();
+        }
+
+        //        
+        //
+        //
+        //
+       
+        //
+        private void ApplyAnalysisSettings(SessionSettings s)
+        {
+            if (s == null) return;
+
+            // IMPORTANT: ordre
+            // 1) Sample size (source d'autorité pour FFT + histogram)
+            SetAnalysisSampleSize(s.Analysis.SampleSize);
+
+            // 2) Overlap (dépend du sample size car hop = sample*(1-overlap))
+            SetAnalysisOverlap(s.Analysis.Overlap);
+
+            // 3) Buffer (sans dépendance forte, on le fait après)
+            SetAnalysisBufferSize(s.Analysis.BufferSize);
+
+            // 4) Sample rate demandé (0 = Auto)
+            int savedSr = s.Analysis.RequestedSampleRate;
+            if (savedSr > 0)
+                _requestedCaptureFormat = new NAudio.Wave.WaveFormatExtensible(savedSr, 32, 2);
+            else
+                _requestedCaptureFormat = null;   // Auto
+
+            // Si tu as des fonctions de refresh du menu, appelle-les ici
+            UpdateSampleSizeMenuChecks();
+            UpdateOverlapMenuChecks();
+            UpdateBufferMenuChecks();
+
+            if (histogramControl != null)
+            {
+                histogramControl.SetGlobalSampleSize(analysisSampleSize);
+                histogramControl.UpdateHopSamples(analysisHopSamples);
+            }
+
+            if (spectrumControl != null)
+            {
+                spectrumControl.SetGlobalSampleSize(analysisSampleSize);
+                spectrumControl.UpdateHopSamples(analysisHopSamples);
+            }
+
+        }
+
+        //
+        private void LoadUiSettingsFromSettingsFiles()
+        {
+
+            // 1) Essai du nouveau fichier SessionSettings.json
+            var session = SessionSettingsManager.LoadOrNull();
+            if (session != null && session.Ui != null)
+            {
+                _loadedSessionSettings = session;
+                ApplyUiSettings(session.Ui);
+                return;
+            }
+        }
+
+        private void ApplyUiSettings(UiSettings ui)
+        {
+            // 1) IN / OUT
+            captureOutput = ui.CaptureOutput;
+
+            // 2) Device ID — restaurer depuis la liste des périphériques d'entrée
+            if (!string.IsNullOrEmpty(ui.DeviceId))
+            {
+                try
+                {
+                    var en = new MMDeviceEnumerator();
+                    var flow = captureOutput
+                        ? NAudio.CoreAudioApi.DataFlow.Render
+                        : NAudio.CoreAudioApi.DataFlow.Capture;
+                    foreach (var d in en.EnumerateAudioEndPoints(flow, NAudio.CoreAudioApi.DeviceState.Active))
+                    {
+                        if (d.ID == ui.DeviceId) { _selectedInputDevice = d; break; }
+                    }
+                }
+                catch { }
+            }
+            // 3) Output device — restaurer ou auto-sélectionner le premier disponible
+            try
+            {
+                var en = new MMDeviceEnumerator();
+                var renders = en.EnumerateAudioEndPoints(
+                    NAudio.CoreAudioApi.DataFlow.Render,
+                    NAudio.CoreAudioApi.DeviceState.Active);
+                if (!string.IsNullOrEmpty(ui.OutputDeviceId))
+                {
+                    foreach (var d in renders)
+                        if (d.ID == ui.OutputDeviceId) { _selectedOutputDevice = d; break; }
+                }
+                // Si aucun périphérique restauré (premier démarrage ou ID disparu),
+                // prendre le premier périphérique de rendu disponible
+                if (_selectedOutputDevice == null && renders.Count > 0)
+                    _selectedOutputDevice = renders[0];
+                // Restaurer le format exclusif si SR était configuré
+                if (_selectedOutputDevice != null && ui.RequestedOutputSR > 0)
+                    _requestedOutputFormat = new WaveFormatExtensible(ui.RequestedOutputSR, 32, 2);
+            }
+            catch { }
+
+            // 4) Main Data Format
+            if (!string.IsNullOrEmpty(ui.MainDataFormat))
+            {
+                int idx = _dataViewForm!.comboDisplayMode.Items.IndexOf(ui.MainDataFormat);
+                if (idx >= 0)
+                    _dataViewForm!.comboDisplayMode.SelectedIndex = idx;
+            }
+        }
+        //
+        private void ApplyLoadedSessionSettingsToExistingControls()
+        {
+            if (_loadedSessionSettings == null)
+                return;
+
+            if (histogramControl != null)
+                histogramControl.ApplyHistogramSettings(_loadedSessionSettings.Histogram);
+
+            if (spectrumControl != null)
+            {
+                spectrumControl.ApplySpectrumSettings(_loadedSessionSettings.Spectrum);
+
+                // Synchroniser les couleurs de l'histogramme avec celles du spectre
+                var loadedColors = _loadedSessionSettings.Spectrum?.Colors ?? SpectrumColorSettings.Defaults();
+                histogramControl?.ApplySpectrumColorSettings(loadedColors);
+                oscilloscopeControl?.ApplySpectrumColorSettings(loadedColors);
+            }
+
+            oscilloscopeControl?.ApplySettings(_loadedSessionSettings.Oscilloscope);
+        }
+
+        //
+        private SessionSettings BuildSessionSettingsSnapshot()
+        {
+            var s = new SessionSettings
+            {
+                Version = 1
+            };
+
+            // UI
+            s.Ui.DeviceId = _selectedInputDevice?.ID;
+            s.Ui.CaptureOutput = captureOutput;
+            s.Ui.MainDataFormat = _dataViewForm!.comboDisplayMode.SelectedItem as string;
+            // Périphérique de sortie générateur
+            s.Ui.OutputDeviceId    = _selectedOutputDevice?.ID;
+            s.Ui.RequestedOutputSR = _requestedOutputFormat?.SampleRate ?? 0;
+
+            // Analysis (valeurs actuelles, même si on ne les applique pas encore)
+            s.Analysis.BufferSize  = analysisBufferSize;
+            s.Analysis.Overlap     = analysisOverlap;
+            s.Analysis.SampleSize  = analysisSampleSize;
+            s.Analysis.RequestedSampleRate = _requestedCaptureFormat?.SampleRate ?? 0;
+
+            if (histogramControl != null)
+                s.Histogram = histogramControl.GetHistogramSettingsSnapshot();
+
+            if (spectrumControl != null)
+            {
+                s.Spectrum = spectrumControl.GetSpectrumSettingsSnapshot();
+
+                // Preserve persisted spectrum default colors (used by SpectrumColorsDialog)
+                var persistedDefaults = _loadedSessionSettings?.Spectrum?.DefaultColors ?? _session?.Spectrum?.DefaultColors;
+                if (persistedDefaults != null)
+                    s.Spectrum.DefaultColors = persistedDefaults;
+            }
+
+            // Histogram / Spectrum : on remplira à l'étape suivante (pour l'instant defaults)
+
+            // ── Calibration de niveau de sortie du générateur (persistance) ──
+            s.GenCalValidLeft           = _session.GenCalValidLeft;
+            s.GenCalVrmsFullScaleLeft   = _session.GenCalVrmsFullScaleLeft;
+            s.GenCalValidRight          = _session.GenCalValidRight;
+            s.GenCalVrmsFullScaleRight  = _session.GenCalVrmsFullScaleRight;
+
+            // ── Settings oscilloscope ──────────────────────────────────────────
+            if (oscilloscopeControl != null)
+                s.Oscilloscope = oscilloscopeControl.GetSettingsSnapshot();
+            else
+                s.Oscilloscope = _session.Oscilloscope ?? new OscilloscopeSettings();
+
+            return s;
+        }
+
+        private void SaveSessionSettingsSilently()
+        {
+            var snap = BuildSessionSettingsSnapshot();
+            SessionSettingsManager.Save(snap, out _);
+            // volontairement silencieux : pas de MessageBox
+        }
+
+        //
         private string GroupBits(string bits, int groupSize = 4)
         {
             var sb = new StringBuilder(bits.Length + bits.Length / groupSize);
@@ -582,17 +1119,83 @@ namespace AudioHexViewer
             return $"{paddedLabel} : {value}";
         }
         //
+        // ================================================================
+        // NÉGOCIATION DU FORMAT EXCLUSIF (inspiré de SRatetest2)
+        // ================================================================
+
+        /// <summary>
+        /// Teste, pour un SR donné, les formats courants (32/24/16 bits, plain et extensible)
+        /// et retourne le premier accepté par le driver en mode Exclusif.
+        /// Retourne null si aucun n'est supporté.
+        /// </summary>
+        private static WaveFormat? FindSupportedExclusiveFormat(MMDevice device, int sampleRate)
+        {
+            var ac = device.AudioClient;
+            var mode = AudioClientShareMode.Exclusive;
+
+            // Float32 stéréo en premier : certains drivers déclarent PCM Int32 mais
+            // livrent des données Float32, causant saturation à ±0.5.
+            // IMPORTANT : pas de format mono — ProcessBuffer exige 2 canaux.
+            WaveFormat[] candidates = new WaveFormat[]
+            {
+                WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, 2), // Float32 stéréo (préféré)
+                new WaveFormat(sampleRate, 32, 2),
+                new WaveFormatExtensible(sampleRate, 32, 2),
+                new WaveFormat(sampleRate, 24, 2),
+                new WaveFormatExtensible(sampleRate, 24, 2),
+                new WaveFormat(sampleRate, 16, 2),
+                new WaveFormatExtensible(sampleRate, 16, 2),
+            };
+
+            foreach (var wf in candidates)
+            {
+                try
+                {
+                    if (ac.IsFormatSupported(mode, wf))
+                        return wf;
+                }
+                catch { /* certains drivers lèvent une exception au lieu de retourner false */ }
+            }
+
+            return null;
+        }
+
+        // ================================================================
+        // FIN NÉGOCIATION FORMAT
+        // ================================================================
+        //
+        // ================================================================
+        // SAMPLE RATE MENU (Exclusive Mode)
+        // ================================================================
+
+        /// <summary>
+        /// Vérifie si le format demandé est supporté par le driver en mode Exclusif.
+        /// Retourne false en cas d'erreur (driver non compatible, device absent, etc.)
+        /// </summary>
+        private static bool IsFormatSupportedExclusive(MMDevice device, WaveFormat format)
+        {
+            try
+            {
+                var client = device.AudioClient;
+                return client.IsFormatSupported(AudioClientShareMode.Exclusive, format);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // ================================================================
+        // FIN SAMPLE RATE MENU
+        // ================================================================
+        //
         private void UpdateDeviceSummary()
         {
             //if (lblDeviceSummary == null)
             //    return;
 
-            // Si aucun device slectionn
-            if (comboDevices.SelectedItem is not MMDevice dev)
-            {
-                //lblDeviceSummary.Text = "No device selected";
+            if (_selectedInputDevice is not MMDevice dev)
                 return;
-            }
 
             // Type : IN / OUT
             string typeText = captureOutput ? "Output" : "Input";
@@ -649,146 +1252,384 @@ namespace AudioHexViewer
         }
 
         //
-        private void menuDeviceInfo_Click(object? sender, EventArgs e)
+        private void menuDevices_Click(object? sender, EventArgs e)
         {
-            string text = BuildDeviceInfoText();
-
-            using (var dlg = new Form())
+            // Utilise les listes mises en cache lors du scan au démarrage → instantané
+            var inputs  = SplashScreen.CachedInputs;
+            var outputs = SplashScreen.CachedOutputs;
+            if (inputs.Count == 0 && outputs.Count == 0)
             {
-                dlg.Text = "Audio device info";
-                dlg.StartPosition = FormStartPosition.CenterParent;
-                dlg.Size = new Size(500, 350);
-                dlg.MinimizeBox = false;
-                dlg.MaximizeBox = false;
-                dlg.ShowIcon = false;
+                MessageBox.Show(this, "No audio devices found.", "Devices",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
-                var box = new RichTextBox();
-                box.Dock = DockStyle.Fill;
-                box.ReadOnly = true;
-                box.BorderStyle = BorderStyle.None;
-                box.Font = new Font(FontFamily.GenericMonospace, 9f);
-                box.Text = text;
-                box.BackColor = SystemColors.Window;
+            using var dlg = new DevicesDialog(
+                inputDevices:        inputs,
+                outputDevices:       outputs,
+                currentInput:        _selectedInputDevice,
+                currentOutput:       _selectedOutputDevice,
+                sampleRateOptions:   _sampleRateOptions,
+                currentInputFormat:  _requestedCaptureFormat as WaveFormatExtensible,
+                currentOutputFormat: _requestedOutputFormat,
+                onInfosClick:        ShowDeviceInfoDialog,
+                currentBufferSize:   analysisBufferSize);
 
-                dlg.Controls.Add(box);
+            if (dlg.ShowDialog(this) == DialogResult.OK)
+            {
+                // Apply buffer size if changed
+                if (dlg.SelectedBufferSize != analysisBufferSize)
+                    SetAnalysisBufferSize(dlg.SelectedBufferSize);
 
-                dlg.ShowDialog(this);
+                bool deviceChanged = dlg.SelectedInputDevice?.ID != _selectedInputDevice?.ID;
+                bool srChanged     = (dlg.SelectedInputFormat?.SampleRate ?? 0) != (_requestedCaptureFormat?.SampleRate ?? 0);
+
+                _selectedInputDevice    = dlg.SelectedInputDevice;
+                _selectedOutputDevice   = dlg.SelectedOutputDevice;
+                _requestedCaptureFormat = dlg.SelectedInputFormat;
+                _requestedOutputFormat  = dlg.SelectedOutputFormat;
+
+                if (deviceChanged || srChanged)
+                {
+                    currentFormat = null;
+                    UpdateDeviceInfo();
+                    UpdateDeviceSummary();
+
+                    // Si la capture est active, la redémarrer avec les nouveaux paramètres
+                if (capture != null)
+                    {
+                        StopCapture();
+                        StartCapture();
+                    }
+                }
             }
         }
-        //
-        //
+
+        private void menuGenerator_Click(object? sender, EventArgs e)
+        {
+            if (_generatorWindow == null || _generatorWindow.IsDisposed)
+            {
+                _generatorWindow = new GeneratorWindow(
+                    getOutputDevice:    () => _selectedOutputDevice,
+                    getInputDevice:     () => _selectedInputDevice,
+                    getOutputFormat:    () => _requestedOutputFormat,
+                    getAnalyzerSR:      () => currentFormat?.SampleRate ?? 0,
+                    getAnalyzerN:       () => spectrumControl?.CurrentFftSize ?? 0,
+                    onLoopbackRequest:  HandleLoopbackRequest,
+                    settings:           _session,
+                    saveSettings:       SaveSessionSettingsSilently,
+                    onRunStateChanged:  UpdateTitleBar);
+
+                // Positionner à côté de la fenêtre principale
+                _generatorWindow.Location = new System.Drawing.Point(
+                    Location.X + Width + 4, Location.Y);
+            }
+
+            if (_generatorWindow.WindowState == FormWindowState.Minimized)
+                _generatorWindow.WindowState = FormWindowState.Normal;
+
+            _generatorWindow.Show(this);
+        }
+
+        private void ShowDeviceInfoDialog()
+        {
+            try
+            {
+                using var dlg = new DeviceInfoDialog(
+                    inputDevice:  _selectedInputDevice,
+                    outputDevice: _selectedOutputDevice,
+                    activeFormat: currentFormat,
+                    isCapturing:  capture != null,
+                    isLoopback:   captureOutput,
+                    srOptions:    _sampleRateOptions);
+                dlg.ShowDialog(this);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.ToString(), "Device info", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         private void menuShowAllFormats_Click(object? sender, EventArgs e)
         {
-            // Si la fentre existe dj, on la raffiche simplement
             if (dataFormatsWindow != null && !dataFormatsWindow.IsDisposed)
             {
                 dataFormatsWindow.Show();
                 dataFormatsWindow.BringToFront();
+                RefreshAllFormatsWindow();
                 return;
             }
 
-            var dlg = new Form();
-            dataFormatsWindow = dlg;
+            dataFormatsWindow = BuildAllFormatsWindow();
+            // Centré sur Form1
+            dataFormatsWindow.Location = new System.Drawing.Point(
+                this.Left + (this.Width  - dataFormatsWindow.Width)  / 2,
+                this.Top  + (this.Height - dataFormatsWindow.Height) / 2);
+            dataFormatsWindow.Show(this);
+        }
 
-            dlg.Text = "All data formats";
-            dlg.StartPosition = FormStartPosition.CenterParent;
-
-            // Taille par dfaut : un peu large pour faire deux colonnes
-            dlg.Size = new Size(700, 140); // Taille de la fentre pour 2 colonnes en popu^p
-            dlg.MinimizeBox = false;
-            dlg.MaximizeBox = true;
-            dlg.ShowIcon = false;
-
-            var split = new SplitContainer
+        private Form BuildAllFormatsWindow()
+        {
+            var dlg = new Form
             {
-                Dock = DockStyle.Fill,
-                Orientation = Orientation.Vertical
+                Text            = "All data formats",
+                StartPosition   = FormStartPosition.CenterParent,
+                Size            = new Size(460, 330),
+                FormBorderStyle = FormBorderStyle.FixedSingle,
+                MinimizeBox     = false,
+                MaximizeBox     = false,
+                ShowIcon        = false,
+                Font            = new Font("Segoe UI", 9f),
+                BackColor       = SystemColors.Window
             };
 
-            // Au cas o ils auraient encore un parent (scurit)
-            if (txtLeft.Parent != null)
-                txtLeft.Parent.Controls.Remove(txtLeft);
-            if (txtRight.Parent != null)
-                txtRight.Parent.Controls.Remove(txtRight);
-
-            txtLeft.Dock = DockStyle.Fill;
-            txtRight.Dock = DockStyle.Fill;
-            txtLeft.Visible = true;
-            txtRight.Visible = true;
-
-
-            split.Panel1.Controls.Add(txtLeft);
-            split.Panel2.Controls.Add(txtRight);
-
-            dlg.Controls.Add(split);
-
-            // Sparation au milieu  l'ouverture
-            dlg.Load += (_, __) =>
+            // ── Layout 2 colonnes ─────────────────────────────────────────────
+            var table = new TableLayoutPanel
             {
-                split.SplitterDistance = dlg.ClientSize.Width / 2;
+                Dock        = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount    = 1,
+                Padding     = new Padding(10, 8, 10, 8)
+            };
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+            table.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            dlg.Controls.Add(table);
+
+            var flowL = BuildChannelRows("LEFT",  out var valsL);
+            var flowR = BuildChannelRows("RIGHT", out var valsR);
+            _fmtValuesL = valsL;
+            _fmtValuesR = valsR;
+            table.Controls.Add(flowL, 0, 0);
+            table.Controls.Add(flowR, 1, 0);
+
+            RefreshAllFormatsWindow();
+
+            // Refresh à chaque tick audio (throttlé via _lastAllFormatsDumpL change)
+            dlg.FormClosing += (_, e2) =>
+            {
+                if (e2.CloseReason == CloseReason.UserClosing)
+                { e2.Cancel = true; dlg.Hide(); }
+            };
+            return dlg;
+        }
+
+        private FlowLayoutPanel BuildChannelFlow(string title)
+        {
+            var flow = new FlowLayoutPanel
+            {
+                Dock          = DockStyle.Fill,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents  = false,
+                AutoScroll    = false,
+                Padding       = new Padding(4)
             };
 
-            // On garde ~50/50 si on redimensionne
-            dlg.Resize += (_, __) =>
+            // Title
+            flow.Controls.Add(new Label
             {
-                split.SplitterDistance = dlg.ClientSize.Width / 2;
-            };
-
-            // Trs important : ne pas dtruire les contrles  la fermeture
-            dlg.FormClosing += (s, eArgs) =>
+                Text      = title,
+                Font      = new Font("Segoe UI", 13f, FontStyle.Bold),
+                ForeColor = SystemColors.HotTrack,
+                AutoSize  = false, Width = 260, Height = 28,
+                Margin    = new Padding(0, 0, 0, 4)
+            });
+            // Separator
+            flow.Controls.Add(new Panel
             {
-                if (eArgs.CloseReason == CloseReason.UserClosing)
-                {
-                    // L'utilisateur clique sur la croix de la petite fentre :
-                    // on cache juste, mais on ne dtruit pas txtLeft / txtRight.
-                    eArgs.Cancel = true;
-                    dlg.Hide();
-                }
-                // Pour les autres cas (fermeture de l'appli, shutdown, etc.),
-                // on laisse faire (pas de Cancel).
+                Width = 260, Height = 1,
+                BackColor = Color.FromArgb(180, 210, 240),
+                Margin    = new Padding(0, 0, 0, 6)
+            });
+            return flow;
+        }
+
+        // ── All formats window — labels créés une fois, mis à jour par Text seulement ──
+        private static readonly Font _fmtLabelFont   = new("Segoe UI", 8.5f);
+        private static readonly Font _fmtValueFont   = new("Segoe UI", 8.5f);
+        private static readonly Font _fmtBinFont     = new("Courier New", 8f);
+        private static readonly Font _fmtSectionFont = new("Segoe UI Semibold", 8.5f);
+
+        // Value labels — [0=Float,1=Dec,2=Hex,3=BinMSB,4=Vrms,5=Vpeak,6=Vdc,7=BinLSB]
+        private Label[]? _fmtValuesL, _fmtValuesR;
+
+        private void RefreshAllFormatsWindow()
+        {
+            if (_fmtValuesL == null || _fmtValuesR == null) return;
+
+            // ── Gather values (no UI work) ────────────────────────────────
+            string fltL = lastLeftFloat.ToString("G9"),   fltR = lastRightFloat.ToString("G9");
+            string decL = lastLeft24.ToString(),           decR = lastRight24.ToString();
+            string hexL = lastLeftHex24,                   hexR = lastRightHex24;
+            string binL = lastLeftBits,                    binR = lastRightBits;
+
+            double? vrmsL=null, vpkL=null, vdcL=null, vrmsR=null, vpkR=null, vdcR=null;
+            bool calL=false, calR=false;
+            if (spectrumControl != null)
+            {
+                calL = spectrumControl.VoltageCalibrationValidLeft;
+                calR = spectrumControl.VoltageCalibrationValidRight;
+                spectrumControl.GetLastVoltages(out vrmsL,out vpkL,out vdcL,out vrmsR,out vpkR,out vdcR);
+            }
+            string V(bool cal, double? v) => cal && v.HasValue ? FormatVoltageWithUnit(v.Value) : "Uncalibrated";
+            Color  C(bool cal) => cal ? SystemColors.ControlText : SystemColors.GrayText;
+
+            // ── Update LEFT labels (Text only — no layout) ────────────────
+            // Split binary "xxxx xxxx xxxx xxxx xxxx xxxx" → MSB/LSB 12 bits each
+            static (string msb, string lsb) SplitBin(string b)
+            {
+                // Format: "xxxx xxxx xxxx xxxx xxxx xxxx" (4+1+4+1+4+1+4+1+4+1+4 = 29 chars)
+                // First 14 chars = bits 23-12 (MSB), last 14 = bits 11-0 (LSB)
+                if (b.Length >= 29)
+                    return (b[..14].TrimEnd(), b[15..].TrimEnd());
+                return (b, "");
+            }
+            var (msbL, lsbL) = SplitBin(binL);
+            var (msbR, lsbR) = SplitBin(binR);
+
+            _fmtValuesL[0].Text = fltL;  _fmtValuesR[0].Text = fltR;
+            _fmtValuesL[1].Text = decL;  _fmtValuesR[1].Text = decR;
+            _fmtValuesL[2].Text = hexL;  _fmtValuesR[2].Text = hexR;
+            _fmtValuesL[3].Text = msbL;  _fmtValuesR[3].Text = msbR;  // MSB bits 23-12
+            _fmtValuesL[4].Text = lsbL;  _fmtValuesR[4].Text = lsbR;  // LSB bits 11-0
+            _fmtValuesL[5].Text = V(calL, vrmsL); _fmtValuesR[5].Text = V(calR, vrmsR);
+            _fmtValuesL[6].Text = V(calL, vpkL);  _fmtValuesR[6].Text = V(calR, vpkR);
+            _fmtValuesL[7].Text = V(calL, vdcL);  _fmtValuesR[7].Text = V(calR, vdcR);
+            // Voltage color
+            for (int i = 5; i <= 7; i++)
+            { _fmtValuesL[i].ForeColor = C(calL); _fmtValuesR[i].ForeColor = C(calR); }
+        }
+
+        private FlowLayoutPanel BuildChannelRows(string title, out Label[] valueLabels)
+        {
+            var flow = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown,
+                WrapContents = false, AutoScroll = false, Padding = new Padding(4)
             };
+            valueLabels = new Label[8];
 
+            // Title + separator
+            flow.Controls.Add(new Label {
+                Text = title, Font = new Font("Segoe UI", 13f, FontStyle.Bold),
+                ForeColor = SystemColors.HotTrack,
+                AutoSize = false, Width = 260, Height = 28, Margin = new Padding(0,0,0,4)
+            });
+            flow.Controls.Add(new Panel {
+                Width = 260, Height = 1,
+                BackColor = Color.FromArgb(180, 210, 240), Margin = new Padding(0,0,0,6)
+            });
 
-            dlg.Show(this);
+            // Digital section
+            AddFmtSection(flow, "Digital");
+            valueLabels[0] = AddFmtRow(flow, "Float",         mono: false);
+            valueLabels[1] = AddFmtRow(flow, "Decimal (24b)", mono: false);
+            valueLabels[2] = AddFmtRow(flow, "Hex (24 bits)", mono: false, color: Color.FromArgb(0,100,180));
+            // Binary : 2 lignes MSB (bits 23-12) / LSB (bits 11-0)
+            valueLabels[3] = AddFmtRow(flow, "Bin MSB",       mono: true,  color: Color.FromArgb(0,130,0));
+            valueLabels[4] = AddFmtRow(flow, "Bin LSB",       mono: true,  color: Color.FromArgb(0,130,0));
+
+            // Voltage section
+            AddFmtSection(flow, "Voltage");
+            valueLabels[5] = AddFmtRow(flow, "Vrms",  mono: false, color: SystemColors.GrayText);
+            valueLabels[6] = AddFmtRow(flow, "Vpeak", mono: false, color: SystemColors.GrayText);
+            valueLabels[7] = AddFmtRow(flow, "Vdc",   mono: false, color: SystemColors.GrayText);
+
+            return flow;
+        }
+
+        private static void AddFmtSection(FlowLayoutPanel flow, string title)
+        {
+            flow.Controls.Add(new Panel { Width = 260, Height = 5, Margin = new Padding(0) });
+            flow.Controls.Add(new Label {
+                Text = title.ToUpperInvariant(), Font = _fmtSectionFont,
+                ForeColor = Color.FromArgb(0, 90, 160),
+                AutoSize = false, Width = 260, Height = 18, Margin = new Padding(0)
+            });
+            flow.Controls.Add(new Panel {
+                Width = 260, Height = 1,
+                BackColor = Color.FromArgb(180, 210, 240), Margin = new Padding(0, 0, 0, 3)
+            });
+        }
+
+        // Binary split helpers ─────────────────────────────────────────────
+        // Input format: "xxxx xxxx xxxx xxxx xxxx xxxx" (24 bits with spaces)
+        private static string BinMsb(string bin)
+        {
+            // Take first 12 significant bits (chars 0..14 of "xxxx xxxx xxxx xxxx xxxx xxxx")
+            // Format from FormatBitsWithStability: groups of 4 separated by spaces
+            // 24 bits = "b23b22b21b20 b19b18b17b16 b15b14b13b12 b11b10b9b8 b7b6b5b4 b3b2b1b0"
+            if (string.IsNullOrEmpty(bin)) return "—";
+            var parts = bin.Split(' ');
+            if (parts.Length < 6) return bin;
+            return parts[0] + " " + parts[1] + " " + parts[2]; // MSB: bits 23-12
+        }
+        private static string BinLsb(string bin)
+        {
+            if (string.IsNullOrEmpty(bin)) return "—";
+            var parts = bin.Split(' ');
+            if (parts.Length < 6) return "";
+            return parts[3] + " " + parts[4] + " " + parts[5]; // LSB: bits 11-0
+        }
+
+        // Binary row: two value labels stacked (MSB + LSB indented)
+        private static Label AddFmtRowBin(FlowLayoutPanel flow, string label, out Label lsbLabel)
+        {
+            var row = new Panel { Width = 260, Height = 36, Margin = new Padding(0, 1, 0, 1) };
+            row.Controls.Add(new Label {
+                Text = "Binary (24b) :", Font = _fmtLabelFont,
+                ForeColor = SystemColors.GrayText,
+                Location = new Point(0, 2), Width = 90, Height = 16
+            });
+            var msbLabel = new Label {
+                Text = "—", Font = _fmtBinFont,
+                ForeColor = Color.FromArgb(0, 130, 0),
+                Location = new Point(94, 1), Width = 162, Height = 16
+            };
+            lsbLabel = new Label {
+                Text = "", Font = _fmtBinFont,
+                ForeColor = Color.FromArgb(0, 130, 0),
+                Location = new Point(94, 18), Width = 162, Height = 16
+            };
+            row.Controls.Add(msbLabel);
+            row.Controls.Add(lsbLabel);
+            flow.Controls.Add(row);
+            return msbLabel;
+        }
+
+        // Returns the value Label (kept for update)
+        private static Label AddFmtRow(FlowLayoutPanel flow, string label,
+            bool mono = false, Color? color = null)
+        {
+            var row = new Panel { Width = 260, Height = 18, Margin = new Padding(0, 1, 0, 1) };
+            row.Controls.Add(new Label {
+                Text = label + " :", Font = _fmtLabelFont,
+                ForeColor = SystemColors.GrayText,
+                Location = new Point(0, 2), Width = 90, Height = 16
+            });
+            var valLbl = new Label {
+                Text = "—", Font = mono ? _fmtBinFont : _fmtValueFont,
+                ForeColor = color ?? SystemColors.ControlText,
+                Location = new Point(94, 2), Width = 162, Height = 16,
+                AutoEllipsis = true
+            };
+            row.Controls.Add(valLbl);
+            flow.Controls.Add(row);
+            return valLbl;
         }
 
         //
         //
         private void menuAbout_Click(object? sender, EventArgs e)
         {
-            MessageBox.Show(
-                "AudioHexViewer V0.1 11/2025\n\n" +
-                "Digital audio data viewer\n" +
-                "OnE Audio Projects",
-                "About",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            using var about = new SplashScreen(aboutMode: true);
+            about.ShowDialog(this);
         }
         //
         private void comboDisplayMode_SelectedIndexChanged(object? sender, EventArgs e)
         {
             UpdateMainDisplayFromLastValues();
         }
-
-        //
-        private void UpdateStartButtonAppearance()
-        {
-            if (capture == null)
-            {
-                // Mode arrt --> bouton READ vert
-                btnStart.Text = "READ";
-                btnStart.BackColor = Color.SeaGreen;
-                btnStart.ForeColor = Color.White;
-            }
-            else
-            {
-                // Mode en cours de capture --> bouton STOP rouge
-                btnStart.Text = "STOP";
-                btnStart.BackColor = Color.Firebrick;
-                btnStart.ForeColor = Color.White;
-            }
-        }
-        //
 
         private void menuOpenCal_Click(object? sender, EventArgs e)
         {
@@ -843,275 +1684,53 @@ namespace AudioHexViewer
         }
         //
         //
-        private void LoadDevices()
-        {
-            comboDevices.Items.Clear();
+        //
+        /// <summary>
+        /// Démarre la capture audio + pipeline d'analyse si elle n'est pas déjà active.
+        /// Remplace l'ancien bouton READ.
+        /// </summary>
 
-            var enumerator = new MMDeviceEnumerator();
+        // ═══════════════════════════════════════════════════════════════════════
+        // LOGGER DE DIAGNOSTIC FFT  (F8 pour activer/désactiver)
+        // ═══════════════════════════════════════════════════════════════════════
 
-            // IN -> priphriques de capture, OUT -> priphriques de rendu
-            var flow = captureOutput ? DataFlow.Render : DataFlow.Capture;
+        /// <summary>
+        /// Active ou désactive le logger CSV (F8). Une ligne par FFT produite.
+        /// Fichier créé dans Mes Documents : AudioHexViewer_Diag_YYYYMMDD_HHmmss.csv
+        /// </summary>
 
-            var devices = enumerator.EnumerateAudioEndPoints(flow, DeviceState.Active);
-            foreach (var dev in devices)
-            {
-                // Tu avais dj un DeviceItem qui expose FriendlyName
-                comboDevices.Items.Add(dev);
-            }
+        /// <summary>
+        /// Écrit une ligne CSV pour la FFT dont la frame est <paramref name="frame"/>.
+        /// Appelé depuis le thread UI (UpdateAnalysisFrame) à chaque nouvelle FFT.
+        /// </summary>
 
-            if (comboDevices.Items.Count > 0)
-                comboDevices.SelectedIndex = 0;
-        }
+        /// <summary>Arrête proprement le log si actif (appelé par StopCapture).</summary>
 
-        private void comboDevices_SelectedIndexChanged(object? sender, EventArgs e)
-        {
-            // On nest plus en train de capturer si on change de device
-            currentFormat = null;
-            UpdateDeviceInfo();
-            UpdateDeviceSummary();   // 
-        }
+        // ═══════════════════════════════════════════════════════════════════════
 
+        /// <summary>
+        /// Arrête la capture audio + pipeline d'analyse si active.
+        /// Remplace l'ancien bouton STOP.
+        /// </summary>
 
-        private void btnStart_Click(object sender, EventArgs e)
-        {
-            // Si on n'est PAS en train de capturer -> on dmarre (mode READ -> RUN)
-            if (capture == null)
-            {
-                if (comboDevices.SelectedItem is not MMDevice dev)
-                {
-                    MessageBox.Show("Slectionne un priphrique audio.");
-                    return;
-                }
-
-                selectedDevice = dev;
-
-                try
-                {
-                    // === ICI : on choisit IN ou OUT ===
-                    if (!captureOutput)
-                    {
-                        // Mode IN : priphrique d'entre (micro / ADC)
-                        capture = new WasapiCapture(selectedDevice);
-                    }
-                    else
-                    {
-                        // Mode OUT : priphrique de sortie (loopback)
-                        capture = new WasapiLoopbackCapture(selectedDevice);
-                    }
-                    // ================================
-
-                    currentFormat = capture.WaveFormat;
-
-                    if (histogramControl != null && currentFormat != null)
-                    {
-                        histogramControl.UpdateSampleRate(currentFormat.SampleRate);
-                        histogramControl.UpdateHopSamples(analysisHopSamples);
-                    }
-
-                    capture.DataAvailable += Capture_DataAvailable;
-                    capture.RecordingStopped += Capture_RecordingStopped;
-
-                    // Met  jour le sample rate des modules danalyse
-                    if (currentFormat != null)
-                    {
-                        if (histogramControl != null)
-                            histogramControl.UpdateSampleRate(currentFormat.SampleRate);
-                        histogramControl.UpdateHopSamples(analysisHopSamples);
-                        if (spectrumControl != null)
-                            spectrumControl.UpdateSampleRate(currentFormat.SampleRate);
-                        spectrumControl.UpdateHopSamples(analysisHopSamples);
-                    }
-
-                    // --- NOUVEAU : config mode Once / Continu ---
-                    bool onceMode = chkHistoOnce.Checked;
-
-                    if (onceMode)
-                    {
-                        // On veut une acquisition de N chantillons "propres"  on vide l'historique
-                        lock (histLock)
-                        {
-                            histBuffer.Clear();
-                        }
-
-                        // Nombre de samples  acqurir = fentre d'histo
-                        int windowSamples = HistogramControl.LastUsedWindowSamples;
-
-                        // Si jamais l'histo n'a pas encore t ouvert, on prend 1 seconde par dfaut
-                        if (windowSamples <= 0 && currentFormat != null)
-                            windowSamples = currentFormat.SampleRate;
-
-                        histOnceTargetSamples = windowSamples;
-                        histOnceAccumSamples = 0;
-                        histOnceActive = true;
-
-                        // En mode Once, on NE dmarre PAS l'histogramme tout de suite :
-                        // on attend que ProcessBuffer ait accumul N chantillons.
-                    }
-                    else
-                    {
-                        // Mode continu : pas de squence Once
-                        histOnceActive = false;
-                        histOnceTargetSamples = 0;
-                        histOnceAccumSamples = 0;
-                    }
-                    // -------------------------------------------
-
-                    // Dmarrage de la capture audio
-                    capture.StartRecording();
-
-                    // Démarre le générateur de fenêtres d'analyse (Histogram + Spectrum)
-                    RecomputeHopAndTimer();
-                    analysisTimer?.Start();
-
-
-                    // Bouton en mode STOP private void btnRead_Click(object sender, EventArgs e)
-                    UpdateStartButtonAppearance();
-                    UpdateDeviceInfo();
-                    UpdateDeviceSummary();
-
-                    // Si l'histogramme existe dj et qu'on est en mode continu,
-                    // on le dmarre tout de suite en "live"
-                    //if (histogramControl != null && !chkHistoOnce.Checked)
-                    //{
-                    //    histogramControl.StartFromRun(false);  // mode continu
-                    //}
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("Erreur lors du dmarrage de la capture : " + ex.Message);
-                    capture = null;
-                    currentFormat = null;
-                    UpdateStartButtonAppearance();   // remet en mode READ vert
-                    UpdateDeviceInfo();
-                    UpdateDeviceSummary();
-                }
-            }
-            else
-            {
-                // Si on est dj en train de capturer -> clique = STOP (on annule aussi un ventuel Once en cours)
-                histOnceActive = false;
-                histOnceTargetSamples = 0;
-                histOnceAccumSamples = 0;
-
-                try
-                {
-                    capture.DataAvailable -= Capture_DataAvailable;
-                    capture.RecordingStopped -= Capture_RecordingStopped;
-                    capture.StopRecording();
-                    analysisTimer?.Stop();
-                    lock (analysisLock)
-                    {
-                        lastAnalysisLeft = Array.Empty<int>();
-                        lastAnalysisRight = Array.Empty<int>();
-                    }
-                    analysisCursorStart = 0;
-                }
-                catch
-                {
-                    // on ignore les erreurs de StopRecording
-                }
-
-                // On arrte aussi l'histogramme et le spectre s'ils tournent
-                if (histogramControl != null)
-                {
-                    histogramControl.StopFromRun();
-                }
-
-                if (spectrumControl != null)
-                {
-                    spectrumControl.StopFromRun();
-                }
-
-                capture.Dispose();
-                capture = null;
-                currentFormat = null;
-
-                UpdateStartButtonAppearance();       // remet READ vert
-                UpdateDeviceInfo();
-                UpdateDeviceSummary();
-            }
-        }
-
-
-
-
-
-        private void rbInput_CheckedChanged(object? sender, EventArgs e)
-        {
-            if (rbInput.Checked)
-            {
-                captureOutput = false;  // mode IN
-                LoadDevices();
-                UpdateDeviceSummary();
-            }
-        }
-
-        private void rbOutput_CheckedChanged(object? sender, EventArgs e)
-        {
-            if (rbOutput.Checked)
-            {
-                captureOutput = true;   // mode OUT
-                LoadDevices();
-                UpdateDeviceSummary();
-            }
-        }
         //
         //
         //
         private void btnCalV_Click(object sender, EventArgs e)
         {
-            if (capture == null || currentFormat == null)
+            // Unification calibration: le bouton CAL V ouvre désormais le même dialog
+            // que la calibration Spectrum (niveau AC), afin de servir à la fois au mode dBV et aux mesures en volts.
+            if (spectrumControl == null)
             {
-                MessageBox.Show("Dmarre la capture (READ) avant de lancer la calibration.",
+                MessageBox.Show("Le contrôle Spectrum n'est pas initialisé.",
                                 "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            if (calibTimer.Enabled || calibStage != CalStage.None)
-            {
-                MessageBox.Show("Une calibration est dj en cours.",
-                                "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
+            spectrumControl.ShowLevelCalibrationDialog(this);
 
-            // Demander quelles voies calibrer
-            var rLeft = MessageBox.Show("Calibrer la voie GAUCHE ?", "Calibration",
-                                        MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-            calibDoLeft = (rLeft == DialogResult.Yes);
-
-            var rRight = MessageBox.Show("Calibrer la voie DROITE ?", "Calibration",
-                                         MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-            calibDoRight = (rRight == DialogResult.Yes);
-
-            if (!calibDoLeft && !calibDoRight)
-            {
-                MessageBox.Show("Aucune voie  calibrer. Calibration annule.",
-                                "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            // Avertir si calibration existante
-            if ((calibDoLeft && calibValidLeft) || (calibDoRight && calibValidRight))
-            {
-                var r = MessageBox.Show(
-                    "Une calibration existe dj pour au moins une voie. Voulez-vous la remplacer ?",
-                    "Calibration",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Question);
-
-                if (r != DialogResult.Yes)
-                    return;
-            }
-
-            // On commence par la voie gauche si demande, sinon la droite
-            if (calibDoLeft)
-            {
-                StartChannelCalibration(CalChannel.Left);
-            }
-            else
-            {
-                StartChannelCalibration(CalChannel.Right);
-            }
+            // Rafraîchir l'affichage principal (si l'utilisateur est en mode Voltage*)
+            UpdateMainDisplayFromLastValues();
         }
         //
         //
@@ -1422,553 +2041,10 @@ namespace AudioHexViewer
                                 MessageBoxIcon.Error);
             }
         }
-
-        private int ComputeNoGraphsHeight()
-        {
-            int nonClientHeight = this.Height - this.ClientSize.Height;
-
-            // Hauteur ncessaire du contenu du panneau haut
-            int panel1Needed = 0;
-            foreach (Control c in splitMain.Panel1.Controls)
-                panel1Needed = Math.Max(panel1Needed, c.Bottom);
-
-            int padding = 8;
-
-            // Hauteur client cible
-            int targetClientHeight = splitMain.Top + panel1Needed + padding;
-
-            // Hauteur totale fentre
-            return targetClientHeight + nonClientHeight;
-        }
-
-        //
-        private void menuShowGraphs_Click(object? sender, EventArgs e)
-        {
-            if (menuShowGraphs.Checked)
-            {
-                // Show graphs
-                splitMain.Panel2Collapsed = false;
-
-                // Ractiver le redimensionnement
-                if (_borderStyleSaved)
-                    this.FormBorderStyle = _borderStyleWithGraphs;
-                this.MaximizeBox = true;
-
-                if (_hasHeightWithGraphs)
-                    this.Height = _heightWithGraphs;
-
-                return;
-            }
-
-            // Hide graphs
-            _heightWithGraphs = this.Height;
-            _hasHeightWithGraphs = true;
-
-            splitMain.Panel2Collapsed = true;
-
-            // Mettre la hauteur compacte (ton code existant)
-            int targetHeight = ComputeNoGraphsHeight();
-            this.Height = Math.Max(targetHeight, this.MinimumSize.Height);
-
-            // Verrouiller compltement la taille (plus de resize possible)
-            this.FormBorderStyle = FormBorderStyle.FixedSingle;
-            this.MaximizeBox = false;
-        }
-
-
-
-
-        //
-        private void btnRecord_Click(object sender, EventArgs e)
-        {
-            if (currentFormat == null)
-            {
-                MessageBox.Show("Dmarre la lecture (READ) avant d'enregistrer.");
-                return;
-            }
-
-            if (isRecordingOneSecond)
-            {
-                MessageBox.Show("Un enregistrement est dj en cours.");
-                return;
-            }
-
-            // On dmarre l'enregistrement
-            isRecordingOneSecond = true;
-            recordSamplesCollected = 0;
-            recordBuffer.Clear();
-
-            // Nombre d'chantillons correspondant  la fentre Histogram
-            int windowSamples = HistogramControl.LastUsedWindowSamples;
-
-            // Si l'histogramme n'a encore jamais t ouvert, on garde un fallback : 1 seconde
-            if (windowSamples <= 0 && currentFormat != null)
-                windowSamples = currentFormat.SampleRate;
-
-            recordSamplesNeeded = windowSamples;
-
-            //MessageBox.Show($"Enregistrement dmarr : {recordSamplesNeeded} chantillons.");
-
-        }
-
-        private void SaveRecordingToCsv()
-        {
-            try
-            {
-                string folder = GetRecordsFolderPath();
-                string file = Path.Combine(folder, $"audio_record_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
-
-                using (var sw = new StreamWriter(file))
-                {
-                    sw.WriteLine("Index;Left_decimal;Right_decimal;Left_hex;Right_hex");
-                    int index = 0;
-
-                    foreach (var f in recordBuffer)
-                    {
-                        uint hl = (uint)(f.Left & 0xFFFFFF);
-                        uint hr = (uint)(f.Right & 0xFFFFFF);
-
-                        sw.WriteLine($"{index};{f.Left};{f.Right};0x{hl:X6};0x{hr:X6}");
-                        index++;
-                    }
-                }
-
-                MessageBox.Show($"Fichier enregistr :\n{file}");
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Erreur CSV : " + ex.Message);
-            }
-        }
         //
         //
-        private void Capture_DataAvailable(object? sender, WaveInEventArgs e)
-        {
-            ProcessBuffer(e.Buffer, e.BytesRecorded);
-        }
 
         //dbut de ProcessBuffer
-        private void ProcessBuffer(byte[] buffer, int bytesRecorded)
-        {
-            if (currentFormat == null)
-                return;
-
-            // On s'attend  du float 32 bits stro
-            if (currentFormat.Encoding != WaveFormatEncoding.IeeeFloat ||
-                currentFormat.BitsPerSample != 32)
-            {
-                return;
-            }
-
-            int channels = currentFormat.Channels;
-            if (channels < 2)
-                return;
-
-            int bytesPerSample = 4; // 32 bits float
-            int blockAlign = bytesPerSample * channels;
-
-            if (bytesRecorded < blockAlign)
-                return;
-
-            // ---------- Calcul du dernier frame pour affichage dtaill ----------
-            int lastFrameIndex = bytesRecorded - blockAlign;
-
-            float leftF = BitConverter.ToSingle(buffer, lastFrameIndex);
-            float rightF = BitConverter.ToSingle(buffer, lastFrameIndex + bytesPerSample);
-
-            const int Max24 = 1 << 23;      // 8388608
-            const int Max24Pos = Max24 - 1; // +0x7FFFFF
-            const int Min24Neg = -Max24;    // -0x800000
-
-            int left24 = (int)Math.Truncate(leftF * Max24);
-            int right24 = (int)Math.Truncate(rightF * Max24);
-
-            // Mmoriser le dernier code 24 bits
-            lastCodeLeft = left24;
-            lastCodeRight = right24;
-
-            double instVoltsLeft = 0.0;
-            double instVoltsRight = 0.0;
-
-            if (calibValidLeft)
-                instVoltsLeft = calibGainLeft * left24 + calibOffsetLeft;
-
-            if (calibValidRight)
-                instVoltsRight = calibGainRight * right24 + calibOffsetRight;
-
-            // Filtre daffichage 4 Hz
-            var now = DateTime.Now;
-            if (now - lastVoltageUpdate >= voltageUpdateInterval)
-            {
-                lastVoltageUpdate = now;
-                displayVoltsLeft = instVoltsLeft;
-                displayVoltsRight = instVoltsRight;
-            }
-
-            if (left24 > Max24Pos) left24 = Max24Pos;
-            if (left24 < Min24Neg) left24 = Min24Neg;
-            if (right24 > Max24Pos) right24 = Max24Pos;
-            if (right24 < Min24Neg) right24 = Min24Neg;
-
-            // ---- SATURATION PAR VOIE ----
-            bool sampleSatLeft = (left24 == Max24Pos || left24 == Min24Neg);
-            bool sampleSatRight = (right24 == Max24Pos || right24 == Min24Neg);
-
-            var nowSat = DateTime.Now;
-
-            // Voie gauche : on ne date QUE le dbut de saturation
-            if (sampleSatLeft && !isCurrentlySatLeft)
-            {
-                isCurrentlySatLeft = true;
-                lastSatLeft = nowSat;  // dbut de la saturation
-            }
-            else if (!sampleSatLeft && isCurrentlySatLeft)
-            {
-                // fin de la saturation continue
-                isCurrentlySatLeft = false;
-            }
-
-            // Voie droite
-            if (sampleSatRight && !isCurrentlySatRight)
-            {
-                isCurrentlySatRight = true;
-                lastSatRight = nowSat;
-            }
-            else if (!sampleSatRight && isCurrentlySatRight)
-            {
-                isCurrentlySatRight = false;
-            }
-
-            uint left24u = unchecked((uint)(left24 & 0xFFFFFF));
-            uint right24u = unchecked((uint)(right24 & 0xFFFFFF));
-
-            // ---------- RECORD 1 SECONDE ----------
-            if (isRecordingOneSecond)
-            {
-                int bytesPerFrame = currentFormat.Channels * 4;
-                int frameCount = bytesRecorded / bytesPerFrame;
-
-                for (int i = 0; i < frameCount; i++)
-                {
-                    int idx = i * bytesPerFrame;
-
-                    float lf = BitConverter.ToSingle(buffer, idx);
-                    float rf = BitConverter.ToSingle(buffer, idx + 4);
-
-                    float sL = lf * Max24;
-                    float sR = rf * Max24;
-
-                    int L = (int)Math.Truncate(sL);
-                    int R = (int)Math.Truncate(sR);
-
-                    if (L > Max24Pos) L = Max24Pos;
-                    if (L < Min24Neg) L = Min24Neg;
-                    if (R > Max24Pos) R = Max24Pos;
-                    if (R < Min24Neg) R = Min24Neg;
-
-                    recordBuffer.Add(new RecordFrame() { Left = L, Right = R });
-                    recordSamplesCollected++;
-
-                    if (recordSamplesCollected >= recordSamplesNeeded)
-                    {
-                        isRecordingOneSecond = false;
-                        SaveRecordingToCsv();
-                        break;
-                    }
-                }
-            }
-
-            // ---------- HISTOGRAMME : tampon roulant continu ----------
-            {
-                int bytesPerFrame = currentFormat.Channels * 4;
-                int frameCount = bytesRecorded / bytesPerFrame;
-
-                if (frameCount > 0)
-                {
-                    int maxSamples = currentFormat.SampleRate * MaxHistogramSeconds;
-
-                    lock (histLock)
-                    {
-                        for (int i = 0; i < frameCount; i++)
-                        {
-                            int idxFrame = i * bytesPerFrame;
-
-                            float lf = BitConverter.ToSingle(buffer, idxFrame);
-                            float rf = BitConverter.ToSingle(buffer, idxFrame + 4);
-
-                            float sL = lf * Max24;
-                            float sR = rf * Max24;
-
-                            int L = (int)Math.Truncate(sL);
-                            int R = (int)Math.Truncate(sR);
-
-                            if (L > Max24Pos) L = Max24Pos;
-                            if (L < Min24Neg) L = Min24Neg;
-                            if (R > Max24Pos) R = Max24Pos;
-                            if (R < Min24Neg) R = Min24Neg;
-
-                            histBuffer.Add(new RecordFrame { Left = L, Right = R });
-                        }
-
-                        // On ne garde que les N derniers chantillons (10 s max)
-                        if (histBuffer.Count > maxSamples)
-                            {
-                                int removeCount = histBuffer.Count - maxSamples;
-                                histBuffer.RemoveRange(0, removeCount);
-                                histBaseIndex += removeCount;
-                            }
-                    }
-
-                    // --- Mode "Once" pour l'histogramme ---
-                    if (histOnceActive)
-                    {
-                        histOnceAccumSamples += frameCount;
-
-                        if (histOnceAccumSamples >= histOnceTargetSamples)
-                        {
-                            histOnceActive = false;
-
-                            BeginInvoke((Action)(() =>
-                            {
-                                if (histogramControl != null)
-                                {
-                                    histogramControl.StartFromRun(true);
-                                }
-
-                                if (capture != null)
-                                {
-                                    try
-                                    {
-                                        capture.DataAvailable -= Capture_DataAvailable;
-                                        capture.RecordingStopped -= Capture_RecordingStopped;
-                                        capture.StopRecording();
-                    analysisTimer?.Stop();
-                    lock (analysisLock)
-                    {
-                        lastAnalysisLeft = Array.Empty<int>();
-                        lastAnalysisRight = Array.Empty<int>();
-                    }
-                    analysisCursorStart = 0;
-                                    }
-                                    catch
-                                    {
-                                        // ignore
-                                    }
-
-                                    capture.Dispose();
-                                    capture = null;
-                                    currentFormat = null;
-                                }
-
-                                UpdateStartButtonAppearance();
-                                UpdateDeviceInfo();
-                                UpdateDeviceSummary();
-                            }));
-                        }
-                    }
-                }
-            }
-
-            // ---------- Calcul du niveau crte sur ce buffer (pour les VU) ----------
-            int bytesPerFrameAll = currentFormat.Channels * 4;
-            int totalFrames = bytesRecorded / bytesPerFrameAll;
-
-            int peakLeftAbs = 0;
-            int peakRightAbs = 0;
-
-            for (int i = 0; i < totalFrames; i++)
-            {
-                int idx = i * bytesPerFrameAll;
-
-                float lf = BitConverter.ToSingle(buffer, idx);
-                float rf = BitConverter.ToSingle(buffer, idx + 4);
-
-                float sL = lf * Max24;
-                float sR = rf * Max24;
-
-                int L = (int)Math.Truncate(sL);
-                int R = (int)Math.Truncate(sR);
-
-                if (L > Max24Pos) L = Max24Pos;
-                if (L < Min24Neg) L = Min24Neg;
-                if (R > Max24Pos) R = Max24Pos;
-                if (R < Min24Neg) R = Min24Neg;
-
-                int absL = Math.Abs(L);
-                int absR = Math.Abs(R);
-
-                if (absL > peakLeftAbs) peakLeftAbs = absL;
-                if (absR > peakRightAbs) peakRightAbs = absR;
-            }
-
-            // Conversion en dBFS
-            double dbLeft, dbRight;
-            const double fullScale = Max24Pos; // 0x7FFFFF
-
-            if (peakLeftAbs == 0)
-                dbLeft = double.NegativeInfinity;
-            else
-                dbLeft = 20.0 * Math.Log10(peakLeftAbs / fullScale);
-
-            if (peakRightAbs == 0)
-                dbRight = double.NegativeInfinity;
-            else
-                dbRight = 20.0 * Math.Log10(peakRightAbs / fullScale);
-
-            // On clip  -120 dBFS pour l'affichage
-            double dbLeftClamped = double.IsNegativeInfinity(dbLeft) ? -120.0 : Math.Max(dbLeft, -120.0);
-            double dbRightClamped = double.IsNegativeInfinity(dbRight) ? -120.0 : Math.Max(dbRight, -120.0);
-
-            // Mapping [-120, 0] dB -> [0, 100]
-            int levelLeft = (int)Math.Round((dbLeftClamped + 120.0) / 120.0 * 100.0);
-            int levelRight = (int)Math.Round((dbRightClamped + 120.0) / 120.0 * 100.0);
-
-            if (levelLeft < 0) levelLeft = 0;
-            if (levelLeft > 100) levelLeft = 100;
-            if (levelRight < 0) levelRight = 0;
-            if (levelRight > 100) levelRight = 100;
-
-            // ---------- Texte existant ----------
-            string leftHex24 = "0x" + left24u.ToString("X6");
-            string rightHex24 = "0x" + right24u.ToString("X6");
-
-            string leftBits = FormatBitsWithStability(left24u, lastBitsLeft, lastChangeLeft);
-            string rightBits = FormatBitsWithStability(right24u, lastBitsRight, lastChangeRight);
-
-            var leftText = new StringBuilder();
-            leftText.AppendLine(FormatRow("---LEFT---", ""));
-            leftText.AppendLine(FormatRow("Float", leftF.ToString("G9")));
-            leftText.AppendLine(FormatRow("Decimal (24b)", left24.ToString()));
-            leftText.AppendLine(FormatRow("Hex (24 bits)", leftHex24));
-            leftText.AppendLine(FormatRow("Binary (24b)", leftBits));
-            if (calibValidLeft)
-                leftText.AppendLine(FormatRow("Voltage (V)", displayVoltsLeft.ToString("F4", CultureInfo.InvariantCulture)));
-            else
-                leftText.AppendLine(FormatRow("Voltage (V)", "N/A"));
-
-            var rightText = new StringBuilder();
-            rightText.AppendLine(FormatRow("---RIGHT---", ""));
-            rightText.AppendLine(FormatRow("Float", rightF.ToString("G9")));
-            rightText.AppendLine(FormatRow("Decimal (24b)", right24.ToString()));
-            rightText.AppendLine(FormatRow("Hex (24 bits)", rightHex24));
-            rightText.AppendLine(FormatRow("Binary (24b)", rightBits));
-            if (calibValidRight)
-                rightText.AppendLine(FormatRow("Voltage (V)", displayVoltsRight.ToString("F4", CultureInfo.InvariantCulture)));
-            else
-                rightText.AppendLine(FormatRow("Voltage (V)", "N/A"));
-
-            // Sauvegarde des dernires valeurs (si utilis ailleurs)
-            lastLeftFloat = leftF;
-            lastRightFloat = rightF;
-
-            lastLeftScaled = (int)Math.Round(leftF * (1 << 23));
-            lastRightScaled = (int)Math.Round(rightF * (1 << 23));
-
-            lastLeft24 = left24;
-            lastRight24 = right24;
-
-            lastLeftHex24 = leftHex24;
-            lastRightHex24 = rightHex24;
-
-            lastLeftBits = leftBits;
-            lastRightBits = rightBits;
-
-            lastLeftVolts = displayVoltsLeft;
-            lastRightVolts = displayVoltsRight;
-
-            // ---------- Limitation frquence UI texte ----------
-            var nowUi = DateTime.Now;
-            bool updateText;
-
-            if (nowUi - lastTextDump >= textDumpInterval)
-            {
-                updateText = true;
-                lastTextDump = nowUi;
-            }
-            else
-            {
-                updateText = false;
-            }
-
-            // ---------- Mise  jour UI ----------
-            BeginInvoke((Action)(() =>
-            {
-                // On ne met  jour le texte que si l'intervalle est coul
-                if (updateText)
-                {
-                    txtLeft.Text = leftText.ToString();
-                    txtRight.Text = rightText.ToString();
-
-                    ColorBinaryXs(txtLeft, "Binary (24b)");
-                    ColorBinaryXs(txtRight, "Binary (24b)");
-                }
-
-                // Bargraphs dBFS
-                UpdateLevelBar(barLeftLevel, levelLeft);
-                UpdateLevelBar(barRightLevel, levelRight);
-
-                // SAT + dBFS
-                bool satLActive =
-                    isCurrentlySatLeft ||
-                    (lastSatLeft.HasValue && (nowUi - lastSatLeft.Value) < satDisplayTime);
-
-                if (satLActive)
-                {
-                    var elapsed = nowUi - lastSatLeft.Value;
-                    bool blinkOn = ((int)(elapsed.TotalMilliseconds / (satBlinkPeriod.TotalMilliseconds / 2))) % 2 == 0;
-
-                    if (blinkOn)
-                    {
-                        lblLeftLevel.Text = "      SAT";
-                        lblLeftLevel.ForeColor = Color.Red;
-                        lblLeftLevel.Font = levelFontBold;
-                    }
-                    else
-                    {
-                        lblLeftLevel.Text = "";
-                        lblLeftLevel.ForeColor = Color.Red;
-                        lblLeftLevel.Font = levelFontBold;
-                    }
-                }
-                else
-                {
-                    lblLeftLevel.Text = double.IsNegativeInfinity(dbLeft) ? "- dBFS" : $"{dbLeft:F1} dBFS";
-                    lblLeftLevel.ForeColor = SystemColors.HotTrack;
-                    lblLeftLevel.Font = levelFontRegular;
-                }
-
-                bool satRActive =
-                    isCurrentlySatRight ||
-                    (lastSatRight.HasValue && (nowUi - lastSatRight.Value) < satDisplayTime);
-
-                if (satRActive)
-                {
-                    var elapsed = nowUi - lastSatRight.Value;
-                    bool blinkOn = ((int)(elapsed.TotalMilliseconds / (satBlinkPeriod.TotalMilliseconds / 2))) % 2 == 0;
-
-                    if (blinkOn)
-                    {
-                        lblRightLevel.Text = "SAT";
-                        lblRightLevel.ForeColor = Color.Red;
-                        lblRightLevel.Font = levelFontBold;
-                    }
-                    else
-                    {
-                        lblRightLevel.Text = "";
-                        lblRightLevel.ForeColor = Color.Red;
-                        lblRightLevel.Font = levelFontBold;
-                    }
-                }
-                else
-                {
-                    lblRightLevel.Text = double.IsNegativeInfinity(dbRight) ? "- dBFS" : $"{dbRight:F1} dBFS";
-                    lblRightLevel.ForeColor = SystemColors.HotTrack;
-                    lblRightLevel.Font = levelFontRegular;
-                }
-
-                UpdateMainDisplayFromLastValues();
-            }));
-        }
 
         //
         //private void ShowHistogramWindow()
@@ -2000,9 +2076,23 @@ namespace AudioHexViewer
                 int sampleRate = currentFormat?.SampleRate ?? 48000;
 
                 histogramControl = new HistogramControl(GetAnalysisFrame, sampleRate);
+                histogramControl.RunRequested += EnsureReadRunning;
+                histogramControl.RunStateChanged += running =>
+                {
+                    _histogramRunning = running;
+                    if (running) EnsureReadRunning();
+                    else EnsureReadStoppedIfNoTabRunning();
+                };
+
                 histogramControl.Dock = DockStyle.Fill;
                 histogramControl.SetGlobalSampleSize(analysisSampleSize);
                 histogramControl.UpdateHopSamples(analysisHopSamples);
+
+                if (_loadedSessionSettings != null)
+                {
+                    histogramControl.ApplyHistogramSettings(_loadedSessionSettings.Histogram);
+                }
+
 
                 panelHistogram.Controls.Clear();
                 panelHistogram.Controls.Add(histogramControl);
@@ -2017,10 +2107,57 @@ namespace AudioHexViewer
             {
                 int sampleRate = currentFormat?.SampleRate ?? 48000;
 
-                spectrumControl = new SpectrumControl(GetAnalysisFrame, sampleRate);
+                spectrumControl = new SpectrumControl();
+                // ---- ChannelMode -> active/désactive les voies FFT côté worker (core) ----
+                // IMPORTANT : SpectrumControl est créé ICI (ShowSpectrumArea), pas dans le ctor.
+                // Donc l'abonnement doit être fait ici, sinon le changement de voie pendant RUN
+                // ne reconfigure jamais le worker (symptôme : Right ne s'affiche pas sans relancer Read).
+
+                spectrumControl.ChannelModeChanged += mode =>
+                {
+                    ApplyActiveChannelsToWorker(mode);
+                };
+
+
+                spectrumControl.UpdateSampleRate(sampleRate);
+
+                _lblFftTicker = spectrumControl.FftTickerLabel;
+                _lblFftTicker.Visible = false; // optionnel
+                // THD : logique + persistance (UI lives in SpectrumControl) (button + checkbox in the Spectrum tab)
+                spectrumControl.ThdEnabledChanged += enabled => ApplyThdEnabled(enabled);
+                spectrumControl.ThdSettingsRequested += () => ShowThdSettings();
+                // Sync state from session
+                spectrumControl.ApplyThdSettings(_session.Spectrum.Thd);
+                spectrumControl.SetThdMeasuresEnabled(_session.Spectrum.EnableThdMeasures);
+                spectrumControl.SetThdEnabledUi(_session.Spectrum.EnableThdMeasures);
+   
+                spectrumControl.RunRequested += EnsureReadRunning;
+                spectrumControl.RunStateChanged += running =>
+                {
+                    _spectrumRunning = running;
+                    if (running) EnsureReadRunning();
+                    else EnsureReadStoppedIfNoTabRunning();
+                };
+                // Window change -> recrée le worker SFFT pour appliquer immédiatement la nouvelle fenêtre
+                spectrumControl.WindowTypeChangedForExternalFft += (_, __) =>
+                {
+                    if (_pipeline != null && _pipeline.IsRunning)
+                        RestartSfftFromUi();
+                };
+
+                // Mode AC/DC -> propage immédiatement à SfftWorker (flag volatile + drain queue)
+                spectrumControl.RemoveDcChanged += (_, __) => ApplyDcModeToWorker();
+                
                 spectrumControl.Dock = DockStyle.Fill;
                 spectrumControl.SetGlobalSampleSize(analysisSampleSize);
                 spectrumControl.UpdateHopSamples(analysisHopSamples);
+
+                if (_loadedSessionSettings != null)
+                {
+                    spectrumControl.ApplySpectrumSettings(_loadedSessionSettings.Spectrum);
+                    var initColors = _loadedSessionSettings.Spectrum?.Colors ?? SpectrumColorSettings.Defaults();
+                    histogramControl?.ApplySpectrumColorSettings(initColors);
+                }
 
                 // tabSpectrum est l'onglet du bas
                 tabSpectrum.Controls.Clear();
@@ -2031,22 +2168,52 @@ namespace AudioHexViewer
             tabAnalysis.SelectedTab = tabSpectrum;
         }
 
-
-
-
-        //
-        private void Capture_RecordingStopped(object? sender, StoppedEventArgs e)
+        private void ShowOscilloscopeArea()
         {
-            if (e.Exception != null)
+            if (oscilloscopeControl == null)
             {
-                MessageBox.Show("Erreur pendant la capture : " + e.Exception.Message);
+                oscilloscopeControl = new OscilloscopeControl
+                {
+                    Dock          = DockStyle.Fill,
+                    GetRing       = () => _pipeline?.Ring,
+                    GetSampleRate = () => currentFormat?.SampleRate ?? 0,
+                    GetInputCalibration = () =>
+                    {
+                        var sp = _session.Spectrum;
+                        return (sp.LevelCalValidLeft,  sp.LevelCalOffsetDbLeft,
+                                sp.LevelCalValidRight, sp.LevelCalOffsetDbRight);
+                    }
+                };
+
+                oscilloscopeControl.RunRequested += EnsureReadRunning;
+                oscilloscopeControl.RunStateChanged += running =>
+                {
+                    _oscilloscopeRunning = running;
+                    if (running) EnsureReadRunning();
+                    else EnsureReadStoppedIfNoTabRunning();
+                };
+
+                // Appliquer les couleurs courantes
+                var colors = _loadedSessionSettings?.Spectrum?.Colors
+                          ?? _session?.Spectrum?.Colors
+                          ?? SpectrumColorSettings.Defaults();
+                oscilloscopeControl.ApplySpectrumColorSettings(colors);
+
+                // Appliquer les settings sauvegardés
+                oscilloscopeControl.ApplySettings(_loadedSessionSettings?.Oscilloscope
+                                               ?? _session?.Oscilloscope);
+
+                if (currentFormat != null)
+                    oscilloscopeControl.UpdateSampleRate(currentFormat.SampleRate);
+
+                tabOscilloscope.Controls.Clear();
+                tabOscilloscope.Controls.Add(oscilloscopeControl);
             }
         }
         //
-        //
         private void UpdateMainDisplayFromLastValues()
         {
-            if (comboDisplayMode.SelectedItem is not string mode)
+            if (_dataViewForm!.comboDisplayMode.SelectedItem is not string mode)
                 mode = "Decimal (24b)";// mode par dfaut
 
             // Prparer les valeurs formates
@@ -2075,33 +2242,97 @@ namespace AudioHexViewer
                     rightText = lastRightBits;
                     break;
 
-                case "Voltage (V)":
-                    // si pas calibr, on signale N/A
-                    if (calibValidLeft)
-                        leftText = lastLeftVolts.ToString("F4", CultureInfo.InvariantCulture);
-                    else
-                        leftText = "N/A";
+                case "Voltage (Vrms)":
+                case "Voltage (Vpeak)":
+                case "Voltage (Vdc)":
+                    // Mesures en volts issues de SpectrumControl (calibration unifiée)
+                    double? vrmsL = null, vpkL = null, vdcL = null;
+                    double? vrmsR = null, vpkR = null, vdcR = null;
+                    bool calL = false, calR = false;
 
-                    if (calibValidRight)
-                        rightText = lastRightVolts.ToString("F4", CultureInfo.InvariantCulture);
+                    if (spectrumControl != null)
+                    {
+                        calL = spectrumControl.VoltageCalibrationValidLeft;
+                        calR = spectrumControl.VoltageCalibrationValidRight;
+                        spectrumControl.GetLastVoltages(out vrmsL, out vpkL, out vdcL, out vrmsR, out vpkR, out vdcR);
+                                               
+                    }
                     else
-                        rightText = "N/A";
+                    {
+                        // optionnel : si spectrumControl est null, on affiche aussi ---
+                        leftText = "---";
+                        rightText = "---";
+                        break;
+                    }
+
+                    double? selL =
+                        mode == "Voltage (Vrms)" ? vrmsL :
+                        mode == "Voltage (Vpeak)" ? vpkL :
+                        vdcL;
+
+                    double? selR =
+                        mode == "Voltage (Vrms)" ? vrmsR :
+                        mode == "Voltage (Vpeak)" ? vpkR :
+                        vdcR;
+
+                    bool leftActive = spectrumControl?.IsLeftChannelActive ?? true;
+                    bool rightActive = spectrumControl?.IsRightChannelActive ?? true;
+
+
+                    if (!leftActive)
+                        leftText = "---";
+                    else if (!calL)
+                        leftText = "Uncalibrated";
+                    else if (selL.HasValue)
+                        leftText = FormatVoltageWithUnit(selL.Value);
+                    else
+                        leftText = "---"; // pas encore de mesure exploitable
+
+                    if (!rightActive)
+                        rightText = "---";
+                    else if (!calR)
+                        rightText = "Uncalibrated";
+                    else if (selR.HasValue)
+                        rightText = FormatVoltageWithUnit(selR.Value);
+                    else
+                        rightText = "---";
+
                     break;
 
-                default:
+                    default:
                     leftText = "";
                     rightText = "";
                     break;
             }
 
-            // Met  jour les labels
-            lblLeftMainTitle.Text = $"{mode}";
-            lblRightMainTitle.Text = $"{mode}";
-
-            lblLeftMainValue.Text = leftText;
-            lblRightMainValue.Text = rightText;
+            // Met à jour les labels seulement si DataView est en RUN
+            if (_dataViewForm?.IsRunning == true)
+            {
+                string? modeStr = _dataViewForm.comboDisplayMode.SelectedItem as string;
+                _dataViewForm.UpdateValues(leftText, rightText, modeStr ?? mode);
+            }
         }
         //
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+        private const int WM_SETREDRAW = 0x000B;
+
+        private static void BeginNoRedraw(Control c)
+        {
+            if (c.IsHandleCreated) SendMessage(c.Handle, WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
+        }
+
+        private static void EndNoRedraw(Control c)
+        {
+            if (c.IsHandleCreated)
+            {
+                SendMessage(c.Handle, WM_SETREDRAW, new IntPtr(1), IntPtr.Zero);
+                c.Invalidate();
+                c.Update();
+            }
+        }
+
         //
         private void ColorBinaryXs(RichTextBox rtb, string binaryLabel)
         {
@@ -2126,6 +2357,7 @@ namespace AudioHexViewer
             Color oldColor = rtb.SelectionColor;
 
             rtb.SuspendLayout();
+            BeginNoRedraw(rtb);
 
             for (int i = bitsStart; i < lineEnd; i++)
             {
@@ -2142,6 +2374,7 @@ namespace AudioHexViewer
                     rtb.SelectionColor = rtb.ForeColor;
                 }
             }
+            EndNoRedraw(rtb);
 
             rtb.ResumeLayout();
 
@@ -2272,6 +2505,146 @@ namespace AudioHexViewer
 
 
 
+        // ── VU-mètre entrée ───────────────────────────────────────────────────
+        private void InitInputVuMeter()
+        {
+            // VU-mètre déplacé dans DataViewForm
+
+            _vuInTimer = new System.Windows.Forms.Timer { Interval = 80 };
+            _vuInTimer.Tick += VuInTimer_Tick;
+
+            // Active/désactive le timer selon l'onglet visible
+            tabAnalysis.SelectedIndexChanged += (_, _) => UpdateVuInTimer();
+        }
+
+        // ── Barre de titre ────────────────────────────────────────────────
+        private void UpdateTitleBar()
+        {
+            var parts = new System.Collections.Generic.List<string>();
+
+            // Entrée active
+            if (capture != null && currentFormat != null)
+            {
+                string devName = selectedDevice?.FriendlyName ?? "Loopback";
+                if (devName.Length > 30) devName = devName[..27] + "…";
+                string sr = currentFormat.SampleRate >= 1000
+                    ? $"{currentFormat.SampleRate / 1000.0:0.###} kHz"
+                    : $"{currentFormat.SampleRate} Hz";
+                parts.Add($"IN : {devName}  {sr}");
+            }
+
+            // Sortie active (générateur)
+            if (_generatorWindow?.IsGenerating == true)
+            {
+                string devOut = _selectedOutputDevice?.FriendlyName ?? "Output";
+                if (devOut.Length > 30) devOut = devOut[..27] + "…";
+                string srOut = _generatorWindow.CurrentSampleRate >= 1000
+                    ? $"{_generatorWindow.CurrentSampleRate / 1000.0:0.###} kHz"
+                    : $"{_generatorWindow.CurrentSampleRate} Hz";
+                parts.Add($"OUT : {devOut}  {srOut}");
+            }
+
+            // Titre : "AudioHexViewer" seul si rien d'actif, sinon ajoute les infos
+            Text = parts.Count > 0
+                ? $"AudioHexViewer  —  {string.Join("   |   ", parts)}"
+                : "AudioHexViewer";
+        }
+
+        private void UpdateVuInTimer()
+        {
+            bool analysisVisible = tabAnalysis.Visible &&
+                (tabAnalysis.SelectedTab == tabHistogram ||
+                 tabAnalysis.SelectedTab == tabSpectrum  ||
+                 tabAnalysis.SelectedTab == tabOscilloscope);
+            bool dataViewRunning = _dataViewForm?.IsRunning == true;
+            if ((analysisVisible || dataViewRunning) && capture != null)
+                _vuInTimer?.Start();
+            else
+            {
+                _vuInTimer?.Stop();
+                _vuInPctL = _vuInPctR = 0;
+                _vuInStrL = _vuInStrR = "-∞ dBFS";
+                _dataViewForm?.ResetVu();
+            }
+        }
+
+        private void VuInTimer_Tick(object? s, EventArgs e)
+        {
+            // Timer sur le thread UI — déclenche le repaint proprement
+        }
+
+        // Appelé depuis Form1.AudioCapture.cs — stocke seulement, le timer 80ms déclenche le repaint
+        internal void SetVuInLevels(double dbL, double dbR)
+        {
+            _vuInPctL = VuDbToPct(dbL);
+            _vuInPctR = VuDbToPct(dbR);
+            _vuInStrL = VuFmtDb(dbL);
+            _vuInStrR = VuFmtDb(dbR);
+            // Forward to DataView VU if running
+            if (_dataViewForm?.IsRunning == true)
+                _dataViewForm.SetVuLevels(dbL, dbR);
+        }
+
+        private static int VuDbToPct(double db)
+            => db <= VuDbMin ? 0 : db >= 0.0 ? 100
+             : (int)((db - VuDbMin) / -VuDbMin * 100.0);
+
+        private static string VuFmtDb(double db)
+            => double.IsNegativeInfinity(db) ? "-∞ dBFS" : $"{db:F1} dBFS";
+
+        private void PnlInputVu_Paint(object? sender, PaintEventArgs e)
+        {
+            var g  = e.Graphics;
+            var sz = new System.Drawing.Size(400, 52);
+            g.Clear(Color.FromArgb(0, 0, 64));
+
+            // Barre L — y=4, hauteur=16
+            PaintVuBarGdi(g, new Rectangle(22, 4, sz.Width - 116, 16), _vuInPctL);
+            // Barre R — y=28, hauteur=16
+            PaintVuBarGdi(g, new Rectangle(22, 28, sz.Width - 116, 16), _vuInPctR);
+
+            using var fSmall = new Font("Segoe UI", 7f);
+            TextRenderer.DrawText(g, "L", fSmall,
+                new Rectangle(4, 4, 16, 16), Color.FromArgb(160, 160, 180),
+                TextFormatFlags.VerticalCenter);
+            TextRenderer.DrawText(g, "R", fSmall,
+                new Rectangle(4, 28, 16, 16), Color.FromArgb(160, 160, 180),
+                TextFormatFlags.VerticalCenter);
+
+            using var fLevel = new Font("Segoe UI", 7.5f);
+            int lx = sz.Width - 112;
+            TextRenderer.DrawText(g, _vuInStrL, fLevel,
+                new Rectangle(lx, 4, 108, 16), Color.Lime,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+            TextRenderer.DrawText(g, _vuInStrR, fLevel,
+                new Rectangle(lx, 28, 108, 16), Color.Lime,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+        }
+
+        private static void PaintVuBarGdi(Graphics g, Rectangle r, int pct)
+        {
+            if (r.Width <= 4 || r.Height <= 4) return;
+            int vm   = Math.Max(1, r.Height / 6);
+            int lh   = r.Height - 2 * vm;
+            double pB = (VuBlueEnd   - VuDbMin) / -VuDbMin * 100.0;
+            double pG = (VuGreenEnd  - VuDbMin) / -VuDbMin * 100.0;
+            double pO = (VuOrangeEnd - VuDbMin) / -VuDbMin * 100.0;
+            for (int i = 0; i < VuLedCount; i++)
+            {
+                int x0 = r.X + (int)((double)i       / VuLedCount * r.Width);
+                int x1 = r.X + (int)((double)(i + 1) / VuLedCount * r.Width);
+                int w  = Math.Max(1, x1 - x0 - 2);
+                double cp = ((i + 0.5) / VuLedCount) * 100.0;
+                Color col = cp > pct           ? Color.FromArgb(30, 30, 60)
+                          : cp <= pB           ? Color.FromArgb(0, 120, 215)
+                          : cp <= pG           ? Color.Lime
+                          : cp <= pO           ? Color.Gold
+                                               : Color.Red;
+                using var br = new SolidBrush(col);
+                g.FillRectangle(br, x0, r.Y + vm, w, lh);
+            }
+        }
+
         private void CreateDbMarkers(Panel bar, string[] labels, double[] dbValues)
         {
             if (bar == null || labels == null || dbValues == null)
@@ -2296,7 +2669,8 @@ namespace AudioHexViewer
                 lbl.Top = bar.Top - lbl.Height + 10;      // juste au-dessus de la barre
                 lbl.Left = x - lbl.PreferredWidth / 2;   // centr sur la position
 
-                Controls.Add(lbl);
+                //Controls.Add(lbl);//
+                bar.Parent.Controls.Add(lbl); //
                 lbl.BringToFront();
             }
         }
@@ -2366,7 +2740,6 @@ namespace AudioHexViewer
             double pBlueEnd = DbToPercent(DbBlueToGreen);
             double pGreenEnd = DbToPercent(DbGreenToOrange);
             double pOrangeEnd = DbToPercent(DbOrangeToRed);
-            double pRedEnd = 100.0;
 
             for (int i = 0; i < LedCount; i++)
             {
@@ -2402,44 +2775,8 @@ namespace AudioHexViewer
                 }
             }
         }
-
-        private void saveHistogramSettingsToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            if (histogramControl == null)
-            {
-                MessageBox.Show("L'histogramme n'est pas encore initialis.", "Histogram settings",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            try
-            {
-                // 1) Priphrique slectionn
-                string? devId = null;
-                if (comboDevices.SelectedItem is MMDevice dev)
-                    devId = dev.ID;   // Proprit ID de MMDevice (NAudio)
-
-                // 2) Mode IN / OUT (entre / sortie)
-                //    -> captureOutput est ton bool priv : false = entre, true = sortie
-                bool isOutput = captureOutput;
-
-                // 3) Main data format (comboDisplayMode)
-                string? mainFormat = comboDisplayMode.SelectedItem as string;
-
-                // On pousse ces infos vers l'histogramme AVANT la sauvegarde
-                histogramControl.DeviceIdForSave = devId;
-                histogramControl.CaptureOutputForSave = isOutput;
-                histogramControl.MainDataFormatForSave = mainFormat;
-                histogramControl.SaveHistogramSettings();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Erreur lors de la sauvegarde des rglages d'histogramme :\n" + ex.Message,
-                    "Histogram settings",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
+        //
+        //
         private void alwaysOnTopToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // Le ToolStripMenuItem appelle ce handler aprs avoir chang son tat Checked
@@ -2448,19 +2785,534 @@ namespace AudioHexViewer
 
         private void Form1_Load(object sender, EventArgs e)
         {
-            LoadUiSettingsFromHistogramFile();
+            // Pré-scan des devices pendant que le splash est encore visible
+            // (thread UI STA = objets COM WASAPI valides)
+
+            // Double-buffering sur la barre de debug pour supprimer tout clignotement résiduel
+            typeof(Panel)
+                .GetProperty("DoubleBuffered",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                ?.SetValue(panelDebugInfo, true);
+
+            LoadUiSettingsFromSettingsFiles();
+
+            if (_loadedSessionSettings != null)
+                ApplyAnalysisSettings(_loadedSessionSettings);
+
+            ApplyLoadedSessionSettingsToExistingControls();
 
         }
 
         private void splitContainer1_Panel2_Paint(object sender, PaintEventArgs e)
         {
-
         }
-
         private void lblFormatInfo_Click(object sender, EventArgs e)
         {
-
         }
+        //
+        // ── Helpers export ────────────────────────────────────────────────────
+        private enum ActiveTab { Spectrum, Histogram, Oscilloscope }
+
+        private ActiveTab GetActiveTab()
+        {
+            if (tabAnalysis.SelectedTab == tabSpectrum)     return ActiveTab.Spectrum;
+            if (tabAnalysis.SelectedTab == tabOscilloscope) return ActiveTab.Oscilloscope;
+            return ActiveTab.Histogram;
+        }
+
+        private static string TabKindName(ActiveTab t) => t switch
+        {
+            ActiveTab.Spectrum     => "Spectrum",
+            ActiveTab.Oscilloscope => "Oscilloscope",
+            _                      => "Histogram"
+        };
+
+        private bool CheckExportReady(ActiveTab t)
+        {
+            return t switch
+            {
+                ActiveTab.Spectrum     => spectrumControl     != null,
+                ActiveTab.Oscilloscope => oscilloscopeControl != null,
+                _                      => histogramControl    != null,
+            };
+        }
+
+        private void DoExportPng(string filePath, int scale, string? title = null, string? footer = null)
+        {
+            var tab = GetActiveTab();
+            switch (tab)
+            {
+                case ActiveTab.Spectrum:     spectrumControl!    .ExportPng(filePath, scale, title, footer); break;
+                case ActiveTab.Oscilloscope: oscilloscopeControl!.ExportPng(filePath, scale, title, footer); break;
+                default:                     histogramControl!   .ExportPng(filePath, scale, title, footer); break;
+            }
+        }
+
+        private string GetDeviceFooterText()
+        {
+            string inName  = _selectedInputDevice?.FriendlyName  ?? "—";
+            string outName = _selectedOutputDevice?.FriendlyName ?? "—";
+            string date    = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            return $"Input: {inName}    Output: {outName}    {date}";
+        }
+
+        //
+        private void ExportActiveGraphToPng()
+        {
+            var tab = GetActiveTab();
+            if (!CheckExportReady(tab))
+            {
+                MessageBox.Show($"L'onglet {TabKindName(tab)} n'est pas initialisé.", "Export PNG",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using var sfd = new SaveFileDialog
+            {
+                Filter     = "PNG (*.png)|*.png",
+                DefaultExt = "png",
+                FileName   = $"AudioHexViewer_{TabKindName(tab)}_{DateTime.Now:yyyyMMdd_HHmmss}.png"
+            };
+
+            if (sfd.ShowDialog(this) != DialogResult.OK) return;
+
+            try   { DoExportPng(sfd.FileName, scale: 2); }
+            catch (Exception ex) { MessageBox.Show(ex.Message, "Export PNG", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        }
+
+        // ── Copy graph to clipboard ───────────────────────────────────────────
+
+        private void menuCopyClipboard_Click(object sender, EventArgs e)
+        {
+            var tab = GetActiveTab();
+            if (!CheckExportReady(tab))
+            {
+                MessageBox.Show($"L'onglet {TabKindName(tab)} n'est pas initialisé.", "Copy",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            try
+            {
+                switch (tab)
+                {
+                    case ActiveTab.Spectrum:
+                        ChartExport.CopyChartToClipboard(spectrumControl!.GetChartForClipboard());
+                        break;
+                    case ActiveTab.Histogram:
+                        ChartExport.CopyChartToClipboard(histogramControl!.GetChartForClipboard());
+                        break;
+                    case ActiveTab.Oscilloscope:
+                        ChartExport.CopyControlToClipboard(oscilloscopeControl!.GetPanelForClipboard());
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Copy to clipboard", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+
+        // ── Export to PDF ─────────────────────────────────────────────────────
+        private void menuExportCsv_Click(object? sender, EventArgs e)
+        {
+            using var dlg = new ExportCsvDialog();
+
+            // Pré-sélectionne l'onglet actif
+            dlg.PreSelectTab(GetActiveTab() switch
+            {
+                ActiveTab.Spectrum     => "Spectrum",
+                ActiveTab.Oscilloscope => "Oscilloscope",
+                _                      => "Histogram"
+            });
+
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+            try
+            {
+                System.Text.StringBuilder? data = dlg.SelectedTab switch
+                {
+                    "Histogram"    => histogramControl?.GetCsvData(dlg.Separator, dlg.IncludeHeader, dlg.DecimalSeparator),
+                    "Spectrum"     => spectrumControl?.GetCsvData(dlg.Separator, dlg.IncludeHeader, dlg.DecimalSeparator),
+                    "Oscilloscope" => oscilloscopeControl?.GetCsvData(dlg.Separator, dlg.IncludeHeader, dlg.DecimalSeparator),
+                    _              => null
+                };
+
+                if (data == null || data.Length == 0)
+                {
+                    MessageBox.Show(this, "No data available for export.", "Export CSV",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                File.WriteAllText(dlg.FilePath, data.ToString(), System.Text.Encoding.UTF8);
+
+                // Message 1s auto-dismiss
+                ShowAutoClosingMessage($"CSV exported successfully:\n{dlg.FilePath}", 1000);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Export CSV", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void ShowAutoClosingMessage(string message, int durationMs)
+        {
+            var dlg = new Form
+            {
+                Text = "Export CSV",
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                StartPosition   = FormStartPosition.CenterParent,
+                MaximizeBox     = false, MinimizeBox = false,
+                ShowInTaskbar   = false, ControlBox = false,
+                ClientSize      = new Size(380, 70)
+            };
+            var lbl = new Label
+            {
+                Dock      = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Text      = message,
+                Font      = new Font("Segoe UI", 9f)
+            };
+            dlg.Controls.Add(lbl);
+            var t = new System.Windows.Forms.Timer { Interval = durationMs };
+            t.Tick += (_, _) => { t.Stop(); t.Dispose(); dlg.Close(); };
+            t.Start();
+            dlg.Show(this);
+        }
+
+        private void menuExportPdf_Click(object sender, EventArgs e)
+        {
+            using var dlg = new AudioHexViewer.ExportPdfDialog();
+            dlg.SetAvailableTabs(
+                hasSpectrum:   spectrumControl     != null,
+                hasHistogram:  histogramControl    != null,
+                hasOscillo:    oscilloscopeControl != null);
+
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+            string outPath = dlg.FilePath;
+            if (string.IsNullOrWhiteSpace(outPath)) return;
+
+            string titleText    = dlg.GetTitleText();
+            string subtitleText = dlg.GetSubtitleText();
+            string fullTitle    = string.IsNullOrWhiteSpace(subtitleText)
+                                  ? titleText
+                                  : titleText + "\n" + subtitleText;
+            int scale = dlg.ExpScale;
+
+            var pages = new System.Collections.Generic.List<(string name, System.Action<string> export)>();
+            string footer = GetDeviceFooterText();
+            if (dlg.IncludeSpectrum  && spectrumControl     != null)
+                pages.Add(("Spectrum",     p => spectrumControl!    .ExportPng(p, scale, fullTitle, footer)));
+            if (dlg.IncludeHistogram && histogramControl    != null)
+                pages.Add(("Histogram",    p => histogramControl!   .ExportPng(p, scale, fullTitle, footer)));
+            if (dlg.IncludeOscillo   && oscilloscopeControl != null)
+                pages.Add(("Oscilloscope", p => oscilloscopeControl!.ExportPng(p, scale, fullTitle, footer)));
+
+            if (pages.Count == 0)
+            {
+                MessageBox.Show(this, "No initialized tab selected.", "Export to PDF",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var tmpFiles = new string[pages.Count];
+            try
+            {
+                for (int i = 0; i < pages.Count; i++)
+                {
+                    tmpFiles[i] = Path.Combine(Path.GetTempPath(),
+                        $"AudioHexViewer_{pages[i].name}_{Guid.NewGuid():N}.png");
+                    pages[i].export(tmpFiles[i]);
+                }
+
+                string[] pageTitles = System.Linq.Enumerable
+                    .Range(0, pages.Count).Select(i => pages[i].name).ToArray();
+
+                PdfExport.SaveMultiPageFromPngs(tmpFiles, outPath,
+                    docTitle:   string.IsNullOrWhiteSpace(titleText) ? null : titleText,
+                    pageTitles: pageTitles);
+
+                // Confirmation de fin de génération
+                string pageWord = tmpFiles.Length > 1 ? $"{tmpFiles.Length} pages" : "1 page";
+                string msg = $"PDF generated successfully ({pageWord}).\n\n{outPath}";
+                if (dlg.OpenAfter)
+                {
+                    ExportPdfDialog.TryOpenFile(outPath);
+                    MessageBox.Show(this, msg, "Export to PDF", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    MessageBox.Show(this, msg, "Export to PDF", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Export to PDF", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                foreach (var tmp in tmpFiles)
+                    if (tmp != null) try { File.Delete(tmp); } catch { /* ignore */ }
+            }
+        }
+
+
+        //
+        private static SpectrumFrame DecimateFrameForDisplay(SpectrumFrame src, double fMin, double fMax, int maxPoints, bool useLogX)
+        {
+            var fxIn = src.FreqAxisHz;
+            int nIn = fxIn.Length;
+            if (nIn <= 0) return src;
+
+            // bornes en indices (bins)
+            int i0 = Array.BinarySearch(fxIn, fMin);
+            if (i0 < 0) i0 = ~i0;
+            int i1 = Array.BinarySearch(fxIn, fMax);
+            if (i1 < 0) i1 = ~i1;
+
+            i0 = Math.Max(0, Math.Min(nIn - 1, i0));
+            i1 = Math.Max(i0 + 1, Math.Min(nIn, i1));
+
+            if (maxPoints <= 0) maxPoints = 2000;
+
+            // plage minuscule : pas de décimation
+            if (i1 - i0 <= maxPoints)
+                return SliceFrame(src, i0, i1);
+
+            // -----------------------------------------------------------------
+            // MODE LOG X : décimation uniforme en log10(f) (meilleur rendu basses fréquences)
+            // -----------------------------------------------------------------
+            if (useLogX)
+            {
+                // Sécurité : log nécessite f>0
+                if (fMin <= 0) fMin = 1.0;
+                if (fMax <= fMin) fMax = fMin * 10.0;
+
+                int nOutLog = maxPoints;
+                var fxLog = new double[nOutLog];
+                MathNet.Numerics.Complex32[]? lLog = (src.LeftBins != null) ? new MathNet.Numerics.Complex32[nOutLog] : null;
+                MathNet.Numerics.Complex32[]? rLog = (src.RightBins != null) ? new MathNet.Numerics.Complex32[nOutLog] : null;
+
+
+                double logMin = Math.Log10(fMin);
+                double logMax = Math.Log10(fMax);
+                double logStep = (logMax - logMin) / nOutLog;
+
+                for (int j = 0; j < nOutLog; j++)
+                {
+                    double fa = Math.Pow(10.0, logMin + j * logStep);
+                    double fb = Math.Pow(10.0, logMin + (j + 1) * logStep);
+
+                    int a = Array.BinarySearch(fxIn, fa);
+                    if (a < 0) a = ~a;
+                    int b = Array.BinarySearch(fxIn, fb);
+                    if (b < 0) b = ~b;
+
+                    // Clamp à la zone [i0..i1)
+                    if (a < i0) a = i0;
+                    if (b > i1) b = i1;
+
+                    if (b <= a) b = Math.Min(i1, a + 1);
+                    if (a >= i1) a = i1 - 1;
+                    if (b <= a) b = a + 1; // ultime sécurité
+
+                    int mid = (a + b) / 2;
+                    if (mid >= i1) mid = i1 - 1;
+                    fxLog[j] = fxIn[mid];
+
+                    // Gauche : bin de magnitude max dans le segment (préserve phase)
+                    if (lLog != null && src.LeftBins != null)
+                    {
+                        float maxMag = -1f;
+                        int kMax = a;
+                        for (int k = a; k < b; k++)
+                        {
+                            float mag = src.LeftBins[k].Magnitude;
+                            if (mag > maxMag) { maxMag = mag; kMax = k; }
+                        }
+                        lLog[j] = src.LeftBins[kMax];
+                    }
+
+                    // Droite
+                    if (rLog != null && src.RightBins != null)
+                    {
+                        float maxMag = -1f;
+                        int kMax = a;
+                        for (int k = a; k < b; k++)
+                        {
+                            float mag = src.RightBins[k].Magnitude;
+                            if (mag > maxMag) { maxMag = mag; kMax = k; }
+                        }
+                        rLog[j] = src.RightBins[kMax];
+                    }
+                }
+
+                return new SpectrumFrame(src.SampleRate, src.FftSize, src.AbsEnd, lLog, rLog, fxLog);
+            }
+
+
+            int nOut = maxPoints;
+            var fx = new double[nOut];
+
+            MathNet.Numerics.Complex32[]? l = (src.LeftBins != null) ? new MathNet.Numerics.Complex32[nOut] : null;
+            MathNet.Numerics.Complex32[]? r = (src.RightBins != null) ? new MathNet.Numerics.Complex32[nOut] : null;
+
+            double step = (double)(i1 - i0) / nOut;
+
+            for (int j = 0; j < nOut; j++)
+            {
+                int a = i0 + (int)Math.Floor(j * step);
+                int b = i0 + (int)Math.Floor((j + 1) * step);
+
+                if (a < i0) a = i0;
+                if (b <= a) b = a + 1;
+                if (b > i1) b = i1;
+
+                // fréquence représentative : centre du segment
+                int mid = (a + b) / 2;
+                if (mid >= i1) mid = i1 - 1;
+                fx[j] = fxIn[mid];
+
+                // Gauche : on garde le bin de magnitude max dans le segment (préserve phase)
+                if (l != null && src.LeftBins != null)
+                {
+                    float maxMag = -1f;
+                    int kMax = a;
+
+                    for (int k = a; k < b; k++)
+                    {
+                        float mag = src.LeftBins[k].Magnitude;
+                        if (mag > maxMag)
+                        {
+                            maxMag = mag;
+                            kMax = k;
+                        }
+                    }
+                    l[j] = src.LeftBins[kMax];
+                }
+
+                // Droite
+                if (r != null && src.RightBins != null)
+                {
+                    float maxMag = -1f;
+                    int kMax = a;
+
+                    for (int k = a; k < b; k++)
+                    {
+                        float mag = src.RightBins[k].Magnitude;
+                        if (mag > maxMag)
+                        {
+                            maxMag = mag;
+                            kMax = k;
+                        }
+                    }
+                    r[j] = src.RightBins[kMax];
+                }
+            }
+
+            return new SpectrumFrame(src.SampleRate, src.FftSize, src.AbsEnd, l, r, fx);
+        }
+
+        private static SpectrumFrame SliceFrame(SpectrumFrame src, int i0, int i1)
+        {
+            var fxIn = src.FreqAxisHz;
+            int nIn = fxIn.Length;
+
+            i0 = Math.Max(0, Math.Min(nIn - 1, i0));
+            i1 = Math.Max(i0 + 1, Math.Min(nIn, i1));
+
+            int n = i1 - i0;
+
+            var fx = new double[n];
+            Array.Copy(fxIn, i0, fx, 0, n);
+
+            MathNet.Numerics.Complex32[]? l = null;
+            MathNet.Numerics.Complex32[]? r = null;
+
+            if (src.LeftBins != null)
+            {
+                l = new MathNet.Numerics.Complex32[n];
+                Array.Copy(src.LeftBins, i0, l, 0, n);
+            }
+
+            if (src.RightBins != null)
+            {
+                r = new MathNet.Numerics.Complex32[n];
+                Array.Copy(src.RightBins, i0, r, 0, n);
+            }
+
+            return new SpectrumFrame(src.SampleRate, src.FftSize, src.AbsEnd, l, r, fx);
+        }
+
+        //        
+        private static int LowerBound(double[] a, double x)
+        {
+            int lo = 0, hi = a.Length;
+            while (lo < hi)
+            {
+                int mid = (lo + hi) >> 1;
+                if (a[mid] < x) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo;
+        }
+        //
+
+
+
+        //
+        private void SetLevelLabels(string leftText, string rightText)
+        {
+            // Form1 (si présents)
+            if (lblLeftLevelMain != null) lblLeftLevelMain.Text = leftText;
+            if (lblRightLevelMain != null) lblRightLevelMain.Text = rightText;
+
+            // DataView (si ouverte / existante)
+            if (_dataViewForm != null)
+            {
+                if (_dataViewForm?.IsRunning == true && _dataViewForm.lblLeftLevelDV != null) _dataViewForm.lblLeftLevelDV.Text = leftText;
+                if (_dataViewForm?.IsRunning == true && _dataViewForm.lblRightLevelDV != null) _dataViewForm.lblRightLevelDV.Text = rightText;
+            }
+        }
+        private void ApplyLeftLevelDisplay(string text, Color color, Font font)
+        {
+            if (lblLeftLevelMain != null)
+            {
+                lblLeftLevelMain.Text = text;
+                lblLeftLevelMain.ForeColor = color;
+                lblLeftLevelMain.Font = font;
+            }
+
+            if (_dataViewForm?.IsRunning == true && _dataViewForm.lblLeftLevelDV != null)
+            {
+                _dataViewForm.lblLeftLevelDV.Text = text;
+                _dataViewForm.lblLeftLevelDV.ForeColor = color;
+                _dataViewForm.lblLeftLevelDV.Font = font;
+            }
+        }
+
+        private void ApplyRightLevelDisplay(string text, Color color, Font font)
+        {
+            if (lblRightLevelMain != null)
+            {
+                lblRightLevelMain.Text = text;
+                lblRightLevelMain.ForeColor = color;
+                lblRightLevelMain.Font = font;
+            }
+
+            if (_dataViewForm?.IsRunning == true && _dataViewForm.lblRightLevelDV != null)
+            {
+                _dataViewForm.lblRightLevelDV.Text = text;
+                _dataViewForm.lblRightLevelDV.ForeColor = color;
+                _dataViewForm.lblRightLevelDV.Font = font;
+            }
+        }
+
+
+
     }
 
 }
