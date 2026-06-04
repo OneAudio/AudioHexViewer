@@ -86,7 +86,7 @@ namespace AudioHexViewer
             // menuStrip1
             // 
             menuStrip1.AutoSize = false;
-            menuStrip1.Items.AddRange(new ToolStripItem[] { menuDevices, menuHelp, menuData, menuSampleSize, menuOverlap, exportToolStripMenuItem });
+            menuStrip1.Items.AddRange(new ToolStripItem[] { menuDevices, menuOverlap, menuSampleSize, menuData, exportToolStripMenuItem, menuHelp });
             menuStrip1.Location = new Point(0, 0);
             menuStrip1.Name = "menuStrip1";
             menuStrip1.Size = new Size(1138, 25);
@@ -94,7 +94,6 @@ namespace AudioHexViewer
             menuStrip1.Text = "menuStrip1";
             // 
             // menuDevices
-            menuDevices.Alignment = ToolStripItemAlignment.Right;
             menuDevices.Name      = "menuDevices";
             menuDevices.Size      = new Size(59, 21);
             menuDevices.Text      = "Devices";
@@ -102,7 +101,6 @@ namespace AudioHexViewer
             // 
             // menuHelp
             // 
-            menuHelp.Alignment = ToolStripItemAlignment.Right;
             menuHelp.DropDownItems.AddRange(new ToolStripItem[] { menuAbout, menuOpenCal, menuOpenRecordsFolder, alwaysOnTopToolStripMenuItem });
             menuHelp.Name = "menuHelp";
             menuHelp.Size = new Size(44, 21);
@@ -139,7 +137,6 @@ namespace AudioHexViewer
             // 
             // menuData
             // 
-            menuData.Alignment = ToolStripItemAlignment.Right;
             menuData.DropDownItems.AddRange(new ToolStripItem[] { menuShowAllFormats, menuDataView, menuDebugInfo });
             menuData.Name = "menuData";
             menuData.Size = new Size(44, 21);
@@ -169,14 +166,12 @@ namespace AudioHexViewer
             // 
             // menuSampleSize
             // 
-            menuSampleSize.Alignment = ToolStripItemAlignment.Right;
             menuSampleSize.Name = "menuSampleSize";
             menuSampleSize.Size = new Size(80, 21);
             menuSampleSize.Text = "Sample size";
             // 
             // menuOverlap
             // 
-            menuOverlap.Alignment = ToolStripItemAlignment.Right;
             menuOverlap.Name = "menuOverlap";
             menuOverlap.Size = new Size(60, 21);
             menuOverlap.Text = "Overlap";

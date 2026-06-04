@@ -814,38 +814,35 @@ namespace AudioHexViewer
         // --- Colors menu (FFT/Overlay/PeakHold/Grid/Background) ---
         private void InitColorsMenu()
         {
-            menuColors = new ToolStripMenuItem("Colors")
-            {
-                Alignment = ToolStripItemAlignment.Right
-            };
+            // ── Ordre final : Devices|Generator|Overlap|Sample size|Colors|View|Export|Tools|Help
+            // Designer a chargé : [0]Devices [1]Overlap [2]SampleSize [3]View [4]Export [5]Help
 
+            // Generator → index 1  (entre Devices et Overlap)
+            var menuGenerator = new ToolStripMenuItem("Generator");
+            menuGenerator.Click += menuGenerator_Click;
+            menuStrip1.Items.Insert(1, menuGenerator);
+            // Après insert : [0]Devices [1]Generator [2]Overlap [3]SampleSize [4]View [5]Export [6]Help
+
+            // Colors → index 4  (entre SampleSize et View)
+            menuColors = new ToolStripMenuItem("Colors");
             menuColors.Click += (_, __) => ShowColorsDialog();
+            menuStrip1.Items.Insert(4, menuColors);
+            // Après insert : [0]Devices [1]Generator [2]Overlap [3]SampleSize [4]Colors [5]View [6]Export [7]Help
 
-            // Insert right after Measures (same pattern as InitCursorsMenu)
-            // Ajouter au menu principal (top-level)
-            menuStrip1.Items.Add(menuColors);
-
-            // "Export CSV" dans le menu Export
+            // Export CSV (sous-menu Export)
             var menuExportCsv = new ToolStripMenuItem("Export data to CSV…");
             menuExportCsv.Click += menuExportCsv_Click;
             exportToolStripMenuItem.DropDownItems.Add(menuExportCsv);
 
-            // "Tools" à gauche de "Generator"
-            var menuTools        = new ToolStripMenuItem("Tools") { Alignment = ToolStripItemAlignment.Right };
-            var menuDataRecord   = new ToolStripMenuItem("Data Record (1s)");
-            var menuCalibrateIn  = new ToolStripMenuItem("Calibrate Input Device");
+            // Tools → index 7  (entre Export et Help)
+            var menuTools       = new ToolStripMenuItem("Tools");
+            var menuDataRecord  = new ToolStripMenuItem("Data Record (1s)");
+            var menuCalibrateIn = new ToolStripMenuItem("Calibrate Input Device");
             menuDataRecord.Click  += (_, _) => btnRecord_Click(menuDataRecord, EventArgs.Empty);
             menuCalibrateIn.Click += (_, _) => btnCalV_Click(menuCalibrateIn, EventArgs.Empty);
             menuTools.DropDownItems.AddRange(new ToolStripItem[] { menuDataRecord, menuCalibrateIn });
-            menuStrip1.Items.Add(menuTools);
-
-            // "Generator" apparaît à gauche de "Colors"
-            var menuGenerator = new ToolStripMenuItem("Generator")
-            {
-                Alignment = ToolStripItemAlignment.Right
-            };
-            menuGenerator.Click += menuGenerator_Click;
-            menuStrip1.Items.Add(menuGenerator);
+            menuStrip1.Items.Insert(7, menuTools);
+            // Résultat final : [0]Devices [1]Generator [2]Overlap [3]SampleSize [4]Colors [5]View [6]Export [7]Tools [8]Help
         }
 
         private void ShowColorsDialog()
