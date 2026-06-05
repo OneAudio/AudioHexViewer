@@ -480,12 +480,11 @@ namespace AudioHexViewer
                 float loadingY = by + bh + 5f;
                 g.DrawString(_statusMessage, fL, bL, rc.Width/2f - lw2/2f, loadingY);
                 // Version sous le message, alignée à droite
-                float versionY = loadingY + fL.GetHeight(g) + 2f;
-                g.DrawString(AppVersion, fVn, bVn, rc.Width - vw - 6f, versionY);
-                // Copyright en bas à gauche — même taille que version
+                // Version et copyright calés en bas comme en mode About
+                g.DrawString(AppVersion, fVn, bVn, rc.Width - vw - 6f, rc.Height - 18f);
                 string copy = $"© {DateTime.Now.Year} OnE Audio Projects";
                 using var bC = new SolidBrush(SubCol);
-                g.DrawString(copy, fVn, bC, 6f, versionY);
+                g.DrawString(copy, fVn, bC, 6f, rc.Height - 18f);
             }
         }
 

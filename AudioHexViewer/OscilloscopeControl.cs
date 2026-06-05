@@ -807,17 +807,17 @@ namespace AudioHexViewer
             int td=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
             int win=Math.Max(8,(int)(TimeDivMs[td]*H_DIVS/1000.0*sr));
             int pre=(int)(win*PreTrig);
-            int search=Math.Min(win*3+pre+4, ring.Capacity-1);
+            // Cap à 2M samples pour éviter les allocations massives aux grandes bases de temps
+            const int MAX_SEARCH = 2_000_000;
+            int search=Math.Min(win*3+pre+4, Math.Min(ring.Capacity-1, MAX_SEARCH));
 
             long absEnd=ring.AbsWrite;
             if(absEnd-search<0){pnlScope.Invalidate();return;}
             // Buffer trop petit pour cette base de temps ?
-            // minCap = pre + post minimum pour pouvoir extraire win samples autour du trigger
-            int minCap=win+(win-pre)+2;
+            int minCap=win+(win-pre)+2;  // pre + post minimum
             if(ring.Capacity < minCap)
             {
-                double needSec = minCap / (double)sr;
-                lblTrigStatus.Text=$"BUFFER<{needSec:F0}s";
+                lblTrigStatus.Text=$"BUFFER < {minCap/sr:.0}s";
                 lblTrigStatus.ForeColor=Color.Orange;
                 pnlScope.Invalidate(); return;
             }
@@ -910,15 +910,12 @@ namespace AudioHexViewer
             UpdateInfoLine();
         }
 
-        /// Détection du trigger en 3 phases avec zone-arm SOUTENUE.
+        /// Détection du trigger standard (logique oscilloscope matériel).
         ///
-        /// Phase 1 — scan arrière : dernier fire (burst/pic le plus récent accessible).
-        /// Phase 2 — scan arrière : zone-arm consécutive >= minArmSamples (≈10 ms).
-        ///           Filtre les creux intra-burst (< 2 ms) vs silence pré-burst (> 10 ms).
-        /// Phase 3 — scan avant  : premier fire après ce silence → début du burst. ✓
-        ///
-        /// Repli sur détection simple si aucun silence pré-burst trouvé
-        /// (signal continu : la croisée la plus récente est retournée).
+        /// Scan avant (chronologique) dans la fenêtre [minI..maxI].
+        /// On attend d'abord un armement (signal du bon côté de armLevel),
+        /// puis on détecte le premier franchissement de fireLevel.
+        /// Identique au comportement d'un oscilloscope matériel.
         private static bool FindTriggerBackward(
             float[] src, int len, float level, bool rising, float hyst,
             int win, int pre, out int idx)
@@ -932,56 +929,21 @@ namespace AudioHexViewer
             float armLevel  = level + (rising ? -hyst :  hyst);
             float fireLevel = level + (rising ?  hyst : -hyst);
 
-            // ── Phase 1 : dernier fire accessible ────────────────────────────
-            int lastFire = -1;
-            for (int i = maxI; i >= minI; i--)
+            // Scan avant (du plus ancien au plus récent) :
+            // 1) attend armement (signal sous armLevel pour rising)
+            // 2) dès que fireLevel est franchi → premier trigger trouvé, stop.
+            bool armed = false;
+            for (int i = minI; i <= maxI; i++)
             {
-                if (rising ? src[i] > fireLevel : src[i] < fireLevel)
-                { lastFire = i; break; }
-            }
-            if (lastFire < 0) return false;
-
-            // ── Phase 2 : silence pré-burst (zone-arm soutenue >= minArm) ────
-            // minArm = 10 ms en samples : élimine les creux intra-oscillation (< 2 ms)
-            // tout en capturant le silence avant un burst (>> 10 ms).
-            // Repli si signal continu (arm < 10 ms → pas de silence détecté).
-            int minArm = Math.Max(5, win / 20);
-
-            int armRun = 0, preArm = -1;
-            for (int i = lastFire - 1; i >= minI; i--)
-            {
-                bool isArm  = rising ? src[i] < armLevel  : src[i] > armLevel;
-                bool isFire = rising ? src[i] > fireLevel : src[i] < fireLevel;
-
-                if (isArm)  { armRun++; if (armRun >= minArm) { preArm = i; break; } }
-                else if (isFire) armRun = 0;   // un fire remet le compteur à zéro
-                // zone morte : ne remet pas à zéro (signal peut glisser dans zone morte)
-            }
-
-            if (preArm >= 0)
-            {
-                // ── Phase 3 : premier fire après le silence ───────────────────
-                for (int i = preArm + 1; i <= maxI; i++)
+                if (!armed)
                 {
-                    if (rising ? src[i] > fireLevel : src[i] < fireLevel)
-                    { idx = i; return true; }
+                    if (rising ? src[i] <= armLevel : src[i] >= armLevel)
+                        armed = true;
                 }
-            }
-
-            // ── Repli : détection de croisée simple (signal continu) ─────────
-            // Cherche la croisée du NIVEAU (pas du fireLevel) la plus récente
-            // avec confirmation d'armement dans la fenêtre précédente.
-            for (int i = lastFire; i >= minI; i--)
-            {
-                bool cross = i > 0 && (rising
-                    ? (src[i] >= level && src[i - 1] < level)
-                    : (src[i] <= level && src[i - 1] > level));
-                if (!cross) continue;
-                int lb = Math.Max(0, i - win);
-                for (int j = i - 1; j >= lb; j--)
+                else
                 {
-                    if (rising ? src[j] <= armLevel : src[j] >= armLevel)
-                    { idx = i; return true; }
+                    if (rising ? src[i] >= fireLevel : src[i] <= fireLevel)
+                    { idx = i; return true; }   // premier front valide → stop
                 }
             }
             return false;
