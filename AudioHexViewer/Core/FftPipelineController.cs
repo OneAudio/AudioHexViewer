@@ -59,10 +59,10 @@ namespace AudioHexViewer.Core
             // 1) Arrêter le worker existant
             StopWorker();
 
-            // 2) (Re)créer le ring — capacité = max(6 secondes, 6×N)
-            //    Règle : absorber les pics de latence FFT sans manquer de données.
-            //    À 768 kHz N=1 M : 6×1 M = 6 M samples ≈ 48 Mo (acceptable).
-            int ringCapacity = Math.Max(sampleRate * 6, fftSize * 6);
+            // 2) (Re)créer le ring — capacité = max(35 secondes, 6×N)
+            //    35s couvre le pire cas scope : 1s/div × 10 divs × 3 (search) ≈ 32s à n'importe quel fs.
+            //    6×N garantit que le worker FFT ne se bloque jamais en attente de données.
+            int ringCapacity = Math.Max(sampleRate * 35, fftSize * 6);
             _ring = new RingBufferStereoFloat(ringCapacity);
 
             // 3) Vider la queue (évite le mélange ancien/nouveau N)

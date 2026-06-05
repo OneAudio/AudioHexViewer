@@ -807,17 +807,17 @@ namespace AudioHexViewer
             int td=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
             int win=Math.Max(8,(int)(TimeDivMs[td]*H_DIVS/1000.0*sr));
             int pre=(int)(win*PreTrig);
-            // Cap à 2M samples pour éviter les allocations massives aux grandes bases de temps
-            const int MAX_SEARCH = 2_000_000;
-            int search=Math.Min(win*3+pre+4, Math.Min(ring.Capacity-1, MAX_SEARCH));
+            int search=Math.Min(win*3+pre+4, ring.Capacity-1);
 
             long absEnd=ring.AbsWrite;
             if(absEnd-search<0){pnlScope.Invalidate();return;}
             // Buffer trop petit pour cette base de temps ?
-            int minCap=win+(win-pre)+2;  // pre + post minimum
+            // minCap = pre + post minimum pour pouvoir extraire win samples autour du trigger
+            int minCap=win+(win-pre)+2;
             if(ring.Capacity < minCap)
             {
-                lblTrigStatus.Text=$"BUFFER < {minCap/sr:.0}s";
+                double needSec = minCap / (double)sr;
+                lblTrigStatus.Text=$"BUFFER<{needSec:F0}s";
                 lblTrigStatus.ForeColor=Color.Orange;
                 pnlScope.Invalidate(); return;
             }
