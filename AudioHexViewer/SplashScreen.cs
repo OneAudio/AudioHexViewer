@@ -8,7 +8,15 @@ namespace AudioHexViewer
     internal sealed class SplashScreen : Form
     {
         // ── Infos produit ─────────────────────────────────────────────────────
-        public const string AppVersion = "V 0.900";
+        public static string AppVersion
+        {
+            get
+            {
+                var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+                string ver = v != null ? $"V {v.Major}.{v.Minor}.{v.Build}" : "V 0.0.0";
+                return $"{ver}  build {BuildInfo.Timestamp}";
+            }
+        }
         public const string AppDate    = "01/2026";
         public const string AppTitle   = "AudioHexViewer";
         public const string AppSubLine = "Digital audio data Analyzer";
@@ -38,7 +46,13 @@ namespace AudioHexViewer
             catch { return null; }
         }
 
-        // ── Mode ─────────────────────────────────────────────────────────────
+        // ── Messages de statut ────────────────────────────────────────────────
+        private string _statusMessage = "Initializing...";
+        public void SetStatus(string message)
+        {
+            _statusMessage = message;
+            Invoke(() => Invalidate());
+        }
         private readonly bool _isAboutMode;   // true = boîte About (pas de barre de chargement)
 
         // ── Animation (mode splash seulement) ────────────────────────────────
@@ -89,15 +103,15 @@ namespace AudioHexViewer
                 _timer = new System.Windows.Forms.Timer { Interval = 30 };
                 _timer.Tick += (_, _) =>
                 {
-                    if (_progress < 0.85f)
+                    if (!_readyToClose && _progress < 0.85f)
                         _progress = Math.Min(0.85f, _progress + 0.016f);
+                    else if (_readyToClose && _progress < 1f)
+                        _progress = Math.Min(1f, _progress + 0.022f);
                     _glowPos = (_glowPos + 0.022f) % 1f;
                     _dots    = (_dots + 1) % (4 * 8);
                     Invalidate();
-                    if (_readyToClose && _progress >= 0.85f)
+                    if (_readyToClose && _progress >= 1f)
                     {
-                        _progress = 1f;
-                        Invalidate();
                         _timer!.Stop();
                         var t = new System.Windows.Forms.Timer { Interval = 200 };
                         t.Tick += (_, _) => { t.Stop(); t.Dispose(); Close(); };
@@ -108,7 +122,12 @@ namespace AudioHexViewer
             }
         }
 
-        public void SignalReady() => _readyToClose = true;
+        public void SignalReady()
+        {
+            _statusMessage = "Ready !";
+            Invalidate();
+            _readyToClose = true;
+        }
 
         // Listes mises en cache pendant le scan — réutilisées à chaque ouverture de Devices
         public static List<NAudio.CoreAudioApi.MMDevice> CachedInputs  { get; } = new();
@@ -119,6 +138,10 @@ namespace AudioHexViewer
         /// <summary>Lance le scan audio pendant l'affichage du splash.</summary>
         public void RunAudioScan(int[] srOptions)
         {
+            _statusMessage = "Detecting audio devices...";
+            Invalidate();
+            Application.DoEvents();
+
             CachedInputs.Clear();
             CachedOutputs.Clear();
             List<NAudio.CoreAudioApi.MMDevice> all = new();
@@ -138,6 +161,10 @@ namespace AudioHexViewer
             }
             catch { return; }
 
+            _statusMessage = $"Scanning audio formats ({all.Count} devices)...";
+            Invalidate();
+            Application.DoEvents();
+
             int total = all.Count * srOptions.Length;
             int done  = 0;
 
@@ -146,6 +173,13 @@ namespace AudioHexViewer
                 // Pré-cache FriendlyName
                 if (!CachedNames.ContainsKey(device.ID))
                     CachedNames[device.ID] = device.FriendlyName;
+
+                string shortName = device.FriendlyName.Length > 30
+                    ? device.FriendlyName[..30] + "…"
+                    : device.FriendlyName;
+                _statusMessage = $"Scanning: {shortName}";
+                Invalidate();
+                Application.DoEvents();
 
                 // ── Phase 1 : IsFormatSupported pour chaque SR ──────────────
                 int confirmedPhase1 = 0;
@@ -199,11 +233,14 @@ namespace AudioHexViewer
 
                         AudioHexViewer.DevicesDialog.SrCache[key] = ok;
                         done++;
-                        if (total > 0) _progress = Math.Min(0.95f, (float)done / total);
+                        if (total > 0) _progress = Math.Min(0.85f, (float)done / total);
                         Application.DoEvents();
                     }
                 }
             }
+            _statusMessage = "Loading interface...";
+            Invalidate();
+            Application.DoEvents();
         }
 
         // Pas de réflexion — on crée un MMDevice FRAIS via GetDevice(id)
@@ -332,6 +369,17 @@ namespace AudioHexViewer
                 g.FillRectangle(br, rc);
             }
 
+            // Contour lumineux — épais, calé sur le bord extérieur pour masquer le débordement de l'image
+            int rr2 = 14;
+            using var borderPath = new GraphicsPath();
+            borderPath.AddArc(0, 0, rr2*2, rr2*2, 180, 90);
+            borderPath.AddArc(rc.Width-rr2*2, 0, rr2*2, rr2*2, 270, 90);
+            borderPath.AddArc(rc.Width-rr2*2, rc.Height-rr2*2, rr2*2, rr2*2, 0, 90);
+            borderPath.AddArc(0, rc.Height-rr2*2, rr2*2, rr2*2, 90, 90);
+            borderPath.CloseFigure();
+            using var borderPen = new Pen(Color.FromArgb(180, 140, 200, 255), 4f);
+            g.DrawPath(borderPen, borderPath);
+
             // "AHV" — Calibri Gras +30%
             float ahvY = 5f;
             using var fAhv = new Font("Calibri", 75f, FontStyle.Bold, GraphicsUnit.Point);
@@ -390,8 +438,10 @@ namespace AudioHexViewer
             // (en mode About, affichée séparément ci-dessous)
             if (_isAboutMode)
             {
-                float versionY = barY + 8f;
                 g.DrawString(AppVersion, fVn, bVn, rc.Width - vw - 6f, rc.Height - 18f);
+                string copy = $"© {DateTime.Now.Year} OnE Audio Projects";
+                using var bC = new SolidBrush(SubCol);
+                g.DrawString(copy, fVn, bC, 6f, rc.Height - 18f);
             }
 
             if (!_isAboutMode)
@@ -423,17 +473,19 @@ namespace AudioHexViewer
                         g.FillPath(gBr, gP);
                     }
                 }
-                // "Loading..." — centré sous la barre
-                int dc = (_dots / 8) % 4;
-                string lt = "Loading" + new string('.', dc);
+                // Message de statut — centré sous la barre
                 using var fL = new Font("Calibri", 9f, FontStyle.Regular, GraphicsUnit.Point);
                 using var bL = new SolidBrush(SubCol);
-                float lw2 = g.MeasureString(lt, fL).Width;
+                float lw2 = g.MeasureString(_statusMessage, fL).Width;
                 float loadingY = by + bh + 5f;
-                g.DrawString(lt, fL, bL, rc.Width/2f - lw2/2f, loadingY);
-                // Version sous Loading, alignée à droite
+                g.DrawString(_statusMessage, fL, bL, rc.Width/2f - lw2/2f, loadingY);
+                // Version sous le message, alignée à droite
                 float versionY = loadingY + fL.GetHeight(g) + 2f;
                 g.DrawString(AppVersion, fVn, bVn, rc.Width - vw - 6f, versionY);
+                // Copyright en bas à gauche — même taille que version
+                string copy = $"© {DateTime.Now.Year} OnE Audio Projects";
+                using var bC = new SolidBrush(SubCol);
+                g.DrawString(copy, fVn, bC, 6f, versionY);
             }
         }
 

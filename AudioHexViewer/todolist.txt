@@ -5,10 +5,9 @@ Le 30/05/2026
 
 Liste des petites corrections à faire :
 2- Ajouter un bouton de vérouillage de l'espace x entre les curseurs (scope) 
-9- Changer la police du logo AHV.
-10- Ajouter un système de versioning qui s'incrément dans le splashscreen.
 13- Voir s'il faut garder "data record 1s" ?
 16- Ajouter une fonction de holdoff dans l'oscilloscope (scope)
+17- COrriger la durée d'acquisition qui déborde sur le bouton OK et l'ajouter aux autres onglets.
 
 
 A faire aussi Aprés :
