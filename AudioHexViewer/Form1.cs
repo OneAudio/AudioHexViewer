@@ -198,7 +198,7 @@ namespace AudioHexViewer
 
         // --- FFT Progress Ticker (UX) ---
         // Reset à chaque affichage de courbe, animation autonome sur une durée = hop/Fs
-        private System.Windows.Forms.Label? _lblFftTicker;
+        private SpectrumControl? _spectrumCtlTicker;
         private double _fftTickerPeriodSec = 0.0;
         private double _fftTickerStartSec = 0.0;
         private bool _fftTickerEnabled = false;
@@ -2124,8 +2124,7 @@ namespace AudioHexViewer
 
                 spectrumControl.UpdateSampleRate(sampleRate);
 
-                _lblFftTicker = spectrumControl.FftTickerLabel;
-                _lblFftTicker.Visible = false; // optionnel
+                _spectrumCtlTicker = spectrumControl;
                 // THD : logique + persistance (UI lives in SpectrumControl) (button + checkbox in the Spectrum tab)
                 spectrumControl.ThdEnabledChanged += enabled => ApplyThdEnabled(enabled);
                 spectrumControl.ThdSettingsRequested += () => ShowThdSettings();

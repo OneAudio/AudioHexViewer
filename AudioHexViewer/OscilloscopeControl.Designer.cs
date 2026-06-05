@@ -245,16 +245,15 @@ namespace AudioHexViewer
             btnC2Lock.Location=new Point(897,60); btnC2Lock.Margin=new Padding(0); btnC2Lock.Size=new Size(34,24); btnC2Lock.TabIndex=27;
             btnC2Lock.Text="Trk"; btnC2Lock.UseVisualStyleBackColor=true;
 
-                        lblTrigStatus.Location=new Point(1060,54); lblTrigStatus.Size=new Size(70,18);
+            lblTrigStatus.Location=new Point(934,60); lblTrigStatus.Size=new Size(80,18);
             lblTrigStatus.Text=""; lblTrigStatus.Font=new Font("Segoe UI",8.5f,FontStyle.Bold);
             lblTrigStatus.TextAlign=System.Drawing.ContentAlignment.MiddleCenter;
             lblTrigStatus.ForeColor=System.Drawing.Color.Gray;
 
             // ── RUN ───────────────────────────────────────────────────────────
             btnRun.Anchor  =System.Windows.Forms.AnchorStyles.Top|System.Windows.Forms.AnchorStyles.Right;
-            btnRun.Location=new Point(1060,10); btnRun.Size=new Size(70,40);
+            btnRun.Location=new Point(1050,6); btnRun.Size=new Size(82,76);
             btnRun.Text="▶  RUN"; btnRun.BackColor=Color.SeaGreen; btnRun.ForeColor=Color.White;
-            btnRun.TextAlign=System.Drawing.ContentAlignment.MiddleCenter;
             btnRun.FlatStyle=FlatStyle.Flat; btnRun.FlatAppearance.BorderSize=0;
             btnRun.Font=new Font("Segoe UI",10f,FontStyle.Bold); btnRun.TabIndex=14;
             btnRun.UseVisualStyleBackColor=false;

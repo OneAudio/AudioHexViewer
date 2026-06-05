@@ -69,6 +69,56 @@ namespace AudioHexViewer
 
         private System.Windows.Forms.Timer? liveTimer;
         private bool isLive;
+
+        // ── Acquisition progress (AcqButtonPainter) ───────────────────────────
+        private int    _acqPct     = 0;
+        private bool   _acqVisible = false;
+        private string _acqTimeStr = "";
+
+        public void SetAcqProgress(int pct, bool visible, string timeStr)
+        {
+            _acqPct     = pct;
+            _acqVisible = visible;
+            _acqTimeStr = timeStr;
+            btnRun.Invalidate();
+        }
+
+        // Stopwatch pour animer la barre pendant l'acquisition
+        private readonly System.Diagnostics.Stopwatch _acqSw = new();
+        private System.Windows.Forms.Timer?           _acqUiTimer;
+        private double _acqPeriodSec = 0.0;
+
+        private void StartAcqTicker(double periodSec)
+        {
+            _acqPeriodSec = periodSec;
+            _acqSw.Restart();
+            bool show = periodSec >= 1.0;
+            string timeStr = show ? $"≈ {periodSec:F2} s" : $"≈ {periodSec * 1000:F0} ms";
+            SetAcqProgress(0, show, timeStr);
+
+            if (_acqUiTimer == null)
+            {
+                _acqUiTimer = new System.Windows.Forms.Timer { Interval = 50 };
+                _acqUiTimer.Tick += (_, _) => TickAcqProgress();
+            }
+            _acqUiTimer.Start();
+        }
+
+        private void StopAcqTicker()
+        {
+            _acqUiTimer?.Stop();
+            _acqSw.Reset();
+            SetAcqProgress(100, false, _acqTimeStr);
+        }
+
+        private void TickAcqProgress()
+        {
+            if (_acqPeriodSec <= 0) return;
+            double p = Math.Clamp(_acqSw.Elapsed.TotalSeconds / _acqPeriodSec, 0.0, 1.0);
+            int pct = (int)Math.Round(p * 100.0);
+            SetAcqProgress(pct, _acqVisible, _acqTimeStr);
+            if (pct >= 100) _acqSw.Restart(); // repart pour le cycle suivant
+        }
         private bool _isNormalized;   // true quand ChkNorm est coché (mode PDF)
         private bool   _isScaleLocked;
         private double _lockedYMin, _lockedYMax, _lockedYInterval;
@@ -250,6 +300,11 @@ namespace AudioHexViewer
             {
                 int step = _hopSamples > 0 ? _hopSamples : GetWindowSamples();
                 liveTimer.Interval = (int)Math.Max(10, Math.Round(step * 1000.0 / _sampleRate));
+                if (isLive)
+                {
+                    double periodSec = step / (double)_sampleRate;
+                    StartAcqTicker(periodSec);
+                }
             }
         }
 
@@ -258,6 +313,11 @@ namespace AudioHexViewer
             if (samples <= 0) return;
             _forcedWindowSamples = samples;
             UpdateWindowInfo();
+            if (isLive && _sampleRate > 0)
+            {
+                int step = _hopSamples > 0 ? _hopSamples : GetWindowSamples();
+                StartAcqTicker(step / (double)_sampleRate);
+            }
         }
 
         public void StartFromRun(bool onceMode)
@@ -269,18 +329,19 @@ namespace AudioHexViewer
                 isLive = false;
                 liveTimer?.Stop();
                 UpdateRunButtonAppearance();
+                StopAcqTicker();
             }
             else
             {
+                int step = _hopSamples > 0 ? _hopSamples : GetWindowSamples();
+                double periodSec = step / (double)_sampleRate;
                 if (liveTimer != null)
-                {
-                    int step = _hopSamples > 0 ? _hopSamples : GetWindowSamples();
                     liveTimer.Interval = (int)Math.Max(10, Math.Round(step * 1000.0 / _sampleRate));
-                }
                 isLive = true;
                 AcquireOnce();
                 liveTimer?.Start();
                 UpdateRunButtonAppearance();
+                StartAcqTicker(periodSec);
             }
         }
 
@@ -289,6 +350,7 @@ namespace AudioHexViewer
             isLive = false;
             liveTimer?.Stop();
             UpdateRunButtonAppearance();
+            StopAcqTicker();
         }
 
         // ══════════════════════════════════════════════════════════════════════
@@ -349,17 +411,9 @@ namespace AudioHexViewer
 
             UpdateWindowInfo();
 
-            // Owner-draw btnRun : même rendu que l'Oscilloscope
+            // Owner-draw btnRun : T ACQ + barre + RUN/STOP (AcqButtonPainter partagé)
             btnRun.Paint += (s, e) =>
-            {
-                var btn = (Button)s!;
-                e.Graphics.Clear(btn.BackColor);
-                TextRenderer.DrawText(e.Graphics, btn.Text, btn.Font,
-                    btn.ClientRectangle, btn.ForeColor,
-                    System.Windows.Forms.TextFormatFlags.HorizontalCenter |
-                    System.Windows.Forms.TextFormatFlags.VerticalCenter   |
-                    System.Windows.Forms.TextFormatFlags.SingleLine);
-            };
+                AcqButtonPainter.Paint(e.Graphics, (Button)s!, _acqPct, _acqVisible, _acqTimeStr);
 
             btnRun.Click += (s, e) =>
             {

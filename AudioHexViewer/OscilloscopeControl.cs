@@ -119,6 +119,57 @@ namespace AudioHexViewer
 
         // ── État ──────────────────────────────────────────────────────────────
         private bool _isRunning, _isArmed, _lastTrigOk;
+
+        // ── Acquisition progress (AcqButtonPainter) ───────────────────────────
+        private int    _acqPct     = 0;
+        private bool   _acqVisible = false;
+        private string _acqTimeStr = "";
+
+        public void SetAcqProgress(int pct, bool visible, string timeStr)
+        {
+            _acqPct     = pct;
+            _acqVisible = visible;
+            _acqTimeStr = timeStr;
+            btnRun.Invalidate();
+        }
+
+        private readonly System.Diagnostics.Stopwatch _acqSw = new();
+        private System.Windows.Forms.Timer?           _acqUiTimer;
+        private double _acqPeriodSec = 0.0;
+
+        private void StartAcqTicker()
+        {
+            int td = Math.Clamp(cmbTimediv.SelectedIndex, 0, TimeDivMs.Length - 1);
+            double periodSec = TimeDivMs[td] * H_DIVS / 1000.0;
+            _acqPeriodSec = periodSec;
+            _acqSw.Restart();
+            bool show = periodSec >= 1.0;
+            string timeStr = show ? $"≈ {periodSec:F2} s" : $"≈ {periodSec * 1000:F0} ms";
+            SetAcqProgress(0, show, timeStr);
+
+            if (_acqUiTimer == null)
+            {
+                _acqUiTimer = new System.Windows.Forms.Timer { Interval = 50 };
+                _acqUiTimer.Tick += (_, _) => TickAcqProgress();
+            }
+            _acqUiTimer.Start();
+        }
+
+        private void StopAcqTicker()
+        {
+            _acqUiTimer?.Stop();
+            _acqSw.Reset();
+            SetAcqProgress(100, false, _acqTimeStr);
+        }
+
+        private void TickAcqProgress()
+        {
+            if (_acqPeriodSec <= 0) return;
+            double p = Math.Clamp(_acqSw.Elapsed.TotalSeconds / _acqPeriodSec, 0.0, 1.0);
+            int pct = (int)Math.Round(p * 100.0);
+            SetAcqProgress(pct, _acqVisible, _acqTimeStr);
+            if (pct >= 100) _acqSw.Restart();
+        }
         private bool _isExporting;   // true pendant DrawToBitmap → fond blanc
         private int  _blinkCounter; private bool _blinkState;
 
@@ -191,15 +242,10 @@ namespace AudioHexViewer
 
             btnRun.Click += BtnRun_Click;
             btnRun.Paint += (s, e) =>
-            {
-                var b = (Button)s!;
-                e.Graphics.Clear(b.BackColor);
-                TextRenderer.DrawText(e.Graphics, b.Text, b.Font, b.ClientRectangle, b.ForeColor,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
-            };
+                AcqButtonPainter.Paint(e.Graphics, (Button)s!, _acqPct, _acqVisible, _acqTimeStr);
 
             cmbTimediv.SelectedIndexChanged += (_, _) =>
-            { UpdateRollCheckbox(); if (_isRunning) pnlScope.Invalidate(); else RefreshStoppedView(); };
+            { UpdateRollCheckbox(); if (_isRunning) { pnlScope.Invalidate(); StartAcqTicker(); } else RefreshStoppedView(); };
 
             // Couplage (DC/AC/OFF) → redraw uniquement, PAS de UpdateGainCombos
             // (UpdateGainCombos réinitialise les indices gain → bug ×500)
@@ -676,10 +722,11 @@ namespace AudioHexViewer
             RunRequested?.Invoke();
             SetRunState(true); SetArmedState(false);
             _timer.Start();
+            StartAcqTicker();
         }
 
         private void StopOscillo()
-        { _timer.Stop(); SetRunState(false); lblTrigStatus.Text=""; RunStateChanged?.Invoke(false); }
+        { _timer.Stop(); SetRunState(false); lblTrigStatus.Text=""; RunStateChanged?.Invoke(false); StopAcqTicker(); }
 
         private void SetRunState(bool on)
         {

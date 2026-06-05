@@ -16,6 +16,9 @@ namespace AudioHexViewer
         private void InitializeComponent()
         {
             panelTop            = new Panel();
+            pnlAcq              = new Panel();
+            pbAcq               = new ProgressBar();
+            lblAcqPct           = new Label();
             lblFftTicker        = new Label();
             lblCursors          = new Label();
             label1              = new Label();
@@ -147,8 +150,8 @@ namespace AudioHexViewer
                 lblWindowInfo, tlpPhi,
                 // Separators
                 sep1, sep2, sep3, sep4, sep5,
-                // Right: T ACQ + RUN
-                lblAvgProgress, label1, lblFftTicker, btnRun
+                // Right: RUN (tout-en-un : T ACQ + barre + RUN/STOP owner-drawn)
+                lblAvgProgress, btnRun
             });
 
             // ── 1. CHANNEL  (x=8) ────────────────────────────────────────────
@@ -454,39 +457,24 @@ namespace AudioHexViewer
             btnPhiUnwrap.Text       = "Uw";
             btnPhiUnwrap.UseVisualStyleBackColor = true;
 
-            // ── 10. T ACQ (anchored right, x=1012) ───────────────────────────
-            label1.Anchor    = AnchorStyles.Top | AnchorStyles.Right;
-            label1.AutoSize  = true;
-            label1.Font      = new Font("Segoe UI Semibold", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            label1.Location  = new Point(1012, 14);
-            label1.Name      = "label1";
-            label1.TabIndex  = 32;
-            label1.Text      = "T ACQ:";
+            label1.Visible      = false;
+            label1.Name         = "label1";
+            lblWindowInfo.Visible = false;
+            lblWindowInfo.Name  = "lblWindowInfo";
+            lblFftTicker.Visible = false;
+            lblFftTicker.Name   = "lblFftTicker";
+            pnlAcq.Visible      = false;
+            pnlAcq.Name         = "pnlAcq";
+            pbAcq.Name          = "pbAcq";
+            lblAcqPct.Name      = "lblAcqPct";
 
-            lblWindowInfo.Anchor    = AnchorStyles.Top | AnchorStyles.Right;
-            lblWindowInfo.AutoSize  = true;
-            lblWindowInfo.Font      = new Font("Segoe UI Semibold", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            lblWindowInfo.ForeColor = SystemColors.HotTrack;
-            lblWindowInfo.Location  = new Point(1006, 36);
-            lblWindowInfo.Name      = "lblWindowInfo";
-            lblWindowInfo.TabIndex  = 8;
-            lblWindowInfo.Text      = "≈ 0.00 s";
-
-            lblFftTicker.Anchor    = AnchorStyles.Top | AnchorStyles.Right;
-            lblFftTicker.AutoSize  = true;
-            lblFftTicker.Location  = new Point(1093, 52);
-            lblFftTicker.Name      = "lblFftTicker";
-            lblFftTicker.TabIndex  = 35;
-            lblFftTicker.Text      = "\"\"";
-
-            // ── 11. RUN (anchored right, x=1060) ─────────────────────────────
+            // ── 11. RUN/STOP tout-en-un : T ACQ + barre + label (anchored right) ──
             btnRun.Anchor   = AnchorStyles.Top | AnchorStyles.Right;
-            btnRun.Location = new Point(1060, 10);
-            btnRun.Size     = new Size(70, 40);
+            btnRun.Location = new Point(1050, 6);
+            btnRun.Size     = new Size(82, 76);
             btnRun.Text     = "▶  RUN";
             btnRun.BackColor = Color.SeaGreen;
             btnRun.ForeColor = Color.White;
-            btnRun.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             btnRun.FlatStyle = FlatStyle.Flat;
             btnRun.FlatAppearance.BorderSize = 0;
             btnRun.Font      = new Font("Segoe UI", 10f, FontStyle.Bold);
@@ -676,6 +664,9 @@ namespace AudioHexViewer
         private Label    label1;
         private Label    lblCursors;
         private Label    lblFftTicker;
+        private Panel    pnlAcq;
+        private ProgressBar pbAcq;
+        private Label    lblAcqPct;
         private Button   btnOverlay;
         private CheckBox chkDcMode;
 

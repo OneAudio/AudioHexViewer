@@ -157,7 +157,20 @@ namespace AudioHexViewer
         private Color LabelMajorColor => NegC(_colors.LabelMajorArgb);
         private Color LabelMinorColor => NegC(_colors.LabelMinorArgb);
 
-        public Label FftTickerLabel => lblFftTicker;
+        // ── Acquisition progress state (driven by Form1.FftTicker) ───────────
+        private int    _acqPct     = 0;
+        private bool   _acqVisible = false;
+        private string _acqTimeStr = "";
+
+        public void SetAcqProgress(int pct, bool visible, string timeStr)
+        {
+            _acqPct     = pct;
+            _acqVisible = visible;
+            _acqTimeStr = timeStr;
+            btnRun.Invalidate();
+        }
+
+        public Label FftTickerLabel => lblFftTicker;  // kept for compat (unused)
 
 
         private Color InfoTextColor => NegC(_colors.InfoTextArgb);
@@ -665,17 +678,9 @@ namespace AudioHexViewer
         {
             InitializeComponent();
 
-            // Owner-draw btnRun : même rendu que l'Oscilloscope (évite la corruption
-            // du bouton via WM_PAINT natif quand un ComboBox dropdown s'ouvre).
+            // Owner-draw btnRun : T ACQ + barre progression + RUN/STOP en un seul bloc GDI+
             btnRun.Paint += (s, e) =>
-            {
-                var btn = (Button)s!;
-                e.Graphics.Clear(btn.BackColor);
-                TextRenderer.DrawText(e.Graphics, btn.Text, btn.Font,
-                    btn.ClientRectangle, btn.ForeColor,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-                    TextFormatFlags.SingleLine);
-            };
+                AcqButtonPainter.Paint(e.Graphics, (Button)s!, _acqPct, _acqVisible, _acqTimeStr);
 
 
             EnsureVoltLayoutInit();

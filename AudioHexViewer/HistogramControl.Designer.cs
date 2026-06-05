@@ -198,17 +198,16 @@ namespace AudioHexViewer
             sep3.Size = new Size(0, 0);
             sep4.Size = new Size(0, 0);
 
-                        // ── RUN (anchored right) ──────────────────────────────────────────
+            // ── RUN (anchored right) ──────────────────────────────────────────
             btnRun.Anchor    = AnchorStyles.Top | AnchorStyles.Right;
             btnRun.FlatStyle = FlatStyle.Flat;
             btnRun.FlatAppearance.BorderSize = 0;
             btnRun.Font      = new Font("Segoe UI", 10f, FontStyle.Bold);
-            btnRun.Size      = new Size(70, 40);
-            btnRun.Location  = new Point(1060, 10);
+            btnRun.Size      = new Size(82, 76);
+            btnRun.Location  = new Point(1050, 6);
             btnRun.Text      = "▶  RUN";
             btnRun.BackColor = Color.SeaGreen;
             btnRun.ForeColor = Color.White;
-            btnRun.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             btnRun.UseVisualStyleBackColor = false;
             btnRun.Name      = "btnRun";
 
