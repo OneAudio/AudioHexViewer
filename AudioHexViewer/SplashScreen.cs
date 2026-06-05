@@ -8,7 +8,7 @@ namespace AudioHexViewer
     internal sealed class SplashScreen : Form
     {
         // ── Infos produit ─────────────────────────────────────────────────────
-        public const string AppVersion = "V0.9";
+        public const string AppVersion = "V 0.900";
         public const string AppDate    = "01/2026";
         public const string AppTitle   = "AudioHexViewer";
         public const string AppSubLine = "Digital audio data Analyzer";
@@ -20,6 +20,23 @@ namespace AudioHexViewer
         private static readonly Color AccentCol= Color.FromArgb(0, 180, 255);
         private static readonly Color SubCol   = Color.FromArgb(180, 200, 230);
         private static readonly Color DimCol   = Color.FromArgb(80,  110, 160);
+
+        // ── Image de fond ─────────────────────────────────────────────────────
+        private static readonly System.Drawing.Image? _bgImage = LoadBgImage();
+        private static System.Drawing.Image? LoadBgImage()
+        {
+            try
+            {
+                string path = System.IO.Path.Combine(
+                    System.IO.Path.GetDirectoryName(
+                        System.Reflection.Assembly.GetExecutingAssembly().Location) ?? "",
+                    "splash_bg.png");
+                if (System.IO.File.Exists(path))
+                    return System.Drawing.Image.FromFile(path);
+                return null;
+            }
+            catch { return null; }
+        }
 
         // ── Mode ─────────────────────────────────────────────────────────────
         private readonly bool _isAboutMode;   // true = boîte About (pas de barre de chargement)
@@ -36,47 +53,33 @@ namespace AudioHexViewer
         {
             _isAboutMode = aboutMode;
 
-            FormBorderStyle = aboutMode ? FormBorderStyle.FixedDialog : FormBorderStyle.None;
+            FormBorderStyle = FormBorderStyle.None;
             StartPosition   = FormStartPosition.CenterScreen;
-            // ~30% plus petit : 480×300 → 340×212
-            ClientSize      = new Size(340, aboutMode ? 230 : 212);
+            ClientSize      = new Size(340, 230);
             BackColor       = Color.FromArgb(0, 0, 64);
             ShowInTaskbar   = false;
-            TopMost         = !aboutMode;
+            TopMost         = true;
             DoubleBuffered  = true;
-            Text            = aboutMode ? "About" : "";
+            Text            = "";
             MaximizeBox     = false;
             MinimizeBox     = false;
 
-            if (!aboutMode)
+            // Coins arrondis pour les deux modes
+            int rr = 14;
+            var path = new GraphicsPath();
+            path.AddArc(0, 0, rr*2, rr*2, 180, 90);
+            path.AddArc(Width-rr*2, 0, rr*2, rr*2, 270, 90);
+            path.AddArc(Width-rr*2, Height-rr*2, rr*2, rr*2, 0, 90);
+            path.AddArc(0, Height-rr*2, rr*2, rr*2, 90, 90);
+            path.CloseFigure();
+            Region = new Region(path);
+
+            if (aboutMode)
             {
-                // Coins arrondis (splash seulement)
-                int rr = 14;
-                var path = new GraphicsPath();
-                path.AddArc(0, 0, rr*2, rr*2, 180, 90);
-                path.AddArc(Width-rr*2, 0, rr*2, rr*2, 270, 90);
-                path.AddArc(Width-rr*2, Height-rr*2, rr*2, rr*2, 0, 90);
-                path.AddArc(0, Height-rr*2, rr*2, rr*2, 90, 90);
-                path.CloseFigure();
-                Region = new Region(path);
-            }
-            else
-            {
-                // Mode About : bouton OK
-                var btn = new Button
-                {
-                    Text      = "OK",
-                    DialogResult = DialogResult.OK,
-                    Size      = new Size(80, 26),
-                    Left      = (ClientSize.Width - 80) / 2,
-                    Top       = ClientSize.Height - 38,
-                    FlatStyle = FlatStyle.Flat
-                };
-                btn.FlatAppearance.BorderColor = AccentCol;
-                btn.ForeColor = SubCol;
-                btn.BackColor = Color.FromArgb(0, 0, 64);
-                Controls.Add(btn);
-                AcceptButton = btn;
+                // Fermeture au clic ou Echap
+                MouseClick += (_, _) => Close();
+                KeyPreview  = true;
+                KeyDown    += (_, e) => { if (e.KeyCode == Keys.Escape) Close(); };
             }
 
             Paint += OnPaint;
@@ -320,39 +323,43 @@ namespace AudioHexViewer
             g.SmoothingMode     = SmoothingMode.AntiAlias;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
 
-            // Fond dégradé
-            using (var br = new LinearGradientBrush(rc, BgTop, BgBottom, 90f))
-                g.FillRectangle(br, rc);
-
-            // Halo central
-            int cx = rc.Width / 2, cy = rc.Height / 2 - 14;
-            using (var hPath = MakeCircle(cx, cy, 140))
-            using (var hBr = new PathGradientBrush(hPath))
+            // Image de fond
+            if (_bgImage != null)
+                g.DrawImage(_bgImage, rc);
+            else
             {
-                hBr.CenterColor    = Color.FromArgb(25, 0, 60, 140);
-                hBr.SurroundColors = new[] { Color.Transparent };
-                g.FillPath(hBr, hPath);
+                using var br = new LinearGradientBrush(rc, BgTop, BgBottom, 90f);
+                g.FillRectangle(br, rc);
             }
 
-            // "AHV" grand titre
-            float ahvY = 22f;
-            using var fAhv = new Font("Segoe UI", 62f, FontStyle.Bold, GraphicsUnit.Point);
+            // "AHV" — Calibri Gras +30%
+            float ahvY = 5f;
+            using var fAhv = new Font("Calibri", 75f, FontStyle.Bold, GraphicsUnit.Point);
             string ahv = "AHV";
-            float ahvW = g.MeasureString(ahv, fAhv).Width;
+            // MeasureString surestime la hauteur — on utilise GetHeight pour la hauteur réelle
+            float ahvW    = g.MeasureString(ahv, fAhv).Width;
+            float ahvH    = fAhv.GetHeight(g);   // hauteur de ligne réelle, sans padding GDI+
             // Ombre
             using (var sh = new SolidBrush(Color.FromArgb(55, 0, 0, 0)))
                 g.DrawString(ahv, fAhv, sh, rc.Width/2f - ahvW/2f + 2, ahvY + 2);
             // Texte dégradé
-            var tRect = new RectangleF(rc.Width/2f - 160, ahvY, 320, 80);
             using (var tBr = new LinearGradientBrush(
-                new PointF(0, ahvY), new PointF(0, ahvY + 70),
+                new PointF(0, ahvY), new PointF(0, ahvY + ahvH),
                 Color.FromArgb(190, 215, 255), Color.White))
                 g.DrawString(ahv, fAhv, tBr, rc.Width/2f - ahvW/2f, ahvY);
 
-            // Ligne de séparation
-            float sepY = 108f;
+            // "AudioHexViewer" — Century Gothic 17pt, collé juste sous AHV
+            using var fSub = new Font("Century Gothic", 17f, FontStyle.Regular, GraphicsUnit.Point);
+            using var bSub = new SolidBrush(SubCol);
+            float titleW  = g.MeasureString(AppTitle, fSub).Width;
+            float titleH  = fSub.GetHeight(g);
+            float titleY  = ahvY + ahvH - 28f;   // quasi collé
+            g.DrawString(AppTitle, fSub, bSub, rc.Width/2f - titleW/2f, titleY);
+
+            // Ligne — entre AudioHexViewer et OnE Audio Projects
+            float sepY = titleY + titleH + 4f;
             using (var lBr = new LinearGradientBrush(
-                new PointF(40, sepY), new PointF(rc.Width - 40, sepY),
+                new PointF(20, sepY), new PointF(rc.Width - 20, sepY),
                 Color.Transparent, Color.Transparent))
             {
                 lBr.InterpolationColors = new ColorBlend
@@ -361,29 +368,35 @@ namespace AudioHexViewer
                     Positions = new[] { 0f, 0.2f, 0.5f, 0.8f, 1f }
                 };
                 using var pen = new Pen(lBr, 1.2f);
-                g.DrawLine(pen, 40, sepY, rc.Width - 40, sepY);
+                g.DrawLine(pen, 20, sepY, rc.Width - 20, sepY);
             }
 
-            // Titre + version
-            using var fSub = new Font("Segoe UI Light", 13f, FontStyle.Regular, GraphicsUnit.Point);
-            using var bSub = new SolidBrush(SubCol);
-            string titleVer = $"{AppTitle}  {AppVersion}  {AppDate}";
-            float tw = g.MeasureString(titleVer, fSub).Width;
-            g.DrawString(titleVer, fSub, bSub, rc.Width/2f - tw/2f, 114f);
+            // "OnE Audio Projects" — Calibri 13pt
+            using var fVer = new Font("Calibri", 13f, FontStyle.Regular, GraphicsUnit.Point);
+            using var bVer = new SolidBrush(SubCol);
+            float authorH = fVer.GetHeight(g);
+            float authorY = sepY + 5f;
+            float wAuthor = g.MeasureString(AppAuthor, fVer).Width;
+            g.DrawString(AppAuthor, fVer, bVer, rc.Width/2f - wAuthor/2f, authorY);
 
-            // Sous-titres
-            using var fVer = new Font("Segoe UI", 8f, FontStyle.Regular, GraphicsUnit.Point);
-            using var bVer = new SolidBrush(DimCol);
-            foreach (var (txt, yOff) in new[] { (AppSubLine, 135f), (AppAuthor, 150f) })
+            // Barre de progression
+            float barY = authorY + authorH + 8f;
+
+            // Version — sous Loading, alignée à droite
+            using var fVn = new Font("Calibri", 9f, FontStyle.Regular, GraphicsUnit.Point);
+            using var bVn = new SolidBrush(SubCol);
+            float vw = g.MeasureString(AppVersion, fVn).Width;
+            // Version dessinée dans le bloc if (!_isAboutMode) sous Loading
+            // (en mode About, affichée séparément ci-dessous)
+            if (_isAboutMode)
             {
-                float ww = g.MeasureString(txt, fVer).Width;
-                g.DrawString(txt, fVer, bVer, rc.Width/2f - ww/2f, yOff);
+                float versionY = barY + 8f;
+                g.DrawString(AppVersion, fVn, bVn, rc.Width - vw - 6f, rc.Height - 18f);
             }
 
-            // Barre de chargement (splash seulement)
             if (!_isAboutMode)
             {
-                float bx = 40f, by = 170f, bw = rc.Width - 80f, bh = 4f;
+                float bx = 40f, by = barY, bw = rc.Width - 80f, bh = 4f;
                 // Fond
                 using var bgP = RoundRect(bx, by, bw, bh, 2f);
                 using var bgBr = new SolidBrush(Color.FromArgb(45, 100, 130, 180));
@@ -410,13 +423,17 @@ namespace AudioHexViewer
                         g.FillPath(gBr, gP);
                     }
                 }
-                // "Loading..."
+                // "Loading..." — centré sous la barre
                 int dc = (_dots / 8) % 4;
                 string lt = "Loading" + new string('.', dc);
-                using var fL = new Font("Segoe UI", 7.5f, FontStyle.Regular, GraphicsUnit.Point);
-                using var bL = new SolidBrush(DimCol);
+                using var fL = new Font("Calibri", 9f, FontStyle.Regular, GraphicsUnit.Point);
+                using var bL = new SolidBrush(SubCol);
                 float lw2 = g.MeasureString(lt, fL).Width;
-                g.DrawString(lt, fL, bL, rc.Width/2f - lw2/2f, 180f);
+                float loadingY = by + bh + 5f;
+                g.DrawString(lt, fL, bL, rc.Width/2f - lw2/2f, loadingY);
+                // Version sous Loading, alignée à droite
+                float versionY = loadingY + fL.GetHeight(g) + 2f;
+                g.DrawString(AppVersion, fVn, bVn, rc.Width - vw - 6f, versionY);
             }
         }
 
