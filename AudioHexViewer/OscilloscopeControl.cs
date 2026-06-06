@@ -75,6 +75,7 @@ namespace AudioHexViewer
             if (e.KeyCode == Keys.Down) { TrigLevelValue -= _trigInc; e.Handled = true; }
             if (e.KeyCode == Keys.Enter){ TrigLevelValue  = TrigLevelValue; pnlScope.Invalidate(); e.Handled = true; e.SuppressKeyPress = true; }
         }
+
         private void NudTrigLevel_Leave(object? s, EventArgs e)
         {
             TrigLevelValue = TrigLevelValue;   // reformat + clamp
@@ -119,6 +120,7 @@ namespace AudioHexViewer
 
         // ── État ──────────────────────────────────────────────────────────────
         private bool _isRunning, _isArmed, _lastTrigOk;
+        private bool _rollActive = false, _rollEnabled = false;
         private long _holdoffEndAbs = 0;   // AbsWrite position jusqu'où le hold-off est actif
 
         // ── Acquisition progress (AcqButtonPainter) ───────────────────────────
@@ -190,18 +192,34 @@ namespace AudioHexViewer
         private double _hpXprevL, _hpXprevR;   // x[n-1]
         private double _hpYprevL, _hpYprevR;   // y[n-1]
 
-        // ── Curseurs C1 / C2 ─────────────────────────────────────────────────
-        private bool  _c1Active, _c2Active;
-        private bool  _c1Frozen, _c2Frozen;          // figé par double-clic
-        private float _c1Frac = 1f/3, _c2Frac = 2f/3; // position [0,1] dans la fenêtre
-        private int   _c1Chan = 0, _c2Chan = 1;       // 0=Left 1=Right 2=Auto
-        private int   _cursorDragging;                 // 0=none 1=C1 2=C2
-
-        // ── verrouillage sample des curseurs ─────────────────────────────────
-        private bool _c1Locked   = false, _c2Locked   = false;
-        private int  _c1SampleIdx= -1,    _c2SampleIdx= -1;
-        private static readonly Color CC1 = Color.OrangeRed;
-        private static readonly Color CC2 = Color.DodgerBlue;
+        // ── Curseurs X / Y ───────────────────────────────────────────────────
+        // Canal  : 0=aucun  1=L (couleur voie L)  2=R (couleur voie R)
+        private int  _cursorChan  = 0;
+        private bool _xActive     = true;    // lignes verticales X1/X2
+        private bool _yActive     = false;   // lignes horizontales Y1/Y2
+        private bool _linkedX     = false;   // X1+X2 déplacés ensemble
+        private bool _linkedY     = false;   // Y1+Y2 déplacés ensemble
+        private bool _lblX        = false;   // étiquettes ΔX sur le graphe
+        private bool _lblY        = false;   // étiquettes ΔY sur le graphe
+        // Positions X [0,1] dans la fenêtre temporelle
+        private float _x1Frac = 1f/3f, _x2Frac = 2f/3f;
+        // Positions Y [0,1] dans la fenêtre verticale (0=bas, 1=haut)
+        private float _y1Frac = 1f/3f, _y2Frac = 2f/3f;
+        // Drag : 0=aucun 1=X1 2=X2 3=Y1 4=Y2 5=lbl-X1 6=lbl-X2 7=lbl-ΔX 8=lbl-Y1 9=lbl-Y2 10=lbl-ΔY
+        private int _cursorDragging = 0;
+        // Positions des étiquettes (fraction le long de l'axe du curseur)
+        private float _x1LblFracY=0.85f, _x2LblFracY=0.85f, _dxLblFracX=0.50f;  // ΔX moves horizontally
+        private float _y1LblFracX=0.04f, _y2LblFracX=0.04f, _dyLblFracY=0.50f;  // ΔY moves vertically
+        // Rectangles d'étiquettes mis à jour au dessin (hit detection)
+        private RectangleF _x1LblRect, _x2LblRect, _dxLblRect;
+        private RectangleF _y1LblRect, _y2LblRect, _dyLblRect;
+        // Voie curseur visible à l'écran (couplage non OFF)
+        private bool CursorChanVisible =>
+            _cursorChan==1 ? cmbCouplingL.SelectedIndex<2 :
+            _cursorChan==2 ? cmbCouplingR.SelectedIndex<2 : false;
+        // Couleur selon voie active
+        private Color CursorColor
+            => _cursorChan == 1 ? TraceColorL : _cursorChan == 2 ? TraceColorR : Color.Gray;
 
         // ── Décalage vertical des courbes ────────────────────────────────────
         // offset en unités normalisées : 0 = centre, +1 = monte d'une demi-hauteur × zoom
@@ -250,8 +268,8 @@ namespace AudioHexViewer
 
             // Couplage (DC/AC/OFF) → redraw uniquement, PAS de UpdateGainCombos
             // (UpdateGainCombos réinitialise les indices gain → bug ×500)
-            cmbCouplingL.SelectedIndexChanged += (_, _) => { if (!_isRunning) RefreshStoppedView(); else pnlScope.Invalidate(); };
-            cmbCouplingR.SelectedIndexChanged += (_, _) => { if (!_isRunning) RefreshStoppedView(); else pnlScope.Invalidate(); };
+            cmbCouplingL.SelectedIndexChanged += (_, _) => { UpdateCursorUI(); if (!_isRunning) RefreshStoppedView(); else pnlScope.Invalidate(); };
+            cmbCouplingR.SelectedIndexChanged += (_, _) => { UpdateCursorUI(); if (!_isRunning) RefreshStoppedView(); else pnlScope.Invalidate(); };
             cmbTrigMode.SelectedIndexChanged  += (_, _) => { };
             cmbTrigEdge.SelectedIndexChanged  += (_, _) => { };
             cmbTrigSrc.SelectedIndexChanged   += (_, _) => { if (_vdivMode) UpdateTrigLevelRange(); };
@@ -262,27 +280,25 @@ namespace AudioHexViewer
             cmbVdivL.SelectedIndexChanged     += (_, _) => { if (_vdivMode) UpdateTrigLevelRange(); pnlScope.Invalidate(); };
             cmbVdivR.SelectedIndexChanged     += (_, _) => { if (_vdivMode) UpdateTrigLevelRange(); pnlScope.Invalidate(); };
             cmbGrid.SelectedIndexChanged      += (_, _) => pnlScope.Invalidate();
-            chkRoll.CheckedChanged            += (_, _) => { };
-            chkVdiv.CheckedChanged            += ChkVdiv_Changed;
+            btnRoll.Click += (_, _) => { if(_rollEnabled){_rollActive=!_rollActive;UpdateRollButton();}  };
+            btnVdiv.Click += (_, _) => { _vdivMode=!_vdivMode; UpdateVdivButton(); ChkVdivLogic(); };
 
             pnlScope.Paint      += PnlScope_Paint;
             pnlScope.Resize     += (_, _) => pnlScope.Invalidate();
             pnlScope.MouseEnter += (_, _) => { if (!_isRunning) pnlScope.Focus(); };
             pnlScope.MouseWheel += PnlScope_MouseWheel;
 
-            // ── Curseurs ─────────────────────────────────────────────────────
-            btnC1.Click     += (_, _) => { _c1Active=!_c1Active; UpdateCursorButtons(); pnlScope.Invalidate(); };
-            btnC1Peak.Click  += (_, _) => PlaceCursorOnPeak(1);
-            btnC1Prev.Click  += (_, _) => FindAdjacentPeak(1,-1);
-            btnC1Next.Click  += (_, _) => FindAdjacentPeak(1,+1);
-            btnC1Lock.Click  += (_, _) => ToggleCursorLock(1);
-            btnC2.Click     += (_, _) => { _c2Active=!_c2Active; UpdateCursorButtons(); pnlScope.Invalidate(); };
-            btnC2Peak.Click  += (_, _) => PlaceCursorOnPeak(2);
-            btnC2Prev.Click  += (_, _) => FindAdjacentPeak(2,-1);
-            btnC2Next.Click  += (_, _) => FindAdjacentPeak(2,+1);
-            btnC2Lock.Click  += (_, _) => ToggleCursorLock(2);
-            btnC1Chan.Click += (_, _) => { _c1Chan=(_c1Chan+1)%3; UpdateCursorButtons(); pnlScope.Invalidate(); };
-            btnC2Chan.Click += (_, _) => { _c2Chan=(_c2Chan+1)%3; UpdateCursorButtons(); pnlScope.Invalidate(); };
+            // ── Curseurs X / Y ────────────────────────────────────────────────
+            btnCurL.Click    += (_, _) => { _cursorChan = _cursorChan==1 ? 0 : 1; UpdateCursorUI(); pnlScope.Invalidate(); };
+            btnCurR.Click    += (_, _) => { _cursorChan = _cursorChan==2 ? 0 : 2; UpdateCursorUI(); pnlScope.Invalidate(); };
+            btnCurX.Click    += (_, _) => { if (_xActive && !_yActive) return; _xActive=!_xActive; UpdateCursorUI(); pnlScope.Invalidate(); };
+            btnCurY.Click    += (_, _) => { if (_yActive && !_xActive) return; _yActive=!_yActive; UpdateCursorUI(); pnlScope.Invalidate(); };
+            btnLinkedX.Click += (_, _) => { _linkedX=!_linkedX; UpdateCursorUI(); };
+            btnLinkedY.Click += (_, _) => { _linkedY=!_linkedY; UpdateCursorUI(); };
+            btnSetX.Click    += (_, _) => OpenSetCursorDialog(isX: true);
+            btnSetY.Click    += (_, _) => OpenSetCursorDialog(isX: false);
+            btnLblX.Click    += (_, _) => { _lblX=!_lblX; UpdateCursorUI(); pnlScope.Invalidate(); };
+            btnLblY.Click    += (_, _) => { _lblY=!_lblY; UpdateCursorUI(); pnlScope.Invalidate(); };
 
             pnlScope.MouseDown        += PnlScope_CursorMouseDown;
             pnlScope.MouseDown        += PnlScope_OffsetMouseDown;
@@ -295,41 +311,57 @@ namespace AudioHexViewer
             pnlScope.MouseMove        += PnlScope_TrigPosMouseMove;
             pnlScope.MouseDown        += PnlScope_MinimapMouseDown;
             pnlScope.MouseMove        += PnlScope_MinimapMouseMove;
-            pnlScope.MouseDoubleClick += PnlScope_CursorDblClick;
             pnlScope.MouseDoubleClick += PnlScope_OffsetDblClick;
 
             btnScaleL.Click += (_, _) => { _scaleChannel=0; UpdateScaleButtons(); pnlScope.Invalidate(); };
             btnScaleR.Click += (_, _) => { _scaleChannel=1; UpdateScaleButtons(); pnlScope.Invalidate(); };
 
-            UpdateCursorButtons();
+            UpdateCursorUI();
             UpdateScaleButtons();
+            UpdateRollButton();
+            UpdateVdivButton();
 
             UpdateRollCheckbox();
             // Séparateurs visuels entre groupes (1px silver dans les gaps)
-            foreach (int sx in new[] { 258, 392, 608, 730 })
+            foreach (int sx in new[] { 258, 392, 608, 730, 770 })
                 panelTop.Controls.Add(new Label {
                     Location  = new System.Drawing.Point(sx, 6),
                     Size      = new System.Drawing.Size(1, 78),
                     BackColor = System.Drawing.Color.Silver,
                     Text      = ""
                 });
+            lblTrigStatus.Visible = false;
             SetRunState(false);
         }
 
         // ─────────────────────────────────────────────────────────────────────
         public void ApplySpectrumColorSettings(SpectrumColorSettings? c)
-        { _colors = c ?? SpectrumColorSettings.Defaults(); _colors.Normalize(); UpdateCursorButtons(); UpdateScaleButtons(); pnlScope.Invalidate(); }
+        { _colors = c ?? SpectrumColorSettings.Defaults(); _colors.Normalize(); UpdateCursorUI(); UpdateScaleButtons(); pnlScope.Invalidate(); }
         public void UpdateSampleRate(int sr) { _lastSR = sr; UpdateInfoLine(); }
 
         private bool IsAutoMode   => cmbTrigMode.SelectedIndex == 0;
         private bool IsSingleMode => cmbTrigMode.SelectedIndex == 2;
-        private bool IsRollMode   => chkRoll.Checked && chkRoll.Enabled;
+        private bool IsRollMode   => _rollActive && _rollEnabled;
 
         private void UpdateRollCheckbox()
         {
             bool can = cmbTimediv.SelectedIndex >= INDEX_ROLL_MIN;
-            chkRoll.Enabled = can;
-            if (!can) chkRoll.Checked = false;
+            _rollEnabled = can;
+            if (!can) _rollActive = false;
+            UpdateRollButton();
+        }
+        private void UpdateRollButton()
+        {
+            btnRoll.Enabled   = _rollEnabled;
+            btnRoll.BackColor = _rollActive ? Color.LightGreen : SystemColors.Control;
+            btnRoll.ForeColor = _rollActive ? Color.Black     : SystemColors.ControlText;
+            btnRoll.UseVisualStyleBackColor = !_rollActive;
+        }
+        private void UpdateVdivButton()
+        {
+            btnVdiv.BackColor = _vdivMode ? Color.LightGreen : SystemColors.Control;
+            btnVdiv.ForeColor = _vdivMode ? Color.Black     : SystemColors.ControlText;
+            btnVdiv.UseVisualStyleBackColor = !_vdivMode;
         }
 
         // ── Helpers curseurs ──────────────────────────────────────────────────
@@ -432,32 +464,29 @@ namespace AudioHexViewer
             btnScaleR.UseVisualStyleBackColor  = _scaleChannel!=1;
         }
 
-                private void UpdateCursorButtons()
+        private void UpdateCursorUI()
         {
-            string[] cn = {"Left","Right","Auto"};
-            // Exact Spectrum style: UseVisualStyleBackColor=false quand actif (fond vert)
-            btnC1.BackColor               = _c1Active ? Color.SeaGreen : SystemColors.Control;
-            btnC1.ForeColor               = _c1Active ? Color.White    : SystemColors.ControlText;
-            btnC1.UseVisualStyleBackColor  = !_c1Active;
-            btnC2.BackColor               = _c2Active ? Color.SeaGreen : SystemColors.Control;
-            btnC2.ForeColor               = _c2Active ? Color.White    : SystemColors.ControlText;
-            btnC2.UseVisualStyleBackColor  = !_c2Active;
-            btnC1Chan.Text = cn[_c1Chan];
-            btnC2Chan.Text = cn[_c2Chan];
-            // Couleur canal : Left=TraceColorL, Right=TraceColorR, Auto=neutre
-            btnC1Chan.BackColor = _c1Chan==0?TraceColorL:(_c1Chan==1?TraceColorR:SystemColors.Control);
-            btnC1Chan.ForeColor = _c1Chan==2?SystemColors.ControlText:Color.White;
-            btnC1Chan.UseVisualStyleBackColor = _c1Chan==2;
-            btnC2Chan.BackColor = _c2Chan==0?TraceColorL:(_c2Chan==1?TraceColorR:SystemColors.Control);
-            btnC2Chan.ForeColor = _c2Chan==2?SystemColors.ControlText:Color.White;
-            btnC2Chan.UseVisualStyleBackColor = _c2Chan==2;
-            // Boutons Lock (vert si verrouillé comme C1/C2)
-            btnC1Lock.BackColor              = _c1Locked ? Color.SeaGreen    : SystemColors.Control;
-            btnC1Lock.ForeColor              = _c1Locked ? Color.White       : SystemColors.ControlText;
-            btnC1Lock.UseVisualStyleBackColor= !_c1Locked;
-            btnC2Lock.BackColor              = _c2Locked ? Color.SeaGreen    : SystemColors.Control;
-            btnC2Lock.ForeColor              = _c2Locked ? Color.White       : SystemColors.ControlText;
-            btnC2Lock.UseVisualStyleBackColor= !_c2Locked;
+            void StyleBtn(Button b, bool on, Color onBack)
+            { b.BackColor=on?onBack:SystemColors.Control;
+              b.ForeColor=on?(onBack==Color.LightGreen?Color.Black:Color.White):SystemColors.ControlText;
+              b.UseVisualStyleBackColor=!on; }
+            bool lVis=cmbCouplingL.SelectedIndex<2, rVis=cmbCouplingR.SelectedIndex<2;
+            StyleBtn(btnCurL, _cursorChan==1, lVis?TraceColorL:Color.Gray);
+            StyleBtn(btnCurR, _cursorChan==2, rVis?TraceColorR:Color.Gray);
+            StyleBtn(btnCurX, _xActive, Color.LightGreen);
+            StyleBtn(btnCurY, _yActive, Color.LightGreen);
+            StyleBtn(btnLinkedX, _linkedX, Color.LightGreen);
+            StyleBtn(btnLinkedY, _linkedY, Color.LightGreen);
+            StyleBtn(btnLblX, _lblX, Color.LightGreen);
+            StyleBtn(btnLblY, _lblY, Color.LightGreen);
+            bool hasChan = _cursorChan > 0;
+            btnCurX.Enabled = btnCurY.Enabled = hasChan;
+            btnLinkedX.Enabled = hasChan && _xActive;
+            btnLinkedY.Enabled = hasChan && _yActive;
+            btnSetX.Enabled    = hasChan && _xActive;
+            btnSetY.Enabled    = hasChan && _yActive;
+            btnLblX.Enabled    = hasChan && _xActive;
+            btnLblY.Enabled    = hasChan && _yActive;
         }
 
         private RectangleF GetWaveRect()
@@ -468,143 +497,254 @@ namespace AudioHexViewer
                 sz.Width-MARGIN_LEFT-MEAS_W, sz.Height-MARGIN_TOP-MARGIN_BOTTOM);
         }
 
-        /// Retourne les données du curseur selon son réglage de voie.
-        private float[]? GetCursorData(int cursorIdx)
+        // ── Helpers curseurs X/Y ─────────────────────────────────────────────
+        private float[]?             GetActiveCursorData()
+            => _cursorChan==1?_dispL : _cursorChan==2?_dispR : null;
+        private float                GetActiveZoom()
+            => _cursorChan==1?_effZoomL : _cursorChan==2?_effZoomR : 1f;
+        private float                GetActiveOffset()
+            => _cursorChan==1?_offsetL : _cursorChan==2?_offsetR : 0f;
+        private (bool ok, double db) GetActiveCal()
         {
-            int ch   = GetCh();
-            bool hasL= _dispL!=null && (ch==0||ch==2);
-            bool hasR= _dispR!=null && (ch==1||ch==2);
-            int chan = cursorIdx==1 ? _c1Chan : _c2Chan;
-            return chan switch
-            {
-                0 => hasL ? _dispL : null,
-                1 => hasR ? _dispR : null,
-                _ => cursorIdx==1 ? (hasL?_dispL:_dispR) : (hasR?_dispR:_dispL)
-            };
+            if (GetInputCalibration==null) return (false,0);
+            var (vL,oL,vR,oR)=GetInputCalibration();
+            if(_cursorChan==1) return (vL,oL);
+            if(_cursorChan==2) return (vR,oR);
+            return (false,0);
         }
-
-        private float GetCursorZoom(int cursorIdx)
+        // Frac X [0,1] → temps ms relatif au trigger
+        private double XFracToMs(float frac)
+        { int td=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
+          return (frac-PreTrig)*TimeDivMs[td]*H_DIVS; }
+        // Temps ms → frac X
+        private float MsToXFrac(double tMs)
+        { int td=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
+          double range=TimeDivMs[td]*H_DIVS;
+          return (float)Math.Clamp(tMs/range+PreTrig,0.0,1.0); }
+        // Frac Y [0,1] → valeur normalisée (0=bas, 1=haut, tient compte offset)
+        private float YFracToNorm(float frac)
+        { float zoom=GetActiveZoom(); float off=GetActiveOffset();
+          return (2f*frac-1f-off)/zoom; }
+        // Valeur normalisée → frac Y
+        private float NormToYFrac(float normVal)
+        { float zoom=GetActiveZoom(); float off=GetActiveOffset();
+          return Math.Clamp((1f+off+normVal*zoom)/2f,0f,1f); }
+        // Évalue un curseur X : temps + niveau signal interpolé
+        private (double timeMs, float normVal, bool valid) EvalXCursor(float frac)
         {
-            int ch   = GetCh();
-            bool hasL= ch==0||ch==2;
-            bool hasR= ch==1||ch==2;
-            int chan = cursorIdx==1 ? _c1Chan : _c2Chan;
-            return chan switch
-            {
-                0 => _effZoomL,
-                1 => _effZoomR,
-                _ => cursorIdx==1 ? (hasL?_effZoomL:_effZoomR) : (hasR?_effZoomR:_effZoomL)
-            };
-        }
-
-        private (bool calOk, double offDb) GetCursorCal(int cursorIdx)
-        {
-            if (GetInputCalibration == null) return (false, 0);
-            var (vL, oL, vR, oR) = GetInputCalibration();
-            int chan = cursorIdx==1 ? _c1Chan : _c2Chan;
-            int ch   = GetCh();
-            bool hasL= ch==0||ch==2;
-            bool hasR= ch==1||ch==2;
-            return chan switch
-            {
-                0 => (vL, oL),
-                1 => (vR, oR),
-                _ => cursorIdx==1 ? (hasL?(vL,oL):(vR,oR)) : (hasR?(vR,oR):(vL,oL))
-            };
-        }
-
-        private (double timeMs, float normVal, bool valid) EvalCursor(float frac, int cursorIdx)
-        {
-            int tdIdx    = Math.Clamp(cmbTimediv.SelectedIndex, 0, TimeDivMs.Length-1);
-            double tMs   = (frac - PreTrig) * TimeDivMs[tdIdx] * H_DIVS;
-            float[]? dat = GetCursorData(cursorIdx);
-            if (dat==null||dat.Length<2) return (tMs, 0f, false);
-            float t=frac*(dat.Length-1); int lo=(int)t, hi=Math.Min(lo+1,dat.Length-1);
+            double tMs=XFracToMs(frac);
+            float[]? dat=GetActiveCursorData();
+            if(dat==null||dat.Length<2) return (tMs,0f,false);
+            float t=frac*(dat.Length-1); int lo=(int)t,hi=Math.Min(lo+1,dat.Length-1);
             return (tMs, dat[lo]*(1f-(t-lo))+dat[hi]*(t-lo), true);
         }
 
-        // ── Souris curseurs ───────────────────────────────────────────────────
+        // ── Souris curseurs X/Y ───────────────────────────────────────────────
         private void PnlScope_CursorMouseDown(object? s, MouseEventArgs e)
         {
-            if (e.Button!=MouseButtons.Left) return;
+            if (e.Button!=MouseButtons.Left || _cursorChan==0) return;
             var w=GetWaveRect(); if(w.IsEmpty) return;
-            float mx=e.X, thresh=10f;
-            if (_c1Active&&!_c1Frozen&&Math.Abs(mx-(w.Left+_c1Frac*w.Width))<=thresh) _cursorDragging=1;
-            else if(_c2Active&&!_c2Frozen&&Math.Abs(mx-(w.Left+_c2Frac*w.Width))<=thresh) _cursorDragging=2;
+            const float T=10f;
+            if (_xActive)
+            {
+                float x1px=w.Left+_x1Frac*w.Width, x2px=w.Left+_x2Frac*w.Width;
+                if(Math.Abs(e.X-x1px)<=T){_cursorDragging=1;return;}
+                if(Math.Abs(e.X-x2px)<=T){_cursorDragging=2;return;}
+            }
+            if (_yActive)
+            {
+                float y1py=w.Bottom-_y1Frac*w.Height, y2py=w.Bottom-_y2Frac*w.Height;
+                if(Math.Abs(e.Y-y1py)<=T){_cursorDragging=3;return;}
+                if(Math.Abs(e.Y-y2py)<=T){_cursorDragging=4;return;}
+            }
+            // Label drag detection (bounding rects updated during draw)
+            if(_xActive){if(_x1LblRect.Contains(e.Location)){_cursorDragging=5;return;}
+                          if(_x2LblRect.Contains(e.Location)){_cursorDragging=6;return;}
+                          if(_dxLblRect.Contains(e.Location)){_cursorDragging=7;return;}}
+            if(_yActive){if(_y1LblRect.Contains(e.Location)){_cursorDragging=8;return;}
+                          if(_y2LblRect.Contains(e.Location)){_cursorDragging=9;return;}
+                          if(_dyLblRect.Contains(e.Location)){_cursorDragging=10;return;}}
         }
 
         private void PnlScope_CursorMouseMove(object? s, MouseEventArgs e)
         {
             var w=GetWaveRect(); if(w.IsEmpty) return;
-            float mx=e.X;
             if (_cursorDragging>0)
             {
-                float f=Math.Clamp((mx-w.Left)/w.Width,0f,1f);
-                if(_cursorDragging==1){_c1Frac=f;if(_c1Locked)UpdateSampleIdx(1);}
-                else{_c2Frac=f;if(_c2Locked)UpdateSampleIdx(2);}
+                if (_cursorDragging<=2)
+                {
+                    float f=Math.Clamp((e.X-w.Left)/w.Width,0f,1f);
+                    if(_cursorDragging==1){float d=f-_x1Frac;_x1Frac=f;if(_linkedX)_x2Frac=Math.Clamp(_x2Frac+d,0f,1f);}
+                    else                 {float d=f-_x2Frac;_x2Frac=f;if(_linkedX)_x1Frac=Math.Clamp(_x1Frac+d,0f,1f);}
+                }
+                else if(_cursorDragging<=4)  // Y cursor lines
+                {
+                    float f=Math.Clamp((w.Bottom-e.Y)/w.Height,0f,1f);
+                    if(_cursorDragging==3){float d=f-_y1Frac;_y1Frac=f;if(_linkedY)_y2Frac=Math.Clamp(_y2Frac+d,0f,1f);}
+                    else                 {float d=f-_y2Frac;_y2Frac=f;if(_linkedY)_y1Frac=Math.Clamp(_y1Frac+d,0f,1f);}
+                }
+                else if(_cursorDragging<=7)  // labels X (5=x1lbl, 6=x2lbl, 7=ΔX horiz)
+                {
+                    float f=_cursorDragging==7
+                        ? Math.Clamp((e.X-w.Left)/w.Width,0f,1f)  // ΔX: horizontal
+                        : Math.Clamp((e.Y-w.Top)/w.Height,0f,1f); // x1/x2 labels: vertical
+                    if(_cursorDragging==5)_x1LblFracY=f;
+                    else if(_cursorDragging==6)_x2LblFracY=f;
+                    else _dxLblFracX=f;
+                }
+                else                          // labels Y (8=y1lbl, 9=y2lbl, 10=ΔY vert)
+                {
+                    float f=_cursorDragging==10
+                        ? Math.Clamp((e.Y-w.Top)/w.Height,0f,1f)  // ΔY: vertical
+                        : Math.Clamp((e.X-w.Left)/w.Width,0f,1f); // y1/y2 labels: horizontal
+                    if(_cursorDragging==8)_y1LblFracX=f;
+                    else if(_cursorDragging==9)_y2LblFracX=f;
+                    else _dyLblFracY=f;
+                }
                 pnlScope.Invalidate(); return;
             }
-            float c1x=w.Left+_c1Frac*w.Width, c2x=w.Left+_c2Frac*w.Width;
-            bool near=(_c1Active&&!_c1Frozen&&Math.Abs(mx-c1x)<=10f)
-                    ||(_c2Active&&!_c2Frozen&&Math.Abs(mx-c2x)<=10f);
-            pnlScope.Cursor=near?Cursors.SizeWE:Cursors.Default;
-        }
-
-        private void PnlScope_CursorDblClick(object? s, MouseEventArgs e)
-        {
-            var w=GetWaveRect(); if(w.IsEmpty) return;
-            float mx=e.X, thresh=10f;
-            if (_c1Active&&Math.Abs(mx-(w.Left+_c1Frac*w.Width))<=thresh) { _c1Frozen=!_c1Frozen; pnlScope.Invalidate(); }
-            else if(_c2Active&&Math.Abs(mx-(w.Left+_c2Frac*w.Width))<=thresh) { _c2Frozen=!_c2Frozen; pnlScope.Invalidate(); }
+            const float T=10f;
+            bool nearX=_xActive&&_cursorChan>0&&
+                (Math.Abs(e.X-(w.Left+_x1Frac*w.Width))<=T||Math.Abs(e.X-(w.Left+_x2Frac*w.Width))<=T);
+            bool nearY=_yActive&&_cursorChan>0&&
+                (Math.Abs(e.Y-(w.Bottom-_y1Frac*w.Height))<=T||Math.Abs(e.Y-(w.Bottom-_y2Frac*w.Height))<=T);
+            bool nearXLbl=_xActive&&(_x1LblRect.Contains(e.Location)||_x2LblRect.Contains(e.Location)||_dxLblRect.Contains(e.Location));
+            bool nearYLbl=_yActive&&(_y1LblRect.Contains(e.Location)||_y2LblRect.Contains(e.Location)||_dyLblRect.Contains(e.Location));
+            bool nearDxLbl=_xActive&&_dxLblRect.Contains(e.Location);
+            bool nearDyLbl=_yActive&&_dyLblRect.Contains(e.Location);
+            bool nearXLbl2=_xActive&&(_x1LblRect.Contains(e.Location)||_x2LblRect.Contains(e.Location));
+            bool nearYLbl2=_yActive&&(_y1LblRect.Contains(e.Location)||_y2LblRect.Contains(e.Location));
+            pnlScope.Cursor=nearX?Cursors.SizeWE:nearY?Cursors.SizeNS
+                :nearDxLbl?Cursors.SizeWE:nearDyLbl?Cursors.SizeNS
+                :nearXLbl2?Cursors.SizeNS:nearYLbl2?Cursors.SizeWE:Cursors.Default;
         }
 
         // ── Dessin des curseurs ───────────────────────────────────────────────
         private void DrawCursors(Graphics g, RectangleF w)
         {
-            // Dessiner C2 d'abord (C1 par-dessus)
-            if (_c2Active) DrawOneCursor(g, w, GetEffectiveFrac(2), 2, _c2Frozen, CC2, "C2");
-            if (_c1Active) DrawOneCursor(g, w, GetEffectiveFrac(1), 1, _c1Frozen, CC1, "C1");
-        }
-
-        private void DrawOneCursor(Graphics g, RectangleF w, float frac, int cursorIdx,
-            bool frozen, Color color, string label)
-        {
-            float cx = w.Left + frac * w.Width;
-
-            // Ligne verticale (tiretée si mobile, pleine si figée)
-            using var pen = new Pen(Color.FromArgb(210, color), 1f)
-                { DashStyle = frozen ? DashStyle.Solid : DashStyle.Dash };
-            g.DrawLine(pen, cx, w.Top, cx, w.Bottom);
-
-            // Marqueur diamant sur la courbe
-            float[]? dat = GetCursorData(cursorIdx);
-            if (dat != null && dat.Length >= 2)
+            if (_cursorChan==0 || !CursorChanVisible) return;
+            Color col=CursorColor;
+            using var penX=new Pen(Color.FromArgb(210,col),1.5f){DashStyle=DashStyle.Custom};
+            penX.DashPattern=new float[]{8f,4f};   // X: longs tirets
+            using var penY=new Pen(Color.FromArgb(210,col),1.5f){DashStyle=DashStyle.Custom};
+            penY.DashPattern=new float[]{1.5f,3f}; // Y: pointillés courts
+            using var font=new Font("Segoe UI",8f,FontStyle.Bold);
+            using var brL =new SolidBrush(col);
+            if (_xActive)
             {
-                float zoom = GetCursorZoom(cursorIdx);
-                float t = frac*(dat.Length-1); int lo=(int)t,hi=Math.Min(lo+1,dat.Length-1);
-                float val = dat[lo]*(1f-(t-lo))+dat[hi]*(t-lo);
-                float ym  = w.Top+w.Height/2f, ys=w.Height/2f*zoom;
-                float yPos= Math.Clamp(ym-val*ys, w.Top, w.Bottom);
-                float d   = 6f;
-                var pts   = new[]{new PointF(cx,yPos-d),new PointF(cx+d,yPos),
-                                  new PointF(cx,yPos+d),new PointF(cx-d,yPos)};
-                using var br = new SolidBrush(Color.FromArgb(220, color));
-                g.FillPolygon(br, pts);
+                DrawXCursorLine(g,w,_x1Frac,"X1",col,penX,font,brL,_x1LblFracY,out _x1LblRect);
+                DrawXCursorLine(g,w,_x2Frac,"X2",col,penX,font,brL,_x2LblFracY,out _x2LblRect);
+                if (_lblX)
+                {
+                    double t1=XFracToMs(_x1Frac),t2=XFracToMs(_x2Frac),dt=t2-t1;
+                    string dts=FormatTime(Math.Abs(dt));
+                    string fs="---";
+                    if(Math.Abs(dt)>1e-9){double hz=1000.0/Math.Abs(dt);fs=hz>=1000?$"{hz/1000:G4} kHz":$"{hz:G4} Hz";}
+                    using var fDx=new Font("Segoe UI",9f,FontStyle.Bold);
+                    string txt=$"\u0394X= {dts}   1/\u0394X= {fs}";
+                    var sz=g.MeasureString(txt,fDx);
+                    float x1px=w.Left+_x1Frac*w.Width, x2px=w.Left+_x2Frac*w.Width;
+                    float lx=Math.Clamp(x1px+_dxLblFracX*(x2px-x1px)-sz.Width/2f, w.Left, w.Right-sz.Width);
+                    float ly=w.Top+10f;  // fixed near top
+                    _dxLblRect=new RectangleF(lx-2,ly,sz.Width+4,sz.Height+2);
+                    g.DrawString(txt,fDx,brL,lx,ly);
+                }
             }
-
-            // Étiquette + icône figé
-            using var font = new Font("Segoe UI", 8f, FontStyle.Bold);
-            using var brL  = new SolidBrush(color);
-            string lbl = label + (frozen ? " ⏸" : "");
-            g.DrawString(lbl, font, brL, cx+3, w.Top+2);
+            if (_yActive)
+            {
+                DrawYCursorLine(g,w,_y1Frac,"Y1",col,penY,font,brL,_y1LblFracX,out _y1LblRect);
+                DrawYCursorLine(g,w,_y2Frac,"Y2",col,penY,font,brL,_y2LblFracX,out _y2LblRect);
+                if (_lblY)
+                {
+                    float n1=YFracToNorm(_y1Frac),n2=YFracToNorm(_y2Frac);
+                    var (cok,odb)=GetActiveCal();
+                    string dy;
+                    if(cok){double sc=Math.Pow(10,odb/20.0)*Math.Sqrt(2.0);dy=FormatV(Math.Abs((double)(n2-n1))*sc);}
+                    else dy=$"{Math.Abs(n2-n1):G4}";
+                    using var fDy=new Font("Segoe UI",9f,FontStyle.Bold);
+                    string txt=$"\u0394Y= {dy}";
+                    var sz=g.MeasureString(txt,fDy);
+                    float y1py=w.Bottom-_y1Frac*w.Height, y2py=w.Bottom-_y2Frac*w.Height;
+                    float lx=w.Left+8f;  // fixed near left
+                    float ly=Math.Clamp(y2py+_dyLblFracY*(y1py-y2py)-sz.Height/2f, w.Top, w.Bottom-sz.Height);
+                    _dyLblRect=new RectangleF(lx-2,ly,sz.Width+4,sz.Height+2);
+                    g.DrawString(txt,fDy,brL,lx,ly);
+                }
+            }
         }
 
-        // ── Mode V/div ────────────────────────────────────────────────────────
-        private void ChkVdiv_Changed(object? s, EventArgs e)
+        private void DrawXCursorLine(Graphics g,RectangleF w,float frac,string lbl,
+            Color col,Pen pen,Font font,SolidBrush brL,float lblFracY,out RectangleF lblRect)
         {
-            _vdivMode = chkVdiv.Checked;
+            float cx=w.Left+frac*w.Width;
+            g.DrawLine(pen,cx,w.Top,cx,w.Bottom);
+            float[]? dat=GetActiveCursorData();
+            if(dat!=null&&dat.Length>=2)
+            {
+                float zoom=GetActiveZoom(),off=GetActiveOffset();
+                float t=frac*(dat.Length-1);int lo=(int)t,hi=Math.Min(lo+1,dat.Length-1);
+                float val=dat[lo]*(1f-(t-lo))+dat[hi]*(t-lo);
+                float ym=w.Top+w.Height/2f,ys=w.Height/2f*zoom;
+                float yRef=ym-off*w.Height/2f;
+                float yPos=Math.Clamp(yRef-val*ys,w.Top,w.Bottom);
+                float d=6f;
+                var pts=new[]{new PointF(cx,yPos-d),new PointF(cx+d,yPos),new PointF(cx,yPos+d),new PointF(cx-d,yPos)};
+                using var br=new SolidBrush(Color.FromArgb(220,col)); g.FillPolygon(br,pts);
+            }
+            string timeTxt=lbl+"="+FormatTime(XFracToMs(frac));
+            var szL=g.MeasureString(timeTxt,font);
+            float ly=Math.Clamp(w.Top+lblFracY*w.Height-szL.Height/2f, w.Top, w.Bottom-szL.Height);
+            lblRect=new RectangleF(cx+2,ly,szL.Width+2,szL.Height);
+            g.DrawString(timeTxt,font,brL,cx+3,ly);
+        }
+
+        private void DrawYCursorLine(Graphics g,RectangleF w,float frac,string lbl,
+            Color col,Pen pen,Font font,SolidBrush brL,float lblFracX,out RectangleF lblRect)
+        {
+            float cy=w.Bottom-frac*w.Height;
+            g.DrawLine(pen,w.Left,cy,w.Right,cy);
+            float norm=YFracToNorm(frac);
+            var (cok,odb)=GetActiveCal();
+            string valTxt;
+            if(cok){double sc=Math.Pow(10,odb/20.0)*Math.Sqrt(2.0);valTxt=lbl+"="+FormatV((double)norm*sc);}
+            else valTxt=$"{lbl}={norm:+0.000;-0.000}";
+            var szL=g.MeasureString(valTxt,font);
+            float lx=Math.Clamp(w.Left+lblFracX*w.Width, w.Left, w.Right-szL.Width);
+            lblRect=new RectangleF(lx-2,cy+2,szL.Width+2,szL.Height);
+            g.DrawString(valTxt,font,brL,lx,cy+2);
+        }
+
+        // ── Dialogue Set X / Set Y ────────────────────────────────────────────
+        private void OpenSetCursorDialog(bool isX)
+        {
+            if (isX)
+            {
+                double t1=XFracToMs(_x1Frac), t2=XFracToMs(_x2Frac);
+                using var dlg=new CursorSetDialog(isX:true, v1:t1, v2:t2, unit:"ms");
+                if(dlg.ShowDialog(this)!=DialogResult.OK) return;
+                _x1Frac=MsToXFrac(dlg.Value1); _x2Frac=MsToXFrac(dlg.Value2);
+            }
+            else
+            {
+                var (cok,odb)=GetActiveCal();
+                double sc=cok?Math.Pow(10,odb/20.0)*Math.Sqrt(2.0):1.0;
+                double yv1=(double)YFracToNorm(_y1Frac)*sc, yv2=(double)YFracToNorm(_y2Frac)*sc;
+                string unit=cok?"V":"norm";
+                using var dlg=new CursorSetDialog(isX:false, v1:yv1, v2:yv2, unit:unit);
+                if(dlg.ShowDialog(this)!=DialogResult.OK) return;
+                _y1Frac=NormToYFrac((float)(dlg.Value1/sc));
+                _y2Frac=NormToYFrac((float)(dlg.Value2/sc));
+            }
+            pnlScope.Invalidate();
+        }
+
+        private void ChkVdiv_Changed(object? s, EventArgs e)
+        { _vdivMode = _vdivMode; ChkVdivLogic(); }  // kept for compat
+
+        private void ChkVdivLogic()
+        {
             UpdateGainCombos();
-            UpdateTrigLevelRange(isConversion: true);   // convertit la valeur entre normalisé ↔ Volts
+            UpdateTrigLevelRange(isConversion: true);
             lblTrigLvl.Text = _vdivMode ? "LEVEL (V)" : "LEVEL";
             pnlScope.Invalidate();
         }
@@ -682,7 +822,7 @@ namespace AudioHexViewer
             if (GetInputCalibration != null)
             {
                 var (vL, _, vR, _) = GetInputCalibration();
-                chkVdiv.Enabled = vL || vR;
+                btnVdiv.Enabled = vL || vR;
             }
         }
 
@@ -919,15 +1059,11 @@ namespace AudioHexViewer
             UpdateInfoLine();
         }
 
-        /// Détection du trigger en 3 phases avec zone-arm SOUTENUE.
+        /// Détection du trigger standard (logique oscilloscope matériel).
         ///
-        /// Phase 1 — scan arrière : dernier fire (burst/pic le plus récent accessible).
-        /// Phase 2 — scan arrière : zone-arm consécutive >= minArmSamples (≈10 ms).
-        ///           Filtre les creux intra-burst (< 2 ms) vs silence pré-burst (> 10 ms).
-        /// Phase 3 — scan avant  : premier fire après ce silence → début du burst. ✓
-        ///
-        /// Repli sur détection simple si aucun silence pré-burst trouvé
-        /// (signal continu : la croisée la plus récente est retournée).
+        /// Scan avant (chronologique) dans [minI..maxI] :
+        /// 1) attend armement (signal sous armLevel pour rising)
+        /// 2) dès que fireLevel est franchi → premier trigger valide, stop.
         private static bool FindTriggerBackward(
             float[] src, int len, float level, bool rising, float hyst,
             int win, int pre, out int idx)
@@ -941,60 +1077,23 @@ namespace AudioHexViewer
             float armLevel  = level + (rising ? -hyst :  hyst);
             float fireLevel = level + (rising ?  hyst : -hyst);
 
-            // ── Phase 1 : dernier fire accessible ────────────────────────────
-            int lastFire = -1;
-            for (int i = maxI; i >= minI; i--)
+            bool armed = false;
+            for (int i = minI; i <= maxI; i++)
             {
-                if (rising ? src[i] > fireLevel : src[i] < fireLevel)
-                { lastFire = i; break; }
-            }
-            if (lastFire < 0) return false;
-
-            // ── Phase 2 : silence pré-burst (zone-arm soutenue >= minArm) ────
-            // minArm = 10 ms en samples : élimine les creux intra-oscillation (< 2 ms)
-            // tout en capturant le silence avant un burst (>> 10 ms).
-            // Repli si signal continu (arm < 10 ms → pas de silence détecté).
-            int minArm = Math.Max(5, win / 20);
-
-            int armRun = 0, preArm = -1;
-            for (int i = lastFire - 1; i >= minI; i--)
-            {
-                bool isArm  = rising ? src[i] < armLevel  : src[i] > armLevel;
-                bool isFire = rising ? src[i] > fireLevel : src[i] < fireLevel;
-
-                if (isArm)  { armRun++; if (armRun >= minArm) { preArm = i; break; } }
-                else if (isFire) armRun = 0;   // un fire remet le compteur à zéro
-                // zone morte : ne remet pas à zéro (signal peut glisser dans zone morte)
-            }
-
-            if (preArm >= 0)
-            {
-                // ── Phase 3 : premier fire après le silence ───────────────────
-                for (int i = preArm + 1; i <= maxI; i++)
+                if (!armed)
                 {
-                    if (rising ? src[i] > fireLevel : src[i] < fireLevel)
-                    { idx = i; return true; }
+                    if (rising ? src[i] <= armLevel : src[i] >= armLevel)
+                        armed = true;
                 }
-            }
-
-            // ── Repli : détection de croisée simple (signal continu) ─────────
-            // Cherche la croisée du NIVEAU (pas du fireLevel) la plus récente
-            // avec confirmation d'armement dans la fenêtre précédente.
-            for (int i = lastFire; i >= minI; i--)
-            {
-                bool cross = i > 0 && (rising
-                    ? (src[i] >= level && src[i - 1] < level)
-                    : (src[i] <= level && src[i - 1] > level));
-                if (!cross) continue;
-                int lb = Math.Max(0, i - win);
-                for (int j = i - 1; j >= lb; j--)
+                else
                 {
-                    if (rising ? src[j] <= armLevel : src[j] >= armLevel)
-                    { idx = i; return true; }
+                    if (rising ? src[i] >= fireLevel : src[i] <= fireLevel)
+                    { idx = i; return true; }   // premier front valide → stop
                 }
             }
             return false;
         }
+
 
         // ─────────────────────────────────────────────────────────────────────
         private static MeasResult ComputeMeasurements(float[] s,int sr)
@@ -1106,6 +1205,15 @@ namespace AudioHexViewer
                     new PointF(MARGIN_LEFT + 2, 3));
             }
 
+            // Trigger status right-aligned in info line area
+            if (!string.IsNullOrEmpty(lblTrigStatus.Text))
+            {
+                using var fSt=new Font("Segoe UI",8.25f,FontStyle.Bold);
+                using var brSt=new SolidBrush(lblTrigStatus.ForeColor);
+                using var sfR=new StringFormat{Alignment=StringAlignment.Far};
+                var r=new RectangleF(MARGIN_LEFT,0,wave.Width,MARGIN_TOP-2);
+                g.DrawString(lblTrigStatus.Text,fSt,brSt,r,sfR);
+            }
             DrawGrid(g,wave);
             DrawAxisLabels(g,wave);
 
@@ -1116,8 +1224,8 @@ namespace AudioHexViewer
             if(!IsRollMode&&(_dispL!=null||_dispR!=null))
                 DrawTriggerMarkers(g,wave,_trigPx,(_dispL??_dispR)!.Length);
 
-            // Curseurs (par-dessus les traces et le trigger)
-            if (_c1Active || _c2Active) DrawCursors(g, wave);
+            // Curseurs X/Y (par-dessus les traces et le trigger)
+            DrawCursors(g, wave);
 
             // Marqueurs de référence verticale (dans la marge gauche)
             DrawOffsetMarkers(g, wave);
@@ -1521,83 +1629,6 @@ namespace AudioHexViewer
 
 
         // ── Fraction effective du curseur (prend en compte le verrouillage sample) ─
-        private float GetEffectiveFrac(int cursorIdx)
-        {
-            bool locked   = cursorIdx==1?_c1Locked:_c2Locked;
-            int  sampleIdx= cursorIdx==1?_c1SampleIdx:_c2SampleIdx;
-            if(!locked||sampleIdx<0||_capL==null||_lastSR<=0)
-                return cursorIdx==1?_c1Frac:_c2Frac;
-            int td =Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
-            int win=Math.Max(8,(int)(TimeDivMs[td]*H_DIVS/1000.0*_lastSR));
-            int pre=(int)(win*PreTrig);
-            int tref=_capTrigIdx>=0?_capTrigIdx:pre;
-            int ds =Math.Clamp(tref-pre+_panOffset,0,Math.Max(0,_capL.Length-win));
-            return Math.Clamp((float)(sampleIdx-ds)/win,0f,1f);
-        }
-
-        private void UpdateSampleIdx(int cursorIdx)
-        {
-            if(_capL==null||_lastSR<=0)return;
-            int td =Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
-            int win=Math.Max(8,(int)(TimeDivMs[td]*H_DIVS/1000.0*_lastSR));
-            int pre=(int)(win*PreTrig);
-            int tref=_capTrigIdx>=0?_capTrigIdx:pre;
-            int ds =Math.Clamp(tref-pre+_panOffset,0,Math.Max(0,_capL.Length-win));
-            float frac=cursorIdx==1?_c1Frac:_c2Frac;
-            if(cursorIdx==1)_c1SampleIdx=ds+(int)(frac*win);
-            else            _c2SampleIdx=ds+(int)(frac*win);
-        }
-
-        private void ToggleCursorLock(int cursorIdx)
-        {
-            if(cursorIdx==1){_c1Locked=!_c1Locked;if(_c1Locked)UpdateSampleIdx(1);else _c1SampleIdx=-1;}
-            else            {_c2Locked=!_c2Locked;if(_c2Locked)UpdateSampleIdx(2);else _c2SampleIdx=-1;}
-            UpdateCursorButtons();pnlScope.Invalidate();
-        }
-
-        // ── Peak : place le curseur sur l'échantillon d'amplitude max absolue ──
-        private void PlaceCursorOnPeak(int cursorIdx)
-        {
-            float[]? data=GetCursorData(cursorIdx);
-            if(data==null||data.Length<2)return;
-            int best=0;float bestAbs=Math.Abs(data[0]);
-            for(int i=1;i<data.Length;i++){float a=Math.Abs(data[i]);if(a>bestAbs){bestAbs=a;best=i;}}
-            float frac=(float)best/(data.Length-1);
-            if(cursorIdx==1){_c1Frac=frac;if(_c1Locked)UpdateSampleIdx(1);}
-            else            {_c2Frac=frac;if(_c2Locked)UpdateSampleIdx(2);}
-            pnlScope.Invalidate();
-        }
-
-        // ── < / > : cherche le pic local précédent / suivant (par amplitude) ──
-        private void FindAdjacentPeak(int cursorIdx,int direction)
-        {
-            float[]? data=GetCursorData(cursorIdx);
-            if(data==null||data.Length<3)return;
-            int cur=(int)(GetEffectiveFrac(cursorIdx)*(data.Length-1));
-            int found=direction<0?FindPrevLocalPeak(data,cur-1):FindNextLocalPeak(data,cur+1);
-            if(found<0)return;
-            float frac=(float)found/(data.Length-1);
-            if(cursorIdx==1){_c1Frac=frac;if(_c1Locked)UpdateSampleIdx(1);}
-            else            {_c2Frac=frac;if(_c2Locked)UpdateSampleIdx(2);}
-            pnlScope.Invalidate();
-        }
-
-        private static int FindPrevLocalPeak(float[] d,int from)
-        {
-            from=Math.Min(from,d.Length-2);
-            for(int i=from;i>0;i--)
-                if(Math.Abs(d[i])>=Math.Abs(d[i-1])&&Math.Abs(d[i])>=Math.Abs(d[i+1]))return i;
-            return -1;
-        }
-        private static int FindNextLocalPeak(float[] d,int from)
-        {
-            from=Math.Max(from,1);
-            for(int i=from;i<d.Length-1;i++)
-                if(Math.Abs(d[i])>=Math.Abs(d[i-1])&&Math.Abs(d[i])>=Math.Abs(d[i+1]))return i;
-            return -1;
-        }
-
-        // ── Navigation par la mini-carte ─────────────────────────────────────
         private RectangleF GetMinimapScreenRect()
         {
             var w = GetWaveRect();
@@ -1745,9 +1776,9 @@ namespace AudioHexViewer
             if (ch==0||ch==2) DrawMeasSection(g,"LEFT",  TraceColorL, _measL, rect, ref y, calOkL, offL);
             if (ch==1||ch==2) DrawMeasSection(g,"RIGHT", TraceColorR, _measR, rect, ref y, calOkR, offR);
 
-            // Section curseurs (si au moins un actif)
-            if (_c1Active || _c2Active)
-                y = DrawCursorMeasSection(g, rect, y, calOkL, offL, calOkR, offR);
+            // Section curseurs X/Y
+            if (_cursorChan>0 && (_xActive||_yActive))
+                y = DrawCursorMeasSection(g, rect, y);
 
             // Statut centré en bas du panneau, italic gris
             string statTxt=""; Color statCol=Color.Gray;
@@ -1855,105 +1886,51 @@ namespace AudioHexViewer
             y += 4f;
         }
 
-        /// Section curseurs dans le panneau de mesures (retourne le y mis à jour).
-        private float DrawCursorMeasSection(Graphics g, RectangleF rect, float y,
-            bool calOkL, double offL, bool calOkR, double offR)
+        /// Section curseurs X/Y dans le panneau de mesures (retourne y mis à jour).
+        private float DrawCursorMeasSection(Graphics g, RectangleF rect, float y)
         {
-            using var fontBase   = new Font("Segoe UI", 8.25f);
-            using var fontHeader = new Font("Segoe UI", 8.25f, FontStyle.Bold);
-            using var brushText  = new SolidBrush(Color.DimGray);
-            using var penSep     = new Pen(Color.Gainsboro, 1f);
-            using var fmtCenter  = new StringFormat{Alignment=StringAlignment.Center};
-            using var fmtRight   = new StringFormat{Alignment=StringAlignment.Far,
-                                                     LineAlignment=StringAlignment.Near};
-
-            float pad   = 8f;
-            float xL    = rect.X + pad;
-            float lineH = fontBase.GetHeight(g) + 4f;
-            float maxLW = Math.Max(g.MeasureString("Time", fontBase).Width,
-                                   g.MeasureString("Level",fontBase).Width);
-            float valLeft = xL + maxLW + 6f;
-            float valW    = rect.Right - pad - valLeft;
-
-            // Ligne de séparation avant les curseurs
-            g.DrawLine(penSep, rect.X+pad, y, rect.Right-pad, y);
-            y += 8f;
-
-            // Évalue les deux curseurs
-            var (t1,v1,ok1) = _c1Active ? EvalCursor(GetEffectiveFrac(1),1) : (0.0,0f,false);
-            var (t2,v2,ok2) = _c2Active ? EvalCursor(GetEffectiveFrac(2),2) : (0.0,0f,false);
-
-            // Calibration par curseur
-            var (cal1,off1) = GetCursorCal(1);
-            var (cal2,off2) = GetCursorCal(2);
-
-            void DrawCurRow(string title, Color titleColor, double tMs, float norm,
-                bool ok, bool active, bool frozen, bool calOk, double offDb)
+            using var fontBase  =new Font("Segoe UI",8.25f);
+            using var fontHeader=new Font("Segoe UI",8.25f,FontStyle.Bold);
+            using var brushText =new SolidBrush(Color.DimGray);
+            using var penSep    =new Pen(Color.Gainsboro,1f);
+            using var fmtCenter =new StringFormat{Alignment=StringAlignment.Center};
+            using var fmtRight  =new StringFormat{Alignment=StringAlignment.Far,LineAlignment=StringAlignment.Near};
+            var (calOk,offDb)=GetActiveCal();
+            Color curCol=CursorColor;
+            float pad=8f, xL=rect.X+pad;
+            float lineH=fontBase.GetHeight(g)+4f;
+            string[] lbls={"X1","X2","\u0394X","1/\u0394X","Y1","Y2","\u0394Y"};
+            float maxLW=0f;
+            foreach(var l in lbls){float w2=g.MeasureString(l,fontBase).Width;if(w2>maxLW)maxLW=w2;}
+            float valLeft=xL+maxLW+6f, valW=rect.Right-pad-valLeft;
+            g.DrawLine(penSep,rect.X+pad,y,rect.Right-pad,y); y+=8f;
+            void DrawRow(string l,string v){
+                g.DrawString(l,fontBase,brushText,xL,y);
+                g.DrawString(v,fontBase,brushText,new RectangleF(valLeft,y,valW,lineH),fmtRight);
+                y+=lineH;}
+            if (_xActive)
             {
-                if (!active) return;
-                // Titre centré
-                var hr = new RectangleF(rect.X+pad, y, rect.Width-2*pad, fontHeader.GetHeight(g));
-                using var bT = new SolidBrush(titleColor);
-                string titleTxt = title + (frozen?" ⏸":"");
-                g.DrawString(titleTxt, fontHeader, bT, hr, fmtCenter);
-                y += hr.Height + 4f;
-
-                // Time
-                g.DrawString("Time",  fontBase, brushText, xL, y);
-                g.DrawString(ok ? FormatTime(tMs) : "---", fontBase, brushText,
-                    new RectangleF(valLeft,y,valW,lineH), fmtRight);
-                y += lineH;
-
-                // Level
-                string levStr = "---";
-                if (ok)
-                    levStr = calOk
-                        ? FormatV(norm * Math.Pow(10,offDb/20.0) * Math.Sqrt(2.0)) + "V"
-                        : $"{norm:+0.0000;-0.0000}";
-                g.DrawString("Level", fontBase, brushText, xL, y);
-                g.DrawString(levStr,  fontBase, brushText,
-                    new RectangleF(valLeft,y,valW,lineH), fmtRight);
-                y += lineH + 4f;
+                var hr=new RectangleF(rect.X+pad,y,rect.Width-2*pad,fontHeader.GetHeight(g));
+                using var bH=new SolidBrush(curCol);
+                g.DrawString("Cursors X",fontHeader,bH,hr,fmtCenter); y+=hr.Height+4f;
+                double t1=XFracToMs(_x1Frac),t2=XFracToMs(_x2Frac),dt=t2-t1;
+                DrawRow("X1",FormatTime(t1)); DrawRow("X2",FormatTime(t2));
+                DrawRow("\u0394X",FormatTime(dt));
+                string df="---";
+                if(Math.Abs(dt)>1e-9){double hz=1000.0/Math.Abs(dt);df=hz>=1000?$"{hz/1000:G4} kHz":$"{hz:G4} Hz";}
+                DrawRow("1/\u0394X",df); y+=4f;
             }
-
-            DrawCurRow("Cursor 1", CC1, t1, v1, ok1, _c1Active, _c1Frozen, cal1, off1);
-            DrawCurRow("Cursor 2", CC2, t2, v2, ok2, _c2Active, _c2Frozen, cal2, off2);
-
-            // Section ΔDelta
-            if (_c1Active && _c2Active && ok1 && ok2)
+            if (_yActive)
             {
-                var hr = new RectangleF(rect.X+pad, y, rect.Width-2*pad, fontHeader.GetHeight(g));
-                using var bD = new SolidBrush(Color.DimGray);
-                g.DrawString("ΔDelta", fontHeader, bD, hr, fmtCenter);
-                y += hr.Height + 4f;
-                g.DrawLine(penSep, rect.X+pad, y-2, rect.Right-pad, y-2);
-
-                double dt = t2 - t1;
-                g.DrawString("ΔTime",  fontBase, brushText, xL, y);
-                g.DrawString(FormatTime(dt), fontBase, brushText,
-                    new RectangleF(valLeft,y,valW,lineH), fmtRight);
-                y += lineH;
-                // ΔFrequency = 1/ΔTime
-                string dFreqStr="---";
-                if(Math.Abs(dt)>1e-9){double hz=1000.0/Math.Abs(dt);
-                    dFreqStr=hz>=1000?$"{hz/1000:G4} kHz":$"{hz:G4} Hz";}
-                g.DrawString("ΔFreq", fontBase, brushText, xL, y);
-                g.DrawString(dFreqStr, fontBase, brushText,
-                    new RectangleF(valLeft,y,valW,lineH), fmtRight);
-                y += lineH;
-
-                string dvStr;
-                if (cal1 && cal2)
-                {
-                    double dv = v2*Math.Pow(10,off2/20.0)*Math.Sqrt(2.0)
-                              - v1*Math.Pow(10,off1/20.0)*Math.Sqrt(2.0);
-                    dvStr = FormatV(dv) + "V";
-                }
-                else dvStr = $"{(v2-v1):+0.0000;-0.0000}";
-                g.DrawString("ΔLevel", fontBase, brushText, xL, y);
-                g.DrawString(dvStr, fontBase, brushText,
-                    new RectangleF(valLeft,y,valW,lineH), fmtRight);
-                y += lineH;
+                var hr=new RectangleF(rect.X+pad,y,rect.Width-2*pad,fontHeader.GetHeight(g));
+                using var bH=new SolidBrush(curCol);
+                g.DrawString("Cursors Y",fontHeader,bH,hr,fmtCenter); y+=hr.Height+4f;
+                float n1=YFracToNorm(_y1Frac),n2=YFracToNorm(_y2Frac);
+                string FmtY(float n){
+                    if(calOk){double sc=Math.Pow(10,offDb/20.0)*Math.Sqrt(2.0);return FormatV((double)n*sc);}
+                    return $"{n:+0.0000;-0.0000}";}
+                DrawRow("Y1",FmtY(n1)); DrawRow("Y2",FmtY(n2));
+                DrawRow("\u0394Y",FmtY(n2-n1)); y+=4f;
             }
             return y;
         }
@@ -1966,7 +1943,7 @@ namespace AudioHexViewer
             TrigSrcIndex=cmbTrigSrc.SelectedIndex,TrigLevel=(double)TrigLevelValue,
             ZoomYIndexL=cmbVdivL.SelectedIndex,ZoomYIndexR=cmbVdivR.SelectedIndex,
             AcCouplingL=cmbCouplingL.SelectedIndex,AcCouplingR=cmbCouplingR.SelectedIndex,
-            RollMode=chkRoll.Checked,VdivMode=_vdivMode,GridModeIdx=cmbGrid.SelectedIndex
+            RollMode=_rollActive,VdivMode=_vdivMode,GridModeIdx=cmbGrid.SelectedIndex
         };
 
         public void ApplySettings(OscilloscopeSettings? s)
@@ -1992,9 +1969,9 @@ namespace AudioHexViewer
             cmbCouplingL.SelectedIndex=Math.Clamp(s.AcCouplingL,0,2);
             cmbCouplingR.SelectedIndex=Math.Clamp(s.AcCouplingR,0,2);
             cmbGrid.SelectedIndex=Math.Clamp(s.GridModeIdx,0,2);
-            chkVdiv.Checked=_vdivMode;
+            UpdateVdivButton();
             UpdateRollCheckbox();
-            if(chkRoll.Enabled)chkRoll.Checked=s.RollMode;
+            if(_rollEnabled){_rollActive=s.RollMode;UpdateRollButton();}
         }
 
         protected override void OnHandleDestroyed(EventArgs e){_timer.Stop();_timer.Dispose();base.OnHandleDestroyed(e);}
