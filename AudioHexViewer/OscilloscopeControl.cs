@@ -119,6 +119,7 @@ namespace AudioHexViewer
 
         // ── État ──────────────────────────────────────────────────────────────
         private bool _isRunning, _isArmed, _lastTrigOk;
+        private long _holdoffEndAbs = 0;   // AbsWrite position jusqu'où le hold-off est actif
 
         // ── Acquisition progress (AcqButtonPainter) ───────────────────────────
         private int    _acqPct     = 0;
@@ -305,7 +306,7 @@ namespace AudioHexViewer
 
             UpdateRollCheckbox();
             // Séparateurs visuels entre groupes (1px silver dans les gaps)
-            foreach (int sx in new[] { 270, 446, 608, 730 })
+            foreach (int sx in new[] { 258, 392, 608, 730 })
                 panelTop.Controls.Add(new Label {
                     Location  = new System.Drawing.Point(sx, 6),
                     Size      = new System.Drawing.Size(1, 78),
@@ -718,7 +719,7 @@ namespace AudioHexViewer
         {
             _panOffset=0;
             _hpXprevL=0; _hpXprevR=0; _hpYprevL=0; _hpYprevR=0;
-            _blinkCounter=0; _blinkState=false; _lastTrigOk=false; _lastTrigAbsPos=-1;
+            _blinkCounter=0; _blinkState=false; _lastTrigOk=false; _lastTrigAbsPos=-1; _holdoffEndAbs=0;
             RunRequested?.Invoke();
             SetRunState(true); SetArmedState(false);
             _timer.Start();
@@ -878,16 +879,24 @@ namespace AudioHexViewer
             int dstart;
             if(trigOk){dstart=trigIdx-pre;_trigFound=true;_lastTrigOk=true;SetArmedState(false);
 
-                // ── Anti-redéclenchement sur le même événement ────────────────
-                // Le même burst glisse vers la gauche à ~sr/fps samples/tick.
-                // On compare la position ABSOLUE du trigger courant avec la dernière
-                // position affichée. Si l'écart est < sr/2 (500 ms), c'est le même
-                // événement → on ne met pas à jour l'affichage (évite la dérive X).
                 long trigAbsPos = absEnd - (search - trigIdx);
+
+                // ── Hold-off : ignore les triggers trop proches du précédent ─
+                if (_holdoffEndAbs > 0 && trigAbsPos < _holdoffEndAbs)
+                { UpdateInfoLine(); pnlScope.Invalidate(); return; }
+
+                // ── Anti-redéclenchement sur le même événement ────────────────
                 bool sameEvent = _lastTrigAbsPos >= 0 &&
                     Math.Abs(trigAbsPos - _lastTrigAbsPos) < (long)(sr / 2);
                 if (sameEvent) { UpdateInfoLine(); pnlScope.Invalidate(); return; }
                 _lastTrigAbsPos = trigAbsPos;
+
+                // Arme le hold-off pour le prochain trigger
+                double holdoffMs = (double)nudHoldoff.Value;
+                if (holdoffMs > 0)
+                    _holdoffEndAbs = trigAbsPos + (long)(holdoffMs / 1000.0 * sr);
+                else
+                    _holdoffEndAbs = 0;
             }
             else if(IsAutoMode){dstart=search-win;_trigFound=false;_lastTrigOk=false;SetArmedState(false);}
             else{_lastTrigOk=false;SetArmedState(true);pnlScope.Invalidate();return;}
@@ -910,12 +919,15 @@ namespace AudioHexViewer
             UpdateInfoLine();
         }
 
-        /// Détection du trigger standard (logique oscilloscope matériel).
+        /// Détection du trigger en 3 phases avec zone-arm SOUTENUE.
         ///
-        /// Scan avant (chronologique) dans la fenêtre [minI..maxI].
-        /// On attend d'abord un armement (signal du bon côté de armLevel),
-        /// puis on détecte le premier franchissement de fireLevel.
-        /// Identique au comportement d'un oscilloscope matériel.
+        /// Phase 1 — scan arrière : dernier fire (burst/pic le plus récent accessible).
+        /// Phase 2 — scan arrière : zone-arm consécutive >= minArmSamples (≈10 ms).
+        ///           Filtre les creux intra-burst (< 2 ms) vs silence pré-burst (> 10 ms).
+        /// Phase 3 — scan avant  : premier fire après ce silence → début du burst. ✓
+        ///
+        /// Repli sur détection simple si aucun silence pré-burst trouvé
+        /// (signal continu : la croisée la plus récente est retournée).
         private static bool FindTriggerBackward(
             float[] src, int len, float level, bool rising, float hyst,
             int win, int pre, out int idx)
@@ -929,21 +941,56 @@ namespace AudioHexViewer
             float armLevel  = level + (rising ? -hyst :  hyst);
             float fireLevel = level + (rising ?  hyst : -hyst);
 
-            // Scan avant (du plus ancien au plus récent) :
-            // 1) attend armement (signal sous armLevel pour rising)
-            // 2) dès que fireLevel est franchi → premier trigger trouvé, stop.
-            bool armed = false;
-            for (int i = minI; i <= maxI; i++)
+            // ── Phase 1 : dernier fire accessible ────────────────────────────
+            int lastFire = -1;
+            for (int i = maxI; i >= minI; i--)
             {
-                if (!armed)
+                if (rising ? src[i] > fireLevel : src[i] < fireLevel)
+                { lastFire = i; break; }
+            }
+            if (lastFire < 0) return false;
+
+            // ── Phase 2 : silence pré-burst (zone-arm soutenue >= minArm) ────
+            // minArm = 10 ms en samples : élimine les creux intra-oscillation (< 2 ms)
+            // tout en capturant le silence avant un burst (>> 10 ms).
+            // Repli si signal continu (arm < 10 ms → pas de silence détecté).
+            int minArm = Math.Max(5, win / 20);
+
+            int armRun = 0, preArm = -1;
+            for (int i = lastFire - 1; i >= minI; i--)
+            {
+                bool isArm  = rising ? src[i] < armLevel  : src[i] > armLevel;
+                bool isFire = rising ? src[i] > fireLevel : src[i] < fireLevel;
+
+                if (isArm)  { armRun++; if (armRun >= minArm) { preArm = i; break; } }
+                else if (isFire) armRun = 0;   // un fire remet le compteur à zéro
+                // zone morte : ne remet pas à zéro (signal peut glisser dans zone morte)
+            }
+
+            if (preArm >= 0)
+            {
+                // ── Phase 3 : premier fire après le silence ───────────────────
+                for (int i = preArm + 1; i <= maxI; i++)
                 {
-                    if (rising ? src[i] <= armLevel : src[i] >= armLevel)
-                        armed = true;
+                    if (rising ? src[i] > fireLevel : src[i] < fireLevel)
+                    { idx = i; return true; }
                 }
-                else
+            }
+
+            // ── Repli : détection de croisée simple (signal continu) ─────────
+            // Cherche la croisée du NIVEAU (pas du fireLevel) la plus récente
+            // avec confirmation d'armement dans la fenêtre précédente.
+            for (int i = lastFire; i >= minI; i--)
+            {
+                bool cross = i > 0 && (rising
+                    ? (src[i] >= level && src[i - 1] < level)
+                    : (src[i] <= level && src[i - 1] > level));
+                if (!cross) continue;
+                int lb = Math.Max(0, i - win);
+                for (int j = i - 1; j >= lb; j--)
                 {
-                    if (rising ? src[i] >= fireLevel : src[i] <= fireLevel)
-                    { idx = i; return true; }   // premier front valide → stop
+                    if (rising ? src[j] <= armLevel : src[j] >= armLevel)
+                    { idx = i; return true; }
                 }
             }
             return false;

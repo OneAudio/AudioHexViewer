@@ -17,6 +17,7 @@ namespace AudioHexViewer
         private Label         lblTrigSrc;   private ComboBox cmbTrigSrc;
         private Label         lblTrigSlope;
         private Label         lblTrigLvl;   private TextBox nudTrigLevel;
+        private Label         lblHoldoff;   private NumericUpDown nudHoldoff;
         private Label         lblTrigPos;   private NumericUpDown nudTrigPos;
         private Label         lblGrid;      private ComboBox cmbGrid;
         private Button        btnScaleL, btnScaleR;  // sélection voie pour échelle Y
@@ -50,6 +51,7 @@ namespace AudioHexViewer
             lblTrigSrc   = new Label();   cmbTrigSrc  = new ComboBox();
             lblTrigSlope = new Label();
             lblTrigLvl   = new Label();   nudTrigLevel= new TextBox();
+            lblHoldoff   = new Label();   nudHoldoff  = new NumericUpDown();
             lblTrigPos   = new Label();   nudTrigPos  = new NumericUpDown();
             lblGrid      = new Label();   cmbGrid     = new ComboBox();
             btnScaleL    = new Button(); btnScaleR = new Button();
@@ -71,6 +73,7 @@ namespace AudioHexViewer
             pnlScope     = new ScopePanel();
 
             nudTrigPos.BeginInit();
+            nudHoldoff.BeginInit();
             panelTop.SuspendLayout();
             SuspendLayout();
 
@@ -87,6 +90,7 @@ namespace AudioHexViewer
                 lblTrig, cmbTrigMode, cmbTrigEdge,
                 lblTrigSrc, cmbTrigSrc, lblTrigSlope,
                 lblTrigLvl, nudTrigLevel,
+                lblHoldoff, nudHoldoff,
                 lblTrigPos, nudTrigPos,
                 lblGrid, cmbGrid,
                 btnScaleL, btnScaleR,
@@ -156,9 +160,9 @@ namespace AudioHexViewer
 
             // ── 3. TIMEBASE (x=330) ───────────────────────────────────────────
             lblTimediv.AutoSize=true; lblTimediv.Font=gS; lblTimediv.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblTimediv.Location=new Point(330,4); lblTimediv.Text="TIME/DIV";
+            lblTimediv.Location=new Point(280,4); lblTimediv.Text="TIME/DIV";
             cmbTimediv.DropDownStyle=ComboBoxStyle.DropDownList; cmbTimediv.Font=std9;
-            cmbTimediv.Location=new Point(330,18); cmbTimediv.Size=new Size(110,24); cmbTimediv.TabIndex=2;
+            cmbTimediv.Location=new Point(280,18); cmbTimediv.Size=new Size(90,24); cmbTimediv.TabIndex=2;
             cmbTimediv.Items.AddRange(new object[]{
                 "1 µs/div","2 µs/div","5 µs/div",
                 "10 µs/div","20 µs/div","50 µs/div",
@@ -169,32 +173,39 @@ namespace AudioHexViewer
                 "1 s/div"});
             cmbTimediv.SelectedIndex=10; // 2 ms/div
             lblTrigPos.AutoSize=true; lblTrigPos.Font=gS; lblTrigPos.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblTrigPos.Location=new Point(378,46); lblTrigPos.Text="T POS (div)";
+            lblTrigPos.Location=new Point(314,46); lblTrigPos.Text="T POS (div)";
             nudTrigPos.DecimalPlaces=1; nudTrigPos.Increment=0.5m;
             nudTrigPos.Minimum=0.5m; nudTrigPos.Maximum=9.5m; nudTrigPos.Value=2.0m;
-            nudTrigPos.Font=std9; nudTrigPos.Location=new Point(378,60); nudTrigPos.Size=new Size(62,24); nudTrigPos.TabIndex=18;
+            nudTrigPos.Font=std9; nudTrigPos.Location=new Point(314,60); nudTrigPos.Size=new Size(56,24); nudTrigPos.TabIndex=18;
 
             // ── 4. TRIGGER (x=452) ── Mode+Edge+RAW / Src+Level ──────────────
             lblTrig.AutoSize=true; lblTrig.Font=gS; lblTrig.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblTrig.Location=new Point(452,4); lblTrig.Text="TRIGGER";
+            lblTrig.Location=new Point(415,4); lblTrig.Text="TRIGGER";
             cmbTrigMode.DropDownStyle=ComboBoxStyle.DropDownList; cmbTrigMode.Font=std9;
-            cmbTrigMode.Location=new Point(452,18); cmbTrigMode.Size=new Size(72,24); cmbTrigMode.TabIndex=3;
+            cmbTrigMode.Location=new Point(415,18); cmbTrigMode.Size=new Size(70,24); cmbTrigMode.TabIndex=3;
             cmbTrigMode.Items.AddRange(new object[]{"Auto","Normal","Single"}); cmbTrigMode.SelectedIndex=0;
             cmbTrigEdge.DropDownStyle=ComboBoxStyle.DropDownList; cmbTrigEdge.Font=std9;
-            cmbTrigEdge.Location=new Point(528,18); cmbTrigEdge.Size=new Size(52,24); cmbTrigEdge.TabIndex=4;
+            cmbTrigEdge.Location=new Point(545,18); cmbTrigEdge.Size=new Size(40,24); cmbTrigEdge.TabIndex=4;
             cmbTrigEdge.Items.AddRange(new object[]{"\u2191","\u2193"}); cmbTrigEdge.SelectedIndex=0;
             lblTrigSrc.AutoSize=true; lblTrigSrc.Font=gS; lblTrigSrc.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblTrigSrc.Location=new Point(452,46); lblTrigSrc.Text="SOURCE";
+            lblTrigSrc.Location=new Point(491,4); lblTrigSrc.Text="SOURCE";
             cmbTrigSrc.DropDownStyle=ComboBoxStyle.DropDownList; cmbTrigSrc.Font=std9;
-            cmbTrigSrc.Location=new Point(452,60); cmbTrigSrc.Size=new Size(72,24); cmbTrigSrc.TabIndex=5;
+            cmbTrigSrc.Location=new Point(491,18); cmbTrigSrc.Size=new Size(48,24); cmbTrigSrc.TabIndex=5;
             cmbTrigSrc.Items.AddRange(new object[]{"L","R"}); cmbTrigSrc.SelectedIndex=0;
             lblTrigLvl.AutoSize=true; lblTrigLvl.Font=gS; lblTrigLvl.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblTrigLvl.Location=new Point(528,46); lblTrigLvl.Text="LEVEL";
+            lblTrigLvl.Location=new Point(415,46); lblTrigLvl.Text="LEVEL";
             lblTrigSlope.AutoSize=true; lblTrigSlope.Font=gS; lblTrigSlope.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblTrigSlope.Location=new Point(528,4); lblTrigSlope.Text="SLOPE";
+            lblTrigSlope.Location=new Point(545,4); lblTrigSlope.Text="SLOPE";
             nudTrigLevel.Text="0.000";
-            nudTrigLevel.Font=std9; nudTrigLevel.Location=new Point(528,60); nudTrigLevel.Size=new Size(52,24); nudTrigLevel.TabIndex=6;
+            nudTrigLevel.Font=std9; nudTrigLevel.Location=new Point(415,60); nudTrigLevel.Size=new Size(70,24); nudTrigLevel.TabIndex=6;
             nudTrigLevel.TextAlign=HorizontalAlignment.Right;
+
+            lblHoldoff.AutoSize=true; lblHoldoff.Font=gS; lblHoldoff.ForeColor=System.Drawing.SystemColors.GrayText;
+            lblHoldoff.Location=new Point(491,46); lblHoldoff.Text="HOLD-OFF (ms)";
+            nudHoldoff.DecimalPlaces=1; nudHoldoff.Increment=1.0m;
+            nudHoldoff.Minimum=0m; nudHoldoff.Maximum=2000m; nudHoldoff.Value=0m;
+            nudHoldoff.Font=std9; nudHoldoff.Location=new Point(491,60); nudHoldoff.Size=new Size(95,24); nudHoldoff.TabIndex=31;
+            nudHoldoff.TextAlign=HorizontalAlignment.Right;
 
             // ── 5. DISPLAY (x=636) ── Grid + Roll ────────────────────────────
             lblGrid.AutoSize=true; lblGrid.Font=gS; lblGrid.ForeColor=System.Drawing.SystemColors.GrayText;
@@ -203,7 +214,7 @@ namespace AudioHexViewer
             cmbGrid.Location=new Point(636,18); cmbGrid.Size=new Size(88,24); cmbGrid.TabIndex=7;
             cmbGrid.Items.AddRange(new object[]{"Full","Axis","None"}); cmbGrid.SelectedIndex=0;
             chkRoll.AutoSize=true; chkRoll.Font=std9;
-            chkRoll.Location=new Point(330,64); chkRoll.Text="Roll"; chkRoll.TabIndex=12;
+            chkRoll.Location=new Point(280,64); chkRoll.Text="Roll"; chkRoll.TabIndex=12;
             chkRoll.Enabled=false; chkRoll.UseVisualStyleBackColor=true;
             // cmbTraceMode : sous cmbGrid (remplace chkRoll)
             lblTraceMode.AutoSize=true; lblTraceMode.Font=gS; lblTraceMode.ForeColor=System.Drawing.SystemColors.GrayText;
@@ -265,6 +276,7 @@ namespace AudioHexViewer
             Controls.Add(pnlScope); Controls.Add(panelTop);
 
             nudTrigPos.EndInit();
+            nudHoldoff.EndInit();
             panelTop.ResumeLayout(false); panelTop.PerformLayout();
             ResumeLayout(false);
         }
