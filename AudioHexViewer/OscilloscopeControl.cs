@@ -194,7 +194,7 @@ namespace AudioHexViewer
 
         // ── Curseurs X / Y ───────────────────────────────────────────────────
         // Canal  : 0=aucun  1=L (couleur voie L)  2=R (couleur voie R)
-        private int  _cursorChan  = 0;
+        private int  _cursorChan  = 1;  // synced with _scaleChannel (1=L, 2=R)
         private bool _xActive     = true;    // lignes verticales X1/X2
         private bool _yActive     = false;   // lignes horizontales Y1/Y2
         private bool _linkedX     = false;   // X1+X2 déplacés ensemble
@@ -207,6 +207,7 @@ namespace AudioHexViewer
         private float _y1Frac = 1f/3f, _y2Frac = 2f/3f;
         // Drag : 0=aucun 1=X1 2=X2 3=Y1 4=Y2 5=lbl-X1 6=lbl-X2 7=lbl-ΔX 8=lbl-Y1 9=lbl-Y2 10=lbl-ΔY
         private int _cursorDragging = 0;
+        private bool _yTrack      = false;  // Y cursors track signal at X positions
         // Positions des étiquettes (fraction le long de l'axe du curseur)
         private float _x1LblFracY=0.85f, _x2LblFracY=0.85f, _dxLblFracX=0.50f;  // ΔX moves horizontally
         private float _y1LblFracX=0.04f, _y2LblFracX=0.04f, _dyLblFracY=0.50f;  // ΔY moves vertically
@@ -289,16 +290,18 @@ namespace AudioHexViewer
             pnlScope.MouseWheel += PnlScope_MouseWheel;
 
             // ── Curseurs X / Y ────────────────────────────────────────────────
-            btnCurL.Click    += (_, _) => { _cursorChan = _cursorChan==1 ? 0 : 1; UpdateCursorUI(); pnlScope.Invalidate(); };
-            btnCurR.Click    += (_, _) => { _cursorChan = _cursorChan==2 ? 0 : 2; UpdateCursorUI(); pnlScope.Invalidate(); };
-            btnCurX.Click    += (_, _) => { if (_xActive && !_yActive) return; _xActive=!_xActive; UpdateCursorUI(); pnlScope.Invalidate(); };
-            btnCurY.Click    += (_, _) => { if (_yActive && !_xActive) return; _yActive=!_yActive; UpdateCursorUI(); pnlScope.Invalidate(); };
+            btnCurX.Click    += (_, _) => { if (_xActive && !_yActive) return; _xActive=!_xActive; if(!(_xActive&&_yActive))_yTrack=false; UpdateCursorUI(); pnlScope.Invalidate(); };
+            btnCurY.Click    += (_, _) => { if (_yActive && !_xActive) return; _yActive=!_yActive; if(!(_xActive&&_yActive))_yTrack=false; UpdateCursorUI(); pnlScope.Invalidate(); };
             btnLinkedX.Click += (_, _) => { _linkedX=!_linkedX; UpdateCursorUI(); };
             btnLinkedY.Click += (_, _) => { _linkedY=!_linkedY; UpdateCursorUI(); };
             btnSetX.Click    += (_, _) => OpenSetCursorDialog(isX: true);
             btnSetY.Click    += (_, _) => OpenSetCursorDialog(isX: false);
-            btnLblX.Click    += (_, _) => { _lblX=!_lblX; UpdateCursorUI(); pnlScope.Invalidate(); };
-            btnLblY.Click    += (_, _) => { _lblY=!_lblY; UpdateCursorUI(); pnlScope.Invalidate(); };
+            // Labels = show/hide both ΔX and ΔY labels together
+            btnLblX.Click    += (_, _) => { _lblX=!_lblX; _lblY=_lblX; UpdateCursorUI(); pnlScope.Invalidate(); };
+            // Y track = Y cursors follow signal amplitude at X positions
+            btnLblY.Click    += (_, _) =>
+            { if(!(_xActive&&_yActive&&_cursorChan>0)) return;
+              _yTrack=!_yTrack; UpdateCursorUI(); pnlScope.Invalidate(); };
 
             pnlScope.MouseDown        += PnlScope_CursorMouseDown;
             pnlScope.MouseDown        += PnlScope_OffsetMouseDown;
@@ -313,8 +316,8 @@ namespace AudioHexViewer
             pnlScope.MouseMove        += PnlScope_MinimapMouseMove;
             pnlScope.MouseDoubleClick += PnlScope_OffsetDblClick;
 
-            btnScaleL.Click += (_, _) => { _scaleChannel=0; UpdateScaleButtons(); pnlScope.Invalidate(); };
-            btnScaleR.Click += (_, _) => { _scaleChannel=1; UpdateScaleButtons(); pnlScope.Invalidate(); };
+            btnScaleL.Click += (_, _) => { _scaleChannel=0; _cursorChan=1; UpdateScaleButtons(); UpdateCursorUI(); pnlScope.Invalidate(); };
+            btnScaleR.Click += (_, _) => { _scaleChannel=1; _cursorChan=2; UpdateScaleButtons(); UpdateCursorUI(); pnlScope.Invalidate(); };
 
             UpdateCursorUI();
             UpdateScaleButtons();
@@ -323,14 +326,23 @@ namespace AudioHexViewer
 
             UpdateRollCheckbox();
             // Séparateurs visuels entre groupes (1px silver dans les gaps)
-            foreach (int sx in new[] { 258, 392, 608, 730, 770 })
+            foreach (int sx in new[] { 8, 247, 354, 542, 647, 889 })
                 panelTop.Controls.Add(new Label {
                     Location  = new System.Drawing.Point(sx, 6),
                     Size      = new System.Drawing.Size(1, 78),
                     BackColor = System.Drawing.Color.Silver,
                     Text      = ""
                 });
-            lblTrigStatus.Visible = false;
+            // Cursor separator: centered between SetX(right=894) and Labels(left=907)
+            // Center = (894+907)/2 = 900, gap = 6px each side
+            // Height = button height only: y=26 (top row1) to y=80 (bottom row2) → h=54
+            panelTop.Controls.Add(new Label {
+                Location  = new System.Drawing.Point(816, 26),
+                Size      = new System.Drawing.Size(1, 54),
+                BackColor = System.Drawing.Color.Silver,
+                Text      = ""
+            });
+            panelTop.Controls.Remove(lblTrigStatus);  // shown via canvas only
             SetRunState(false);
         }
 
@@ -469,24 +481,27 @@ namespace AudioHexViewer
             void StyleBtn(Button b, bool on, Color onBack)
             { b.BackColor=on?onBack:SystemColors.Control;
               b.ForeColor=on?(onBack==Color.LightGreen?Color.Black:Color.White):SystemColors.ControlText;
-              b.UseVisualStyleBackColor=!on; }
-            bool lVis=cmbCouplingL.SelectedIndex<2, rVis=cmbCouplingR.SelectedIndex<2;
-            StyleBtn(btnCurL, _cursorChan==1, lVis?TraceColorL:Color.Gray);
-            StyleBtn(btnCurR, _cursorChan==2, rVis?TraceColorR:Color.Gray);
+              b.UseVisualStyleBackColor=!on;
+              if(b.FlatStyle==FlatStyle.Flat)
+                b.FlatAppearance.BorderColor=on?Color.FromArgb(80,160,80):SystemColors.ControlDark; }
+            // CursorChan is driven by btnScaleL/R (no separate L/R cursor buttons)
             StyleBtn(btnCurX, _xActive, Color.LightGreen);
             StyleBtn(btnCurY, _yActive, Color.LightGreen);
             StyleBtn(btnLinkedX, _linkedX, Color.LightGreen);
             StyleBtn(btnLinkedY, _linkedY, Color.LightGreen);
-            StyleBtn(btnLblX, _lblX, Color.LightGreen);
-            StyleBtn(btnLblY, _lblY, Color.LightGreen);
+            StyleBtn(btnLblX, _lblX, Color.LightGreen);   // Labels
+            StyleBtn(btnLblY, _yTrack, Color.LightGreen); // Y track
             bool hasChan = _cursorChan > 0;
             btnCurX.Enabled = btnCurY.Enabled = hasChan;
             btnLinkedX.Enabled = hasChan && _xActive;
             btnLinkedY.Enabled = hasChan && _yActive;
             btnSetX.Enabled    = hasChan && _xActive;
             btnSetY.Enabled    = hasChan && _yActive;
-            btnLblX.Enabled    = hasChan && _xActive;
-            btnLblY.Enabled    = hasChan && _yActive;
+            // Labels: enabled if any cursor active
+            btnLblX.Enabled    = hasChan && (_xActive||_yActive);
+            // Y track: only when BOTH X and Y cursors are active
+            btnLblY.Enabled    = hasChan && _xActive && _yActive;
+            if (!(_xActive&&_yActive)) _yTrack=false;
         }
 
         private RectangleF GetWaveRect()
@@ -551,7 +566,7 @@ namespace AudioHexViewer
                 if(Math.Abs(e.X-x1px)<=T){_cursorDragging=1;return;}
                 if(Math.Abs(e.X-x2px)<=T){_cursorDragging=2;return;}
             }
-            if (_yActive)
+            if (_yActive && !_yTrack)  // Y drag blocked in track mode
             {
                 float y1py=w.Bottom-_y1Frac*w.Height, y2py=w.Bottom-_y2Frac*w.Height;
                 if(Math.Abs(e.Y-y1py)<=T){_cursorDragging=3;return;}
@@ -623,6 +638,19 @@ namespace AudioHexViewer
         private void DrawCursors(Graphics g, RectangleF w)
         {
             if (_cursorChan==0 || !CursorChanVisible) return;
+            // Y track: move Y cursors to signal amplitude at X positions
+            if (_yTrack && _xActive && _yActive)
+            {
+                float[]? td=GetActiveCursorData();
+                if(td!=null&&td.Length>=2)
+                {
+                    float t1=_x1Frac*(td.Length-1); int l1=(int)t1,h1=Math.Min(l1+1,td.Length-1);
+                    float t2=_x2Frac*(td.Length-1); int l2=(int)t2,h2=Math.Min(l2+1,td.Length-1);
+                    float v1=td[l1]*(1f-(t1-l1))+td[h1]*(t1-l1);
+                    float v2=td[l2]*(1f-(t2-l2))+td[h2]*(t2-l2);
+                    _y1Frac=NormToYFrac(v1); _y2Frac=NormToYFrac(v2);
+                }
+            }
             Color col=CursorColor;
             using var penX=new Pen(Color.FromArgb(210,col),1.5f){DashStyle=DashStyle.Custom};
             penX.DashPattern=new float[]{8f,4f};   // X: longs tirets
@@ -645,8 +673,10 @@ namespace AudioHexViewer
                     var sz=g.MeasureString(txt,fDx);
                     float x1px=w.Left+_x1Frac*w.Width, x2px=w.Left+_x2Frac*w.Width;
                     float lx=Math.Clamp(x1px+_dxLblFracX*(x2px-x1px)-sz.Width/2f, w.Left, w.Right-sz.Width);
-                    float ly=w.Top+10f;  // fixed near top
+                    float ly=w.Top+18f;  // just below acquisition minimap
                     _dxLblRect=new RectangleF(lx-2,ly,sz.Width+4,sz.Height+2);
+                    using var brBgDx=new SolidBrush(Color.FromArgb(210, BgColor));
+                    g.FillRectangle(brBgDx,_dxLblRect);
                     g.DrawString(txt,fDx,brL,lx,ly);
                 }
             }
@@ -668,6 +698,8 @@ namespace AudioHexViewer
                     float lx=w.Left+8f;  // fixed near left
                     float ly=Math.Clamp(y2py+_dyLblFracY*(y1py-y2py)-sz.Height/2f, w.Top, w.Bottom-sz.Height);
                     _dyLblRect=new RectangleF(lx-2,ly,sz.Width+4,sz.Height+2);
+                    using var brBgDy=new SolidBrush(Color.FromArgb(210, BgColor));
+                    g.FillRectangle(brBgDy,_dyLblRect);
                     g.DrawString(txt,fDy,brL,lx,ly);
                 }
             }
@@ -687,15 +719,23 @@ namespace AudioHexViewer
                 float ym=w.Top+w.Height/2f,ys=w.Height/2f*zoom;
                 float yRef=ym-off*w.Height/2f;
                 float yPos=Math.Clamp(yRef-val*ys,w.Top,w.Bottom);
-                float d=6f;
+                float d=6f, dh=d+3.5f;
+                // Halo semi-transparent BgColor for visibility
+                var ptsH=new[]{new PointF(cx,yPos-dh),new PointF(cx+dh,yPos),new PointF(cx,yPos+dh),new PointF(cx-dh,yPos)};
+                using var brHalo=new SolidBrush(Color.FromArgb(180,BgColor)); g.FillPolygon(brHalo,ptsH);
                 var pts=new[]{new PointF(cx,yPos-d),new PointF(cx+d,yPos),new PointF(cx,yPos+d),new PointF(cx-d,yPos)};
-                using var br=new SolidBrush(Color.FromArgb(220,col)); g.FillPolygon(br,pts);
+                using var br=new SolidBrush(Color.FromArgb(240,col)); g.FillPolygon(br,pts);
             }
-            string timeTxt=lbl+"="+FormatTime(XFracToMs(frac));
-            var szL=g.MeasureString(timeTxt,font);
-            float ly=Math.Clamp(w.Top+lblFracY*w.Height-szL.Height/2f, w.Top, w.Bottom-szL.Height);
-            lblRect=new RectangleF(cx+2,ly,szL.Width+2,szL.Height);
-            g.DrawString(timeTxt,font,brL,cx+3,ly);
+            if (_lblX)  // Labels button controls all cursor labels
+            {
+                string timeTxt=lbl+"="+FormatTime(XFracToMs(frac));
+                var szL=g.MeasureString(timeTxt,font);
+                float ly=Math.Clamp(w.Top+lblFracY*w.Height-szL.Height/2f, w.Top, w.Bottom-szL.Height);
+                lblRect=new RectangleF(cx+2,ly,szL.Width+4,szL.Height);
+                using var brBgX=new SolidBrush(Color.FromArgb(210, BgColor));
+                g.FillRectangle(brBgX,lblRect);
+                g.DrawString(timeTxt,font,brL,cx+3,ly);
+            } else lblRect=RectangleF.Empty;
         }
 
         private void DrawYCursorLine(Graphics g,RectangleF w,float frac,string lbl,
@@ -705,13 +745,18 @@ namespace AudioHexViewer
             g.DrawLine(pen,w.Left,cy,w.Right,cy);
             float norm=YFracToNorm(frac);
             var (cok,odb)=GetActiveCal();
-            string valTxt;
-            if(cok){double sc=Math.Pow(10,odb/20.0)*Math.Sqrt(2.0);valTxt=lbl+"="+FormatV((double)norm*sc);}
-            else valTxt=$"{lbl}={norm:+0.000;-0.000}";
-            var szL=g.MeasureString(valTxt,font);
-            float lx=Math.Clamp(w.Left+lblFracX*w.Width, w.Left, w.Right-szL.Width);
-            lblRect=new RectangleF(lx-2,cy+2,szL.Width+2,szL.Height);
-            g.DrawString(valTxt,font,brL,lx,cy+2);
+            if (_lblY)  // Labels button controls all cursor labels
+            {
+                string valTxt;
+                if(cok){double sc=Math.Pow(10,odb/20.0)*Math.Sqrt(2.0);valTxt=lbl+"="+FormatV((double)norm*sc);}
+                else valTxt=$"{lbl}={norm:+0.000;-0.000}";
+                var szL=g.MeasureString(valTxt,font);
+                float lx=Math.Clamp(w.Left+lblFracX*w.Width, w.Left, w.Right-szL.Width);
+                lblRect=new RectangleF(lx-2,cy+2,szL.Width+4,szL.Height);
+                using var brBgY=new SolidBrush(Color.FromArgb(210, BgColor));
+                g.FillRectangle(brBgY,lblRect);
+                g.DrawString(valTxt,font,brL,lx,cy+2);
+            } else lblRect=RectangleF.Empty;
         }
 
         // ── Dialogue Set X / Set Y ────────────────────────────────────────────
@@ -1970,6 +2015,7 @@ namespace AudioHexViewer
             cmbCouplingR.SelectedIndex=Math.Clamp(s.AcCouplingR,0,2);
             cmbGrid.SelectedIndex=Math.Clamp(s.GridModeIdx,0,2);
             UpdateVdivButton();
+            _cursorChan = _scaleChannel + 1;  // sync with scale channel at load
             UpdateRollCheckbox();
             if(_rollEnabled){_rollActive=s.RollMode;UpdateRollButton();}
         }

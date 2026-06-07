@@ -34,7 +34,6 @@ namespace AudioHexViewer
         private Label         lblVdiv;
         // ── Curseurs X/Y ────────────────────────────────────────────────────
         private Label         lblCursors;
-        private Button        btnCurL,   btnCurR;
         private Button        btnCurX,   btnCurY;
         private Button        btnLinkedX,btnLinkedY;
         private Button        btnSetX,   btnSetY;
@@ -70,7 +69,6 @@ namespace AudioHexViewer
             lblTraceMode = new Label();
             btnVdiv      = new Button();   lblVdiv     = new Label();
             lblCursors   = new Label();
-            btnCurL      = new Button();   btnCurR    = new Button();
             btnCurX      = new Button();   btnCurY    = new Button();
             btnLinkedX   = new Button();   btnLinkedY = new Button();
             btnSetX      = new Button();   btnSetY    = new Button();
@@ -106,8 +104,8 @@ namespace AudioHexViewer
                 lblVdivR, cmbVdivR, cmbCouplingR,
                 btnRoll, lblRoll, btnVdiv, lblVdiv,
                 lblCursors,
-                btnCurL, btnCurX, btnLinkedX, btnSetX, btnLblX,
-                btnCurR, btnCurY, btnLinkedY, btnSetY, btnLblY,
+                btnCurX, btnLinkedX, btnSetX, btnLblX,
+                btnCurY, btnLinkedY, btnSetY, btnLblY,
                 lblTrigStatus,
                 btnRun
             });
@@ -125,43 +123,43 @@ namespace AudioHexViewer
 
             // ── 1. L GAIN / R GAIN ────────────────────────────────────────
             lblGainHdr.AutoSize=true; lblGainHdr.Font=gS; lblGainHdr.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblGainHdr.Location=new Point(8,4); lblGainHdr.Text="L GAIN";
+            lblGainHdr.Location=new Point(17,4); lblGainHdr.Text="L GAIN";
             cmbVdivL.DropDownStyle=ComboBoxStyle.DropDownList; cmbVdivL.Font=std9;
-            cmbVdivL.Location=new Point(8,18); cmbVdivL.Size=new Size(80,24); cmbVdivL.TabIndex=0;
+            cmbVdivL.Location=new Point(17,18); cmbVdivL.Size=new Size(80,24); cmbVdivL.TabIndex=0;
             lblVdivR.AutoSize=true; lblVdivR.Font=gS; lblVdivR.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblVdivR.Location=new Point(8,46); lblVdivR.Text="R GAIN";
+            lblVdivR.Location=new Point(17,46); lblVdivR.Text="R GAIN";
             cmbVdivR.DropDownStyle=ComboBoxStyle.DropDownList; cmbVdivR.Font=std9;
-            cmbVdivR.Location=new Point(8,60); cmbVdivR.Size=new Size(80,24); cmbVdivR.TabIndex=1;
+            cmbVdivR.Location=new Point(17,60); cmbVdivR.Size=new Size(80,24); cmbVdivR.TabIndex=1;
 
             // ── 2. L COUPLING / R COUPLING + L/R + V/div ─────────────────
             lblCoupHdr.AutoSize=true; lblCoupHdr.Font=gS; lblCoupHdr.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblCoupHdr.Location=new Point(96,4); lblCoupHdr.Text="L COUPLING";
+            lblCoupHdr.Location=new Point(105,4); lblCoupHdr.Text="L COUPLING";
             cmbCouplingL.DropDownStyle=ComboBoxStyle.DropDownList; cmbCouplingL.Font=std9;
-            cmbCouplingL.Location=new Point(96,18); cmbCouplingL.Size=new Size(66,24); cmbCouplingL.TabIndex=9;
+            cmbCouplingL.Location=new Point(105,18); cmbCouplingL.Size=new Size(66,24); cmbCouplingL.TabIndex=9;
             cmbCouplingL.Items.AddRange(new object[]{"DC","AC","OFF"}); cmbCouplingL.SelectedIndex=0;
             lblVdivL.AutoSize=true; lblVdivL.Font=gS; lblVdivL.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblVdivL.Location=new Point(96,46); lblVdivL.Text="R COUPLING";
+            lblVdivL.Location=new Point(105,46); lblVdivL.Text="R COUPLING";
             cmbCouplingR.DropDownStyle=ComboBoxStyle.DropDownList; cmbCouplingR.Font=std9;
-            cmbCouplingR.Location=new Point(96,60); cmbCouplingR.Size=new Size(66,24); cmbCouplingR.TabIndex=11;
+            cmbCouplingR.Location=new Point(105,60); cmbCouplingR.Size=new Size(66,24); cmbCouplingR.TabIndex=11;
             cmbCouplingR.Items.AddRange(new object[]{"DC","AC","OFF"}); cmbCouplingR.SelectedIndex=0;
             // V/div button + label (replaces chkVdiv)
             lblVdiv.AutoSize=true; lblVdiv.Font=gS; lblVdiv.ForeColor=SystemColors.GrayText;
-            lblVdiv.Location=new Point(200,4); lblVdiv.Text="V/div";
-            btnVdiv.Location=new Point(200,18); btnVdiv.Margin=new Padding(0);
+            lblVdiv.Location=new Point(209,46); lblVdiv.Text="V/div";
+            btnVdiv.Location=new Point(209,60); btnVdiv.Margin=new Padding(0);
             btnVdiv.Size=new Size(30,24); btnVdiv.TabIndex=13;
             btnVdiv.Font=new Font("Segoe UI",8.5f); btnVdiv.UseVisualStyleBackColor=true;
-            btnScaleL.Location=new Point(168,18); btnScaleL.Margin=new Padding(0);
+            btnScaleL.Location=new Point(177,18); btnScaleL.Margin=new Padding(0);
             btnScaleL.Size=new Size(28,24); btnScaleL.TabIndex=30;
             btnScaleL.Text="L"; btnScaleL.UseVisualStyleBackColor=false;
-            btnScaleR.Location=new Point(168,60); btnScaleR.Margin=new Padding(0);
+            btnScaleR.Location=new Point(177,60); btnScaleR.Margin=new Padding(0);
             btnScaleR.Size=new Size(28,24); btnScaleR.TabIndex=31;
             btnScaleR.Text="R"; btnScaleR.UseVisualStyleBackColor=false;
 
             // ── 3. TIMEBASE (x=280) ───────────────────────────────────────
             lblTimediv.AutoSize=true; lblTimediv.Font=gS; lblTimediv.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblTimediv.Location=new Point(280,4); lblTimediv.Text="TIME/DIV";
+            lblTimediv.Location=new Point(256,4); lblTimediv.Text="TIME/DIV";
             cmbTimediv.DropDownStyle=ComboBoxStyle.DropDownList; cmbTimediv.Font=std9;
-            cmbTimediv.Location=new Point(280,18); cmbTimediv.Size=new Size(90,24); cmbTimediv.TabIndex=2;
+            cmbTimediv.Location=new Point(256,18); cmbTimediv.Size=new Size(90,24); cmbTimediv.TabIndex=2;
             cmbTimediv.Items.AddRange(new object[]{
                 "1 µs/div","2 µs/div","5 µs/div",
                 "10 µs/div","20 µs/div","50 µs/div",
@@ -172,82 +170,83 @@ namespace AudioHexViewer
                 "1 s/div"});
             cmbTimediv.SelectedIndex=10; // 2 ms/div
             lblTrigPos.AutoSize=true; lblTrigPos.Font=gS; lblTrigPos.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblTrigPos.Location=new Point(314,46); lblTrigPos.Text="T POS (div)";
+            lblTrigPos.Location=new Point(290,46); lblTrigPos.Text="T POS (div)";
             nudTrigPos.DecimalPlaces=1; nudTrigPos.Increment=0.5m;
             nudTrigPos.Minimum=0.5m; nudTrigPos.Maximum=9.5m; nudTrigPos.Value=2.0m;
-            nudTrigPos.Font=std9; nudTrigPos.Location=new Point(314,60); nudTrigPos.Size=new Size(56,24); nudTrigPos.TabIndex=18;
+            nudTrigPos.Font=std9; nudTrigPos.Location=new Point(290,60); nudTrigPos.Size=new Size(56,24); nudTrigPos.TabIndex=18;
             // Roll button + label (replaces chkRoll)
             lblRoll.AutoSize=true; lblRoll.Font=gS; lblRoll.ForeColor=SystemColors.GrayText;
-            lblRoll.Location=new Point(280,46); lblRoll.Text="Roll"; // label above button
-            btnRoll.Location=new Point(280,60); btnRoll.Margin=new Padding(0);
+            lblRoll.Location=new Point(256,46); lblRoll.Text="ROLL";
+            btnRoll.Location=new Point(256,60); btnRoll.Margin=new Padding(0);
             btnRoll.Size=new Size(30,24); btnRoll.TabIndex=12; btnRoll.Enabled=false;
-            btnRoll.Text="ROLL"; btnRoll.Font=new Font("Segoe UI",8.5f); btnRoll.UseVisualStyleBackColor=true;
+            btnRoll.Text=""; btnRoll.Font=new Font("Segoe UI",8.5f); btnRoll.UseVisualStyleBackColor=true;
 
             // ── 4. TRIGGER ── x=415: TRIGGER|SOURCE|SLOPE  /  LEVEL|HOLDOFF ─
             lblTrig.AutoSize=true; lblTrig.Font=gS; lblTrig.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblTrig.Location=new Point(415,4); lblTrig.Text="TRIGGER";
+            lblTrig.Location=new Point(363,4); lblTrig.Text="TRIGGER";
             cmbTrigMode.DropDownStyle=ComboBoxStyle.DropDownList; cmbTrigMode.Font=std9;
-            cmbTrigMode.Location=new Point(415,18); cmbTrigMode.Size=new Size(70,24); cmbTrigMode.TabIndex=3;
+            cmbTrigMode.Location=new Point(363,18); cmbTrigMode.Size=new Size(70,24); cmbTrigMode.TabIndex=3;
             cmbTrigMode.Items.AddRange(new object[]{"Auto","Normal","Single"}); cmbTrigMode.SelectedIndex=0;
             cmbTrigEdge.DropDownStyle=ComboBoxStyle.DropDownList; cmbTrigEdge.Font=std9;
-            cmbTrigEdge.Location=new Point(545,18); cmbTrigEdge.Size=new Size(40,24); cmbTrigEdge.TabIndex=4;
+            cmbTrigEdge.Location=new Point(493,18); cmbTrigEdge.Size=new Size(40,24); cmbTrigEdge.TabIndex=4;
             cmbTrigEdge.Items.AddRange(new object[]{"\u2191","\u2193"}); cmbTrigEdge.SelectedIndex=0;
             lblTrigSrc.AutoSize=true; lblTrigSrc.Font=gS; lblTrigSrc.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblTrigSrc.Location=new Point(491,4); lblTrigSrc.Text="SOURCE";
+            lblTrigSrc.Location=new Point(439,4); lblTrigSrc.Text="SOURCE";
             cmbTrigSrc.DropDownStyle=ComboBoxStyle.DropDownList; cmbTrigSrc.Font=std9;
-            cmbTrigSrc.Location=new Point(491,18); cmbTrigSrc.Size=new Size(48,24); cmbTrigSrc.TabIndex=5;
+            cmbTrigSrc.Location=new Point(439,18); cmbTrigSrc.Size=new Size(48,24); cmbTrigSrc.TabIndex=5;
             cmbTrigSrc.Items.AddRange(new object[]{"L","R"}); cmbTrigSrc.SelectedIndex=0;
             lblTrigLvl.AutoSize=true; lblTrigLvl.Font=gS; lblTrigLvl.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblTrigLvl.Location=new Point(415,46); lblTrigLvl.Text="LEVEL";
+            lblTrigLvl.Location=new Point(363,46); lblTrigLvl.Text="LEVEL";
             lblTrigSlope.AutoSize=true; lblTrigSlope.Font=gS; lblTrigSlope.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblTrigSlope.Location=new Point(545,4); lblTrigSlope.Text="SLOPE";
+            lblTrigSlope.Location=new Point(493,4); lblTrigSlope.Text="SLOPE";
             nudTrigLevel.Text="0.000";
-            nudTrigLevel.Font=std9; nudTrigLevel.Location=new Point(415,60); nudTrigLevel.Size=new Size(70,24); nudTrigLevel.TabIndex=6;
+            nudTrigLevel.Font=std9; nudTrigLevel.Location=new Point(363,60); nudTrigLevel.Size=new Size(70,24); nudTrigLevel.TabIndex=6;
             nudTrigLevel.TextAlign=HorizontalAlignment.Right;
             lblHoldoff.AutoSize=true; lblHoldoff.Font=gS; lblHoldoff.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblHoldoff.Location=new Point(491,46); lblHoldoff.Text="HOLD-OFF (ms)";
+            lblHoldoff.Location=new Point(439,46); lblHoldoff.Text="HOLD-OFF (ms)";
             nudHoldoff.DecimalPlaces=1; nudHoldoff.Increment=1.0m;
             nudHoldoff.Minimum=0m; nudHoldoff.Maximum=2000m; nudHoldoff.Value=0m;
-            nudHoldoff.Font=std9; nudHoldoff.Location=new Point(491,60); nudHoldoff.Size=new Size(95,24); nudHoldoff.TabIndex=31;
+            nudHoldoff.Font=std9; nudHoldoff.Location=new Point(439,60); nudHoldoff.Size=new Size(95,24); nudHoldoff.TabIndex=31;
             nudHoldoff.TextAlign=HorizontalAlignment.Right;
 
             // ── 5. DISPLAY (x=636) ── Grid + Trace ───────────────────────
             lblGrid.AutoSize=true; lblGrid.Font=gS; lblGrid.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblGrid.Location=new Point(636,4); lblGrid.Text="GRID";
+            lblGrid.Location=new Point(551,4); lblGrid.Text="GRID";
             cmbGrid.DropDownStyle=ComboBoxStyle.DropDownList; cmbGrid.Font=std9;
-            cmbGrid.Location=new Point(636,18); cmbGrid.Size=new Size(88,24); cmbGrid.TabIndex=7;
+            cmbGrid.Location=new Point(551,18); cmbGrid.Size=new Size(88,24); cmbGrid.TabIndex=7;
             cmbGrid.Items.AddRange(new object[]{"Full","Axis","None"}); cmbGrid.SelectedIndex=0;
             lblTraceMode.AutoSize=true; lblTraceMode.Font=gS; lblTraceMode.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblTraceMode.Location=new Point(636,46); lblTraceMode.Text="TRACE";
+            lblTraceMode.Location=new Point(551,46); lblTraceMode.Text="TRACE";
             cmbTraceMode.DropDownStyle=ComboBoxStyle.DropDownList; cmbTraceMode.Font=std9;
-            cmbTraceMode.Location=new Point(636,60); cmbTraceMode.Size=new Size(88,24); cmbTraceMode.TabIndex=29;
+            cmbTraceMode.Location=new Point(551,60); cmbTraceMode.Size=new Size(88,24); cmbTraceMode.TabIndex=29;
             cmbTraceMode.Items.AddRange(new object[]{"Segment","Mixed","Dot"});
             cmbTraceMode.SelectedIndex=0;
 
             // ── 6. CURSORS X/Y ── 5 colonnes × 2 lignes ─────────────────
             // Colonnes : Chan=34 | Type=34 | Linked=52 | Set=46 | Lbl=46
             // x :        734    | 772     | 810       | 866    | 916    → fin 962
-            // Cursor zone header
+            // Cursor zone — Option B layout (channel from Scale L/R buttons)
             lblCursors.AutoSize=true; lblCursors.Font=gS; lblCursors.ForeColor=SystemColors.GrayText;
-            lblCursors.Location=new Point(830,4); lblCursors.Text="CURSORS";
+            lblCursors.Location=new Point(738,4); lblCursors.Text="CURSORS";
 
-            // Ligne 1 (y=18) : L | X | Linked | Set X | Lbl X
             void Btn(Button b, int x, int y, int w, string txt, int tab)
             { b.Location=new Point(x,y); b.Margin=new Padding(0); b.Size=new Size(w,24);
               b.Text=txt; b.TabIndex=tab; b.UseVisualStyleBackColor=true;
-              b.Font=new Font("Segoe UI",8.5f,FontStyle.Regular); b.FlatStyle=FlatStyle.Standard; }
+              b.Font=new Font("Segoe UI",8.5f,FontStyle.Regular);
+              b.FlatStyle=FlatStyle.Flat; b.FlatAppearance.BorderSize=1;
+              b.FlatAppearance.BorderColor=System.Drawing.SystemColors.ControlDark; }
 
-            Btn(btnCurL,    734, 18, 34, "L",       40);
-            Btn(btnCurX,    772, 18, 34, "X",       41);
-            Btn(btnLinkedX, 810, 18, 52, "Linked",  42);
-            Btn(btnSetX,    866, 18, 46, "Set X",   43);
-            Btn(btnLblX,    916, 18, 46, "Lbl X",   44);
-            // Ligne 2 (y=60) : R | Y | Linked | Set Y | Lbl Y
-            Btn(btnCurR,    734, 60, 34, "R",       45);
-            Btn(btnCurY,    772, 60, 34, "Y",       46);
-            Btn(btnLinkedY, 810, 60, 52, "Linked",  47);
-            Btn(btnSetY,    866, 60, 46, "Set Y",   48);
-            Btn(btnLblY,    916, 60, 46, "Lbl Y",   49);
+            // Row 1 (y=26): X | Linked | Set X  [sep]  Labels
+            Btn(btnCurX,    656, 26, 44, "X",       41);
+            Btn(btnLinkedX, 706, 26, 52, "Linked",  42);
+            Btn(btnSetX,    764, 26, 46, "Set X",   43);
+            Btn(btnLblX,    823, 26, 58, "Labels",  44);
+            // Row 2 (y=56): Y | Linked | Set Y  [sep]  Y track — gap=6px (=horiz gap)
+            Btn(btnCurY,    656, 56, 44, "Y",       46);
+            Btn(btnLinkedY, 706, 56, 52, "Linked",  47);
+            Btn(btnSetY,    764, 56, 46, "Set Y",   48);
+            Btn(btnLblY,    823, 56, 58, "Y track", 49);
+            btnLblY.AutoEllipsis=false;  // prevent truncation
 
             lblTrigStatus.Visible=false; lblTrigStatus.Location=new Point(966,4); lblTrigStatus.Size=new Size(82,18);
             lblTrigStatus.Text=""; lblTrigStatus.Font=new Font("Segoe UI",8.5f,FontStyle.Bold);
