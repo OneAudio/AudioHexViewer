@@ -290,8 +290,8 @@ namespace AudioHexViewer
             pnlScope.MouseWheel += PnlScope_MouseWheel;
 
             // ── Curseurs X / Y ────────────────────────────────────────────────
-            btnCurX.Click    += (_, _) => { if (_xActive && !_yActive) return; _xActive=!_xActive; if(!(_xActive&&_yActive))_yTrack=false; UpdateCursorUI(); pnlScope.Invalidate(); };
-            btnCurY.Click    += (_, _) => { if (_yActive && !_xActive) return; _yActive=!_yActive; if(!(_xActive&&_yActive))_yTrack=false; UpdateCursorUI(); pnlScope.Invalidate(); };
+            btnCurX.Click    += (_, _) => { _xActive=!_xActive; if(!(_xActive&&_yActive))_yTrack=false; UpdateCursorUI(); pnlScope.Invalidate(); };
+            btnCurY.Click    += (_, _) => { _yActive=!_yActive; if(!(_xActive&&_yActive))_yTrack=false; UpdateCursorUI(); pnlScope.Invalidate(); };
             btnLinkedX.Click += (_, _) => { _linkedX=!_linkedX; UpdateCursorUI(); };
             btnLinkedY.Click += (_, _) => { _linkedY=!_linkedY; UpdateCursorUI(); };
             btnSetX.Click    += (_, _) => OpenSetCursorDialog(isX: true);
@@ -326,7 +326,7 @@ namespace AudioHexViewer
 
             UpdateRollCheckbox();
             // Séparateurs visuels entre groupes (1px silver dans les gaps)
-            foreach (int sx in new[] { 8, 247, 354, 542, 647, 889 })
+            foreach (int sx in new[] { 244, 363, 563, 680, 934 })
                 panelTop.Controls.Add(new Label {
                     Location  = new System.Drawing.Point(sx, 6),
                     Size      = new System.Drawing.Size(1, 78),
@@ -337,7 +337,7 @@ namespace AudioHexViewer
             // Center = (894+907)/2 = 900, gap = 6px each side
             // Height = button height only: y=26 (top row1) to y=80 (bottom row2) → h=54
             panelTop.Controls.Add(new Label {
-                Location  = new System.Drawing.Point(816, 26),
+                Location  = new System.Drawing.Point(855, 26),
                 Size      = new System.Drawing.Size(1, 54),
                 BackColor = System.Drawing.Color.Silver,
                 Text      = ""
