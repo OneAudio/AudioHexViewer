@@ -1252,6 +1252,9 @@ namespace AudioHexViewer
             _plotPeakLeft        = null;
             _plotPeakRight       = null;
             _plotFrfPhaseDeg     = null;
+            _plotFrfCoherence    = null;
+            currentFrfPhaseDeg   = null;
+            currentFrfCoherence  = null;
             freqAxis             = null;
             lastTimeLeft         = null;
             lastTimeRight        = null;

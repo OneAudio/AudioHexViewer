@@ -152,12 +152,14 @@ namespace AudioHexViewer
                         _avgExpAlpha,        // Alpha exponentiel (EXISTANT)
                         out var gainDb,      //  Gain dB (EXISTANT)
                         out var phaseDeg,    // <-- NOUVEAU (Phase)
+                        out var coherence,   // <-- NOUVEAU (Cohérence γ²)
                         out avgFill);        // Fill count UI (EXISTANT)
 
 
                     currentLeftSpectrum = gainDb;   // une seule courbe (gain)
                     //currentFrfPhaseDeg = phaseDeg;   // <-- NEW : stocke la phase (FULL) pour le plot / curseurs
                     currentFrfPhaseDeg = _frfPhaseUnwrap ? DspMath.UnwrapPhaseDegrees(phaseDeg) : phaseDeg;
+                    currentFrfCoherence = coherence;
 
                     currentRightSpectrum = null;
                 }
@@ -165,11 +167,14 @@ namespace AudioHexViewer
                 {
                     currentLeftSpectrum = null;
                     currentRightSpectrum = null;
+                    currentFrfCoherence = null;
                 }
             }
             else
             {
                 // ---- Chemin EXISTANT, INCHANGÉ ----
+                currentFrfCoherence = null;
+
                 // Conversion puissance → dBFS (Phase 7: buffers pré-alloués)
                 if (outPowL != null)
                 {
@@ -242,6 +247,7 @@ namespace AudioHexViewer
             _plotLeftSpectrum  = null;
             _plotRightSpectrum = null;
             _plotFrfPhaseDeg   = null;
+            _plotFrfCoherence  = null;
             _plotPeakLeft  = null;
             _plotPeakRight = null;
 
@@ -281,6 +287,12 @@ namespace AudioHexViewer
             if (currentFrfPhaseDeg != null)
                 _plotFrfPhaseDeg = DecimateWithBuckets(
                     freqAxis, currentFrfPhaseDeg, bucketLo, bucketHi);
+
+            // Cohérence : min-hold par bucket (on ne veut pas masquer une zone peu
+            // fiable derrière des voisins plus cohérents — vision "pire cas").
+            if (currentFrfCoherence != null)
+                _plotFrfCoherence = DecimateWithBucketsMin(
+                    freqAxis, currentFrfCoherence, bucketLo, bucketHi);
 
             if (currentRightSpectrum != null)
                 _plotRightSpectrum = DecimateWithBuckets(
@@ -424,6 +436,46 @@ namespace AudioHexViewer
                     if (yFull[k] > yMax) yMax = yFull[k];
 
                 yOut[j] = yMax;
+            }
+            return yOut;
+        }
+
+        /// <summary>
+        /// Variante "min-hold" de <see cref="DecimateWithBuckets"/>, utilisée pour la
+        /// cohérence γ²(f) : on conserve la valeur la plus défavorable (la plus basse)
+        /// de chaque bucket, afin qu'une zone peu fiable ne soit pas masquée par des
+        /// bins voisins plus cohérents lors de la décimation.
+        /// </summary>
+        private static double[] DecimateWithBucketsMin(
+            double[] freqFull,
+            double[] yFull,
+            double[] bucketLo,
+            double[] bucketHi)
+        {
+            int nIn  = Math.Min(freqFull.Length, yFull.Length);
+            int nOut = bucketLo.Length;
+            var yOut = new double[nOut];
+
+            for (int j = 0; j < nOut; j++)
+            {
+                double lo = bucketLo[j];
+                double hi = bucketHi[j];
+
+                int kLo = Array.BinarySearch(freqFull, lo);
+                if (kLo < 0) kLo = ~kLo;
+
+                int kHi = Array.BinarySearch(freqFull, hi);
+                if (kHi < 0) kHi = ~kHi;     // premier bin >= hi → exclusif
+
+                kLo = Math.Max(0,        Math.Min(nIn - 1, kLo));
+                kHi = Math.Max(kLo + 1,  Math.Min(nIn,     kHi));  // exclusif
+
+                // Min-hold dans le bucket [kLo, kHi)
+                double yMin = yFull[kLo];
+                for (int k = kLo + 1; k < kHi; k++)
+                    if (yFull[k] < yMin) yMin = yFull[k];
+
+                yOut[j] = yMin;
             }
             return yOut;
         }

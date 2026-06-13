@@ -1070,10 +1070,12 @@ namespace AudioHexViewer
             var fx = _plotFreqAxis;
             var gain = _plotLeftSpectrum;          // en mode Bode Plot, LEFT = Gain (dB)
             var phi = _plotFrfPhaseDeg;            // Phase (°) si activée
+            var coh = _plotFrfCoherence;           // Cohérence γ² ∈ [0,1]
 
             static string FmtHz(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " Hz");
             static string FmtDb(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " dB");
             static string FmtDeg(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " °");
+            static string FmtPct(double v) => double.IsNaN(v) ? "—" : (v * 100.0).ToString("0.#") + " %";
 
             // --- Min/Max visibles ---
             double gMin = double.NaN, gMax = double.NaN;
@@ -1091,10 +1093,26 @@ namespace AudioHexViewer
                 pMax = phi.Max();
             }
 
+            // --- Cohérence γ² : min/moyenne sur la bande visible ---
+            double cMin = double.NaN, cAvg = double.NaN;
+            bool hasCoh = coh != null && coh.Length > 0;
+            if (hasCoh)
+            {
+                cMin = coh!.Min();
+                cAvg = coh.Average();
+            }
+
             dst.Add(new StatRow { Label = "Gain min", Value = FmtDb(gMin), Emphasis = StatEmphasis.Strong });
             dst.Add(new StatRow { Label = "Gain max", Value = FmtDb(gMax), Emphasis = StatEmphasis.Strong });
             dst.Add(new StatRow { Label = "φ min", Value = hasPhi ? FmtDeg(pMin) : "---", Emphasis = StatEmphasis.Strong });
             dst.Add(new StatRow { Label = "φ max", Value = hasPhi ? FmtDeg(pMax) : "---", Emphasis = StatEmphasis.Strong });
+
+            dst.Add(new StatRow { IsSeparator = true });
+
+            // --- Cohérence γ² : section dédiée avec titre ---
+            dst.Add(new StatRow { Label = "COHÉRENCE γ²", Value = "", Emphasis = StatEmphasis.Medium });
+            dst.Add(new StatRow { Label = "γ² min", Value = hasCoh ? FmtPct(cMin) : "---", Emphasis = StatEmphasis.Strong });
+            dst.Add(new StatRow { Label = "γ² moy", Value = hasCoh ? FmtPct(cAvg) : "---", Emphasis = StatEmphasis.Strong });
 
 
             dst.Add(new StatRow { IsSeparator = true });

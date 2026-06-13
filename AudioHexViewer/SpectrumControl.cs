@@ -313,6 +313,10 @@ namespace AudioHexViewer
         // Utilisé UNIQUEMENT en mode "Bode Plot" (Right=entrée, Left=sortie)
         private double[]? currentFrfPhaseDeg;
 
+        // --- FRF Cohérence γ²(f) ∈ [0,1] ---
+        // Utilisé UNIQUEMENT en mode "Bode Plot" (Right=entrée, Left=sortie)
+        private double[]? currentFrfCoherence;
+
         // FRF (Bode) UI toggles
         private bool _frfPhaseEnabled = false;   // bouton "enable φ" : OFF par défaut
         private bool _frfPhaseUnwrap = false;    // bouton "unwrap φ" : OFF => wrap par défaut
@@ -330,6 +334,8 @@ namespace AudioHexViewer
         private double[]? _plotRightSpectrum;
         // Phase décimée pour le tracé (AxisY2) — uniquement en mode "Bode Plot"
         private double[]? _plotFrfPhaseDeg;
+        // Cohérence décimée pour le tracé (code couleur de la courbe de gain) — "Bode Plot"
+        private double[]? _plotFrfCoherence;
 
         // ------------------------------------------------------------------
         // < / > peak navigation threshold (based on visible noise floor)
@@ -2525,6 +2531,62 @@ namespace AudioHexViewer
             ser.Points.ResumeUpdates();
         }
 
+        // Seuils de cohérence pour l'atténuation visuelle de la courbe de gain (Bode).
+        // γ² >= COH_FULL  → couleur pleine
+        // γ² <= COH_FADED → couleur quasi fondue dans le fond
+        // entre les deux  → interpolation linéaire
+        private const double COH_FULL = 0.95;
+        private const double COH_FADED = 0.50;
+
+        /// <summary>
+        /// Mélange <paramref name="baseColor"/> vers <paramref name="fadeTo"/> en fonction
+        /// de la cohérence γ² : une cohérence basse "fond" la couleur dans le fond du
+        /// graphique pour signaler visuellement une zone de mesure peu fiable.
+        /// </summary>
+        private static Color CoherenceBlend(Color baseColor, Color fadeTo, double gamma2)
+        {
+            if (double.IsNaN(gamma2)) gamma2 = 0.0;
+
+            double t;
+            if (gamma2 >= COH_FULL) t = 0.0;
+            else if (gamma2 <= COH_FADED) t = 1.0;
+            else t = (COH_FULL - gamma2) / (COH_FULL - COH_FADED);
+
+            byte R = (byte)(baseColor.R + (fadeTo.R - baseColor.R) * t);
+            byte G = (byte)(baseColor.G + (fadeTo.G - baseColor.G) * t);
+            byte B = (byte)(baseColor.B + (fadeTo.B - baseColor.B) * t);
+            byte A = (byte)(baseColor.A + (fadeTo.A - baseColor.A) * t);
+
+            return Color.FromArgb(A, R, G, B);
+        }
+
+        /// <summary>
+        /// Variante de <see cref="FillSeries"/> qui colore chaque point selon la
+        /// cohérence γ²(f) (mode Bode Plot) : les zones peu fiables sont atténuées
+        /// (fondues vers <paramref name="fadeTo"/>). Nécessite ChartType != Fast*
+        /// pour que les couleurs par point soient honorées par WinForms Charting.
+        /// </summary>
+        private static void FillSeriesWithCoherence(Series ser, double[]? fx, double[]? y, double[]? coherence,
+                                                      int startIdx, bool show, double offset,
+                                                      Color baseColor, Color fadeTo)
+        {
+            ser.Points.SuspendUpdates();
+            ser.Points.Clear();
+            if (show && fx != null && y != null)
+            {
+                int n = Math.Min(fx.Length, y.Length);
+                bool hasCoh = coherence != null && coherence.Length == y.Length;
+
+                for (int i = startIdx; i < n; i++)
+                {
+                    int idx = ser.Points.AddXY(fx[i], y[i] + offset);
+                    double g2 = hasCoh ? coherence![i] : 1.0;
+                    ser.Points[idx].Color = CoherenceBlend(baseColor, fadeTo, g2);
+                }
+            }
+            ser.Points.ResumeUpdates();
+        }
+
         /// <summary>
         /// Met à jour lblXxxRms/Peak depuis les champs _last* pré-calculés par
         /// FeedExternalTimeStats24. Corrige le bug latent : l'ancien bloc
@@ -2746,10 +2808,26 @@ namespace AudioHexViewer
                 double leftOff = useDbvPlot ? _levelCalOffsetDbLeft : 0.0;
                 double rightOff = useDbvPlot ? _levelCalOffsetDbRight : 0.0;
 
-                FillSeries(_serLeft!, plotFx, plotL, startIndex, showLeft, leftOff);
                 FillSeries(_serRight!, plotFx, plotR, startIndex, showRight, rightOff);
                 FillSeries(_serPeakLeft!, plotFx, peakHoldOn ? peakL : null, startIndex, showLeft && peakHoldOn, leftOff);
                 FillSeries(_serPeakRight!, plotFx, peakHoldOn ? peakR : null, startIndex, showRight && peakHoldOn, rightOff);
+
+                // ── Courbe de Gain (mode Bode Plot : code couleur selon la cohérence γ²) ──
+                bool bodeCoherence = (mode == "Bode Plot") && showLeft && _plotFrfCoherence != null;
+                if (bodeCoherence)
+                {
+                    // ChartType "Line" requis : les couleurs par point ne sont pas honorées
+                    // par les séries "Fast*" de WinForms Charting.
+                    _serLeft!.ChartType = SeriesChartType.Line;
+                    FillSeriesWithCoherence(_serLeft!, plotFx, plotL, _plotFrfCoherence,
+                        startIndex, showLeft, leftOff, FftLeftColor, BackgroundColor);
+                }
+                else
+                {
+                    _serLeft!.ChartType = SeriesChartType.FastLine;
+                    FillSeries(_serLeft!, plotFx, plotL, startIndex, showLeft, leftOff);
+                }
+
 
                 bool showPhase = mode == "Bode Plot" && _frfPhaseEnabled && _plotFrfPhaseDeg != null;
                 FillSeries(_serPhase!, plotFx, showPhase ? _plotFrfPhaseDeg : null, startIndex, showPhase, 0.0);

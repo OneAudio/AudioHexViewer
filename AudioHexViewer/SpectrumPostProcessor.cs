@@ -40,7 +40,9 @@ namespace AudioHexViewer
         // --- FRF / Bode (Welch cross-spectrum) state ---
         // Right = entrée X, Left = sortie Y
         // Gxx = <X * conj(X)>   (réel, positif)
+        // Gyy = <Y * conj(Y)>   (réel, positif)
         // Gxy = <X * conj(Y)>   (complex)
+        // Cohérence : γ²(f) = |Gxy|² / (Gxx · Gyy)
         // ------------------------------------------------------------------
 
         private bool _frfInit = false;
@@ -48,9 +50,18 @@ namespace AudioHexViewer
         private int _frfAvgTarget = 0;
         private double _frfExpAlpha = 0.0;
 
-        private double[]? _frfGxx;          // auto-spectrum entrée
-        private System.Numerics.Complex[]? _frfGxy; // cross-spectrum
+        private double[]? _frfGxx;          // auto-spectrum entrée  (somme ou EMA)
+        private double[]? _frfGyy;          // auto-spectrum sortie  (somme ou EMA)
+        private System.Numerics.Complex[]? _frfGxy; // cross-spectrum (somme ou EMA)
         private int _frfFillCount = 0;
+
+        // Mode COUNT : fenêtre glissante sur N frames (cohérent avec ApplyAveragingPower).
+        // _frfGxx/_frfGyy/_frfGxy contiennent alors la SOMME sur les frames présentes
+        // dans l'anneau (le ratio H1/cohérence est invariant à un facteur N commun).
+        private double[][]? _frfRingGxx;
+        private double[][]? _frfRingGyy;
+        private System.Numerics.Complex[][]? _frfRingGxy;
+        private int _frfRingPos = 0;
 
         // ════════════════════════════════════════════════════════════════════
         // Coherent averaging pour THD — suivi de phase mesuré frame-à-frame
@@ -107,6 +118,7 @@ namespace AudioHexViewer
         private double[]? _scratchOutRightDb;  // ApplyAveragingAdvanced : power→dB output R
         private double[]? _frfGainDbBuf;       // ApplyFrfH1Welch       : gainDb output
         private double[]? _frfPhaseDegBuf;     // ApplyFrfH1Welch       : phaseDeg output
+        private double[]? _frfCoherenceBuf;    // ApplyFrfH1Welch       : coherence (γ²) output
 
         private static double[] EnsureBuf(ref double[]? buf, int n)
         {
@@ -327,7 +339,13 @@ namespace AudioHexViewer
             _frfInit = false;
             _frfFillCount = 0;
             _frfGxx = null;
+            _frfGyy = null;
             _frfGxy = null;
+
+            _frfRingGxx = null;
+            _frfRingGyy = null;
+            _frfRingGxy = null;
+            _frfRingPos = 0;
         }
 
 
@@ -729,7 +747,13 @@ namespace AudioHexViewer
         /// Estimation FRF H1 (Welch) :
         /// H1(f) = Gxy(f) / Gxx(f)
         /// Right = entrée X, Left = sortie Y
-        /// Sortie : gain en dB (20*log10(|H1|))
+        /// Sortie : gain en dB (20*log10(|H1|)), phase (°), cohérence γ²(f) ∈ [0,1]
+        ///
+        /// Moyennage :
+        ///  - Mode Count       : fenêtre glissante sur N frames (anneau Gxx/Gyy/Gxy),
+        ///                       symétrique au comportement de ApplyAveragingPower.
+        ///  - Mode Exponential : EMA classique sur Gxx/Gyy/Gxy.
+        ///  - Mode None        : pas de moyenne (équivalent à N=1).
         /// </summary>
         public void ApplyFrfH1Welch(
             Complex32[] rightBins,
@@ -739,10 +763,16 @@ namespace AudioHexViewer
             double expAlpha,
             out double[] gainDb,
             out double[] phaseDeg,
+            out double[] coherence,
             out int fillCountForUi)
 
         {
             int bins = Math.Min(rightBins.Length, leftBins.Length);
+
+            // En mode Count, taille effective de la fenêtre glissante (>=1).
+            // En mode None, ringSize=1 (pas de moyenne, l'anneau sert juste de "frame précédente").
+            int ringSize = (mode == AveragingMode.Count) ? Math.Max(1, avgTargetCount) : 1;
+            bool usesRing = (mode != AveragingMode.Exponential);
 
             // Détection changement de configuration → reset
             bool needReset =
@@ -751,7 +781,11 @@ namespace AudioHexViewer
                 (_frfAvgTarget != avgTargetCount) ||
                 (Math.Abs(_frfExpAlpha - expAlpha) > 1e-12) ||
                 (_frfGxx == null || _frfGxx.Length != bins) ||
-                (_frfGxy == null || _frfGxy.Length != bins);
+                (_frfGyy == null || _frfGyy.Length != bins) ||
+                (_frfGxy == null || _frfGxy.Length != bins) ||
+                (usesRing &&
+                    (_frfRingGxx == null || _frfRingGxx.Length != ringSize ||
+                     _frfRingGxx.Length > 0 && _frfRingGxx[0].Length != bins));
 
             if (needReset)
             {
@@ -761,71 +795,119 @@ namespace AudioHexViewer
                 _frfExpAlpha = expAlpha;
 
                 _frfGxx = new double[bins];
+                _frfGyy = new double[bins];
                 _frfGxy = new System.Numerics.Complex[bins];
+
+                if (usesRing)
+                {
+                    _frfRingGxx = new double[ringSize][];
+                    _frfRingGyy = new double[ringSize][];
+                    _frfRingGxy = new System.Numerics.Complex[ringSize][];
+                    for (int r = 0; r < ringSize; r++)
+                    {
+                        _frfRingGxx[r] = new double[bins];
+                        _frfRingGyy[r] = new double[bins];
+                        _frfRingGxy[r] = new System.Numerics.Complex[bins];
+                    }
+                    _frfRingPos = 0;
+                }
+
                 _frfInit = true;
             }
 
-            // --- Calcul instantané ---
-            for (int k = 0; k < bins; k++)
+
+            // --- Calcul instantané + accumulation ---
+            if (mode == AveragingMode.Exponential)
             {
-                var X = rightBins[k];
-                var Y = leftBins[k];
+                double a = expAlpha;
+                double b = 1.0 - a;
 
-                // Gxx = X * conj(X) = |X|^2 (réel)
-                double gxxInst = (double)X.Real * X.Real + (double)X.Imaginary * X.Imaginary;
-
-                // Gxy = X * conj(Y) (complex)
-                var yConj = new Complex32(Y.Real, -Y.Imaginary);
-                var gxy32 = X * yConj;
-
-                // on stocke en Complex(double) pour l'accumulation (plus stable numériquement)
-                var gxyInst = new System.Numerics.Complex(gxy32.Real, gxy32.Imaginary);
-
-
-                if (mode == AveragingMode.Exponential)
+                for (int k = 0; k < bins; k++)
                 {
-                    double a = expAlpha;
-                    double b = 1.0 - a;
+                    var X = rightBins[k];
+                    var Y = leftBins[k];
 
-                    _frfGxx[k] = a * _frfGxx[k] + b * gxxInst;
-                    _frfGxy[k] = a * _frfGxy[k] + b * gxyInst;
-                }
-                else
-                {
-                    // Mode COUNT (accumulation simple)
-                    _frfGxx[k] += gxxInst;
-                    _frfGxy[k] += gxyInst;
-                }
-            }
+                    double gxxInst = (double)X.Real * X.Real + (double)X.Imaginary * X.Imaginary;
+                    double gyyInst = (double)Y.Real * Y.Real + (double)Y.Imaginary * Y.Imaginary;
 
-            // Gestion du fill count (COUNT uniquement)
-            if (mode == AveragingMode.Count)
-            {
-                if (_frfFillCount < avgTargetCount)
-                    _frfFillCount++;
+                    var yConj = new Complex32(Y.Real, -Y.Imaginary);
+                    var gxy32 = X * yConj;
+                    var gxyInst = new System.Numerics.Complex(gxy32.Real, gxy32.Imaginary);
+
+                    _frfGxx![k] = a * _frfGxx[k] + b * gxxInst;
+                    _frfGyy![k] = a * _frfGyy[k] + b * gyyInst;
+                    _frfGxy![k] = a * _frfGxy[k] + b * gxyInst;
+                }
+
+                _frfFillCount = 0; // exponentiel : pas de warm-up
             }
             else
             {
-                _frfFillCount = 0; // exponentiel : pas de warm-up
+                // Mode Count (ringSize >= 1) ou None (ringSize == 1) :
+                // fenêtre glissante sur `ringSize` frames via anneau Gxx/Gyy/Gxy.
+                var ringGxx = _frfRingGxx![_frfRingPos];
+                var ringGyy = _frfRingGyy![_frfRingPos];
+                var ringGxy = _frfRingGxy![_frfRingPos];
+
+                bool ringFull = (_frfFillCount >= ringSize);
+
+                for (int k = 0; k < bins; k++)
+                {
+                    var X = rightBins[k];
+                    var Y = leftBins[k];
+
+                    double gxxInst = (double)X.Real * X.Real + (double)X.Imaginary * X.Imaginary;
+                    double gyyInst = (double)Y.Real * Y.Real + (double)Y.Imaginary * Y.Imaginary;
+
+                    var yConj = new Complex32(Y.Real, -Y.Imaginary);
+                    var gxy32 = X * yConj;
+                    var gxyInst = new System.Numerics.Complex(gxy32.Real, gxy32.Imaginary);
+
+                    // Retire la frame la plus ancienne de la somme si l'anneau est plein
+                    if (ringFull)
+                    {
+                        _frfGxx![k] -= ringGxx[k];
+                        _frfGyy![k] -= ringGyy[k];
+                        _frfGxy![k] -= ringGxy[k];
+                    }
+
+                    ringGxx[k] = gxxInst;
+                    ringGyy[k] = gyyInst;
+                    ringGxy[k] = gxyInst;
+
+                    _frfGxx![k] += gxxInst;
+                    _frfGyy![k] += gyyInst;
+                    _frfGxy![k] += gxyInst;
+                }
+
+                _frfRingPos++;
+                if (_frfRingPos >= ringSize) _frfRingPos = 0;
+
+                if (_frfFillCount < ringSize) _frfFillCount++;
             }
 
-            fillCountForUi = _frfFillCount;
+            fillCountForUi = (mode == AveragingMode.Count) ? _frfFillCount : 0;
 
-            // --- Calcul du gain ---
-            gainDb   = EnsureBuf(ref _frfGainDbBuf,   bins);
-            phaseDeg = EnsureBuf(ref _frfPhaseDegBuf, bins);
+            // --- Calcul du gain / phase / cohérence ---
+            gainDb     = EnsureBuf(ref _frfGainDbBuf,    bins);
+            phaseDeg   = EnsureBuf(ref _frfPhaseDegBuf,  bins);
+            coherence  = EnsureBuf(ref _frfCoherenceBuf, bins);
             const double EPS = 1e-30;
 
             for (int k = 0; k < bins; k++)
             {
-                double gxx = _frfGxx[k];
+                double gxx = _frfGxx![k];
+                double gyy = _frfGyy![k];
+
                 if (gxx < EPS)
                 {
                     gainDb[k] = -200.0;
+                    phaseDeg[k] = 0.0;
+                    coherence[k] = 0.0;
                     continue;
                 }
 
-                System.Numerics.Complex H = _frfGxy[k] / gxx;
+                System.Numerics.Complex H = _frfGxy![k] / gxx;
 
                 // --- Gain ---
                 double mag = H.Magnitude;
@@ -844,9 +926,22 @@ namespace AudioHexViewer
 
                 phaseDeg[k] = deg;
 
+                // --- Cohérence γ²(f) = |Gxy|² / (Gxx · Gyy) ---
+                // Invariant à un facteur d'échelle commun (somme ou EMA) appliqué
+                // identiquement à Gxx/Gyy/Gxy, donc valable quel que soit le mode.
+                double gxyMagSq = _frfGxy[k].Real * _frfGxy[k].Real
+                                + _frfGxy[k].Imaginary * _frfGxy[k].Imaginary;
+                double denom = gxx * gyy;
+
+                double g2 = (denom > EPS) ? (gxyMagSq / denom) : 0.0;
+                if (g2 < 0.0) g2 = 0.0;
+                if (g2 > 1.0) g2 = 1.0; // clamp (bruit numérique peut dépasser légèrement 1)
+
+                coherence[k] = g2;
             }
         }
 
     }
 
 }
+
