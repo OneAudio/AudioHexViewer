@@ -17,6 +17,7 @@ namespace AudioHexViewer
         private Label         lblTrigSrc;   private ComboBox cmbTrigSrc;
         private Label         lblTrigSlope;
         private Label         lblTrigLvl;   private TextBox nudTrigLevel;
+        private Label         lblTrigAuto;  private Button  btnTrigAuto50;
         private Label         lblHoldoff;   private NumericUpDown nudHoldoff;
         private Label         lblTrigPos;   private NumericUpDown nudTrigPos;
         private Label         lblGrid;      private ComboBox cmbGrid;
@@ -34,10 +35,14 @@ namespace AudioHexViewer
         private Label         lblVdiv;
         // ── Curseurs X/Y ────────────────────────────────────────────────────
         private Label         lblCursors;
+        private Label         lblLinking;
+        private Label         lblColModes, lblColEdit, lblColGlue, lblColDisp;
         private Button        btnCurX,   btnCurY;
         private Button        btnLinkedX,btnLinkedY;
         private Button        btnSetX,   btnSetY;
         private Button        btnLblX,   btnLblY;
+        private Button        btnDisp;
+        private Button        btnGlueX;
         private Label         lblTrigStatus;
         private ScopePanel    pnlScope;
 
@@ -55,6 +60,7 @@ namespace AudioHexViewer
             lblTrigSrc   = new Label();   cmbTrigSrc  = new ComboBox();
             lblTrigSlope = new Label();
             lblTrigLvl   = new Label();   nudTrigLevel= new TextBox();
+            lblTrigAuto  = new Label();   btnTrigAuto50 = new Button();
             lblHoldoff   = new Label();   nudHoldoff  = new NumericUpDown();
             lblTrigPos   = new Label();   nudTrigPos  = new NumericUpDown();
             lblGrid      = new Label();   cmbGrid     = new ComboBox();
@@ -69,10 +75,15 @@ namespace AudioHexViewer
             lblTraceMode = new Label();
             btnVdiv      = new Button();   lblVdiv     = new Label();
             lblCursors   = new Label();
+            lblLinking   = new Label();
+            lblColModes  = new Label();   lblColEdit = new Label();
+            lblColGlue   = new Label();   lblColDisp = new Label();
             btnCurX      = new Button();   btnCurY    = new Button();
             btnLinkedX   = new Button();   btnLinkedY = new Button();
             btnSetX      = new Button();   btnSetY    = new Button();
             btnLblX      = new Button();   btnLblY    = new Button();
+            btnDisp      = new Button();
+            btnGlueX     = new Button();
             lblTrigStatus= new Label();
             pnlScope     = new ScopePanel();
 
@@ -93,7 +104,7 @@ namespace AudioHexViewer
                 lblTimediv, cmbTimediv,
                 lblTrig, cmbTrigMode, cmbTrigEdge,
                 lblTrigSrc, cmbTrigSrc, lblTrigSlope,
-                lblTrigLvl, nudTrigLevel,
+                lblTrigLvl, nudTrigLevel, lblTrigAuto, btnTrigAuto50,
                 lblHoldoff, nudHoldoff,
                 lblTrigPos, nudTrigPos,
                 lblGrid, cmbGrid,
@@ -103,8 +114,8 @@ namespace AudioHexViewer
                 lblVdivL, cmbVdivL, cmbCouplingL,
                 lblVdivR, cmbVdivR, cmbCouplingR,
                 btnRoll, lblRoll, btnVdiv, lblVdiv,
-                lblCursors,
-                btnCurX, btnLinkedX, btnSetX, btnLblX,
+                lblCursors, lblLinking, lblColModes, lblColEdit, lblColGlue, lblColDisp, btnGlueX,
+                btnCurX, btnLinkedX, btnSetX, btnLblX, btnDisp,
                 btnCurY, btnLinkedY, btnSetY, btnLblY,
                 lblTrigStatus,
                 btnRun
@@ -170,9 +181,9 @@ namespace AudioHexViewer
                 "1 s/div"});
             cmbTimediv.SelectedIndex=10; // 2 ms/div
             lblTrigPos.AutoSize=true; lblTrigPos.Font=gS; lblTrigPos.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblTrigPos.Location=new Point(293,46); lblTrigPos.Text="T POS (div)";
-            nudTrigPos.DecimalPlaces=1; nudTrigPos.Increment=0.5m;
-            nudTrigPos.Minimum=0.5m; nudTrigPos.Maximum=9.5m; nudTrigPos.Value=2.0m;
+            lblTrigPos.Location=new Point(293,46); lblTrigPos.Text="T POS (%)";
+            nudTrigPos.DecimalPlaces=0; nudTrigPos.Increment=1m;
+            nudTrigPos.Minimum=0m; nudTrigPos.Maximum=100m; nudTrigPos.Value=20m;
             nudTrigPos.Font=std9; nudTrigPos.Location=new Point(293,60); nudTrigPos.Size=new Size(56,24); nudTrigPos.TabIndex=18;
             // Roll button + label (replaces chkRoll)
             lblRoll.AutoSize=true; lblRoll.Font=gS; lblRoll.ForeColor=SystemColors.GrayText;
@@ -200,13 +211,19 @@ namespace AudioHexViewer
             lblTrigSlope.AutoSize=true; lblTrigSlope.Font=gS; lblTrigSlope.ForeColor=System.Drawing.SystemColors.GrayText;
             lblTrigSlope.Location=new Point(508,4); lblTrigSlope.Text="SLOPE";
             nudTrigLevel.Text="0.000";
-            nudTrigLevel.Font=std9; nudTrigLevel.Location=new Point(378,60); nudTrigLevel.Size=new Size(70,24); nudTrigLevel.TabIndex=6;
+            nudTrigLevel.Font=std9; nudTrigLevel.Location=new Point(378,60); nudTrigLevel.Size=new Size(50,24); nudTrigLevel.TabIndex=6;
             nudTrigLevel.TextAlign=HorizontalAlignment.Right;
+            // Auto 50% trigger level button (style identique ROLL/V-div)
+            lblTrigAuto.AutoSize=true; lblTrigAuto.Font=gS; lblTrigAuto.ForeColor=SystemColors.GrayText;
+            lblTrigAuto.Location=new Point(432,46); lblTrigAuto.Text="50%";
+            btnTrigAuto50.Location=new Point(432,60); btnTrigAuto50.Margin=new Padding(0);
+            btnTrigAuto50.Size=new Size(28,24); btnTrigAuto50.TabIndex=32;
+            btnTrigAuto50.Text=""; btnTrigAuto50.Font=new Font("Segoe UI",8.5f); btnTrigAuto50.UseVisualStyleBackColor=true;
             lblHoldoff.AutoSize=true; lblHoldoff.Font=gS; lblHoldoff.ForeColor=System.Drawing.SystemColors.GrayText;
-            lblHoldoff.Location=new Point(454,46); lblHoldoff.Text="HOLD-OFF (ms)";
+            lblHoldoff.Location=new Point(468,46); lblHoldoff.Text="HOLD-OFF (ms)";
             nudHoldoff.DecimalPlaces=1; nudHoldoff.Increment=1.0m;
             nudHoldoff.Minimum=0m; nudHoldoff.Maximum=2000m; nudHoldoff.Value=0m;
-            nudHoldoff.Font=std9; nudHoldoff.Location=new Point(454,60); nudHoldoff.Size=new Size(95,24); nudHoldoff.TabIndex=31;
+            nudHoldoff.Font=std9; nudHoldoff.Location=new Point(468,60); nudHoldoff.Size=new Size(81,24); nudHoldoff.TabIndex=31;
             nudHoldoff.TextAlign=HorizontalAlignment.Right;
 
             // ── 5. DISPLAY (x=636) ── Grid + Trace ───────────────────────
@@ -226,27 +243,43 @@ namespace AudioHexViewer
             // Colonnes : Chan=34 | Type=34 | Linked=52 | Set=46 | Lbl=46
             // x :        734    | 772     | 810       | 866    | 916    → fin 962
             // Cursor zone — Option B layout (channel from Scale L/R buttons)
+            // Titre général du groupe (au-dessus des sous-titres)
             lblCursors.AutoSize=true; lblCursors.Font=gS; lblCursors.ForeColor=SystemColors.GrayText;
-            lblCursors.Location=new Point(777,4); lblCursors.Text="CURSORS";
+            lblCursors.Location=new Point(772,3); lblCursors.Text="CURSORS SETTINGS";
 
+            // Grille 5 colonnes x 2 lignes, boutons 45x24 (×1.5 vs V/div), gap=2px
+            //   CURSOR | LINK | SET | GLUE  [sep]  DISP
+            //     X       1-2   Set   GlueX          P/G  (row1, y=34)
+            //     Y       1-2   Set   GlueY          LBL  (row2, y=60)
             void Btn(Button b, int x, int y, int w, string txt, int tab)
             { b.Location=new Point(x,y); b.Margin=new Padding(0); b.Size=new Size(w,24);
               b.Text=txt; b.TabIndex=tab; b.UseVisualStyleBackColor=true;
-              b.Font=new Font("Segoe UI",8.5f,FontStyle.Regular);
-              b.FlatStyle=FlatStyle.Flat; b.FlatAppearance.BorderSize=1;
-              b.FlatAppearance.BorderColor=System.Drawing.SystemColors.ControlDark; }
+              b.Font=new Font("Segoe UI",8.5f); }
 
-            // Row 1 (y=26): X | Linked | Set X  [sep]  Labels
-            Btn(btnCurX,    695, 26, 44, "X",       41);
-            Btn(btnLinkedX, 745, 26, 52, "Linked",  42);
-            Btn(btnSetX,    803, 26, 46, "Set X",   43);
-            Btn(btnLblX,    862, 26, 58, "Labels",  44);
-            // Row 2 (y=56): Y | Linked | Set Y  [sep]  Y track — gap=6px (=horiz gap)
-            Btn(btnCurY,    695, 56, 44, "Y",       46);
-            Btn(btnLinkedY, 745, 56, 52, "Linked",  47);
-            Btn(btnSetY,    803, 56, 46, "Set Y",   48);
-            Btn(btnLblY,    862, 56, 58, "Y track", 49);
-            btnLblY.AutoEllipsis=false;  // prevent truncation
+            // Sous-titres de colonnes (y=19, descendus et recentrés sur les colonnes 45px)
+            lblColModes.AutoSize=true; lblColModes.Font=gS; lblColModes.ForeColor=SystemColors.GrayText;
+            lblColModes.Location=new Point(700,19); lblColModes.Text="CURSOR"; // col1: 695-740
+            lblLinking.AutoSize=true; lblLinking.Font=gS; lblLinking.ForeColor=SystemColors.GrayText;
+            lblLinking.Location=new Point(747,19); lblLinking.Text="LINKED";  // col2: 742-787
+            lblColEdit.AutoSize=true; lblColEdit.Font=gS; lblColEdit.ForeColor=SystemColors.GrayText;
+            lblColEdit.Location=new Point(793,19); lblColEdit.Text="SET VAL"; // col3: 789-834
+            lblColGlue.AutoSize=true; lblColGlue.Font=gS; lblColGlue.ForeColor=SystemColors.GrayText;
+            lblColGlue.Location=new Point(847,19); lblColGlue.Text="GLUE";    // col4: 836-881
+            lblColDisp.AutoSize=true; lblColDisp.Font=gS; lblColDisp.ForeColor=SystemColors.GrayText;
+            lblColDisp.Location=new Point(896,19); lblColDisp.Text="DISPLAY"; // col5: 893-938
+
+            // Row 1 (y=34) — X
+            Btn(btnCurX,    695, 34, 45, "X",   41);
+            Btn(btnLinkedX, 742, 34, 45, "1-2", 42);
+            Btn(btnSetX,    789, 34, 45, "X= ?", 43);
+            Btn(btnGlueX,   836, 34, 45, "",    51);
+            Btn(btnDisp,    893, 34, 45, "Panel", 50);
+            // Row 2 (y=60) — Y
+            Btn(btnCurY,    695, 60, 45, "Y",   46);
+            Btn(btnLinkedY, 742, 60, 45, "1-2", 47);
+            Btn(btnSetY,    789, 60, 45, "Y= ?", 48);
+            Btn(btnLblY,    836, 60, 45, "",    49);   // GLUE-Y (ex "Y track")
+            Btn(btnLblX,    893, 60, 45, "Label", 44); // DISP-LABEL (ex "Lbls")
 
             lblTrigStatus.Visible=false; lblTrigStatus.Location=new Point(966,4); lblTrigStatus.Size=new Size(82,18);
             lblTrigStatus.Text=""; lblTrigStatus.Font=new Font("Segoe UI",8.5f,FontStyle.Bold);

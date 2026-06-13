@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -39,9 +40,9 @@ namespace AudioHexViewer
         private const float PRE_TRIG_DEFAULT = 0.20f;
 
         /// Position horizontale du trigger : fraction [0,1] du début de la fenêtre.
-        /// Lue depuis nudTrigPos (en divisions / H_DIVS).
+        /// Lue depuis nudTrigPos (en pourcentage 0-100%).
         private float PreTrig => nudTrigPos != null
-            ? Math.Clamp((float)nudTrigPos.Value / H_DIVS, 0.05f, 0.95f)
+            ? Math.Clamp((float)nudTrigPos.Value / 100f, 0f, 1f)
             : PRE_TRIG_DEFAULT;
         private const float HPF_FC         = 10f;   // fréquence de coupure AC (-3 dB) en Hz
 
@@ -121,6 +122,19 @@ namespace AudioHexViewer
         // ── État ──────────────────────────────────────────────────────────────
         private bool _isRunning, _isArmed, _lastTrigOk;
         private bool _rollActive = false, _rollEnabled = false;
+        private bool _trigAuto50 = false;          // niveau trig auto = 50% du pic
+        private float _stoppedZoomX = 1f;          // zoom horizontal additionnel (mode arrêté, Ctrl+molette)
+        // Index dans TimeDivMs du TIME/DIV EFFECTIF en mode zoomé (Ctrl+molette).
+        // -1 = pas zoomé (utilise directement cmbTimediv). Garantit que la base de
+        // temps affichée est TOUJOURS une valeur de la liste TIME/DIV (pas de décimales).
+        private int _stoppedTdIdx = -1;
+        // ── Affichage des valeurs de mesure curseurs ──────────────────────
+        // 0=Panneau (défaut)  1=Graphique  2=Panneau+Graphique  3=Aucun
+        private int   _cursorValuesDisp = 0;
+        private float _cursorBoxOffX = 10f, _cursorBoxOffY = 10f;  // position (px) du rectangle déplaçable
+        private RectangleF _cursorBoxRect;
+        private bool  _cursorBoxDragging = false;
+        private PointF _cursorBoxDragOffset;
         private long _holdoffEndAbs = 0;   // AbsWrite position jusqu'où le hold-off est actif
 
         // ── Acquisition progress (AcqButtonPainter) ───────────────────────────
@@ -208,6 +222,14 @@ namespace AudioHexViewer
         // Drag : 0=aucun 1=X1 2=X2 3=Y1 4=Y2 5=lbl-X1 6=lbl-X2 7=lbl-ΔX 8=lbl-Y1 9=lbl-Y2 10=lbl-ΔY
         private int _cursorDragging = 0;
         private bool _yTrack      = false;  // Y cursors track signal at X positions
+        private bool _glueX       = false;  // verrouille la position absolue (échantillon)
+                                              // des curseurs X lors d'un pan en mode arrêté
+        private int  _glueLastDs  = -1;      // ds précédent (pour calcul du décalage Glue X)
+        private int  _glueLastWin = 0;       // win précédent
+        // Position absolue (en échantillons) des curseurs X verrouillés par Glue X.
+        // Persiste même quand le curseur est hors champ (clampé) — corrige la perte
+        // de référence lors d'un aller-retour de pan. -1 = non initialisé.
+        private float _glueAbs1 = -1f, _glueAbs2 = -1f;
         // Positions des étiquettes (fraction le long de l'axe du curseur)
         private float _x1LblFracY=0.85f, _x2LblFracY=0.85f, _dxLblFracX=0.50f;  // ΔX moves horizontally
         private float _y1LblFracX=0.04f, _y2LblFracX=0.04f, _dyLblFracY=0.50f;  // ΔY moves vertically
@@ -265,7 +287,7 @@ namespace AudioHexViewer
                 AcqButtonPainter.Paint(e.Graphics, (Button)s!, _acqPct, _acqVisible, _acqTimeStr);
 
             cmbTimediv.SelectedIndexChanged += (_, _) =>
-            { UpdateRollCheckbox(); if (_isRunning) { pnlScope.Invalidate(); StartAcqTicker(); } else RefreshStoppedView(); };
+            { UpdateRollCheckbox(); _stoppedZoomX=1f; _stoppedTdIdx=-1; if (_isRunning) { pnlScope.Invalidate(); StartAcqTicker(); } else RefreshStoppedView(); };
 
             // Couplage (DC/AC/OFF) → redraw uniquement, PAS de UpdateGainCombos
             // (UpdateGainCombos réinitialise les indices gain → bug ×500)
@@ -273,7 +295,10 @@ namespace AudioHexViewer
             cmbCouplingR.SelectedIndexChanged += (_, _) => { UpdateCursorUI(); if (!_isRunning) RefreshStoppedView(); else pnlScope.Invalidate(); };
             cmbTrigMode.SelectedIndexChanged  += (_, _) => { };
             cmbTrigEdge.SelectedIndexChanged  += (_, _) => { };
-            cmbTrigSrc.SelectedIndexChanged   += (_, _) => { if (_vdivMode) UpdateTrigLevelRange(); };
+            cmbTrigSrc.SelectedIndexChanged   += (_, _) => { if (_vdivMode) UpdateTrigLevelRange(); cmbTrigSrc.Invalidate(); };
+            // Owner-draw : colore aussi l'item affiché (fermé), pas seulement la liste déroulée
+            cmbTrigSrc.DrawMode = DrawMode.OwnerDrawFixed;
+            cmbTrigSrc.DrawItem += CmbTrigSrc_DrawItem;
             nudTrigLevel.TextChanged          += (_, _) => pnlScope.Invalidate();
             nudTrigLevel.KeyDown              += NudTrigLevel_KeyDown;
             nudTrigLevel.Leave                += NudTrigLevel_Leave;
@@ -282,6 +307,10 @@ namespace AudioHexViewer
             cmbVdivR.SelectedIndexChanged     += (_, _) => { if (_vdivMode) UpdateTrigLevelRange(); pnlScope.Invalidate(); };
             cmbGrid.SelectedIndexChanged      += (_, _) => pnlScope.Invalidate();
             btnRoll.Click += (_, _) => { if(_rollEnabled){_rollActive=!_rollActive;UpdateRollButton();}  };
+            btnTrigAuto50.Click += (_, _) =>
+            { _trigAuto50=!_trigAuto50; UpdateTrigAuto50Button();
+              if(_trigAuto50) ApplyTrigAuto50();
+              pnlScope.Invalidate(); };
             btnVdiv.Click += (_, _) => { _vdivMode=!_vdivMode; UpdateVdivButton(); ChkVdivLogic(); };
 
             pnlScope.Paint      += PnlScope_Paint;
@@ -290,7 +319,11 @@ namespace AudioHexViewer
             pnlScope.MouseWheel += PnlScope_MouseWheel;
 
             // ── Curseurs X / Y ────────────────────────────────────────────────
-            btnCurX.Click    += (_, _) => { _xActive=!_xActive; if(!(_xActive&&_yActive))_yTrack=false; UpdateCursorUI(); pnlScope.Invalidate(); };
+            btnCurX.Click    += (_, _) => { _xActive=!_xActive; if(!(_xActive&&_yActive))_yTrack=false; if(!_xActive)_glueX=false; UpdateCursorUI(); pnlScope.Invalidate(); };
+            btnGlueX.Click   += (_, _) =>
+            { _glueX=!_glueX;
+              if(_glueX) GlueXAnchor(); else { _glueAbs1=-1f; _glueAbs2=-1f; }
+              UpdateCursorUI(); pnlScope.Invalidate(); };
             btnCurY.Click    += (_, _) => { _yActive=!_yActive; if(!(_xActive&&_yActive))_yTrack=false; UpdateCursorUI(); pnlScope.Invalidate(); };
             btnLinkedX.Click += (_, _) => { _linkedX=!_linkedX; UpdateCursorUI(); };
             btnLinkedY.Click += (_, _) => { _linkedY=!_linkedY; UpdateCursorUI(); };
@@ -299,15 +332,19 @@ namespace AudioHexViewer
             // Labels = show/hide both ΔX and ΔY labels together
             btnLblX.Click    += (_, _) => { _lblX=!_lblX; _lblY=_lblX; UpdateCursorUI(); pnlScope.Invalidate(); };
             // Y track = Y cursors follow signal amplitude at X positions
+            btnDisp.Click    += (_, _) =>
+            { _cursorValuesDisp=(_cursorValuesDisp+1)%4; UpdateDispButton(); pnlScope.Invalidate(); };
             btnLblY.Click    += (_, _) =>
             { if(!(_xActive&&_yActive&&_cursorChan>0)) return;
               _yTrack=!_yTrack; UpdateCursorUI(); pnlScope.Invalidate(); };
 
+            pnlScope.MouseDown        += PnlScope_CursorBoxMouseDown;
+            pnlScope.MouseMove        += PnlScope_CursorBoxMouseMove;
             pnlScope.MouseDown        += PnlScope_CursorMouseDown;
             pnlScope.MouseDown        += PnlScope_OffsetMouseDown;
             pnlScope.MouseMove        += PnlScope_CursorMouseMove;
             pnlScope.MouseMove        += PnlScope_OffsetMouseMove;
-            pnlScope.MouseUp          += (_, _) => { _cursorDragging = 0; _draggingOffset = 0; _draggingMinimap = false; _draggingTrigger = false; _draggingTrigPos = false; };
+            pnlScope.MouseUp          += (_, _) => { _cursorDragging = 0; _draggingOffset = 0; _draggingMinimap = false; _draggingTrigger = false; _draggingTrigPos = false; _cursorBoxDragging = false; pnlScope.Invalidate(); };
             pnlScope.MouseDown        += PnlScope_TrigHandleMouseDown;
             pnlScope.MouseMove        += PnlScope_TrigHandleMouseMove;
             pnlScope.MouseDown        += PnlScope_TrigPosMouseDown;
@@ -323,22 +360,23 @@ namespace AudioHexViewer
             UpdateScaleButtons();
             UpdateRollButton();
             UpdateVdivButton();
+            UpdateTrigAuto50Button();
+            UpdateDispButton();
 
             UpdateRollCheckbox();
             // Séparateurs visuels entre groupes (1px silver dans les gaps)
-            foreach (int sx in new[] { 244, 363, 563, 680, 934 })
+            foreach (int sx in new[] { 244, 363, 563, 680, 952 })
                 panelTop.Controls.Add(new Label {
                     Location  = new System.Drawing.Point(sx, 6),
                     Size      = new System.Drawing.Size(1, 78),
                     BackColor = System.Drawing.Color.Silver,
                     Text      = ""
                 });
-            // Cursor separator: centered between SetX(right=894) and Labels(left=907)
-            // Center = (894+907)/2 = 900, gap = 6px each side
-            // Height = button height only: y=26 (top row1) to y=80 (bottom row2) → h=54
+            // Séparateur interne : entre GLUE(col4, fin=821) et DISP(col5, début=833)
+            // Hauteur = lignes de boutons uniquement (y=34..84)
             panelTop.Controls.Add(new Label {
-                Location  = new System.Drawing.Point(855, 26),
-                Size      = new System.Drawing.Size(1, 54),
+                Location  = new System.Drawing.Point(887, 34),
+                Size      = new System.Drawing.Size(1, 50),
                 BackColor = System.Drawing.Color.Silver,
                 Text      = ""
             });
@@ -369,6 +407,76 @@ namespace AudioHexViewer
             btnRoll.ForeColor = _rollActive ? Color.Black     : SystemColors.ControlText;
             btnRoll.UseVisualStyleBackColor = !_rollActive;
         }
+        /// Style du bouton "Disp" : 4 états cycliques (Pnl / Grf / P+G / Off).
+        private void UpdateDispButton()
+        {
+            // Vert si un mode d'affichage est actif (Panel/Graph/All), gris si Off
+            (string txt, Color bg) = _cursorValuesDisp switch
+            {
+                0 => ("Panel", Color.LightGreen),
+                1 => ("Graph", Color.LightGreen),
+                2 => ("All",   Color.LightGreen),
+                _ => ("Off",   SystemColors.Control),
+            };
+            btnDisp.Text = txt;
+            btnDisp.BackColor = bg;
+            btnDisp.ForeColor = Color.Black;
+            btnDisp.UseVisualStyleBackColor = _cursorValuesDisp==3;  // true only for OFF (gray)
+        }
+
+        /// Dessine chaque item du combo SOURCE (liste ET item fermé/affiché)
+        /// avec un fond de la couleur de la voie correspondante.
+        /// (Ré)ancre la position absolue (échantillon) des curseurs X pour Glue X,
+        /// à partir de la fenêtre affichée actuellement (_glueLastDs/_glueLastWin).
+        private void GlueXAnchor()
+        {
+            if (_glueLastWin <= 0) return;
+            _glueAbs1 = _glueLastDs + _x1Frac * _glueLastWin;
+            _glueAbs2 = _glueLastDs + _x2Frac * _glueLastWin;
+        }
+
+        private void CmbTrigSrc_DrawItem(object? sender, DrawItemEventArgs e)
+        {
+            e.DrawBackground();
+            if (e.Index < 0) { e.DrawFocusRectangle(); return; }
+            string text = cmbTrigSrc.Items[e.Index]?.ToString() ?? "";
+            Color bg = e.Index==1 ? TraceColorR : TraceColorL;
+            using var brBg = new SolidBrush(bg);
+            e.Graphics.FillRectangle(brBg, e.Bounds);
+            using var brTx = new SolidBrush(Color.White);
+            using var sf   = new StringFormat{ Alignment=StringAlignment.Center, LineAlignment=StringAlignment.Center };
+            e.Graphics.DrawString(text, e.Font, brTx, e.Bounds, sf);
+            e.DrawFocusRectangle();
+        }
+
+        private void UpdateTrigAuto50Button()
+        {
+            btnTrigAuto50.BackColor = _trigAuto50 ? Color.LightGreen : SystemColors.Control;
+            btnTrigAuto50.ForeColor = _trigAuto50 ? Color.Black     : SystemColors.ControlText;
+            btnTrigAuto50.UseVisualStyleBackColor = !_trigAuto50;
+            nudTrigLevel.Enabled = !_trigAuto50;
+        }
+
+        /// Calcule le niveau de trigger automatique = 50% du pic du signal
+        /// (positif si front montant, négatif si front descendant).
+        private void ApplyTrigAuto50()
+        {
+            float[]? src = cmbTrigSrc.SelectedIndex==1 ? _dispR : _dispL;
+            if (src==null || src.Length<2) return;
+            float vmax=float.MinValue, vmin=float.MaxValue;
+            for(int i=0;i<src.Length;i++){ if(src[i]>vmax)vmax=src[i]; if(src[i]<vmin)vmin=src[i]; }
+            float peakAbs=Math.Max(Math.Abs(vmax),Math.Abs(vmin));
+            bool rising=cmbTrigEdge.SelectedIndex==0;
+            float levelNorm=(rising?1f:-1f)*0.5f*peakAbs;
+
+            if (_vdivMode)
+            {
+                double cs=GetCalScaleForTrigCh(cmbTrigSrc.SelectedIndex);
+                TrigLevelValue = cs>0 ? (decimal)(levelNorm*cs) : (decimal)levelNorm;
+            }
+            else TrigLevelValue = (decimal)levelNorm;
+        }
+
         private void UpdateVdivButton()
         {
             btnVdiv.BackColor = _vdivMode ? Color.LightGreen : SystemColors.Control;
@@ -482,15 +590,17 @@ namespace AudioHexViewer
             { b.BackColor=on?onBack:SystemColors.Control;
               b.ForeColor=on?(onBack==Color.LightGreen?Color.Black:Color.White):SystemColors.ControlText;
               b.UseVisualStyleBackColor=!on;
-              if(b.FlatStyle==FlatStyle.Flat)
-                b.FlatAppearance.BorderColor=on?Color.FromArgb(80,160,80):SystemColors.ControlDark; }
+            }
             // CursorChan is driven by btnScaleL/R (no separate L/R cursor buttons)
             StyleBtn(btnCurX, _xActive, Color.LightGreen);
             StyleBtn(btnCurY, _yActive, Color.LightGreen);
+            StyleBtn(btnGlueX, _glueX, Color.LightGreen);
             StyleBtn(btnLinkedX, _linkedX, Color.LightGreen);
             StyleBtn(btnLinkedY, _linkedY, Color.LightGreen);
-            StyleBtn(btnLblX, _lblX, Color.LightGreen);   // Labels
+            StyleBtn(btnLblX, _lblX, Color.LightGreen);   // Lbls (étiquettes sur lignes)
+            btnLblX.Text = _lblX ? "Label" : "Off";
             StyleBtn(btnLblY, _yTrack, Color.LightGreen); // Y track
+            UpdateDispButton();
             bool hasChan = _cursorChan > 0;
             btnCurX.Enabled = btnCurY.Enabled = hasChan;
             btnLinkedX.Enabled = hasChan && _xActive;
@@ -499,6 +609,9 @@ namespace AudioHexViewer
             btnSetY.Enabled    = hasChan && _yActive;
             // Labels: enabled if any cursor active
             btnLblX.Enabled    = hasChan && (_xActive||_yActive);
+            btnDisp.Enabled    = hasChan && (_xActive||_yActive);
+            btnGlueX.Enabled   = hasChan && _xActive;
+            if (!_xActive) { _glueX=false; _glueAbs1=-1f; _glueAbs2=-1f; }
             // Y track: only when BOTH X and Y cursors are active
             btnLblY.Enabled    = hasChan && _xActive && _yActive;
             if (!(_xActive&&_yActive)) _yTrack=false;
@@ -591,6 +704,7 @@ namespace AudioHexViewer
                     float f=Math.Clamp((e.X-w.Left)/w.Width,0f,1f);
                     if(_cursorDragging==1){float d=f-_x1Frac;_x1Frac=f;if(_linkedX)_x2Frac=Math.Clamp(_x2Frac+d,0f,1f);}
                     else                 {float d=f-_x2Frac;_x2Frac=f;if(_linkedX)_x1Frac=Math.Clamp(_x1Frac+d,0f,1f);}
+                    if(_glueX) GlueXAnchor();  // ré-ancre la cible Glue sur la nouvelle position
                 }
                 else if(_cursorDragging<=4)  // Y cursor lines
                 {
@@ -669,15 +783,28 @@ namespace AudioHexViewer
                     string fs="---";
                     if(Math.Abs(dt)>1e-9){double hz=1000.0/Math.Abs(dt);fs=hz>=1000?$"{hz/1000:G4} kHz":$"{hz:G4} Hz";}
                     using var fDx=new Font("Segoe UI",9f,FontStyle.Bold);
-                    string txt=$"\u0394X= {dts}   1/\u0394X= {fs}";
+                    string txt=$"\u0394X= {dts}\n1/\u0394X= {fs}";
                     var sz=g.MeasureString(txt,fDx);
                     float x1px=w.Left+_x1Frac*w.Width, x2px=w.Left+_x2Frac*w.Width;
-                    float lx=Math.Clamp(x1px+_dxLblFracX*(x2px-x1px)-sz.Width/2f, w.Left, w.Right-sz.Width);
+                    // Position absolue (fraction de la largeur du graphe), même
+                    // convention que le drag -> déplacement direct, non inversé.
+                    float lx=Math.Clamp(w.Left+_dxLblFracX*w.Width-sz.Width/2f, w.Left, w.Right-sz.Width);
                     float ly=w.Top+18f;  // just below acquisition minimap
                     _dxLblRect=new RectangleF(lx-2,ly,sz.Width+4,sz.Height+2);
                     using var brBgDx=new SolidBrush(Color.FromArgb(210, BgColor));
                     g.FillRectangle(brBgDx,_dxLblRect);
                     g.DrawString(txt,fDx,brL,lx,ly);
+
+                    // Flèche double pointant X1<->X2, juste sous le label
+                    float xa=Math.Min(x1px,x2px), xb=Math.Max(x1px,x2px);
+                    if(xb-xa>8f)
+                    {
+                        float ay=ly+sz.Height+6f;
+                        using var penArrowX=new Pen(col,1.5f);
+                        var capX=new AdjustableArrowCap(4f,5f,true);
+                        penArrowX.CustomStartCap=capX; penArrowX.CustomEndCap=capX;
+                        g.DrawLine(penArrowX,xa,ay,xb,ay);
+                    }
                 }
             }
             if (_yActive)
@@ -696,11 +823,24 @@ namespace AudioHexViewer
                     var sz=g.MeasureString(txt,fDy);
                     float y1py=w.Bottom-_y1Frac*w.Height, y2py=w.Bottom-_y2Frac*w.Height;
                     float lx=w.Left+8f;  // fixed near left
-                    float ly=Math.Clamp(y2py+_dyLblFracY*(y1py-y2py)-sz.Height/2f, w.Top, w.Bottom-sz.Height);
+                    // Position absolue (fraction de la hauteur du graphe), même
+                    // convention que le drag -> déplacement direct, non inversé.
+                    float ly=Math.Clamp(w.Top+_dyLblFracY*w.Height-sz.Height/2f, w.Top, w.Bottom-sz.Height);
                     _dyLblRect=new RectangleF(lx-2,ly,sz.Width+4,sz.Height+2);
                     using var brBgDy=new SolidBrush(Color.FromArgb(210, BgColor));
                     g.FillRectangle(brBgDy,_dyLblRect);
                     g.DrawString(txt,fDy,brL,lx,ly);
+
+                    // Flèche double pointant Y1<->Y2, juste à droite du label
+                    float ya=Math.Min(y1py,y2py), yb=Math.Max(y1py,y2py);
+                    if(yb-ya>8f)
+                    {
+                        float ax=lx+sz.Width+6f;
+                        using var penArrowY=new Pen(col,1.5f);
+                        var capY=new AdjustableArrowCap(4f,5f,true);
+                        penArrowY.CustomStartCap=capY; penArrowY.CustomEndCap=capY;
+                        g.DrawLine(penArrowY,ax,ya,ax,yb);
+                    }
                 }
             }
         }
@@ -768,6 +908,7 @@ namespace AudioHexViewer
                 using var dlg=new CursorSetDialog(isX:true, v1:t1, v2:t2, unit:"ms");
                 if(dlg.ShowDialog(this)!=DialogResult.OK) return;
                 _x1Frac=MsToXFrac(dlg.Value1); _x2Frac=MsToXFrac(dlg.Value2);
+                if(_glueX) GlueXAnchor();  // ré-ancre la cible Glue sur les nouvelles positions
             }
             else
             {
@@ -890,6 +1031,15 @@ namespace AudioHexViewer
             return ZoomY[Math.Clamp(idx, 0, ZoomY.Length-1)];
         }
 
+        /// Affiche le gain d'entrée (×N) ou la sensibilité (V/div) selon le mode,
+        /// avec exactement le texte affiché dans le combo L GAIN / R GAIN
+        /// (cohérence garantie, pas de décimales superflues).
+        private string FormatVdivForCh(int ch)
+        {
+            var cmb = ch==1 ? cmbVdivR : cmbVdivL;
+            return cmb.Text;
+        }
+
         private double GetVdivForCh(int ch)
         {
             var cmb = ch == 1 ? cmbVdivR : cmbVdivL;
@@ -902,7 +1052,12 @@ namespace AudioHexViewer
 
         private void StartOscillo()
         {
-            _panOffset=0;
+            _panOffset=0; _stoppedZoomX=1f; _stoppedTdIdx=-1; _glueLastWin=0;
+            // Le buffer de capture va changer : les ancres absolues Glue X
+            // (indices d'échantillon dans l'ancien buffer) deviennent invalides.
+            // Elles seront ré-amorcées au prochain arrêt, à partir de la position
+            // fractionnelle actuelle des curseurs (pas de saut visible).
+            _glueAbs1=-1f; _glueAbs2=-1f;
             _hpXprevL=0; _hpXprevR=0; _hpYprevL=0; _hpYprevR=0;
             _blinkCounter=0; _blinkState=false; _lastTrigOk=false; _lastTrigAbsPos=-1; _holdoffEndAbs=0;
             RunRequested?.Invoke();
@@ -911,8 +1066,19 @@ namespace AudioHexViewer
             StartAcqTicker();
         }
 
-        private void StopOscillo()
-        { _timer.Stop(); SetRunState(false); lblTrigStatus.Text=""; RunStateChanged?.Invoke(false); StopAcqTicker(); }
+        private void StopOscillo(bool captured = false)
+        {
+            _timer.Stop(); SetRunState(false);
+            if (captured)
+            { lblTrigStatus.Text="STOPPED"; lblTrigStatus.ForeColor=Color.Crimson; lblTrigStatus.Visible=true; }
+            else lblTrigStatus.Text="";
+            RunStateChanged?.Invoke(false); StopAcqTicker();
+            // Amorce immédiatement ds/win et les ancres Glue X à _panOffset=0
+            // (état "juste arrêté"), AVANT tout pan/zoom. Sans cela, le premier
+            // pan seedait _glueAbs1/2 sur un ds déjà décalé -> décalage d'1
+            // division après un aller-retour (curseur "en retard" d'un cran).
+            RefreshStoppedView();
+        }
 
         private void SetRunState(bool on)
         {
@@ -951,10 +1117,43 @@ namespace AudioHexViewer
         private void PnlScope_MouseWheel(object? s, MouseEventArgs e)
         {
             if(_isRunning||_capL==null||_capSR<=0) return;
+
+            // ── Ctrl+molette : zoom horizontal centré sur la souris ──────────
+            if((Control.ModifierKeys & Keys.Control) != 0)
+            {
+                var w=GetWaveRect(); if(w.IsEmpty||w.Width<1f) return;
+                float mFrac=Math.Clamp((e.X-w.Left)/w.Width,0f,1f);
+
+                int td0=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
+                int baseWin=Math.Max(8,(int)(TimeDivMs[td0]*H_DIVS/1000.0*_capSR));
+                int pre0=(int)(baseWin*PreTrig);
+                int tref0=_capTrigIdx>=0?_capTrigIdx:pre0;
+                int curWin=Math.Max(8,(int)(baseWin/_stoppedZoomX));
+                int curDs=Math.Clamp(tref0-pre0+_panOffset,0,Math.Max(0,_capL.Length-curWin));
+                int sampleUnderMouse=curDs+(int)(mFrac*curWin);
+
+                // Pas par pas dans la liste TIME/DIV : la base de temps effective
+                // (TimeDivMs[td0]/_stoppedZoomX) est ainsi TOUJOURS une valeur exacte
+                // de cette liste — plus de décimales sur les graduations de l'axe X.
+                if(_stoppedTdIdx<0) _stoppedTdIdx=td0;
+                if(e.Delta>0) _stoppedTdIdx=Math.Max(0,_stoppedTdIdx-1);          // zoom avant : division plus petite
+                else          _stoppedTdIdx=Math.Min(td0,_stoppedTdIdx+1);        // zoom arrière : retour vers td0 (jamais au-delà)
+                if(_stoppedTdIdx==td0){ _stoppedTdIdx=-1; _stoppedZoomX=1f; }
+                else _stoppedZoomX=(float)(TimeDivMs[td0]/TimeDivMs[_stoppedTdIdx]);
+
+                int newWin=Math.Max(8,(int)(baseWin/_stoppedZoomX));
+                int newDs=sampleUnderMouse-(int)(mFrac*newWin);
+                newDs=Math.Clamp(newDs,0,Math.Max(0,_capL.Length-newWin));
+                _panOffset=newDs-(tref0-pre0);
+                RefreshStoppedView();
+                return;
+            }
+
             int td=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
-            int spd=Math.Max(1,(int)(TimeDivMs[td]/1000.0*_capSR));
+            int spd=Math.Max(1,(int)(TimeDivMs[td]/1000.0*_capSR/_stoppedZoomX));
             // Shift + roulette = déplacement rapide (×10)
             if((Control.ModifierKeys & Keys.Shift) != 0) spd *= 10;
+            spd=Math.Max(1,spd);
             _panOffset+=e.Delta>0?-spd:spd;
             RefreshStoppedView();
         }
@@ -963,7 +1162,7 @@ namespace AudioHexViewer
         {
             if(_capL==null||_capR==null||_capSR<=0) return;
             int td=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
-            int win=Math.Max(8,(int)(TimeDivMs[td]*H_DIVS/1000.0*_capSR));
+            int win=Math.Max(8,(int)(TimeDivMs[td]*H_DIVS/1000.0*_capSR/_stoppedZoomX));
             int pre=(int)(win*PreTrig);
             int tref=_capTrigIdx>=0?_capTrigIdx:pre;
             int ds=Math.Clamp(tref-pre+_panOffset,0,Math.Max(0,_capL.Length-win));
@@ -971,6 +1170,24 @@ namespace AudioHexViewer
             //    l'accumulation silencieuse au-delà des limites ──────────────
             _panOffset=ds-(tref-pre);
             win=Math.Min(win,_capL.Length-ds); if(win<2) return;
+
+            // ── Glue X : conserve la position absolue (échantillon) des curseurs X
+            //    lors d'un pan/zoom en mode arrêté (molette). Hors champ -> bord,
+            //    mais la cible absolue (_glueAbs1/2) est préservée pour permettre
+            //    de revenir à la position d'origine après un aller-retour. ──────
+            if(_glueX && _xActive)
+            {
+                if(_glueAbs1<0f || _glueAbs2<0f)
+                {
+                    // Première activation : ancre sur la position affichée actuelle
+                    _glueAbs1=ds+_x1Frac*win;
+                    _glueAbs2=ds+_x2Frac*win;
+                }
+                _x1Frac=Math.Clamp((_glueAbs1-ds)/win,0f,1f);
+                _x2Frac=Math.Clamp((_glueAbs2-ds)/win,0f,1f);
+            }
+            _glueLastDs=ds; _glueLastWin=win;
+
             float[] sl=new float[win],sr2=new float[win];
             Array.Copy(_capL,ds,sl,0,win); Array.Copy(_capR,ds,sr2,0,win);
             // AC coupling applied upstream via HPF filter (no post-subtraction needed)
@@ -978,6 +1195,7 @@ namespace AudioHexViewer
             int rel=tref-ds; _trigPx=(rel>=0&&rel<win)?rel:-1; _trigFound=_trigPx>=0;
             _measL=ComputeMeasurements(_dispL,_capSR);
             _measR=ComputeMeasurements(_dispR,_capSR);
+            if(_trigAuto50) ApplyTrigAuto50();
             _lastSR=_capSR; UpdateInfoLine(); pnlScope.Invalidate();
         }
 
@@ -1090,7 +1308,7 @@ namespace AudioHexViewer
             if(dstart+win>search){pnlScope.Invalidate();return;}
             StoreAndDisplay(rawL,rawR,search,dstart,win,sr,trigOk?trigIdx:-1);
             UpdateTrigStatus();
-            if(IsSingleMode&&trigOk){pnlScope.Invalidate();StopOscillo();return;}
+            if(IsSingleMode&&trigOk){pnlScope.Invalidate();StopOscillo(captured:true);return;}
             pnlScope.Invalidate();
         }
 
@@ -1101,6 +1319,7 @@ namespace AudioHexViewer
             Array.Copy(rawL,dstart,_dispL,0,win);Array.Copy(rawR,dstart,_dispR,0,win);
             _trigPx=trigIdx>=0?trigIdx-dstart:(int)(win*PreTrig);
             _measL=ComputeMeasurements(_dispL,sr);_measR=ComputeMeasurements(_dispR,sr);
+            if(_trigAuto50) ApplyTrigAuto50();
             UpdateInfoLine();
         }
 
@@ -1164,7 +1383,12 @@ namespace AudioHexViewer
             int ch=GetCh();
             string sr=_lastSR>0?$"{_lastSR/1000.0:G3} kHz":"—";
             string ch2=ch switch{0=>"Left",1=>"Right",_=>"L+R"};
-            string pan=(!_isRunning&&_panOffset!=0&&_capSR>0)?$"   pan {FormatTime((double)_panOffset/_capSR*1000.0)}":"";
+            string pan=(!_isRunning&&_panOffset!=0&&_capSR>0)?$"   pan {FormatTimeInt((double)_panOffset/_capSR*1000.0)}":"";
+            // Affiche la base de temps effective si zoomée (Ctrl+molette, mode arrêté)
+            // — valeur cassée sur la même liste que le combo TIME/DIV (pas de décimales)
+            string zoomTd=(!_isRunning&&_stoppedTdIdx>=0)
+                ?$"   Zoom:{cmbTimediv.Items[_stoppedTdIdx]}"
+                :"";
             string roll=IsRollMode?"  ROLL":"";
             string zoom="";
             if(!_vdivMode)
@@ -1179,7 +1403,31 @@ namespace AudioHexViewer
             else if(ch==2){if(AcL&&AcR)coup="  AC";else if(AcL)coup="  L:AC";else if(AcR)coup="  R:AC";}
             int winN=Math.Max(8,(int)(TimeDivMs[td]*H_DIVS/1000.0*(_lastSR>0?_lastSR:1)));
             string nPts=$"   N={winN:N0}";
-            _infoLine=$"Channel:{ch2}   SR:{sr}   {FormatTimediv(TimeDivMs[td])}{zoom}{coup}{roll}{nPts}{pan}";
+
+            // ── Infos complémentaires : V/div par voie, trigger, pré-trig ────
+            string vdivL=FormatVdivForCh(0), vdivR=FormatVdivForCh(1);
+            string trigMode=cmbTrigMode.Text;
+            string slopeStr=cmbTrigEdge.Text;
+            string trigChStr=cmbTrigSrc.Text;
+            int trigCh=cmbTrigSrc.SelectedIndex;
+            string lvlStr;
+            if(_vdivMode) lvlStr=FormatV((double)TrigLevelValue);
+            else { double cs=GetCalScaleForTrigCh(trigCh);
+                   lvlStr=cs>0?FormatV((double)TrigLevelValue*cs):$"{TrigLevelValue:0.000}"; }
+            int preTrigPct=(int)Math.Round(PreTrig*100);
+            string extra=$"   L:{vdivL}   R:{vdivR}   Trig:{trigMode}   Slope:{slopeStr}   Lvl:{lvlStr}   Ch:{trigChStr}   PreTrig:{preTrigPct}%";
+
+            _infoLine=$"Channel:{ch2}   SR:{sr}   {FormatTimediv(TimeDivMs[td])}{zoom}{coup}{roll}{nPts}{pan}{zoomTd}{extra}";
+        }
+
+        /// Formate un temps sans décimales (arrondi à l'unité la plus adaptée).
+        private static string FormatTimeInt(double ms)
+        {
+            if (ms==0) return "0";
+            double a=Math.Abs(ms);
+            if (a>=1000) return $"{Math.Round(ms/1000):0} s";
+            if (a>=1)    return $"{Math.Round(ms):0} ms";
+            return $"{Math.Round(ms*1000):0} µs";
         }
 
         private static string FormatTime(double ms)
@@ -1250,14 +1498,16 @@ namespace AudioHexViewer
                     new PointF(MARGIN_LEFT + 2, 3));
             }
 
-            // Trigger status right-aligned in info line area
+            // Indicateur d'état (WAIT/TRIG'D/STOPPED) : au-dessus du panneau de
+            // mesures (même colonne que MEAS_W), donc plus jamais sous le bouton
+            // RUN dans panelTop — n'entre plus en collision avec _infoLine.
             if (!string.IsNullOrEmpty(lblTrigStatus.Text))
             {
                 using var fSt=new Font("Segoe UI",8.25f,FontStyle.Bold);
                 using var brSt=new SolidBrush(lblTrigStatus.ForeColor);
-                using var sfR=new StringFormat{Alignment=StringAlignment.Far};
-                var r=new RectangleF(MARGIN_LEFT,0,wave.Width,MARGIN_TOP-2);
-                g.DrawString(lblTrigStatus.Text,fSt,brSt,r,sfR);
+                using var sfC=new StringFormat{Alignment=StringAlignment.Far,LineAlignment=StringAlignment.Center};
+                var rMeas=RectangleF.FromLTRB(wave.Right+8,0,wave.Right+MEAS_W-6,MARGIN_TOP);
+                g.DrawString(lblTrigStatus.Text,fSt,brSt,rMeas,sfC);
             }
             DrawGrid(g,wave);
             DrawAxisLabels(g,wave);
@@ -1271,6 +1521,10 @@ namespace AudioHexViewer
 
             // Curseurs X/Y (par-dessus les traces et le trigger)
             DrawCursors(g, wave);
+
+            // Rectangle déplaçable des valeurs curseurs (Disp = Grf ou P+G)
+            if (_cursorChan>0 && (_xActive||_yActive) && (_cursorValuesDisp==1 || _cursorValuesDisp==2))
+                DrawCursorValuesBox(g, wave);
 
             // Marqueurs de référence verticale (dans la marge gauche)
             DrawOffsetMarkers(g, wave);
@@ -1359,13 +1613,26 @@ namespace AudioHexViewer
             using var br      = new SolidBrush(SystemColors.ControlText);
             int ch=GetCh();
             int tdIdx=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
-            double td=TimeDivMs[tdIdx];
+            // En mode arrêté zoomé (Ctrl+molette), les graduations suivent le zoom.
+            // _stoppedZoomX vaut 1 en mode RUN -> aucun effet, échelle TIME/DIV normale.
+            double td=TimeDivMs[tdIdx]/_stoppedZoomX;
 
             // ── Axe X : label sur chaque division (11 au total : 0 à H_DIVS) ─────
             for(int i=0;i<=H_DIVS;i++)
             {
                 float x=w.Left+i*w.Width/H_DIVS;
                 double tMs=IsRollMode?i*td:(i-PreTrig*H_DIVS)*td;
+                // Pan horizontal (mode arrêté) : décale les graduations du même temps
+                // que le déplacement de la fenêtre affichée (_panOffset, en échantillons).
+                // Snappé au multiple de division (td) le plus proche : près des bords du
+                // buffer, ds est clampé et _panOffset n'est alors plus nécessairement un
+                // multiple exact de l'écart inter-division, ce qui produirait sinon des
+                // graduations décimales après un aller-retour jusqu'au bord.
+                if(!_isRunning && _capSR>0 && td>1e-12)
+                {
+                    double panTimeMs=_panOffset/(double)_capSR*1000.0;
+                    tMs += Math.Round(panTimeMs/td)*td;
+                }
                 string lbl=(!IsRollMode&&Math.Abs(tMs)<td*0.001)?"0":FormatTime(tMs);
                 var sf=new StringFormat{Alignment=StringAlignment.Center};
                 g.DrawString(lbl,font,br,new RectangleF(x-38,w.Bottom+2,76,16),sf);
@@ -1525,10 +1792,11 @@ namespace AudioHexViewer
         {
             if (e.Button != MouseButtons.Left) return;
             var w = GetWaveRect(); if (w.IsEmpty) return;
-            // Zone de hit : de w.Right à w.Right+20, ±12px autour de yT
-            if (e.X < w.Right || e.X > w.Right + 20) return;
+            // Zone de hit : directement sur le triangle (bord droit du plot),
+            // même logique que le repère T POS (±8px autour de la position).
+            if (e.X < w.Right - 12f || e.X > w.Right + 2f) return;
             float yT = GetTrigYPixel(w);
-            if (Math.Abs(e.Y - yT) <= 12f) _draggingTrigger = true;
+            if (Math.Abs(e.Y - yT) <= 8f) { _draggingTrigger = true; pnlScope.Invalidate(); }
         }
 
         private void PnlScope_TrigHandleMouseMove(object? s, MouseEventArgs e)
@@ -1568,7 +1836,7 @@ namespace AudioHexViewer
             float xTrig = w.Left + PreTrig * w.Width;
             // Zone de hit : triangle en haut (y ≤ w.Top + 10) ±8px autour de xTrig
             if (e.Y > w.Top + 10) return;
-            if (Math.Abs(e.X - xTrig) <= 8f) _draggingTrigPos = true;
+            if (Math.Abs(e.X - xTrig) <= 8f) { _draggingTrigPos = true; pnlScope.Invalidate(); }
         }
 
         private void PnlScope_TrigPosMouseMove(object? s, MouseEventArgs e)
@@ -1576,15 +1844,15 @@ namespace AudioHexViewer
             if (!_draggingTrigPos) return;
             var w = GetWaveRect(); if (w.IsEmpty || w.Width < 1f) return;
 
-            // Convertit X pixel → divisions (0 … H_DIVS)
-            float frac = Math.Clamp((e.X - w.Left) / w.Width, 0.05f / H_DIVS * H_DIVS, 1f);
-            decimal divVal = Math.Clamp(
-                (decimal)Math.Round(frac * H_DIVS * 2f) / 2m,   // arrondi au 0.5 div
+            // Convertit X pixel → pourcentage (0…100)
+            float frac = Math.Clamp((e.X - w.Left) / w.Width, 0f, 1f);
+            decimal pctVal = Math.Clamp(
+                Math.Round((decimal)frac * 100m),   // arrondi au 1%
                 nudTrigPos.Minimum, nudTrigPos.Maximum);
 
-            if (nudTrigPos.Value != divVal)
+            if (nudTrigPos.Value != pctVal)
             {
-                nudTrigPos.Value = divVal;
+                nudTrigPos.Value = pctVal;
                 // nudTrigPos.ValueChanged s'occupe du Invalidate
             }
         }
@@ -1747,49 +2015,52 @@ namespace AudioHexViewer
             float yT=Math.Clamp(yRef-GetTrigLevelNormalized()*ys,w.Top,w.Bottom);
             Color tCol=Color.FromArgb(180, trigCh==0?TraceColorL:TraceColorR);
 
-            // Ligne horizontale du niveau de trigger (toujours visible)
-            using var pH=new Pen(tCol,1f){DashStyle=DashStyle.Dash};
-            g.DrawLine(pH,w.Left,yT,w.Right,yT);
+            // Ligne horizontale du niveau de trigger — visible uniquement
+            // pendant le déplacement (le triangle T reste toujours visible)
+            if (_draggingTrigger)
+            {
+                using var pH=new Pen(tCol,1f){DashStyle=DashStyle.Dash};
+                g.DrawLine(pH,w.Left,yT,w.Right,yT);
+            }
 
-            // Handle "T" côté droit — triangle pointant à gauche + lettre T
-            float th = 7f;   // demi-hauteur du triangle
-            float tx = w.Right + 2f;     // pointe à gauche (bord droit du plot)
-            float tw = tx + 10f;          // base du triangle
+            // Handle "T" — triangle pointant vers la GAUCHE (vers l'intérieur du
+            // graphe), base sur le bord droit du plot, taille agrandie.
+            float th = 6f;    // demi-hauteur du triangle (identique au marqueur D)
+            float tw = w.Right;          // base à droite (bord du plot)
+            float tx = tw - 10f;          // pointe vers l'intérieur (gauche)
             PointF[] tTri = { new(tx, yT), new(tw, yT - th), new(tw, yT + th) };
             using var brT = new SolidBrush(Color.FromArgb(220, tCol));
             g.FillPolygon(brT, tTri);
             using var penT = new Pen(Color.FromArgb(160, tCol), 1f);
             g.DrawPolygon(penT, tTri);
-            using var fontT = new Font("Segoe UI", 7f, FontStyle.Bold);
+            using var fontT = new Font("Segoe UI", 10f, FontStyle.Bold);
             using var brLblT = new SolidBrush(tCol);
-            g.DrawString("T", fontT, brLblT, tw + 2f, yT - 7f);
+            g.DrawString("T", fontT, brLblT, tx - 16f, yT - 8f);
 
-            // Ligne verticale t=0 TOUJOURS visible à la position PreTrig
+            // Ligne verticale t=0 — visible uniquement pendant le déplacement
+            // (le triangle D reste toujours visible)
             float xTrig=w.Left+PreTrig*w.Width;
-            using var pV=new Pen(Color.FromArgb(160,tCol),1f){DashStyle=DashStyle.Dash};
-            g.DrawLine(pV,xTrig,w.Top,xTrig,w.Bottom);
+            if (_draggingTrigPos)
+            {
+                using var pV=new Pen(Color.FromArgb(160,tCol),1f){DashStyle=DashStyle.Dash};
+                g.DrawLine(pV,xTrig,w.Top,xTrig,w.Bottom);
+            }
 
-            // Repère draggable en HAUT de la ligne de position trigger (triangle vers le bas)
+            // Repère unique en HAUT de la ligne de position trigger :
+            // un seul triangle (pointe vers le bas) + lettre "T" à côté.
             {
                 float hx = xTrig;
                 float hy = w.Top - 1f;
                 using var brH = new SolidBrush(tCol);
                 g.FillPolygon(brH, new PointF[]
                 {
-                    new(hx,        hy + 9f),   // pointe vers le bas
-                    new(hx - 5f,   hy),
-                    new(hx + 5f,   hy)
+                    new(hx,        hy + 10f),  // pointe vers le bas (identique au marqueur T)
+                    new(hx - 6f,   hy),
+                    new(hx + 6f,   hy)
                 });
-            }
-
-            // Flèche indicatrice uniquement quand le trigger a déclenché
-            if(_trigFound&&trigIdx>=0&&trigIdx<winSamples)
-            {
-                float ay=w.Top+4; using var brA=new SolidBrush(tCol);
-                bool rising=cmbTrigEdge.SelectedIndex==0;
-                g.FillPolygon(brA,rising
-                    ?new[]{new PointF(xTrig,ay+8),new PointF(xTrig-4,ay),new PointF(xTrig+4,ay)}
-                    :new[]{new PointF(xTrig,ay),new PointF(xTrig-4,ay+8),new PointF(xTrig+4,ay+8)});
+                using var fontTp  = new Font("Segoe UI", 10f, FontStyle.Bold);
+                using var brLblTp = new SolidBrush(tCol);
+                g.DrawString("D", fontTp, brLblTp, hx + 8f, hy - 2f);
             }
         }
 
@@ -1821,8 +2092,8 @@ namespace AudioHexViewer
             if (ch==0||ch==2) DrawMeasSection(g,"LEFT",  TraceColorL, _measL, rect, ref y, calOkL, offL);
             if (ch==1||ch==2) DrawMeasSection(g,"RIGHT", TraceColorR, _measR, rect, ref y, calOkR, offR);
 
-            // Section curseurs X/Y
-            if (_cursorChan>0 && (_xActive||_yActive))
+            // Section curseurs X/Y dans le panneau (Disp = Pnl ou P+G)
+            if (_cursorChan>0 && (_xActive||_yActive) && (_cursorValuesDisp==0 || _cursorValuesDisp==2))
                 y = DrawCursorMeasSection(g, rect, y);
 
             // Statut centré en bas du panneau, italic gris
@@ -1931,6 +2202,89 @@ namespace AudioHexViewer
             y += 4f;
         }
 
+        // ── Rectangle déplaçable affichant les valeurs des curseurs dans le graphe ──
+        private void DrawCursorValuesBox(Graphics g, RectangleF w)
+        {
+            using var font     = new Font("Segoe UI", 8f, FontStyle.Regular);
+            using var fontBold = new Font("Segoe UI", 8f, FontStyle.Bold);
+            Color col = CursorColor;
+            using var brText = new SolidBrush(col);
+            using var brBg   = new SolidBrush(Color.FromArgb(210, BgColor));
+            using var penBd  = new Pen(Color.FromArgb(160, col), 1f);
+            using var fmtR   = new StringFormat{ Alignment = StringAlignment.Far };
+
+            var lines = new List<(string lbl, string val)>();
+            if (_xActive)
+            {
+                double t1=XFracToMs(_x1Frac), t2=XFracToMs(_x2Frac), dt=t2-t1;
+                lines.Add(("X1", FormatTime(t1)));
+                lines.Add(("X2", FormatTime(t2)));
+                lines.Add(("\u0394X", FormatTime(dt)));
+                string df="---";
+                if(Math.Abs(dt)>1e-9){double hz=1000.0/Math.Abs(dt);df=hz>=1000?$"{hz/1000:G4} kHz":$"{hz:G4} Hz";}
+                lines.Add(("1/\u0394X", df));
+            }
+            if (_yActive)
+            {
+                var (calOk,offDb)=GetActiveCal();
+                float n1=YFracToNorm(_y1Frac), n2=YFracToNorm(_y2Frac);
+                string FmtY(float n){ if(calOk){double sc=Math.Pow(10,offDb/20.0)*Math.Sqrt(2.0); return FormatV((double)n*sc);} return $"{n:+0.0000;-0.0000}"; }
+                lines.Add(("Y1", FmtY(n1)));
+                lines.Add(("Y2", FmtY(n2)));
+                lines.Add(("\u0394Y", FmtY(n2-n1)));
+            }
+            if (lines.Count==0) return;
+
+            float maxLblW=0f, maxValW=0f;
+            float lineH=font.GetHeight(g)+3f;
+            foreach(var (l,v) in lines)
+            {
+                float lw=g.MeasureString(l,fontBold).Width;
+                float vw=g.MeasureString(v,font).Width;
+                if(lw>maxLblW)maxLblW=lw;
+                if(vw>maxValW)maxValW=vw;
+            }
+            float pad=6f, gap=10f;
+            float boxW=pad*2f+maxLblW+gap+maxValW;
+            float boxH=pad*2f+lines.Count*lineH;
+
+            float bx=Math.Clamp(w.Left+_cursorBoxOffX, w.Left, Math.Max(w.Left,w.Right-boxW));
+            float by=Math.Clamp(w.Top +_cursorBoxOffY, w.Top,  Math.Max(w.Top, w.Bottom-boxH));
+            _cursorBoxOffX = bx-w.Left; _cursorBoxOffY = by-w.Top;
+            _cursorBoxRect = new RectangleF(bx,by,boxW,boxH);
+
+            g.FillRectangle(brBg,_cursorBoxRect);
+            g.DrawRectangle(penBd,bx,by,boxW,boxH);
+
+            float ty=by+pad;
+            foreach(var (l,v) in lines)
+            {
+                g.DrawString(l,fontBold,brText,bx+pad,ty);
+                g.DrawString(v,font,brText,new RectangleF(bx+pad+maxLblW+gap,ty,maxValW,lineH),fmtR);
+                ty+=lineH;
+            }
+        }
+
+        // ── Drag du rectangle de valeurs curseurs ─────────────────────────────
+        private void PnlScope_CursorBoxMouseDown(object? s, MouseEventArgs e)
+        {
+            if(e.Button!=MouseButtons.Left) return;
+            if(_cursorValuesDisp!=1 && _cursorValuesDisp!=2) return;
+            if(!_cursorBoxRect.Contains(e.Location)) return;
+            _cursorBoxDragging=true;
+            _cursorBoxDragOffset=new PointF(e.X-_cursorBoxRect.X, e.Y-_cursorBoxRect.Y);
+        }
+        private void PnlScope_CursorBoxMouseMove(object? s, MouseEventArgs e)
+        {
+            if(!_cursorBoxDragging) return;
+            var w=GetWaveRect(); if(w.IsEmpty) return;
+            float nx=e.X-_cursorBoxDragOffset.X-w.Left;
+            float ny=e.Y-_cursorBoxDragOffset.Y-w.Top;
+            _cursorBoxOffX=Math.Clamp(nx,0f,Math.Max(0f,w.Width -_cursorBoxRect.Width));
+            _cursorBoxOffY=Math.Clamp(ny,0f,Math.Max(0f,w.Height-_cursorBoxRect.Height));
+            pnlScope.Invalidate();
+        }
+
         /// Section curseurs X/Y dans le panneau de mesures (retourne y mis à jour).
         private float DrawCursorMeasSection(Graphics g, RectangleF rect, float y)
         {
@@ -1999,6 +2353,7 @@ namespace AudioHexViewer
             cmbTrigMode.SelectedIndex=Math.Clamp(s.TrigModeIndex,0,2);
             cmbTrigEdge.SelectedIndex=Math.Clamp(s.TrigEdgeIndex,0,1);
             cmbTrigSrc.SelectedIndex =Math.Clamp(s.TrigSrcIndex,0,1);
+            cmbTrigSrc.Invalidate();
             // Restaure le niveau trigger dans la bonne plage selon le mode actif
             if(_vdivMode){
                 double vd=GetVdivForCh(cmbTrigSrc.SelectedIndex);
