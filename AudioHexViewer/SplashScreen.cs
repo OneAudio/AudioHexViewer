@@ -17,17 +17,50 @@ namespace AudioHexViewer
                 return $"{ver}  build {BuildInfo.Timestamp}";
             }
         }
-        public const string AppDate    = "01/2026";
+        public const string AppDate    = "06/2026";
         public const string AppTitle   = "AudioHexViewer";
         public const string AppSubLine = "Digital audio data Analyzer";
         public const string AppAuthor  = "OnE Audio Projects";
 
-        // ── Couleurs ──────────────────────────────────────────────────────────
-        private static readonly Color BgTop    = Color.FromArgb(0,   0,  80);
-        private static readonly Color BgBottom = Color.FromArgb(0,   0,  40);
-        private static readonly Color AccentCol= Color.FromArgb(0, 180, 255);
-        private static readonly Color SubCol   = Color.FromArgb(180, 200, 230);
-        private static readonly Color DimCol   = Color.FromArgb(80,  110, 160);
+        // ── Couleurs du texte / accents ──────────────────────────────────────
+        // Regroupées ici pour pouvoir essayer rapidement d'autres teintes :
+        // modifier les valeurs ci-dessous puis recompiler (le build se renumérote seul).
+        //
+        // Rôles :
+        //   AhvTop / AhvBottom : dégradé du "AHV" (titre principal, de haut en bas)
+        //   AhvShadow          : ombre portée derrière "AHV"
+        //   AccentCol          : ligne séparatrice + barre de progression
+        //   SubCol             : "AudioHexViewer", "OnE Audio Projects", version, copyright, statut
+        //   DimCol             : réservé (actuellement inutilisé)
+        //   BgTop / BgBottom   : dégradé de fond, UNIQUEMENT si l'image de fond est absente
+        // private static readonly Color AhvTop    = Color.FromArgb(190, 215, 255);
+        // private static readonly Color AhvBottom = Color.White;
+        // private static readonly Color AhvShadow = Color.FromArgb(55, 0, 0, 0);
+        // private static readonly Color AccentCol = Color.FromArgb(0, 180, 255);
+        // private static readonly Color SubCol    = Color.FromArgb(180, 200, 230);
+        // private static readonly Color DimCol    = Color.FromArgb(80,  110, 160);
+        private static readonly Color BgTop     = Color.FromArgb(0,   0,  80);
+        private static readonly Color BgBottom  = Color.FromArgb(0,   0,  40);
+
+        // ── Palettes "texte sombre sur fond clair" à essayer ──────────────────
+        // Pour tester : commente le bloc ci-dessus (de AhvTop à DimCol) et
+        // décommente UNE des palettes ci-dessous, puis recompile.
+        //
+        // -- Palette "Bleu nuit" --
+        private static readonly Color AhvTop    = Color.FromArgb(40, 70, 130);
+        private static readonly Color AhvBottom = Color.FromArgb(10, 25, 60);
+        private static readonly Color AhvShadow = Color.FromArgb(40, 255, 255, 255);
+        private static readonly Color AccentCol = Color.FromArgb(0, 120, 200);
+        private static readonly Color SubCol    = Color.FromArgb(70, 90, 130);
+        private static readonly Color DimCol    = Color.FromArgb(130, 145, 170);
+        //
+        // -- Palette "Gris ardoise" --
+        // private static readonly Color AhvTop    = Color.FromArgb(60, 65, 75);
+        // private static readonly Color AhvBottom = Color.FromArgb(20, 25, 35);
+        // private static readonly Color AhvShadow = Color.FromArgb(40, 255, 255, 255);
+        // private static readonly Color AccentCol = Color.FromArgb(0, 140, 180);
+        // private static readonly Color SubCol    = Color.FromArgb(90, 100, 115);
+        // private static readonly Color DimCol    = Color.FromArgb(140, 150, 165);
 
         // ── Image de fond ─────────────────────────────────────────────────────
         private static readonly System.Drawing.Image? _bgImage = LoadBgImage();
@@ -377,7 +410,8 @@ namespace AudioHexViewer
             borderPath.AddArc(rc.Width-rr2*2, rc.Height-rr2*2, rr2*2, rr2*2, 0, 90);
             borderPath.AddArc(0, rc.Height-rr2*2, rr2*2, rr2*2, 90, 90);
             borderPath.CloseFigure();
-            using var borderPen = new Pen(Color.FromArgb(180, 140, 200, 255), 4f);
+            // using var borderPen = new Pen(Color.FromArgb(180, 140, 200, 255), 4f);
+            using var borderPen = new Pen(Color.FromArgb(255, 255, 255, 255), 4f);
             g.DrawPath(borderPen, borderPath);
 
             // "AHV" — Calibri Gras +30%
@@ -388,12 +422,12 @@ namespace AudioHexViewer
             float ahvW    = g.MeasureString(ahv, fAhv).Width;
             float ahvH    = fAhv.GetHeight(g);   // hauteur de ligne réelle, sans padding GDI+
             // Ombre
-            using (var sh = new SolidBrush(Color.FromArgb(55, 0, 0, 0)))
+            using (var sh = new SolidBrush(AhvShadow))
                 g.DrawString(ahv, fAhv, sh, rc.Width/2f - ahvW/2f + 2, ahvY + 2);
             // Texte dégradé
             using (var tBr = new LinearGradientBrush(
                 new PointF(0, ahvY), new PointF(0, ahvY + ahvH),
-                Color.FromArgb(190, 215, 255), Color.White))
+                AhvTop, AhvBottom))
                 g.DrawString(ahv, fAhv, tBr, rc.Width/2f - ahvW/2f, ahvY);
 
             // "AudioHexViewer" — Century Gothic 17pt, collé juste sous AHV
@@ -426,6 +460,15 @@ namespace AudioHexViewer
             float authorY = sepY + 5f;
             float wAuthor = g.MeasureString(AppAuthor, fVer).Width;
             g.DrawString(AppAuthor, fVer, bVer, rc.Width/2f - wAuthor/2f, authorY);
+
+            // "Digital audio data Analyzer" — même police/couleur, sous "OnE Audio Projects".
+            // Visible uniquement dans la boîte About (pas sur le splash avec barre de progression).
+            if (_isAboutMode)
+            {
+                float subLineY = authorY + authorH + 2f;
+                float wSubLine = g.MeasureString(AppSubLine, fVer).Width;
+                g.DrawString(AppSubLine, fVer, bVer, rc.Width/2f - wSubLine/2f, subLineY);
+            }
 
             // Barre de progression
             float barY = authorY + authorH + 8f;
