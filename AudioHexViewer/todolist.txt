@@ -4,9 +4,7 @@ Le 30/05/2026
 -------------
 
 Liste des petites corrections à faire :
-2- Ajouter un bouton de vérouillage de l'espace x entre les curseurs (scope) 
-13- Voir s'il faut garder "data record 1s" ?
-16- Ajouter une fonction de holdoff dans l'oscilloscope (scope)
+
 
 
 A faire aussi Aprés :

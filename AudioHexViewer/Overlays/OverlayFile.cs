@@ -9,9 +9,10 @@ namespace AudioHexViewer
     /// IMPORTANT:
     /// - On stocke les points "décimés" (tels qu'affichés), pas le spectre full.
     /// - L'axe fréquentiel est explicite (FreqHz[]), donc pas d'interpolation nécessaire.
-    /// - Deux natures possibles:
-    ///     * Spectrum : LeftDbFs[] / RightDbFs[] (dBFS)
-    ///     * Bode     : GainDb[] / PhaseDeg[] (dB, degrés)
+    /// - Trois natures possibles:
+    ///     * Spectrum     : LeftDbFs[] / RightDbFs[] (dBFS)
+    ///     * Bode         : GainDb[] / PhaseDeg[] (dB, degrés)
+    ///     * Oscilloscope : LeftV[] / RightV[] (échantillons normalisés), axe TimeMs[]
     /// </summary>
     public sealed class OverlayFile
     {
@@ -39,6 +40,7 @@ namespace AudioHexViewer
 
         /// <summary>
         /// Axe X explicite : même longueur que les séries de données associées.
+        /// Pour Kind=Oscilloscope, ce champ n'est pas utilisé (voir TimeMs).
         /// </summary>
         public double[] FreqHz { get; set; } = Array.Empty<double>();
 
@@ -49,11 +51,32 @@ namespace AudioHexViewer
         // ====== Bode (gain dB / phase degrés) ======
         public double[]? GainDb { get; set; }
         public double[]? PhaseDeg { get; set; }
+
+        // ====== Oscilloscope (temporel) ======
+        /// <summary>
+        /// Axe X explicite en millisecondes (t=0 = position du trigger au moment de la capture).
+        /// Même longueur que LeftV[] / RightV[].
+        /// </summary>
+        public double[]? TimeMs { get; set; }
+
+        /// <summary>Échantillons normalisés (même représentation que _capL/_capR : plein écran ≈ ±1).</summary>
+        public float[]? LeftV { get; set; }
+        public float[]? RightV { get; set; }
+
+        /// <summary>TIME/DIV (ms) au moment de la capture (informatif).</summary>
+        public double TimeDivMs { get; set; }
+
+        /// <summary>Position du trigger en % de la fenêtre (0..100), au moment de la capture (informatif).</summary>
+        public double PreTrigPct { get; set; }
+
+        /// <summary>Canal(aux) capturé(s) : 0=Left, 1=Right, 2=L+R.</summary>
+        public int Channel { get; set; }
     }
 
     public enum OverlayKind
     {
         Spectrum = 0,
-        Bode = 1
+        Bode = 1,
+        Oscilloscope = 2
     }
 }

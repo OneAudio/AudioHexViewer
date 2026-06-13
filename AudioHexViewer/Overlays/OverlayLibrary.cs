@@ -368,8 +368,12 @@ namespace AudioHexViewer
 
         private static void EnsureOverlayHasData(OverlayFile dto)
         {
-            if (dto.FreqHz == null || dto.FreqHz.Length == 0)
-                throw new InvalidDataException("Overlay invalide: FreqHz vide.");
+            // FreqHz n'est requis que pour Spectrum/Bode. Oscilloscope utilise TimeMs.
+            if (dto.Kind != OverlayKind.Oscilloscope)
+            {
+                if (dto.FreqHz == null || dto.FreqHz.Length == 0)
+                    throw new InvalidDataException("Overlay invalide: FreqHz vide.");
+            }
 
             switch (dto.Kind)
             {
@@ -390,6 +394,17 @@ namespace AudioHexViewer
                         throw new InvalidDataException("Overlay invalide (Bode): GainDb length != FreqHz length.");
                     if (dto.PhaseDeg.Length != dto.FreqHz.Length)
                         throw new InvalidDataException("Overlay invalide (Bode): PhaseDeg length != FreqHz length.");
+                    break;
+
+                case OverlayKind.Oscilloscope:
+                    if (dto.TimeMs == null || dto.TimeMs.Length == 0)
+                        throw new InvalidDataException("Overlay invalide (Oscilloscope): TimeMs vide.");
+                    if (dto.LeftV == null && dto.RightV == null)
+                        throw new InvalidDataException("Overlay invalide (Oscilloscope): pas de LeftV/RightV.");
+                    if (dto.LeftV != null && dto.LeftV.Length != dto.TimeMs.Length)
+                        throw new InvalidDataException("Overlay invalide (Oscilloscope): LeftV length != TimeMs length.");
+                    if (dto.RightV != null && dto.RightV.Length != dto.TimeMs.Length)
+                        throw new InvalidDataException("Overlay invalide (Oscilloscope): RightV length != TimeMs length.");
                     break;
 
                 default:

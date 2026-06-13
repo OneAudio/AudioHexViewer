@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using AudioHexViewer.Core;
+using ChartDashStyle = System.Windows.Forms.DataVisualization.Charting.ChartDashStyle;
 
 namespace AudioHexViewer
 {
@@ -318,6 +319,9 @@ namespace AudioHexViewer
             pnlScope.MouseEnter += (_, _) => { if (!_isRunning) pnlScope.Focus(); };
             pnlScope.MouseWheel += PnlScope_MouseWheel;
 
+            // Overlays : charge la bibliothèque (Oscilloscope) en mémoire au démarrage
+            OverlayLibraryReloadCache();
+
             // ── Curseurs X / Y ────────────────────────────────────────────────
             btnCurX.Click    += (_, _) => { _xActive=!_xActive; if(!(_xActive&&_yActive))_yTrack=false; if(!_xActive)_glueX=false; UpdateCursorUI(); pnlScope.Invalidate(); };
             btnGlueX.Click   += (_, _) =>
@@ -628,6 +632,18 @@ namespace AudioHexViewer
         // ── Helpers curseurs X/Y ─────────────────────────────────────────────
         private float[]?             GetActiveCursorData()
             => _cursorChan==1?_dispL : _cursorChan==2?_dispR : null;
+        private MeasResult           GetActiveMeas()
+            => _cursorChan==1?_measL : _cursorChan==2?_measR : default;
+        /// Phase X1->X2 en degrés, basée sur ΔX (curseurs) et la période (Per)
+        /// de la voie active. Non wrappée : si ΔX = 3 périodes, retourne 1080°.
+        /// Retourne null si pas de fréquence/Per valide.
+        private double? CursorPhaseDeg(double dtMs)
+        {
+            double freq=GetActiveMeas().FreqHz;
+            if(freq<=0 || Math.Abs(dtMs)<1e-9) return null;
+            double perMs=1000.0/freq;
+            return (dtMs/perMs)*360.0;
+        }
         private float                GetActiveZoom()
             => _cursorChan==1?_effZoomL : _cursorChan==2?_effZoomR : 1f;
         private float                GetActiveOffset()
@@ -640,15 +656,33 @@ namespace AudioHexViewer
             if(_cursorChan==2) return (vR,oR);
             return (false,0);
         }
-        // Frac X [0,1] → temps ms relatif au trigger
+        // ── Fenêtre temporelle affichée (ms, relative au trigger t=0) ────────
+        // Valeur EXACTE (sans arrondi), utilisée pour les curseurs et les overlays.
+        // (DrawAxisLabels garde son propre arrondi par division, pour le texte des graduations.)
+        private (double tMin, double tSpan) GetDispTimeWindow()
+        {
+            int td0=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
+            double td=TimeDivMs[td0]/_stoppedZoomX;
+
+            double panAdj=0;
+            if(!_isRunning && _capSR>0)
+                panAdj=_panOffset/(double)_capSR*1000.0;
+
+            double tMin,tMax;
+            if(IsRollMode){ tMin=0; tMax=H_DIVS*td; }
+            else { tMin=-PreTrig*H_DIVS*td+panAdj; tMax=(1-PreTrig)*H_DIVS*td+panAdj; }
+
+            return (tMin, tMax-tMin);
+        }
+        // Frac X [0,1] → temps ms relatif au trigger (tient compte zoom + pan)
         private double XFracToMs(float frac)
-        { int td=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
-          return (frac-PreTrig)*TimeDivMs[td]*H_DIVS; }
-        // Temps ms → frac X
+        { var (tMin,tSpan)=GetDispTimeWindow();
+          return tMin+frac*tSpan; }
+        // Temps ms → frac X (tient compte zoom + pan)
         private float MsToXFrac(double tMs)
-        { int td=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
-          double range=TimeDivMs[td]*H_DIVS;
-          return (float)Math.Clamp(tMs/range+PreTrig,0.0,1.0); }
+        { var (tMin,tSpan)=GetDispTimeWindow();
+          if(Math.Abs(tSpan)<1e-12) return 0f;
+          return (float)Math.Clamp((tMs-tMin)/tSpan,0.0,1.0); }
         // Frac Y [0,1] → valeur normalisée (0=bas, 1=haut, tient compte offset)
         private float YFracToNorm(float frac)
         { float zoom=GetActiveZoom(); float off=GetActiveOffset();
@@ -1165,10 +1199,21 @@ namespace AudioHexViewer
             int win=Math.Max(8,(int)(TimeDivMs[td]*H_DIVS/1000.0*_capSR/_stoppedZoomX));
             int pre=(int)(win*PreTrig);
             int tref=_capTrigIdx>=0?_capTrigIdx:pre;
-            int ds=Math.Clamp(tref-pre+_panOffset,0,Math.Max(0,_capL.Length-win));
-            // ── Butée : resynchroniser _panOffset sur ds réel pour éviter
-            //    l'accumulation silencieuse au-delà des limites ──────────────
-            _panOffset=ds-(tref-pre);
+            int dsHi=Math.Max(0,_capL.Length-win);
+
+            // ── Pan toujours aligné sur une division entière ────────────────
+            // _panOffset doit rester un multiple de spd (= 1 division, en échantillons),
+            // y compris aux butées : on borne en "nombre de divisions" (k) plutôt qu'en
+            // échantillons bruts, pour ne jamais atterrir sur une fraction de division
+            // (ce qui décalerait les graduations de l'axe X par rapport à la trace).
+            int spd=Math.Max(1,(int)(TimeDivMs[td]/1000.0*_capSR/_stoppedZoomX));
+            int kLo=(int)Math.Ceiling((0   -(tref-pre))/(double)spd);
+            int kHi=(int)Math.Floor  ((dsHi-(tref-pre))/(double)spd);
+            if(kHi<kLo) kHi=kLo;
+            int k=Math.Clamp((int)Math.Round(_panOffset/(double)spd),kLo,kHi);
+            _panOffset=k*spd;
+
+            int ds=Math.Clamp(tref-pre+_panOffset,0,dsHi);
             win=Math.Min(win,_capL.Length-ds); if(win<2) return;
 
             // ── Glue X : conserve la position absolue (échantillon) des curseurs X
@@ -1512,6 +1557,9 @@ namespace AudioHexViewer
             DrawGrid(g,wave);
             DrawAxisLabels(g,wave);
 
+            // Overlays (traces de référence) : rendus sous les traces live
+            DrawOverlayWaveform(g,wave);
+
             int ch=GetCh();
             int traceMode=cmbTraceMode.SelectedIndex;  // 0=Segment 1=Mixed 2=Dot
             if(_dispL!=null&&(ch==0||ch==2)) DrawWaveform(g,wave,_dispL,TraceColorL,_colors.FftWidth,_effZoomL,_offsetL,traceMode);
@@ -1612,28 +1660,17 @@ namespace AudioHexViewer
             using var fontLeg = new Font("Segoe UI",8.5f,FontStyle.Italic);
             using var br      = new SolidBrush(SystemColors.ControlText);
             int ch=GetCh();
-            int tdIdx=Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
-            // En mode arrêté zoomé (Ctrl+molette), les graduations suivent le zoom.
-            // _stoppedZoomX vaut 1 en mode RUN -> aucun effet, échelle TIME/DIV normale.
-            double td=TimeDivMs[tdIdx]/_stoppedZoomX;
+            // Fenêtre temporelle EXACTE (même calcul que pour les curseurs et les
+            // overlays) : TIME/DIV, zoom (_stoppedZoomX), pan (_panOffset), PreTrig.
+            var (tMin,tSpan)=GetDispTimeWindow();
+            double td=tSpan/H_DIVS;
 
             // ── Axe X : label sur chaque division (11 au total : 0 à H_DIVS) ─────
             for(int i=0;i<=H_DIVS;i++)
             {
                 float x=w.Left+i*w.Width/H_DIVS;
-                double tMs=IsRollMode?i*td:(i-PreTrig*H_DIVS)*td;
-                // Pan horizontal (mode arrêté) : décale les graduations du même temps
-                // que le déplacement de la fenêtre affichée (_panOffset, en échantillons).
-                // Snappé au multiple de division (td) le plus proche : près des bords du
-                // buffer, ds est clampé et _panOffset n'est alors plus nécessairement un
-                // multiple exact de l'écart inter-division, ce qui produirait sinon des
-                // graduations décimales après un aller-retour jusqu'au bord.
-                if(!_isRunning && _capSR>0 && td>1e-12)
-                {
-                    double panTimeMs=_panOffset/(double)_capSR*1000.0;
-                    tMs += Math.Round(panTimeMs/td)*td;
-                }
-                string lbl=(!IsRollMode&&Math.Abs(tMs)<td*0.001)?"0":FormatTime(tMs);
+                double tMs=tMin+i*td;
+                string lbl=(!IsRollMode&&Math.Abs(tMs)<Math.Abs(td)*0.001)?"0":FormatTime(tMs);
                 var sf=new StringFormat{Alignment=StringAlignment.Center};
                 g.DrawString(lbl,font,br,new RectangleF(x-38,w.Bottom+2,76,16),sf);
             }
@@ -1745,7 +1782,139 @@ namespace AudioHexViewer
             }
         }
 
-        // ── Marqueurs de référence verticale (dans la marge gauche) ──────────
+        // ── Overlays (traces de référence superposées) ───────────────────────
+        /// <summary>
+        /// Dessine les overlays Oscilloscope visibles, alignés sur l'axe temps RÉEL :
+        /// chaque échantillon overlay (TimeMs[i], en ms relatif au trigger=0 au moment
+        /// de la capture) est replacé dans la fenêtre temporelle COURANTE, donnée par
+        /// GetDispTimeWindow() (TIME/DIV, PreTrig, pan/zoom — même fenêtre EXACTE que
+        /// celle utilisée pour les curseurs X). Le trigger (t=0) reste donc toujours
+        /// aligné avec le repère temporel courant, et l'overlay suit naturellement le
+        /// pan/zoom de la trace live (même fenêtre temporelle pour les deux).
+        /// L'échelle verticale suit le V/div courant (_effZoomL/R, _offsetL/R).
+        /// </summary>
+        private void DrawOverlayWaveform(Graphics g, RectangleF wave)
+        {
+            if (_overlayCache.Count == 0) return;
+
+            int dw=(int)wave.Width;
+            if (dw < 2) return;
+
+            // ── Fenêtre temporelle courante (ms, relative au trigger t=0) ──────
+            // Même fenêtre EXACTE (sans arrondi) que celle utilisée pour les curseurs
+            // (GetDispTimeWindow) : garantit l'alignement avec la trace live même en
+            // pan/zoom proche des bords du buffer (où _panOffset n'est pas un multiple
+            // exact de la division temporelle).
+            var (tDispMin, tSpan) = GetDispTimeWindow();
+            if (Math.Abs(tSpan) < 1e-12) return;
+
+            var dash = MapOverlayDashStyle(_colors.OverlayDashStyle);
+            int lw = _colors.OverlayWidth;
+
+            foreach (var ov in _overlayCache)
+            {
+                if (!ov.Visible) continue;
+
+                var data = ov.Data;
+                if (data == null || data.Kind != OverlayKind.Oscilloscope) continue;
+                if (data.TimeMs == null || data.TimeMs.Length < 2 || data.SampleRate <= 0) continue;
+
+                int slotIndex = (data.SlotNumber >= 1 && data.SlotNumber <= OverlayManager.MaxOverlays)
+                    ? (data.SlotNumber - 1) : 0;
+                var color = GetOverlaySlotColor(slotIndex);
+
+                // idx(tMs) = trefOv + tMs/srMsOv  (axe TimeMs[] est linéaire par construction)
+                double srMsOv = 1000.0 / data.SampleRate;
+                double trefOv = -data.TimeMs[0] / srMsOv;
+
+                if (data.LeftV  != null && data.LeftV.Length  >= 2)
+                    DrawOverlayTrace(g, wave, data.LeftV,  trefOv, srMsOv, tDispMin, tSpan, color, lw, _effZoomL, _offsetL, dash);
+                if (data.RightV != null && data.RightV.Length >= 2)
+                    DrawOverlayTrace(g, wave, data.RightV, trefOv, srMsOv, tDispMin, tSpan, color, lw, _effZoomR, _offsetR, dash);
+            }
+        }
+
+        /// <summary>
+        /// Dessine une trace overlay en mappant chaque pixel de `w` vers un index
+        /// fractionnaire de `s[]` via l'axe temps : idx(px) = trefOv + tMs(px)/srMsOv,
+        /// avec tMs(px) = tDispMin + (px/dw)*tSpan. Si `s[]` couvre plus d'un échantillon
+        /// par pixel (cas habituel), on trace une ligne verticale min/max (peak-detect),
+        /// sinon une ligne brisée interpolée. En dehors de la plage couverte par `s[]`,
+        /// rien n'est tracé (l'overlay peut être plus court que la fenêtre courante).
+        /// </summary>
+        private static void DrawOverlayTrace(Graphics g, RectangleF w, float[] s, double trefOv, double srMsOv,
+                                              double tDispMin, double tSpan, Color color, int lw,
+                                              float zoom, float offset, DashStyle dash)
+        {
+            int dw=(int)w.Width; if(dw<2||s.Length<2||srMsOv<=0) return;
+            float ym=w.Top+w.Height/2f, ys=w.Height/2f*zoom;
+            float yRef=ym-offset*w.Height/2f;
+            using var pen=new Pen(color,Math.Max(1,lw));
+            if(dash!=DashStyle.Solid) pen.DashStyle=dash;
+
+            double idxAt(int px) => trefOv + (tDispMin + px/(double)dw*tSpan)/srMsOv;
+            double idxSpanPerPx = Math.Abs(tSpan/dw/srMsOv);
+
+            if (idxSpanPerPx > 1.0)
+            {
+                // ── Sur-échantillonné : une ligne verticale min/max par pixel ──
+                for(int px=0;px<dw;px++)
+                {
+                    double a=idxAt(px), b=idxAt(px+1);
+                    int lo=(int)Math.Floor(Math.Min(a,b));
+                    int hi=(int)Math.Ceiling(Math.Max(a,b));
+                    if(hi<0||lo>s.Length-1) continue;
+                    lo=Math.Clamp(lo,0,s.Length-1);
+                    hi=Math.Clamp(hi,0,s.Length-1);
+
+                    float vMin=s[lo],vMax=s[lo];
+                    for(int k=lo+1;k<=hi;k++){if(s[k]<vMin)vMin=s[k];if(s[k]>vMax)vMax=s[k];}
+                    float y1=Math.Clamp(yRef-vMax*ys,w.Top,w.Bottom);
+                    float y2=Math.Clamp(yRef-vMin*ys,w.Top,w.Bottom);
+                    if(y2<y1+1f)y2=y1+1f;
+                    g.DrawLine(pen,w.Left+px,y1,w.Left+px,y2);
+                }
+            }
+            else
+            {
+                // ── Sous-échantillonné : ligne brisée interpolée ──
+                var pts=new List<PointF>(dw+1);
+                for(int px=0;px<=dw;px++)
+                {
+                    double idx=idxAt(px);
+                    if(idx<0 || idx>s.Length-1)
+                    {
+                        // Hors plage : si on a déjà un segment en cours, le tracer puis repartir
+                        if(pts.Count>=2) g.DrawLines(pen,pts.ToArray());
+                        pts.Clear();
+                        continue;
+                    }
+                    int lo=(int)Math.Floor(idx);
+                    int hi=Math.Min(lo+1,s.Length-1);
+                    float frac=(float)(idx-lo);
+                    float v=s[lo]*(1f-frac)+s[hi]*frac;
+                    float y=Math.Clamp(yRef-v*ys,w.Top,w.Bottom);
+                    pts.Add(new PointF(w.Left+px,y));
+                }
+                if(pts.Count>=2) g.DrawLines(pen,pts.ToArray());
+            }
+        }
+
+
+        private static DashStyle MapOverlayDashStyle(int chartDashStyleInt)
+        {
+            var v = (ChartDashStyle)chartDashStyleInt;
+            switch (v)
+            {
+                case ChartDashStyle.Solid:      return DashStyle.Solid;
+                case ChartDashStyle.Dash:       return DashStyle.Dash;
+                case ChartDashStyle.Dot:        return DashStyle.Dot;
+                case ChartDashStyle.DashDot:    return DashStyle.DashDot;
+                case ChartDashStyle.DashDotDot: return DashStyle.DashDotDot;
+                default:                        return DashStyle.Dot;
+            }
+        }
+
         private void DrawOffsetMarkers(Graphics g, RectangleF w)
         {
             int ch=GetCh();
@@ -2223,6 +2392,8 @@ namespace AudioHexViewer
                 string df="---";
                 if(Math.Abs(dt)>1e-9){double hz=1000.0/Math.Abs(dt);df=hz>=1000?$"{hz/1000:G4} kHz":$"{hz:G4} Hz";}
                 lines.Add(("1/\u0394X", df));
+                double? phase=CursorPhaseDeg(dt);
+                lines.Add(("Phase", phase.HasValue ? $"{phase.Value:0.0}\u00b0" : "---"));
             }
             if (_yActive)
             {
@@ -2298,7 +2469,7 @@ namespace AudioHexViewer
             Color curCol=CursorColor;
             float pad=8f, xL=rect.X+pad;
             float lineH=fontBase.GetHeight(g)+4f;
-            string[] lbls={"X1","X2","\u0394X","1/\u0394X","Y1","Y2","\u0394Y"};
+            string[] lbls={"X1","X2","\u0394X","1/\u0394X","Phase","Y1","Y2","\u0394Y"};
             float maxLW=0f;
             foreach(var l in lbls){float w2=g.MeasureString(l,fontBase).Width;if(w2>maxLW)maxLW=w2;}
             float valLeft=xL+maxLW+6f, valW=rect.Right-pad-valLeft;
@@ -2317,7 +2488,10 @@ namespace AudioHexViewer
                 DrawRow("\u0394X",FormatTime(dt));
                 string df="---";
                 if(Math.Abs(dt)>1e-9){double hz=1000.0/Math.Abs(dt);df=hz>=1000?$"{hz/1000:G4} kHz":$"{hz:G4} Hz";}
-                DrawRow("1/\u0394X",df); y+=4f;
+                DrawRow("1/\u0394X",df);
+                double? phase=CursorPhaseDeg(dt);
+                DrawRow("Phase", phase.HasValue ? $"{phase.Value:0.0}°" : "---");
+                y+=4f;
             }
             if (_yActive)
             {

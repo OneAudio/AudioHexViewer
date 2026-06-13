@@ -33,6 +33,7 @@ namespace AudioHexViewer
         private Label         lblTraceMode;
         private Button        btnVdiv;
         private Label         lblVdiv;
+        private Button        btnOverlay;
         // ── Curseurs X/Y ────────────────────────────────────────────────────
         private Label         lblCursors;
         private Label         lblLinking;
@@ -74,6 +75,7 @@ namespace AudioHexViewer
             cmbTraceMode = new ComboBox();
             lblTraceMode = new Label();
             btnVdiv      = new Button();   lblVdiv     = new Label();
+            btnOverlay   = new Button();
             lblCursors   = new Label();
             lblLinking   = new Label();
             lblColModes  = new Label();   lblColEdit = new Label();
@@ -114,6 +116,7 @@ namespace AudioHexViewer
                 lblVdivL, cmbVdivL, cmbCouplingL,
                 lblVdivR, cmbVdivR, cmbCouplingR,
                 btnRoll, lblRoll, btnVdiv, lblVdiv,
+                btnOverlay,
                 lblCursors, lblLinking, lblColModes, lblColEdit, lblColGlue, lblColDisp, btnGlueX,
                 btnCurX, btnLinkedX, btnSetX, btnLblX, btnDisp,
                 btnCurY, btnLinkedY, btnSetY, btnLblY,
@@ -285,6 +288,14 @@ namespace AudioHexViewer
             lblTrigStatus.Text=""; lblTrigStatus.Font=new Font("Segoe UI",8.5f,FontStyle.Bold);
             lblTrigStatus.TextAlign=System.Drawing.ContentAlignment.MiddleCenter;
             lblTrigStatus.ForeColor=System.Drawing.Color.Gray;
+
+            // ── Overlay (zone libre entre CURSORS SETTINGS et RUN) ────────────
+            // Identique au bouton "Overlay" du Spectrum (Size 62x24), aligné sur la
+            // 2e ligne de contrôles (y=60), entre x=952 (séparateur) et x=1050 (RUN).
+            btnOverlay.Location=new Point(965,60);
+            btnOverlay.Size=new Size(62,24); btnOverlay.TabIndex=33;
+            btnOverlay.Text="Overlay"; btnOverlay.UseVisualStyleBackColor=true;
+            btnOverlay.Click += btnOverlay_Click;
 
             // ── RUN ───────────────────────────────────────────────────────────
             btnRun.Anchor  =System.Windows.Forms.AnchorStyles.Top|System.Windows.Forms.AnchorStyles.Right;

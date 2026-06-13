@@ -30,7 +30,7 @@ using ChartSeries = System.Windows.Forms.DataVisualization.Charting.Series;
 
 namespace AudioHexViewer
 {
-    public partial class SpectrumControl : UserControl
+    public partial class SpectrumControl : UserControl, IOverlayHost
     {
         // --------------------------------------------------------------------
         // Overlay UI: "Axis" button (bottom-left of the chart)

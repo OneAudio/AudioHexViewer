@@ -10,11 +10,11 @@ namespace AudioHexViewer
 {
     internal sealed partial class OverlaysForm : Form
     {
-        private readonly SpectrumControl _owner;
+        private readonly IOverlayHost _owner;
         private readonly List<OverlayEntry> _entries = new List<OverlayEntry>();
         private bool _isRefreshing;
 
-        public OverlaysForm(SpectrumControl owner)
+        public OverlaysForm(IOverlayHost owner)
         {
             _owner = owner ?? throw new ArgumentNullException(nameof(owner));
             InitializeComponent();
@@ -45,8 +45,8 @@ namespace AudioHexViewer
                     // Colonne "SR"
                     item.SubItems.Add(e.SampleRate > 0 ? e.SampleRate.ToString() : "");
                     // Range (fmin...fmax)
-                    if (TryGetRangeFromOverlayFile(e.FilePath, out var fmin, out var fmax))
-                        item.SubItems.Add(FormatRange(fmin, fmax));
+                    if (TryGetRangeTextFromOverlayFile(e.FilePath, e.Kind, out var rangeText))
+                        item.SubItems.Add(rangeText);
                     else
                         item.SubItems.Add("");
                     // Binding
@@ -66,37 +66,57 @@ namespace AudioHexViewer
             }
         }
         //
-        private bool TryGetRangeFromOverlayFile(string filePath, out double fmin, out double fmax)
+        /// <summary>
+        /// Calcule la plage affichée dans la colonne "Range" du ListView, en fonction du Kind :
+        ///   - Spectrum/Bode     : plage de fréquences (FreqHz[])
+        ///   - Oscilloscope      : plage temporelle (TimeMs[]), t=0 = trigger
+        /// </summary>
+        private bool TryGetRangeTextFromOverlayFile(string filePath, OverlayKind kind, out string rangeText)
         {
-            fmin = 0;
-            fmax = 0;
+            rangeText = "";
 
             try
             {
-                // On lit via SpectrumControl pour garder la même logique de parsing/options
-                // (ReadOverlayFromDisk est private, donc on lit simple ici)
                 var json = File.ReadAllText(filePath);
                 var dto = System.Text.Json.JsonSerializer.Deserialize<OverlayFile>(json, new System.Text.Json.JsonSerializerOptions
                 {
                     Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
                 });
 
-                if (dto?.FreqHz == null || dto.FreqHz.Length == 0)
-                    return false;
+                if (dto == null) return false;
 
-                fmin = dto.FreqHz[0];
-                fmax = dto.FreqHz[dto.FreqHz.Length - 1];
-
-                // sécurité si l'axe n'est pas trié
-                if (fmax < fmin)
+                if (kind == OverlayKind.Oscilloscope)
                 {
-                    double mn = dto.FreqHz.Min();
-                    double mx = dto.FreqHz.Max();
-                    fmin = mn;
-                    fmax = mx;
-                }
+                    if (dto.TimeMs == null || dto.TimeMs.Length == 0) return false;
 
-                return true;
+                    double tmin = dto.TimeMs[0];
+                    double tmax = dto.TimeMs[dto.TimeMs.Length - 1];
+                    if (tmax < tmin)
+                    {
+                        double mn = dto.TimeMs.Min();
+                        double mx = dto.TimeMs.Max();
+                        tmin = mn; tmax = mx;
+                    }
+
+                    rangeText = FormatTimeRange(tmin, tmax);
+                    return true;
+                }
+                else
+                {
+                    if (dto.FreqHz == null || dto.FreqHz.Length == 0) return false;
+
+                    double fmin = dto.FreqHz[0];
+                    double fmax = dto.FreqHz[dto.FreqHz.Length - 1];
+                    if (fmax < fmin)
+                    {
+                        double mn = dto.FreqHz.Min();
+                        double mx = dto.FreqHz.Max();
+                        fmin = mn; fmax = mx;
+                    }
+
+                    rangeText = FormatRange(fmin, fmax);
+                    return true;
+                }
             }
             catch
             {
@@ -430,12 +450,32 @@ namespace AudioHexViewer
         }
 
         //
+        /// <summary>Formate une durée en ms (signée), avec passage automatique en µs/s selon l'amplitude.</summary>
+        private static string FormatTimeMs(double ms)
+        {
+            double abs = Math.Abs(ms);
+            string sign = ms < 0 ? "-" : "";
+
+            if (abs >= 1000.0)
+                return sign + (abs / 1000.0).ToString(abs >= 10000.0 ? "0" : "0.##") + "s";
+            if (abs >= 1.0)
+                return sign + abs.ToString(abs >= 100.0 ? "0" : abs >= 10.0 ? "0.#" : "0.##") + "ms";
+            if (abs == 0.0)
+                return "0ms";
+            return sign + (abs * 1000.0).ToString(abs * 1000.0 >= 100.0 ? "0" : "0.#") + "\u00b5s";
+        }
+
+        private static string FormatTimeRange(double tMinMs, double tMaxMs)
+            => $"{FormatTimeMs(tMinMs)}...{FormatTimeMs(tMaxMs)}";
+
+        //
         private static string KindToShortText(OverlayKind kind)
         {
             switch (kind)
             {
                 case OverlayKind.Spectrum: return "Spectrum";
                 case OverlayKind.Bode: return "Bode";
+                case OverlayKind.Oscilloscope: return "Oscillo";
                 default: return kind.ToString();
             }
         }
