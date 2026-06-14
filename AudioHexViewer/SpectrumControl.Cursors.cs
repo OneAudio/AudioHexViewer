@@ -30,17 +30,16 @@ namespace AudioHexViewer
             bool onR = chkCursorR != null && chkCursorR.Checked;
 
             if (_cursorLineL != null) _cursorLineL.Visible = onL;
-
             if (_cursorLineR != null) _cursorLineR.Visible = onR;
 
-            if (_lblCursorLInfo != null) _lblCursorLInfo.Visible = onL;
-            if (_lblCursorRInfo != null) _lblCursorRInfo.Visible = onR;
+            // Inline text labels (bottom of chart) are hidden when the floating box
+            // is shown instead (Graph=1 or Both=2) or Off (3).
+            bool showInlineLabels = (_cursorDispMode == 0 || _cursorDispMode == 2);
+            if (_lblCursorLInfo != null) _lblCursorLInfo.Visible = onL && showInlineLabels;
+            if (_lblCursorRInfo != null) _lblCursorRInfo.Visible = onR && showInlineLabels;
 
             if (!onL) _cursorMarkLVisible = false;
             if (!onR) _cursorMarkRVisible = false;
-
-            chartSpectrum.Invalidate();
-
 
             chartSpectrum.Invalidate();
         }
@@ -173,6 +172,14 @@ namespace AudioHexViewer
         //
         private void ChartSpectrum_MouseMove(object? sender, MouseEventArgs e)
         {
+            // Delta label drag takes priority
+            if (_deltaLabelDragging)
+            {
+                var plot = GetPlotRectPixels(chartSpectrum, chartSpectrum.ChartAreas[0]);
+                UpdateDeltaLabelDrag(e, plot);
+                return;
+            }
+
             if (freqAxis == null || freqAxis.Length == 0)
                 return;
 
@@ -1333,6 +1340,9 @@ namespace AudioHexViewer
         //
         private void ChartSpectrum_MouseUp(object? sender, MouseEventArgs e)
         {
+            StopDeltaLabelDrag();
+            _cursorBoxDragging = false;
+
             if (e.Button == MouseButtons.Right)
             {
                 ShowAxisDialog();

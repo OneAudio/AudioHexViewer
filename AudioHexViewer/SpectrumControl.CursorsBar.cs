@@ -254,6 +254,9 @@ namespace AudioHexViewer
             {
                 _cursorUiSync = false;
             }
+
+            // Also sync the new X1/X2 bar
+            SyncCursorXUi();
         }
 
         private void UpdateToggleVisual(Button b, bool enabled)

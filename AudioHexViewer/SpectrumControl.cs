@@ -671,7 +671,7 @@ namespace AudioHexViewer
         // Formatage axe Y (dBFS), divisions secondaires
         //
         // Calcul du rectangle "plot" (interne) en pixels
-        private static RectangleF GetPlotRectPixels(Chart chart, ChartArea area)
+        internal static RectangleF GetPlotRectPixels(Chart chart, ChartArea area)
         {
             var cr = chart.ClientRectangle;
             if (cr.Width <= 0 || cr.Height <= 0) return RectangleF.Empty;
@@ -753,7 +753,8 @@ namespace AudioHexViewer
             InitAxisButtonUi();
 
             // Curseurs
-            InitCursorBarUi();
+            InitCursorBarUi();    // legacy binding (keeps CursorsBar.cs working)
+            InitCursorBarX();     // new X1/X2 bar wiring
 
             // FRF (Bode) extra buttons
             btnPhiEnable.Click += BtnPhiEnable_Click;
@@ -767,6 +768,11 @@ namespace AudioHexViewer
 
             // Clic droit sur la zone du spectre -> ouverture de la boîte d'axes
             chartSpectrum.MouseUp += ChartSpectrum_MouseUp;
+            chartSpectrum.MouseDown += (s, e) =>
+            {
+                var plot = GetPlotRectPixels(chartSpectrum, chartSpectrum.ChartAreas[0]);
+                TryStartDeltaLabelDrag(e, plot);
+            };
 
             // Dessin manuel des sous-divisions log
             chartSpectrum.FormatNumber += ChartSpectrum_FormatNumber;
@@ -1302,7 +1308,15 @@ namespace AudioHexViewer
                 // Window
                 if (comboWindow != null)
                 {
-                    int wIdx = comboWindow.Items.IndexOf(s.Window);
+                    // Rétrocompatibilité : anciens noms → nouveaux noms
+                    string wName = s.Window switch
+                    {
+                        "Blackman-Harris 4"  => "Black-Harr 4",
+                        "Blackman-Harris  7" => "Black-Harr 7",
+                        "Blackman-Harris 7"  => "Black-Harr 7",
+                        _ => s.Window
+                    };
+                    int wIdx = comboWindow.Items.IndexOf(wName);
                     if (wIdx >= 0)
                         comboWindow.SelectedIndex = wIdx;
                     // IMPORTANT : ApplySpectrumSettings() inhibe les events UI (SelectedIndexChanged)

@@ -5,15 +5,20 @@ Le 30/05/2026
 
 Liste des petites corrections à faire :
 
+1- Ajouter un bouton show/Hide en bas à droite pour afficher / masquer le panneau de mesures.
+2- Finir de réorganiser le panneau spectrum
+3- Ajouter le label Y en plus du label X, grossir la flèche grise.
+4- Corriger le nom Gain de la boite des curseurs dans le graph pour les modes L,R et L+R.µ
+5- Ajouter les séparateurs gris manquant.
+6- Corriger un bug, le générateur n'est pas arrêté automatiquement lors du passage en STOP en mode BodePlot.
+
+
+Faire pareil coté interface de l'histogramme.
+
 
 
 A faire aussi Aprés :
 1) Mettre des icônes dans la bande grise libérée.
-
-5) Ajouter la possibilitée de lire/a anlyser un fichier audio (post process)
+2) Ajouter la possibilitée de lire/a anlyser un fichier audio (post process)
 
  
-
-2) Prévoir la normalisation de gain/phase (calibration) pour le mode FRF.(plus tard)
-3) Ajouter l'affichage de la cohérence du FRF ? 
-4) Pour le mode FRF (Bode Plot), le moyennage serait à revoir...

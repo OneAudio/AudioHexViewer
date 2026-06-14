@@ -470,8 +470,8 @@ namespace AudioHexViewer
             comboWindow.Items.Add("Rectangular");
             comboWindow.Items.Add("Hann");
             comboWindow.Items.Add("Hamming");
-            comboWindow.Items.Add("Blackman-Harris 4");
-            comboWindow.Items.Add("Blackman-Harris  7");
+            comboWindow.Items.Add("Black-Harr 4");
+            comboWindow.Items.Add("Black-Harr 7");
             comboWindow.SelectedIndex = 0; // Fênêtre par défaut : 0= Rectangulaire
             comboWindow.SelectedIndexChanged += (s, e) =>
             {
@@ -502,11 +502,11 @@ namespace AudioHexViewer
             foreach (var a in av) comboAveraging.Items.Add(a.ToString(CultureInfo.InvariantCulture));
 
             // Exponential options (alpha)
-            comboAveraging.Items.Add("Exponential 0.5");
-            comboAveraging.Items.Add("Exponential 0.75");
-            comboAveraging.Items.Add("Exponential 0.88");
-            comboAveraging.Items.Add("Exponential 0.94");
-            comboAveraging.Items.Add("Exponential 0.97");
+            comboAveraging.Items.Add("Exp 0.5");
+            comboAveraging.Items.Add("Exp 0.75");
+            comboAveraging.Items.Add("Exp 0.88");
+            comboAveraging.Items.Add("Exp 0.94");
+            comboAveraging.Items.Add("Exp 0.97");
 
             // Default
             comboAveraging.SelectedIndex = 0;
@@ -520,9 +520,9 @@ namespace AudioHexViewer
                 _avgIsExponential = false;
                 _avgExpAlpha = 0.0;
 
-                if (txt.StartsWith("Exponential", StringComparison.OrdinalIgnoreCase))
+                if (txt.StartsWith("Exp", StringComparison.OrdinalIgnoreCase))
                 {
-                    // format: "Exponential 0.94"
+                    // format: "Exp 0.94" (was "Exponential 0.94")
                     var parts = txt.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                     if (parts.Length >= 2 &&
                         double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double a))

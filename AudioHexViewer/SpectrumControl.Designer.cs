@@ -1,4 +1,4 @@
-namespace AudioHexViewer
+﻿namespace AudioHexViewer
 {
     partial class SpectrumControl
     {
@@ -56,6 +56,23 @@ namespace AudioHexViewer
             btnC2Set            = new Button();
             // tlpCursors kept as a thin wrapper so CursorsBar.cs binds without change
             tlpCursors          = new TableLayoutPanel();
+
+            // ── New X1/X2 cursor controls ──
+            btnX1           = new Button();
+            btnX1Chan       = new Button();
+            btnX1Set        = new Button();
+            btnX1Peak       = new Button();
+            btnDispGraph    = new Button();
+            btnX2           = new Button();
+            btnX2Chan       = new Button();
+            btnX2Set        = new Button();
+            btnX2Peak       = new Button();
+            btnDispLabel    = new Button();
+            lblColCursor    = new Label();
+            lblColChannel   = new Label();
+            lblColSetVal    = new Label();
+            lblColPeak      = new Label();
+            lblColDisplay   = new Label();
             tlpPhi              = new TableLayoutPanel();
             btnPhiEnable        = new CheckBox();
             btnPhiUnwrap        = new CheckBox();
@@ -107,14 +124,18 @@ namespace AudioHexViewer
             //  y=60  → controls ROW 2  (h=24)
             //
             //  x=8→100    CHANNEL
-            //  x=116→260  WINDOWING
-            //  x=268→380  AVERAGING
-            //  x=390→514  PEAK HOLD + THD
-            //  x=522→652  OVERLAY + (spare)
-            //  x=652→860  CURSORS C1/C2  (same x as Oscilloscope, 734→931)
-            //  x=870→980  dB UNIT / LOG
-            //  x=1012      T ACQ (anchored right)
-            //  x=1060      RUN  (anchored right)
+            //  x=112→298  WINDOWING (84) + AVERAGING (66) side by side
+            //  x=300      sep2
+            //  x=308→424  PEAK HOLD (56) + THD (56) / Reset + Settings
+            //  x=428      sep3
+            //  x=436→494  dB UNIT (56) / LOG
+            //  x=496      sep4
+            //  x=504→618  PHASE (47) + NORM (60)  [visible Bode only]
+            //  x=619      sep5
+            //  x=695→940  CURSORS X1/X2 (exact oscilloscope positions)
+            //  x=952      sep (Overlay zone)
+            //  x=965      Overlay
+            //  x=1050     RUN
             // ══════════════════════════════════════════════════════════════════
 
             // ── panelTop ─────────────────────────────────────────────────────
@@ -144,12 +165,15 @@ namespace AudioHexViewer
                 comboLevelUnit, btnResetAvg,
                 btnResetPeakHold, btnThdSettings,
                 chkDcMode,
-                // Cursors label + buttons C1/C2
-                lblCursors,
+                // Legacy cursor stubs (hidden, kept for CursorsBar.cs binding)
                 btnC1, btnC1Track, btnC1PrevPk, btnC1Pk, btnC1NextPk, btnC1Set,
                 btnC2, btnC2Track, btnC2PrevPk, btnC2Pk, btnC2NextPk, btnC2Set,
-                // tlpCursors hidden (kept for CursorsBar.cs binding)
                 tlpCursors,
+                // ── New X1/X2 cursor controls ──
+                lblCursors,
+                lblColCursor, lblColChannel, lblColSetVal, lblColPeak, lblColDisplay,
+                btnX1, btnX1Chan, btnX1Set, btnX1Peak, btnDispGraph,
+                btnX2, btnX2Chan, btnX2Set, btnX2Peak, btnDispLabel,
                 // dB Unit / LOG
                 lblUnits, chkLogX,
                 // Phase
@@ -207,96 +231,86 @@ namespace AudioHexViewer
             comboWindow.Font          = std9;
             comboWindow.Location      = new Point(112, 18);
             comboWindow.Name          = "comboWindow";
-            comboWindow.Size          = new Size(140, 24);
+            comboWindow.Size          = new Size(84, 24);   // was 140, -40%
             comboWindow.TabIndex      = 3;
 
-            // ── SEP 2 (after Windowing, x=258) ───────────────────────────────
-            sep2.BackColor = System.Drawing.SystemColors.ControlDark;
-            sep2.Location  = new Point(258, 6);
-            sep2.Name      = "sep2";
-            sep2.Size      = new Size(1, 76);
-            sep2.TabIndex  = 99;
-
-            // ── 3. AVERAGING  (x=266) ────────────────────────────────────────
+            // ── 3. AVERAGING — alongside WINDOWING (no separator between them) ──
             lblAveraging.AutoSize  = true;
             lblAveraging.Font      = gS;
             lblAveraging.ForeColor = System.Drawing.SystemColors.GrayText;
-            lblAveraging.Location  = new Point(266, 4);
+            lblAveraging.Location  = new Point(200, 4);
             lblAveraging.Name      = "lblAveraging";
             lblAveraging.TabIndex  = 4;
             lblAveraging.Text      = "AVERAGING";
 
             comboAveraging.DropDownStyle = ComboBoxStyle.DropDownList;
             comboAveraging.Font          = std9;
-            comboAveraging.Location      = new Point(266, 18);
+            comboAveraging.Location      = new Point(200, 18);
             comboAveraging.Name          = "comboAveraging";
-            comboAveraging.Size          = new Size(110, 24);
+            comboAveraging.Size          = new Size(66, 24);
             comboAveraging.TabIndex      = 5;
 
-            // btnResetAvg + lblAvgProgress côte à côte en row 2
-            btnResetAvg.Location = new Point(266, 60);
+            btnResetAvg.Location = new Point(200, 60);
             btnResetAvg.Name     = "btnResetAvg";
-            btnResetAvg.Size     = new Size(55, 24);
+            btnResetAvg.Size     = new Size(50, 24);
             btnResetAvg.TabIndex = 12;
             btnResetAvg.Text     = "CLEAR";
             btnResetAvg.UseVisualStyleBackColor = true;
             btnResetAvg.Click += BtnResetAvg_Click;
 
-            // lblAvgProgress : compteur k/N à droite du bouton CLEAR
             lblAvgProgress.AutoSize  = false;
             lblAvgProgress.Font      = new Font("Segoe UI Semibold", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            lblAvgProgress.ForeColor = Color.Firebrick;   // rouge par défaut (en cours)
-            lblAvgProgress.Location  = new Point(325, 60);
-            lblAvgProgress.Size      = new Size(48, 24);
+            lblAvgProgress.ForeColor = Color.Firebrick;
+            lblAvgProgress.Location  = new Point(254, 60);
+            lblAvgProgress.Size      = new Size(42, 24);
             lblAvgProgress.TextAlign = ContentAlignment.MiddleLeft;
             lblAvgProgress.Name      = "lblAvgProgress";
             lblAvgProgress.TabIndex  = 14;
             lblAvgProgress.Text      = "";
 
-            // ── SEP 3 (after Averaging, x=382) ───────────────────────────────
-            sep3.BackColor = System.Drawing.SystemColors.ControlDark;
-            sep3.Location  = new Point(382, 6);
-            sep3.Name      = "sep3";
-            sep3.Size      = new Size(1, 76);
-            sep3.TabIndex  = 99;
+            // ── SEP 2 (after Windowing+Averaging, x=300) ─────────────────────
+            sep2.BackColor = System.Drawing.SystemColors.ControlDark;
+            sep2.Location  = new Point(300, 6);
+            sep2.Name      = "sep2";
+            sep2.Size      = new Size(1, 76);
+            sep2.TabIndex  = 99;
 
-            // ── 4. PEAK HOLD  (x=390) ────────────────────────────────────────
-            // label implicit (PEAK H toggle is self-labelling)
+            // ── 4. PEAK HOLD + THD  (x=308) ──────────────────────────────────
             chkPeakHold.Appearance = Appearance.Button;
             chkPeakHold.Font       = std9;
-            chkPeakHold.Location   = new Point(390, 18);
+            chkPeakHold.Location   = new Point(308, 18);
             chkPeakHold.Name       = "chkPeakHold";
-            chkPeakHold.Size       = new Size(62, 24);
+            chkPeakHold.Size       = new Size(56, 24);
             chkPeakHold.TabIndex   = 17;
             chkPeakHold.Text       = "PEAK H";
             chkPeakHold.TextAlign  = ContentAlignment.MiddleCenter;
             chkPeakHold.UseVisualStyleBackColor = true;
             chkPeakHold.CheckedChanged += chkPeakHold_CheckedChanged;
 
-            btnResetPeakHold.Location = new Point(390, 60);
+            btnResetPeakHold.Location = new Point(308, 60);
             btnResetPeakHold.Name     = "btnResetPeakHold";
-            btnResetPeakHold.Size     = new Size(62, 24);
+            btnResetPeakHold.Size     = new Size(56, 24);
             btnResetPeakHold.TabIndex = 18;
             btnResetPeakHold.TabStop  = false;
             btnResetPeakHold.Text     = "Reset";
             btnResetPeakHold.UseVisualStyleBackColor = true;
             btnResetPeakHold.Click += BtnResetPeakHold_Click;
 
-            // ── 5. THD  (x=458) ──────────────────────────────────────────────
+            // ── 5. THD  (x=368) ──────────────────────────────────────────────
             chkEnableThd.Appearance = Appearance.Button;
             chkEnableThd.Font       = std9;
-            chkEnableThd.Location   = new Point(458, 18);
+            chkEnableThd.Location   = new Point(368, 18);
             chkEnableThd.Name       = "chkEnableThd";
-            chkEnableThd.Size       = new Size(62, 24);
+            chkEnableThd.Size       = new Size(56, 24);
             chkEnableThd.TabIndex   = 30;
             chkEnableThd.Text       = "THD";
             chkEnableThd.TextAlign  = ContentAlignment.MiddleCenter;
             chkEnableThd.UseVisualStyleBackColor = true;
             chkEnableThd.CheckedChanged += ChkEnableThd_CheckedChanged;
 
-            btnThdSettings.Location = new Point(458, 60);
+            btnThdSettings.Location = new Point(368, 60);
             btnThdSettings.Name     = "btnThdSettings";
-            btnThdSettings.Size     = new Size(62, 24);
+            btnThdSettings.Size     = new Size(56, 24);
             btnThdSettings.TabIndex = 31;
             btnThdSettings.TabStop  = false;
             btnThdSettings.Text     = "Settings";
@@ -304,146 +318,56 @@ namespace AudioHexViewer
             btnThdSettings.UseVisualStyleBackColor = true;
             btnThdSettings.Click += BtnThdSettings_Click;
 
-            // ── 6. OVERLAY  (x=526) ──────────────────────────────────────────
-            btnOverlay.Location = new Point(526, 18);
-            btnOverlay.Name     = "btnOverlay";
-            btnOverlay.Size     = new Size(62, 24);
-            btnOverlay.TabIndex = 19;
-            btnOverlay.Text     = "Overlay";
-            btnOverlay.UseVisualStyleBackColor = true;
-            btnOverlay.Click += btnOverlay_Click;
+            // ── SEP 3 (after PEAK+THD, x=428) ────────────────────────────────
+            sep3.BackColor = System.Drawing.SystemColors.ControlDark;
+            sep3.Location  = new Point(428, 6);
+            sep3.Name      = "sep3";
+            sep3.Size      = new Size(1, 76);
+            sep3.TabIndex  = 99;
 
-            // ── SEP 4 (before Cursors, x=596) ────────────────────────────────
-            sep4.BackColor = System.Drawing.SystemColors.ControlDark;
-            sep4.Location  = new Point(596, 6);
-            sep4.Name      = "sep4";
-            sep4.Size      = new Size(1, 76);
-            sep4.TabIndex  = 99;
-
-            // ── 7. CURSORS  (x=604, same column widths as Oscilloscope) ──────
-            // Col widths: C=34 | Chan=45 | <=22 | Peak=40 | >=22 | Set=34  (total 197px)
-            // x offsets:  604  | 638     | 683  | 705     | 745  | 767  → end 801
-
-            lblCursors.AutoSize  = true;
-            lblCursors.Font      = gS;
-            lblCursors.ForeColor = System.Drawing.SystemColors.GrayText;
-            lblCursors.Location  = new Point(654, 4);
-            lblCursors.Name      = "lblCursors";
-            lblCursors.TabIndex  = 34;
-            lblCursors.Text      = "CURSORS SETTINGS";
-            lblCursors.Click    += label2_Click;
-
-            // ── Cursor row 1 (y=18) ──
-            btnC1.Location = new Point(604, 18); btnC1.Margin = new Padding(0);
-            btnC1.Size     = new Size(34, 24);   btnC1.TabIndex = 14;
-            btnC1.Text     = "C1";               btnC1.UseVisualStyleBackColor = true;
-
-            btnC1Track.Location = new Point(638, 18); btnC1Track.Margin = new Padding(0);
-            btnC1Track.Size     = new Size(45, 24);   btnC1Track.TabIndex = 15;
-            btnC1Track.Text     = "Left";             btnC1Track.UseVisualStyleBackColor = true;
-
-            btnC1PrevPk.Location = new Point(683, 18); btnC1PrevPk.Margin = new Padding(0);
-            btnC1PrevPk.Size     = new Size(22, 24);   btnC1PrevPk.TabIndex = 21;
-            btnC1PrevPk.Text     = "<";                btnC1PrevPk.UseVisualStyleBackColor = true;
-
-            btnC1Pk.Location = new Point(705, 18); btnC1Pk.Margin = new Padding(0);
-            btnC1Pk.Size     = new Size(40, 24);   btnC1Pk.TabIndex = 20;
-            btnC1Pk.Text     = "Peak";             btnC1Pk.UseVisualStyleBackColor = true;
-
-            btnC1NextPk.Location = new Point(745, 18); btnC1NextPk.Margin = new Padding(0);
-            btnC1NextPk.Size     = new Size(22, 24);   btnC1NextPk.TabIndex = 22;
-            btnC1NextPk.Text     = ">";                btnC1NextPk.UseVisualStyleBackColor = true;
-
-            btnC1Set.Location = new Point(767, 18); btnC1Set.Margin = new Padding(0);
-            btnC1Set.Size     = new Size(34, 24);   btnC1Set.TabIndex = 23;
-            btnC1Set.Text     = "Set";              btnC1Set.UseVisualStyleBackColor = true;
-
-            // ── Cursor row 2 (y=60) ──
-            btnC2.Location = new Point(604, 60); btnC2.Margin = new Padding(0);
-            btnC2.Size     = new Size(34, 24);   btnC2.TabIndex = 16;
-            btnC2.Text     = "C2";               btnC2.UseVisualStyleBackColor = true;
-
-            btnC2Track.Location = new Point(638, 60); btnC2Track.Margin = new Padding(0);
-            btnC2Track.Size     = new Size(45, 24);   btnC2Track.TabIndex = 17;
-            btnC2Track.Text     = "Right";            btnC2Track.UseVisualStyleBackColor = true;
-
-            btnC2PrevPk.Location = new Point(683, 60); btnC2PrevPk.Margin = new Padding(0);
-            btnC2PrevPk.Size     = new Size(22, 24);   btnC2PrevPk.TabIndex = 25;
-            btnC2PrevPk.Text     = "<";                btnC2PrevPk.UseVisualStyleBackColor = true;
-
-            btnC2Pk.Location = new Point(705, 60); btnC2Pk.Margin = new Padding(0);
-            btnC2Pk.Size     = new Size(40, 24);   btnC2Pk.TabIndex = 24;
-            btnC2Pk.Text     = "Peak";             btnC2Pk.UseVisualStyleBackColor = true;
-
-            btnC2NextPk.Location = new Point(745, 60); btnC2NextPk.Margin = new Padding(0);
-            btnC2NextPk.Size     = new Size(22, 24);   btnC2NextPk.TabIndex = 26;
-            btnC2NextPk.Text     = ">";                btnC2NextPk.UseVisualStyleBackColor = true;
-
-            btnC2Set.Location = new Point(767, 60); btnC2Set.Margin = new Padding(0);
-            btnC2Set.Size     = new Size(34, 24);   btnC2Set.TabIndex = 27;
-            btnC2Set.Text     = "Set";              btnC2Set.UseVisualStyleBackColor = true;
-
-            // tlpCursors: hidden stub kept so CursorsBar.cs can bind _cursorBar
-            tlpCursors.ColumnCount = 6;
-            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34F));
-            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 45F));
-            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 22F));
-            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 40F));
-            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 22F));
-            tlpCursors.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34F));
-            tlpCursors.RowCount = 2;
-            tlpCursors.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
-            tlpCursors.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
-            tlpCursors.Location = new Point(604, 18);
-            tlpCursors.Margin   = new Padding(0);
-            tlpCursors.Name     = "tlpCursors";
-            tlpCursors.Size     = new Size(197, 66);
-            tlpCursors.TabIndex = 33;
-            tlpCursors.Visible  = false;   // visual layout is done with individual buttons above
-
-            // ── SEP 5 (after Cursors, x=806) ─────────────────────────────────
-            sep5.BackColor = System.Drawing.SystemColors.ControlDark;
-            sep5.Location  = new Point(808, 6);
-            sep5.Name      = "sep5";
-            sep5.Size      = new Size(1, 76);
-            sep5.TabIndex  = 99;
-
-            // ── 8. dB UNIT / LOG  (x=816) ────────────────────────────────────
+            // ── 6. dB UNIT / LOG  (x=436) ────────────────────────────────────
             lblUnits.AutoSize  = true;
             lblUnits.Font      = gS;
             lblUnits.ForeColor = System.Drawing.SystemColors.GrayText;
-            lblUnits.Location  = new Point(816, 4);
+            lblUnits.Location  = new Point(436, 4);
             lblUnits.Name      = "lblUnits";
             lblUnits.TabIndex  = 13;
             lblUnits.Text      = "dB UNIT";
 
             comboLevelUnit.DropDownStyle = ComboBoxStyle.DropDownList;
             comboLevelUnit.Font          = std9;
-            comboLevelUnit.Location      = new Point(816, 18);
+            comboLevelUnit.Location      = new Point(436, 18);
             comboLevelUnit.Name          = "comboLevelUnit";
             comboLevelUnit.Size          = new Size(56, 24);
             comboLevelUnit.TabIndex      = 14;
 
             chkLogX.Appearance = Appearance.Button;
             chkLogX.Font       = std9;
-            chkLogX.Location   = new Point(816, 60);
+            chkLogX.Location   = new Point(436, 60);
             chkLogX.Name       = "chkLogX";
             chkLogX.Size       = new Size(56, 24);
             chkLogX.TabIndex   = 11;
             chkLogX.Text       = "LOG";
             chkLogX.TextAlign  = ContentAlignment.MiddleCenter;
 
-            // ── 9. PHASE φ  (x=878) ──────────────────────────────────────────
+            // ── SEP 4 (after dB UNIT, x=496) ─────────────────────────────────
+            sep4.BackColor = System.Drawing.SystemColors.ControlDark;
+            sep4.Location  = new Point(496, 6);
+            sep4.Name      = "sep4";
+            sep4.Size      = new Size(1, 76);
+            sep4.TabIndex  = 99;
+
+            // ── 7. PHASE φ + NORM  (x=504..618) — visible only in Bode mode ──
             tlpPhi.ColumnCount = 1;
             tlpPhi.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 47F));
             tlpPhi.Controls.Add(btnPhiEnable, 0, 0);
             tlpPhi.Controls.Add(btnPhiUnwrap, 0, 1);
-            tlpPhi.Location  = new Point(878, 18);
+            tlpPhi.Location  = new Point(504, 18);
             tlpPhi.Margin    = new Padding(0);
             tlpPhi.Name      = "tlpPhi";
             tlpPhi.RowCount  = 2;
-            tlpPhi.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));  // φ: label(14) + gap(4) + btn(24)
-            tlpPhi.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));  // Uw: aligned with LOG row (y=60)
+            tlpPhi.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+            tlpPhi.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
             tlpPhi.Size      = new Size(47, 66);
             tlpPhi.TabIndex  = 36;
 
@@ -469,28 +393,26 @@ namespace AudioHexViewer
             btnPhiUnwrap.TextAlign  = ContentAlignment.MiddleCenter;
             btnPhiUnwrap.UseVisualStyleBackColor = true;
 
-            // Gray section label above tlpPhi
             lblPhaseGroup.AutoSize  = false;
             lblPhaseGroup.Font      = gS;
             lblPhaseGroup.ForeColor = SystemColors.GrayText;
-            lblPhaseGroup.Location  = new Point(878, 4);
+            lblPhaseGroup.Location  = new Point(504, 4);
             lblPhaseGroup.Name      = "lblPhaseGroup";
             lblPhaseGroup.Size      = new Size(47, 14);
             lblPhaseGroup.TabIndex  = 98;
             lblPhaseGroup.Text      = "PHASE";
             lblPhaseGroup.TextAlign = ContentAlignment.MiddleCenter;
 
-            // ── 9b. NORMALISATION FRF (x=930) — Capture Ref / enable normalisation ──
             tlpNorm.ColumnCount = 1;
             tlpNorm.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60F));
             tlpNorm.Controls.Add(btnFrfRefCapture, 0, 0);
             tlpNorm.Controls.Add(btnFrfNormToggle, 0, 1);
-            tlpNorm.Location = new Point(930, 18);
+            tlpNorm.Location = new Point(555, 18);
             tlpNorm.Margin   = new Padding(0);
             tlpNorm.Name     = "tlpNorm";
             tlpNorm.RowCount = 2;
-            tlpNorm.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));  // Cap Ref: label(14) + gap(4) + btn(24)
-            tlpNorm.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));  // Norm: aligned with LOG row (y=60)
+            tlpNorm.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+            tlpNorm.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
             tlpNorm.Size     = new Size(60, 66);
             tlpNorm.TabIndex = 37;
 
@@ -516,16 +438,85 @@ namespace AudioHexViewer
             btnFrfNormToggle.TextAlign  = ContentAlignment.MiddleCenter;
             btnFrfNormToggle.UseVisualStyleBackColor = true;
 
-            // Gray section label above tlpNorm
             lblNormGroup.AutoSize  = false;
             lblNormGroup.Font      = gS;
             lblNormGroup.ForeColor = SystemColors.GrayText;
-            lblNormGroup.Location  = new Point(930, 4);
+            lblNormGroup.Location  = new Point(555, 4);
             lblNormGroup.Name      = "lblNormGroup";
             lblNormGroup.Size      = new Size(60, 14);
             lblNormGroup.TabIndex  = 97;
             lblNormGroup.Text      = "NORM";
             lblNormGroup.TextAlign = ContentAlignment.MiddleCenter;
+
+            // ── SEP 5 (before Cursors, x=619) ────────────────────────────────
+            sep5.BackColor = System.Drawing.SystemColors.ControlDark;
+            sep5.Location  = new Point(619, 6);
+            sep5.Name      = "sep5";
+            sep5.Size      = new Size(1, 76);
+            sep5.TabIndex  = 99;
+
+            // ── OVERLAY — same position as oscilloscope (x=965, y=60) ─────────
+            btnOverlay.Location = new Point(965, 60);
+            btnOverlay.Name     = "btnOverlay";
+            btnOverlay.Size     = new Size(62, 24);
+            btnOverlay.TabIndex = 19;
+            btnOverlay.Text     = "Overlay";
+            btnOverlay.UseVisualStyleBackColor = true;
+            btnOverlay.Click += btnOverlay_Click;
+
+            // ── 8. CURSORS X1/X2 — EXACT oscilloscope positions ───────────────
+            // Col x: CURSOR=695 | CHANNEL=742 | SET VAL=789 | PEAK=836 | DISPLAY=893
+            // Row 1 y=34 (X1), Row 2 y=60 (X2)
+            // "CURSORS SETTINGS" title at (772, 3) exactly like oscilloscope
+
+            // Hide legacy stub buttons (kept for CursorsBar.cs binding)
+            foreach (var b in new Control[] { btnC1, btnC1Track, btnC1PrevPk, btnC1Pk, btnC1NextPk, btnC1Set,
+                                              btnC2, btnC2Track, btnC2PrevPk, btnC2Pk, btnC2NextPk, btnC2Set })
+            { b.Visible = false; b.Size = new Size(1, 1); b.Location = new Point(-100, -100); b.Name = b.Text = ""; }
+
+            tlpCursors.ColumnCount = 1;
+            tlpCursors.Location = new Point(-200, -200);
+            tlpCursors.Name     = "tlpCursors";
+            tlpCursors.Size     = new Size(1, 1);
+            tlpCursors.TabIndex = 33;
+            tlpCursors.Visible  = false;
+
+            void BtnC(Button b, int x, int y, int w, string txt, int tab)
+            {
+                b.Location = new Point(x, y); b.Margin = new Padding(0);
+                b.Size = new Size(w, 24); b.Text = txt; b.TabIndex = tab;
+                b.UseVisualStyleBackColor = true;
+                b.Font = new Font("Segoe UI", 8.5f);
+            }
+
+            void ColLbl(Label l, int x, int y2, string txt)
+            {
+                l.AutoSize = true; l.Font = gS; l.ForeColor = SystemColors.GrayText;
+                l.Location = new Point(x, y2); l.Text = txt;
+            }
+
+            // Title + sub-column labels — exact oscilloscope positions
+            ColLbl(lblCursors,    772, 3,  "CURSORS SETTINGS");
+            ColLbl(lblColCursor,  700, 19, "CURSOR");
+            ColLbl(lblColChannel, 747, 19, "CHANNEL");
+            ColLbl(lblColSetVal,  793, 19, "SET VAL");
+            ColLbl(lblColPeak,    844, 19, "PEAK");
+            ColLbl(lblColDisplay, 896, 19, "DISPLAY");
+            lblCursors.Click += label2_Click;
+
+            // Row 1 — X1  (y=34)
+            BtnC(btnX1,        695, 34, 45, "X1",    14);
+            BtnC(btnX1Chan,    742, 34, 45, "Gain",  15);
+            BtnC(btnX1Set,     789, 34, 45, "X1= ?", 20);
+            BtnC(btnX1Peak,    836, 34, 45, "Peak",  21);
+            BtnC(btnDispGraph, 893, 34, 45, "Panel", 22);
+
+            // Row 2 — X2  (y=60)
+            BtnC(btnX2,        695, 60, 45, "X2",    16);
+            BtnC(btnX2Chan,    742, 60, 45, "Gain",  17);
+            BtnC(btnX2Set,     789, 60, 45, "X2= ?", 23);
+            BtnC(btnX2Peak,    836, 60, 45, "Peak",  24);
+            BtnC(btnDispLabel, 893, 60, 45, "Label", 25);
 
             label1.Visible      = false;
             label1.Name         = "label1";
@@ -741,7 +732,29 @@ namespace AudioHexViewer
         private Button   btnOverlay;
         private CheckBox chkDcMode;
 
-        // Cursor buttons (individual, pixel-exact like OscilloscopeControl)
+        // Cursor buttons — new X1/X2 layout (calqué oscilloscope)
+        // Row 1 (y=34): [X1] [Channel] [X1= ?] [Peak]  [Graph]
+        // Row 2 (y=60): [X2] [Channel] [X2= ?] [Peak]  [Label]
+        private Button btnX1;         // toggle cursor X1 (was btnC1)
+        private Button btnX1Chan;     // channel cycle for X1 (was btnC1Track)
+        private Button btnX1Set;      // set value X1 (was btnC1Set)
+        private Button btnX1Peak;     // peak for X1 (was btnC1Pk, left=max, right=context menu)
+        private Button btnDispGraph;  // display: cycle Panel/Graph/Both/Off (row 1 DISPLAY col)
+
+        private Button btnX2;         // toggle cursor X2 (was btnC2)
+        private Button btnX2Chan;     // channel cycle for X2 (was btnC2Track)
+        private Button btnX2Set;      // set value X2 (was btnC2Set)
+        private Button btnX2Peak;     // peak for X2 (was btnC2Pk, left=max, right=context menu)
+        private Button btnDispLabel;  // display: toggle delta label arrow (row 2 DISPLAY col)
+
+        // Column sub-labels
+        private Label lblColCursor;   // "CURSOR"
+        private Label lblColChannel;  // "CHANNEL"
+        private Label lblColSetVal;   // "SET VAL"
+        private Label lblColPeak;     // "PEAK"
+        private Label lblColDisplay;  // "DISPLAY"
+
+        // Legacy buttons kept as hidden stubs so CursorsBar.cs compiles without change
         private Button btnC1;
         private Button btnC1Track;
         private Button btnC1PrevPk;

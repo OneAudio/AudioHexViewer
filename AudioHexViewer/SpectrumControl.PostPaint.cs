@@ -984,6 +984,12 @@ namespace AudioHexViewer
                 // Panneau Stats (tableau) : affiché dans tous les modes, y compris FRF/Bode.
                 DrawChartStatsPanel(e.ChartGraphics.Graphics, chart, area);
 
+                // Floating cursor box (Graph / Both modes)
+                DrawCursorFloatBox(e.ChartGraphics.Graphics, plotForText);
+
+                // Delta label arrow (Label button)
+                DrawCursorDeltaLabel(e.ChartGraphics.Graphics, plotForText);
+
                 // Export only
                 if (isExport)
                 {
@@ -1176,40 +1182,47 @@ namespace AudioHexViewer
             bool c1On = _cursorMarkLVisible && !double.IsNaN(_cursorMarkLFreq);
             bool c2On = _cursorMarkRVisible && !double.IsNaN(_cursorMarkRFreq);
 
-            dst.Add(new StatRow { Label = "Cursor 1", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true, IsSmall = true });
-            AddCursorCompact(c1On, _cursorMarkLFreq, _cursorMarkLDb, _cursorMarkLUsesY2);
+            // Cursor values in panel : only shown when display mode is Panel (0) or Both (2).
+            // Graph (1) and Off (3) hide the panel rows.
+            bool showInPanel = (_cursorDispMode == 0 || _cursorDispMode == 2);
 
-            dst.Add(new StatRow { IsSeparator = true, IsBottomGroup = true });
-
-            dst.Add(new StatRow { Label = "Cursor 2", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true, IsSmall = true });
-            AddCursorCompact(c2On, _cursorMarkRFreq, _cursorMarkRDb, _cursorMarkRUsesY2);
-
-            dst.Add(new StatRow { IsSeparator = true, IsBottomGroup = true });
-
-            dst.Add(new StatRow { Label = "Δ Delta", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true, IsSmall = true });
-
-            if (c1On && c2On)
+            if (showInPanel)
             {
-                double df = Math.Abs(_cursorMarkRFreq - _cursorMarkLFreq);
-                dst.Add(new StatRow { Label = "ΔFrequency", Value = FmtHz(df), IsBottomGroup = true, IsSmall = true });
+                dst.Add(new StatRow { Label = "Cursor 1", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true, IsSmall = true });
+                AddCursorCompact(c1On, _cursorMarkLFreq, _cursorMarkLDb, _cursorMarkLUsesY2);
 
-                if (_cursorMarkLUsesY2 == _cursorMarkRUsesY2)
+                dst.Add(new StatRow { IsSeparator = true, IsBottomGroup = true });
+
+                dst.Add(new StatRow { Label = "Cursor 2", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true, IsSmall = true });
+                AddCursorCompact(c2On, _cursorMarkRFreq, _cursorMarkRDb, _cursorMarkRUsesY2);
+
+                dst.Add(new StatRow { IsSeparator = true, IsBottomGroup = true });
+
+                dst.Add(new StatRow { Label = "Δ Delta", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true, IsSmall = true });
+
+                if (c1On && c2On)
                 {
-                    double dy = _cursorMarkRDb - _cursorMarkLDb;
-                    dst.Add(new StatRow
+                    double df = Math.Abs(_cursorMarkRFreq - _cursorMarkLFreq);
+                    dst.Add(new StatRow { Label = "ΔFrequency", Value = FmtHz(df), IsBottomGroup = true, IsSmall = true });
+
+                    if (_cursorMarkLUsesY2 == _cursorMarkRUsesY2)
                     {
-                        Label = _cursorMarkLUsesY2 ? "Δφ" : "ΔGain",
-                        Value = _cursorMarkLUsesY2 ? (dy.ToString("0.##") + " °") : (dy.ToString("0.##") + " dB"),
-                        IsBottomGroup = true, IsSmall = true
-                    });
+                        double dy = _cursorMarkRDb - _cursorMarkLDb;
+                        dst.Add(new StatRow
+                        {
+                            Label = _cursorMarkLUsesY2 ? "Δφ" : "ΔGain",
+                            Value = _cursorMarkLUsesY2 ? (dy.ToString("0.##") + " °") : (dy.ToString("0.##") + " dB"),
+                            IsBottomGroup = true, IsSmall = true
+                        });
+                    }
+                    else
+                        dst.Add(new StatRow { Label = "ΔGain/Δφ", Value = "—", IsBottomGroup = true, IsSmall = true });
                 }
                 else
-                    dst.Add(new StatRow { Label = "ΔGain/Δφ", Value = "—", IsBottomGroup = true, IsSmall = true });
-            }
-            else
-            {
-                dst.Add(new StatRow { Label = "ΔFrequency", Value = "—", IsBottomGroup = true, IsSmall = true });
-                dst.Add(new StatRow { Label = "ΔGain/Δφ",  Value = "—", IsBottomGroup = true, IsSmall = true });
+                {
+                    dst.Add(new StatRow { Label = "ΔFrequency", Value = "—", IsBottomGroup = true, IsSmall = true });
+                    dst.Add(new StatRow { Label = "ΔGain/Δφ",  Value = "—", IsBottomGroup = true, IsSmall = true });
+                }
             }
         }
 
@@ -1248,6 +1261,9 @@ namespace AudioHexViewer
         //
         private void AppendCursorStatsBlock(List<StatRow> dst, string valueLabel)
         {
+            // Only shown when display mode is Panel (0) or Both (2).
+            if (_cursorDispMode != 0 && _cursorDispMode != 2) return;
+
             static string FmtHz(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " Hz");
             static string FmtDb(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " dB");
 
