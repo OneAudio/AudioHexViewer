@@ -57,8 +57,13 @@ namespace AudioHexViewer
             // tlpCursors kept as a thin wrapper so CursorsBar.cs binds without change
             tlpCursors          = new TableLayoutPanel();
             tlpPhi              = new TableLayoutPanel();
-            btnPhiEnable        = new Button();
-            btnPhiUnwrap        = new Button();
+            btnPhiEnable        = new CheckBox();
+            btnPhiUnwrap        = new CheckBox();
+            lblPhaseGroup       = new Label();
+            tlpNorm             = new TableLayoutPanel();
+            btnFrfRefCapture    = new CheckBox();
+            btnFrfNormToggle    = new CheckBox();
+            lblNormGroup        = new Label();
             // Separator labels
             sep1                = new Label();
             sep2                = new Label();
@@ -85,6 +90,7 @@ namespace AudioHexViewer
 
             tlpCursors.SuspendLayout();
             tlpPhi.SuspendLayout();
+            tlpNorm.SuspendLayout();
             panelTop.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)chartSpectrum).BeginInit();
             SuspendLayout();
@@ -147,7 +153,9 @@ namespace AudioHexViewer
                 // dB Unit / LOG
                 lblUnits, chkLogX,
                 // Phase
-                lblWindowInfo, tlpPhi,
+                lblWindowInfo, lblPhaseGroup, tlpPhi,
+                // FRF Normalisation (Capture Ref / Norm toggle)
+                lblNormGroup, tlpNorm,
                 // Separators
                 sep1, sep2, sep3, sep4, sep5,
                 // Right: RUN (tout-en-un : T ACQ + barre + RUN/STOP owner-drawn)
@@ -434,28 +442,90 @@ namespace AudioHexViewer
             tlpPhi.Margin    = new Padding(0);
             tlpPhi.Name      = "tlpPhi";
             tlpPhi.RowCount  = 2;
-            tlpPhi.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
-            tlpPhi.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
+            tlpPhi.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));  // φ: label(14) + gap(4) + btn(24)
+            tlpPhi.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));  // Uw: aligned with LOG row (y=60)
             tlpPhi.Size      = new Size(47, 66);
             tlpPhi.TabIndex  = 36;
 
-            btnPhiEnable.Dock       = DockStyle.Fill;
-            btnPhiEnable.Location   = new Point(0, 0);
+            btnPhiEnable.Appearance = Appearance.Button;
+            btnPhiEnable.Dock       = DockStyle.Bottom;
             btnPhiEnable.Margin     = new Padding(0);
             btnPhiEnable.Name       = "btnPhiEnable";
             btnPhiEnable.Size       = new Size(47, 24);
             btnPhiEnable.TabIndex   = 8;
             btnPhiEnable.Text       = "φ";
+            btnPhiEnable.Font       = std9;
+            btnPhiEnable.TextAlign  = ContentAlignment.MiddleCenter;
             btnPhiEnable.UseVisualStyleBackColor = true;
 
+            btnPhiUnwrap.Appearance = Appearance.Button;
             btnPhiUnwrap.Dock       = DockStyle.Fill;
-            btnPhiUnwrap.Location   = new Point(0, 24);
             btnPhiUnwrap.Margin     = new Padding(0);
             btnPhiUnwrap.Name       = "btnPhiUnwrap";
             btnPhiUnwrap.Size       = new Size(47, 24);
             btnPhiUnwrap.TabIndex   = 9;
             btnPhiUnwrap.Text       = "Uw";
+            btnPhiUnwrap.Font       = std9;
+            btnPhiUnwrap.TextAlign  = ContentAlignment.MiddleCenter;
             btnPhiUnwrap.UseVisualStyleBackColor = true;
+
+            // Gray section label above tlpPhi
+            lblPhaseGroup.AutoSize  = false;
+            lblPhaseGroup.Font      = gS;
+            lblPhaseGroup.ForeColor = SystemColors.GrayText;
+            lblPhaseGroup.Location  = new Point(878, 4);
+            lblPhaseGroup.Name      = "lblPhaseGroup";
+            lblPhaseGroup.Size      = new Size(47, 14);
+            lblPhaseGroup.TabIndex  = 98;
+            lblPhaseGroup.Text      = "PHASE";
+            lblPhaseGroup.TextAlign = ContentAlignment.MiddleCenter;
+
+            // ── 9b. NORMALISATION FRF (x=930) — Capture Ref / enable normalisation ──
+            tlpNorm.ColumnCount = 1;
+            tlpNorm.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60F));
+            tlpNorm.Controls.Add(btnFrfRefCapture, 0, 0);
+            tlpNorm.Controls.Add(btnFrfNormToggle, 0, 1);
+            tlpNorm.Location = new Point(930, 18);
+            tlpNorm.Margin   = new Padding(0);
+            tlpNorm.Name     = "tlpNorm";
+            tlpNorm.RowCount = 2;
+            tlpNorm.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));  // Cap Ref: label(14) + gap(4) + btn(24)
+            tlpNorm.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));  // Norm: aligned with LOG row (y=60)
+            tlpNorm.Size     = new Size(60, 66);
+            tlpNorm.TabIndex = 37;
+
+            btnFrfRefCapture.Appearance = Appearance.Button;
+            btnFrfRefCapture.Dock       = DockStyle.Bottom;
+            btnFrfRefCapture.Margin     = new Padding(0);
+            btnFrfRefCapture.Name       = "btnFrfRefCapture";
+            btnFrfRefCapture.Size       = new Size(60, 24);
+            btnFrfRefCapture.TabIndex   = 10;
+            btnFrfRefCapture.Text       = "Cap Ref";
+            btnFrfRefCapture.Font       = std9;
+            btnFrfRefCapture.TextAlign  = ContentAlignment.MiddleCenter;
+            btnFrfRefCapture.UseVisualStyleBackColor = true;
+
+            btnFrfNormToggle.Appearance = Appearance.Button;
+            btnFrfNormToggle.Dock       = DockStyle.Fill;
+            btnFrfNormToggle.Margin     = new Padding(0);
+            btnFrfNormToggle.Name       = "btnFrfNormToggle";
+            btnFrfNormToggle.Size       = new Size(60, 24);
+            btnFrfNormToggle.TabIndex   = 11;
+            btnFrfNormToggle.Text       = "Norm";
+            btnFrfNormToggle.Font       = std9;
+            btnFrfNormToggle.TextAlign  = ContentAlignment.MiddleCenter;
+            btnFrfNormToggle.UseVisualStyleBackColor = true;
+
+            // Gray section label above tlpNorm
+            lblNormGroup.AutoSize  = false;
+            lblNormGroup.Font      = gS;
+            lblNormGroup.ForeColor = SystemColors.GrayText;
+            lblNormGroup.Location  = new Point(930, 4);
+            lblNormGroup.Name      = "lblNormGroup";
+            lblNormGroup.Size      = new Size(60, 14);
+            lblNormGroup.TabIndex  = 97;
+            lblNormGroup.Text      = "NORM";
+            lblNormGroup.TextAlign = ContentAlignment.MiddleCenter;
 
             label1.Visible      = false;
             label1.Name         = "label1";
@@ -619,6 +689,7 @@ namespace AudioHexViewer
             panelTop.PerformLayout();
             tlpCursors.ResumeLayout(false);
             tlpPhi.ResumeLayout(false);
+            tlpNorm.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)chartSpectrum).EndInit();
             ResumeLayout(false);
         }
@@ -687,8 +758,13 @@ namespace AudioHexViewer
         // Hidden TLP stub (kept so CursorsBar.cs binds _cursorBar without change)
         private TableLayoutPanel tlpCursors;
         private TableLayoutPanel tlpPhi;
-        private Button           btnPhiEnable;
-        private Button           btnPhiUnwrap;
+        private CheckBox         btnPhiEnable;
+        private CheckBox         btnPhiUnwrap;
+        private Label            lblPhaseGroup;
+        private TableLayoutPanel tlpNorm;
+        private CheckBox         btnFrfRefCapture;
+        private CheckBox         btnFrfNormToggle;
+        private Label            lblNormGroup;
 
         // Visual separators
         private Label sep1;

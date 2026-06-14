@@ -903,7 +903,10 @@ namespace AudioHexViewer
                 {
                     gainDb[k] = -200.0;
                     phaseDeg[k] = 0.0;
-                    coherence[k] = 0.0;
+                    // Gxx≈0 (ex: bin DC pour un bruit blanc sans offset) : H1 et donc γ²
+                    // sont mathématiquement indéfinis ici, ce n'est PAS une "incohérence"
+                    // mesurée. On le signale par NaN pour l'exclure des stats/affichage.
+                    coherence[k] = double.NaN;
                     continue;
                 }
 

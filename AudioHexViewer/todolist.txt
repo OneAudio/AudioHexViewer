@@ -9,10 +9,11 @@ Liste des petites corrections à faire :
 
 A faire aussi Aprés :
 1) Mettre des icônes dans la bande grise libérée.
-2) Prévoir la normalisation de gain/phase (calibration) pour le mode FRF.(plus tard)
-3) Ajouter l'affichage de la cohérence du FRF ? 
-4) Pour le mode FRF (Bode Plot), le moyennage serait à revoir...
+
 5) Ajouter la possibilitée de lire/a anlyser un fichier audio (post process)
 
  
 
+2) Prévoir la normalisation de gain/phase (calibration) pour le mode FRF.(plus tard)
+3) Ajouter l'affichage de la cohérence du FRF ? 
+4) Pour le mode FRF (Bode Plot), le moyennage serait à revoir...

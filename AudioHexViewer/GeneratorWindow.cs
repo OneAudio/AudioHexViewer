@@ -17,6 +17,7 @@ namespace AudioHexViewer
         private readonly Func<WaveFormatExtensible?>  _getOutputFormat;
         private readonly Func<int>                    _getAnalyzerSR;
         private readonly Func<int>                    _getAnalyzerN;
+        private readonly Func<string>                 _getChannelMode;
         private readonly Action<IWaveProvider?>       _onLoopbackRequest;
 
         // ── Calibration de niveau de sortie ──────────────────────────────────
@@ -42,6 +43,9 @@ namespace AudioHexViewer
         private bool                     _loopbackActive;
         private readonly System.Windows.Forms.Timer _doneTimer;
         private readonly System.Windows.Forms.Timer _levelTimer;
+        // ── Hint FRF (point 4) : suggère Bruit blanc/rose en mode Bode Plot ──
+        private readonly System.Windows.Forms.Timer _frfHintTimer;
+        private readonly ToolTip _frfHintTip = new ToolTip();
         private LevelMeasuringProvider? _levelProbe;
         private IWaveProvider?          _rawProvider;  // underlying provider (before LevelMeasuringProvider wrap)
         private int    _vuPctL, _vuPctR;
@@ -53,6 +57,7 @@ namespace AudioHexViewer
             Func<WaveFormatExtensible?> getOutputFormat,
             Func<int>                   getAnalyzerSR,
             Func<int>                   getAnalyzerN,
+            Func<string>                getChannelMode,
             Action<IWaveProvider?>      onLoopbackRequest,
             SessionSettings             settings,
             Action                      saveSettings,
@@ -63,6 +68,7 @@ namespace AudioHexViewer
             _getOutputFormat   = getOutputFormat;
             _getAnalyzerSR     = getAnalyzerSR;
             _getAnalyzerN      = getAnalyzerN;
+            _getChannelMode    = getChannelMode;
             _onLoopbackRequest = onLoopbackRequest;
             _settings          = settings;
             _saveSettings          = saveSettings;
@@ -83,7 +89,7 @@ namespace AudioHexViewer
             cmbIMDPreset.SelectedIndex = 0;
 
             // Événements
-            cmbType.SelectedIndexChanged    += (_, _) => { UpdateParamPanels(); RefreshSynchLabel(); RefreshDeviceStatus(); InvalidateWavePreview(); };
+            cmbType.SelectedIndexChanged    += (_, _) => { UpdateParamPanels(); RefreshSynchLabel(); RefreshDeviceStatus(); InvalidateWavePreview(); RefreshFrfHint(); };
             nudF1.ValueChanged              += (_, _) => RefreshSynchLabel();
             chkSynch.CheckedChanged         += (_, _) => RefreshSynchLabel();
             chkLoopback.CheckedChanged      += (_, _) => RefreshDeviceStatus();
@@ -122,11 +128,50 @@ namespace AudioHexViewer
             _levelTimer = new System.Windows.Forms.Timer { Interval = 80 };
             _levelTimer.Tick += LevelTimer_Tick;
 
+            // Hint FRF : le mode Bode Plot peut être activé/désactivé depuis la
+            // fenêtre principale pendant que cette fenêtre est ouverte -> on
+            // ré-évalue périodiquement (léger, juste un toggle de tooltip).
+            _frfHintTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+            _frfHintTimer.Tick += (_, _) => RefreshFrfHint();
+            _frfHintTimer.Start();
+
             UpdateParamPanels();
             SetRunState(false);
             RefreshSynchLabel();
+            RefreshFrfHint();
             // Initialiser les barres VU après affichage (ClientSize valide)
-            Shown += (_, _) => { pnlVuMeter.Invalidate(); RefreshCalibrationLabels(); RefreshVrmsToggle(); InvalidateWavePreview(); };
+            Shown += (_, _) => { pnlVuMeter.Invalidate(); RefreshCalibrationLabels(); RefreshVrmsToggle(); InvalidateWavePreview(); RefreshFrfHint(); };
+        }
+
+        /// <summary>
+        /// Point 4 — Indique, via une infobulle sur le sélecteur de signal, si le
+        /// type de signal courant est adapté à une mesure FRF/H1 (mode "Bode Plot"
+        /// dans l'onglet Spectrum) : Bruit blanc/rose recommandés (excitation large
+        /// bande -> Gxx non nul partout -> H1 et γ² exploitables sur toute la bande).
+        /// Un sinus, un sweep ou une rafale n'excitent qu'une partie du spectre :
+        /// la cohérence y sera faible ailleurs.
+        /// </summary>
+        private void RefreshFrfHint()
+        {
+            bool isBode = string.Equals(_getChannelMode(), "Bode Plot", StringComparison.OrdinalIgnoreCase);
+
+            if (!isBode)
+            {
+                _frfHintTip.SetToolTip(cmbType, null);
+                _frfHintTip.SetToolTip(lblTypeLabel, null);
+                return;
+            }
+
+            var t = CurrentType();
+            bool recommended = t == SignalType.WhiteNoise || t == SignalType.PinkNoise;
+
+            string msg = recommended
+                ? "FRF mode (Bode Plot) active:\nThis broadband signal is well suited for H1 + coherence γ² measurement across the full frequency range."
+                : "FRF mode (Bode Plot) active:\nWhite noise or pink noise recommended for reliable H1/γ² across the full band.\n" +
+                  "A narrowband signal (sine, sweep, burst…) will only give good coherence\naround its excitation frequency/frequencies.";
+
+            _frfHintTip.SetToolTip(cmbType, msg);
+            _frfHintTip.SetToolTip(lblTypeLabel, msg);
         }
 
         private void UpdateParamPanels()
@@ -264,6 +309,32 @@ namespace AudioHexViewer
 
         // ── RUN / STOP ────────────────────────────────────────────────────────
         private void BtnRun_Click(object? s, EventArgs e) { if (_isRunning) StopGenerator(); else StartGenerator(); }
+
+        /// <summary>
+        /// Called automatically when the Spectrum tab enters RUN in Bode Plot mode.
+        /// Ensures the generator is running with White Noise at -12 dBFS without
+        /// disturbing the user if it is already generating a signal.
+        /// </summary>
+        public void EnsureWhiteNoiseFrf()
+        {
+            if (_isRunning) return;   // already generating — don't override user's choice
+
+            // Switch to White Noise
+            var wn = cmbType.Items.Cast<TypeItem>()
+                             .FirstOrDefault(ti => ti.Type == SignalType.WhiteNoise);
+            if (wn != null)
+                cmbType.SelectedItem = wn;
+
+            // Set amplitude to -12 dBFS
+            nudAmplitude.Value = Math.Max(nudAmplitude.Minimum,
+                                  Math.Min(nudAmplitude.Maximum, -12m));
+
+            // Make sure dBFS mode is selected (not Vrms)
+            if (rbAmpdBFS.Enabled) rbAmpdBFS.Checked = true;
+
+            StartGenerator();
+        }
+
 
         private void StartGenerator()
         {
@@ -426,6 +497,7 @@ namespace AudioHexViewer
             if (e.CloseReason == CloseReason.UserClosing)
             { e.Cancel=true; if (_isRunning) StopGenerator(); Hide(); return; }
             StopGenerator(); _doneTimer.Dispose(); _levelTimer.Dispose();
+            _frfHintTimer.Dispose(); _frfHintTip.Dispose();
             _calDialog?.Close();
             base.OnFormClosing(e);
         }

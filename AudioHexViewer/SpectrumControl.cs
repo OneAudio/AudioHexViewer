@@ -39,6 +39,7 @@ namespace AudioHexViewer
         // --------------------------------------------------------------------
         private Button? _btnAxis;
         private ToolTip? _toolTipAxis;
+        private ToolTip? _toolTipFrfNorm;
 
 
         // --------------------------------------------------------------------
@@ -317,6 +318,31 @@ namespace AudioHexViewer
         // Utilisé UNIQUEMENT en mode "Bode Plot" (Right=entrée, Left=sortie)
         private double[]? currentFrfCoherence;
 
+        // ── FRF Normalisation (point 1) ─────────────────────────────────────
+        // Référence H_ref(f) capturée (gain dB + phase °, RAW = avant unwrap),
+        // pleine résolution (alignée sur freqAxis / bins courants).
+        // Correction appliquée : H_corr = H_mesuré / H_ref
+        //   => gainDb_corr  = gainDb_mesuré  - gainDb_ref
+        //   => phaseDeg_corr = wrap(phaseDeg_mesuré - phaseDeg_ref)
+        private bool _frfNormEnabled = false;
+        private double[]? _frfRefGainDb;
+        private double[]? _frfRefPhaseDeg;
+        // Axe fréquentiel (Hz) sur lequel _frfRefGainDb/_frfRefPhaseDeg ont été capturés.
+        // Permet de ré-échantillonner la référence si N (FFT) ou Fs changent ensuite.
+        private double[]? _frfRefFreqHz;
+
+        // Cache de la référence ré-échantillonnée sur l'axe fréquentiel courant
+        // (évite de ré-interpoler à chaque frame quand bins ne change pas).
+        private double[]? _frfRefGainDbActive;
+        private double[]? _frfRefPhaseDegActive;
+        private int _frfRefActiveBins = -1;
+
+        // Dernières valeurs FULL RAW (avant normalisation), mises à jour à chaque frame
+        // FRF — permet au bouton "Cap Ref" de capturer l'état courant.
+        private double[]? _lastFrfGainDbRaw;
+        private double[]? _lastFrfPhaseDegRaw;
+        private double[]? _lastFrfFreqHzRaw;
+
         // FRF (Bode) UI toggles
         private bool _frfPhaseEnabled = false;   // bouton "enable φ" : OFF par défaut
         private bool _frfPhaseUnwrap = false;    // bouton "unwrap φ" : OFF => wrap par défaut
@@ -479,6 +505,10 @@ namespace AudioHexViewer
         private Series? _serPeakLeft;
         private Series? _serPeakRight;
         private Series? _serPhase;
+        // Overlay "FastLine" pour le code couleur γ² du gain (mode Bode Plot) — voir
+        // FillSeriesCoherenceFade(). Évite le ChartType "Line" + couleurs par point
+        // (très coûteux en rendu sur des milliers de points).
+        private Series? _serFrfCohFade;
         private bool _seriesInited;
 
 
@@ -502,6 +532,8 @@ namespace AudioHexViewer
         private double[]? _binsPowR;   // ComplexBinsToPowerInto output R
         private double[]? _binsDbL;    // PowerToDbFsInto output L (= currentLeftSpectrum)
         private double[]? _binsDbR;    // PowerToDbFsInto output R (= currentRightSpectrum)
+        private double[]? _frfGainDbRawBuf;   // copie pré-normalisation de gainDb  (pour "Cap Ref")
+        private double[]? _frfPhaseDegRawBuf; // copie pré-normalisation de phaseDeg (pour "Cap Ref")
 
         private static double[] EnsureDspBuf(ref double[]? buf, int n)
         {
@@ -726,9 +758,12 @@ namespace AudioHexViewer
             // FRF (Bode) extra buttons
             btnPhiEnable.Click += BtnPhiEnable_Click;
             btnPhiUnwrap.Click += BtnPhiUnwrap_Click;
+            btnFrfRefCapture.Click += BtnFrfRefCapture_Click;
+            btnFrfNormToggle.Click += BtnFrfNormToggle_Click;
 
             // état initial (phase OFF, wrap ON)
             ApplyFrfPhiButtonsUi();
+            ApplyFrfNormButtonsUi();
 
             // Clic droit sur la zone du spectre -> ouverture de la boîte d'axes
             chartSpectrum.MouseUp += ChartSpectrum_MouseUp;
@@ -1363,9 +1398,9 @@ namespace AudioHexViewer
             UpdateOverlayInfo();
             // IMPORTANT (startup en FRF) : ApplySpectrumSettings() inhibe les events UI,
             // donc on force ici la mise en page du chart (marges / largeur) selon le mode courant.
-            ApplyChartStatsMargin(chartSpectrum, invalidate: true, reservedScale: IsFrfMode() ? 0f : 1f);
-            SyncCursorUiFromModel();
+            ApplyChartStatsMargin(chartSpectrum, invalidate: true, reservedScale: 1f);            SyncCursorUiFromModel();
             ApplyFrfPhiButtonsUi();
+            ApplyFrfNormButtonsUi();
 
 
 
@@ -1847,18 +1882,18 @@ namespace AudioHexViewer
                 area.AxisY.Title = "Gain (dB)";
             }
 
-            // --- Axe Y2 : Phase (uniquement en mode Bode Plot) ---
+            // --- Axe Y2 : Phase (uniquement en mode Bode Plot ET phase activée) ---
             bool frfMode = string.Equals(modeForUnit, "Bode Plot", StringComparison.OrdinalIgnoreCase);
+            bool showY2  = frfMode && _frfPhaseEnabled;
 
-            area.AxisY2.Enabled = frfMode ? AxisEnabled.True : AxisEnabled.False;
+            area.AxisY2.Enabled = showY2 ? AxisEnabled.True : AxisEnabled.False;
 
-            if (frfMode)
+            if (showY2)
             {
                 area.AxisY2.Title = "Phase (deg)";
                 double pmin = customPhaseMin ?? -180.0;
                 double pmax = customPhaseMax ?? 180.0;
 
-                // Sécurité : clamp + cohérence
                 pmin = Math.Max(-360.0, Math.Min(360.0, pmin));
                 pmax = Math.Max(-360.0, Math.Min(360.0, pmax));
                 if (pmax <= pmin) pmax = Math.Min(360.0, pmin + 1.0);
@@ -1866,11 +1901,9 @@ namespace AudioHexViewer
                 area.AxisY2.Minimum = pmin;
                 area.AxisY2.Maximum = pmax;
 
-                // 6 zones visuelles => 6 intervalles => 7 labels majeurs
                 double span = pmax - pmin;
                 area.AxisY2.Interval = Math.Max(1.0, span / 4.0);
 
-                // Grilles : on reste sobre (tu peux ajuster si tu veux)
                 area.AxisY2.MajorGrid.Enabled = false;
                 area.AxisY2.MinorGrid.Enabled = false;
             }
@@ -2120,6 +2153,7 @@ namespace AudioHexViewer
                 Nyquist = nyquist,
                 UseLog = useLog,
                 FrfMode = frfMode,
+                ShowY2 = showY2,
                 UseDbvAxis = useDbvAxis,
                 StartIndex = startIndex,
             };
@@ -2437,6 +2471,7 @@ namespace AudioHexViewer
             public double Nyquist { get; init; }
             public bool UseLog { get; init; }
             public bool FrfMode { get; init; }
+            public bool ShowY2 { get; init; }   // true = phase axis visible (Bode + φ enabled)
             public bool UseDbvAxis { get; init; }
             public int StartIndex { get; init; }
         }
@@ -2466,11 +2501,15 @@ namespace AudioHexViewer
             _serPhase.YAxisType = AxisType.Secondary;
             _serLeft = Mk("Left", FftLeftColor, _colors.FftWidth);
             _serRight = Mk("Right", FftRightColor, _colors.FftWidth);
+            // Overlay "peu fiable" (γ² < seuil) : même largeur, couleur éclaircie.
+            // Rempli/affiché uniquement en mode Bode Plot (cf. rendu principal).
+            _serFrfCohFade = Mk("FrfCohFade", Lighten(FftLeftColor, 0.75), _colors.FftWidth);
 
             chartSpectrum.Series.Add(_serPeakLeft);
             chartSpectrum.Series.Add(_serPeakRight);
             chartSpectrum.Series.Add(_serPhase);
             chartSpectrum.Series.Add(_serLeft);
+            chartSpectrum.Series.Add(_serFrfCohFade);
             chartSpectrum.Series.Add(_serRight);
 
             _seriesInited = true;
@@ -2496,6 +2535,7 @@ namespace AudioHexViewer
             if (_serPeakRight != null) { chartSpectrum.Series.Remove(_serPeakRight); _serPeakRight = null; }
             if (_serPhase != null) { chartSpectrum.Series.Remove(_serPhase); _serPhase = null; }
             if (_serLeft != null) { chartSpectrum.Series.Remove(_serLeft); _serLeft = null; }
+            if (_serFrfCohFade != null) { chartSpectrum.Series.Remove(_serFrfCohFade); _serFrfCohFade = null; }
             if (_serRight != null) { chartSpectrum.Series.Remove(_serRight); _serRight = null; }
             _seriesInited = false;
 
@@ -2531,57 +2571,46 @@ namespace AudioHexViewer
             ser.Points.ResumeUpdates();
         }
 
-        // Seuils de cohérence pour l'atténuation visuelle de la courbe de gain (Bode).
-        // γ² >= COH_FULL  → couleur pleine
-        // γ² <= COH_FADED → couleur quasi fondue dans le fond
-        // entre les deux  → interpolation linéaire
-        private const double COH_FULL = 0.95;
+        // Seuil de cohérence sous lequel la courbe de gain est considérée peu fiable
+        // et mise en surbrillance via l'overlay _serFrfCohFade (cf. FillSeriesCoherenceFade).
         private const double COH_FADED = 0.50;
 
         /// <summary>
-        /// Mélange <paramref name="baseColor"/> vers <paramref name="fadeTo"/> en fonction
-        /// de la cohérence γ² : une cohérence basse "fond" la couleur dans le fond du
-        /// graphique pour signaler visuellement une zone de mesure peu fiable.
+        /// Éclaircit <paramref name="c"/> en le mélangeant vers le blanc.
+        /// <paramref name="amount"/> ∈ [0,1] : 0 = couleur d'origine, 1 = blanc pur.
         /// </summary>
-        private static Color CoherenceBlend(Color baseColor, Color fadeTo, double gamma2)
+        private static Color Lighten(Color c, double amount)
         {
-            if (double.IsNaN(gamma2)) gamma2 = 0.0;
-
-            double t;
-            if (gamma2 >= COH_FULL) t = 0.0;
-            else if (gamma2 <= COH_FADED) t = 1.0;
-            else t = (COH_FULL - gamma2) / (COH_FULL - COH_FADED);
-
-            byte R = (byte)(baseColor.R + (fadeTo.R - baseColor.R) * t);
-            byte G = (byte)(baseColor.G + (fadeTo.G - baseColor.G) * t);
-            byte B = (byte)(baseColor.B + (fadeTo.B - baseColor.B) * t);
-            byte A = (byte)(baseColor.A + (fadeTo.A - baseColor.A) * t);
-
-            return Color.FromArgb(A, R, G, B);
+            if (amount < 0.0) amount = 0.0;
+            if (amount > 1.0) amount = 1.0;
+            byte R = (byte)(c.R + (255 - c.R) * amount);
+            byte G = (byte)(c.G + (255 - c.G) * amount);
+            byte B = (byte)(c.B + (255 - c.B) * amount);
+            return Color.FromArgb(c.A, R, G, B);
         }
 
         /// <summary>
-        /// Variante de <see cref="FillSeries"/> qui colore chaque point selon la
-        /// cohérence γ²(f) (mode Bode Plot) : les zones peu fiables sont atténuées
-        /// (fondues vers <paramref name="fadeTo"/>). Nécessite ChartType != Fast*
-        /// pour que les couleurs par point soient honorées par WinForms Charting.
+        /// Remplit l'overlay "γ² faible" (<see cref="_serFrfCohFade"/>) : un point n'est
+        /// dessiné que là où la cohérence est sous <see cref="COH_FADED"/> ; ailleurs la
+        /// valeur Y est NaN ("empty point"), ce qui crée un trou dans la FastLine et ne
+        /// dessine donc rien à cet endroit. Reste en FastLine (pas de couleur par point),
+        /// donc aussi rapide qu'une série classique — contrairement à un ChartType
+        /// "Line" avec DataPoint.Color par point (coût de rendu prohibitif sur des
+        /// milliers de points : ~15s observés pour 16 frames de moyenne sur NFFT=64k).
         /// </summary>
-        private static void FillSeriesWithCoherence(Series ser, double[]? fx, double[]? y, double[]? coherence,
-                                                      int startIdx, bool show, double offset,
-                                                      Color baseColor, Color fadeTo)
+        private static void FillSeriesCoherenceFade(Series ser, double[]? fx, double[]? y, double[]? coherence,
+                                                      int startIdx, bool show, double offset)
         {
             ser.Points.SuspendUpdates();
             ser.Points.Clear();
-            if (show && fx != null && y != null)
+            if (show && fx != null && y != null && coherence != null && coherence.Length == y.Length)
             {
                 int n = Math.Min(fx.Length, y.Length);
-                bool hasCoh = coherence != null && coherence.Length == y.Length;
-
                 for (int i = startIdx; i < n; i++)
                 {
-                    int idx = ser.Points.AddXY(fx[i], y[i] + offset);
-                    double g2 = hasCoh ? coherence![i] : 1.0;
-                    ser.Points[idx].Color = CoherenceBlend(baseColor, fadeTo, g2);
+                    double g2 = coherence[i];
+                    bool unreliable = !double.IsNaN(g2) && g2 < COH_FADED;
+                    ser.Points.AddXY(fx[i], unreliable ? (y[i] + offset) : double.NaN);
                 }
             }
             ser.Points.ResumeUpdates();
@@ -2808,25 +2837,15 @@ namespace AudioHexViewer
                 double leftOff = useDbvPlot ? _levelCalOffsetDbLeft : 0.0;
                 double rightOff = useDbvPlot ? _levelCalOffsetDbRight : 0.0;
 
+                FillSeries(_serLeft!, plotFx, plotL, startIndex, showLeft, leftOff);
                 FillSeries(_serRight!, plotFx, plotR, startIndex, showRight, rightOff);
                 FillSeries(_serPeakLeft!, plotFx, peakHoldOn ? peakL : null, startIndex, showLeft && peakHoldOn, leftOff);
                 FillSeries(_serPeakRight!, plotFx, peakHoldOn ? peakR : null, startIndex, showRight && peakHoldOn, rightOff);
 
-                // ── Courbe de Gain (mode Bode Plot : code couleur selon la cohérence γ²) ──
+                // ── Courbe de Gain (mode Bode Plot) : surbrillance des zones γ² faible ──
                 bool bodeCoherence = (mode == "Bode Plot") && showLeft && _plotFrfCoherence != null;
-                if (bodeCoherence)
-                {
-                    // ChartType "Line" requis : les couleurs par point ne sont pas honorées
-                    // par les séries "Fast*" de WinForms Charting.
-                    _serLeft!.ChartType = SeriesChartType.Line;
-                    FillSeriesWithCoherence(_serLeft!, plotFx, plotL, _plotFrfCoherence,
-                        startIndex, showLeft, leftOff, FftLeftColor, BackgroundColor);
-                }
-                else
-                {
-                    _serLeft!.ChartType = SeriesChartType.FastLine;
-                    FillSeries(_serLeft!, plotFx, plotL, startIndex, showLeft, leftOff);
-                }
+                FillSeriesCoherenceFade(_serFrfCohFade!, plotFx, plotL, _plotFrfCoherence,
+                    startIndex, bodeCoherence, leftOff);
 
 
                 bool showPhase = mode == "Bode Plot" && _frfPhaseEnabled && _plotFrfPhaseDeg != null;
@@ -3018,6 +3037,8 @@ namespace AudioHexViewer
         {
             public string Label { get; init; } = "";
             public string Value { get; init; } = "";
+            // Suffixe optionnel affiché en police réduite après Value (ex: "@ 998 Hz")
+            public string Annotation { get; init; } = "";
             public StatEmphasis Emphasis { get; init; } = StatEmphasis.Normal;
 
             // Ligne de séparation visuelle

@@ -207,12 +207,13 @@ namespace AudioHexViewer
                             continue;
                         }
 
-                        // Ligne "titre" centrée (utilisée pour Cursor 1/2/Delta en Bode)
+                        // Ligne "titre" centrée (utilisée pour Cursor 1/2/Delta en Bode, et COHERENCE γ²)
                         if (r.Emphasis == StatEmphasis.Medium && string.IsNullOrEmpty(r.Value))
                         {
-                            var titleRect = new RectangleF(rect.X + pad, y, rect.Width - 2 * pad, fontStrong.GetHeight(g));
-                            g.DrawString(r.Label, fontStrong, brushText, titleRect, fmtCenter);
-                            y += titleRect.Height + 6f;
+                            Font fTitle = r.IsSmall ? fontHarm : fontStrong;
+                            var titleRect = new RectangleF(rect.X + pad, y, rect.Width - 2 * pad, fTitle.GetHeight(g));
+                            g.DrawString(r.Label, fTitle, brushText, titleRect, fmtCenter);
+                            y += titleRect.Height + (r.IsSmall ? 3f : 6f);
                             continue;
                         }
 
@@ -249,6 +250,14 @@ namespace AudioHexViewer
                         // Valeur (alignée à droite)
                         g.DrawString(r.Value, fVal, brushText, valueRect, fmtRight);
 
+                        // Annotation "@xxx Hz" en police réduite sur la même ligne, à droite
+                        if (!string.IsNullOrEmpty(r.Annotation))
+                        {
+                            var annRect = new RectangleF(xL, y + rowHeight, rect.Width - 2 * pad, fontHarm.GetHeight(g));
+                            g.DrawString(r.Annotation, fontHarm, brushLabel, annRect, fmtRight);
+                            y += fontHarm.GetHeight(g) + 1f;
+                        }
+
                         y += rowHeight + 4f;
                     }
                 }
@@ -263,11 +272,13 @@ namespace AudioHexViewer
 
                         if (r.Emphasis == StatEmphasis.Medium && string.IsNullOrEmpty(r.Value))
                         {
-                            h += fontStrong.GetHeight(g) + 6f;
+                            h += (r.IsSmall ? fontHarm.GetHeight(g) : fontStrong.GetHeight(g)) + (r.IsSmall ? 3f : 6f);
                             continue;
                         }
 
-                        h += fontBase.GetHeight(g) + 4f;
+                        h += (r.IsSmall ? fontHarm.GetHeight(g) : fontBase.GetHeight(g)) + 4f;
+                        if (!string.IsNullOrEmpty(r.Annotation))
+                            h += fontHarm.GetHeight(g) + 1f;
                     }
                     return h;
                 }
@@ -1072,10 +1083,31 @@ namespace AudioHexViewer
             var phi = _plotFrfPhaseDeg;            // Phase (°) si activée
             var coh = _plotFrfCoherence;           // Cohérence γ² ∈ [0,1]
 
-            static string FmtHz(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " Hz");
-            static string FmtDb(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " dB");
+            static string FmtHz(double v)  => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " Hz");
+            static string FmtDb(double v)  => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " dB");
             static string FmtDeg(double v) => double.IsNaN(v) ? "—" : (v.ToString("0.##") + " °");
             static string FmtPct(double v) => double.IsNaN(v) ? "—" : (v * 100.0).ToString("0.#") + " %";
+
+            // Helper : trouve la fréquence (Hz) associée à la valeur min/max d'un tableau,
+            // retourne (valeur, annotation "@xxx Hz") séparément pour un rendu à deux polices.
+            (string val, string ann) DbAtHz(double dbVal, double[]? arr)
+            {
+                if (double.IsNaN(dbVal) || arr == null || fx == null || fx.Length != arr.Length)
+                    return (FmtDb(dbVal), "");
+                int idx = -1;
+                for (int i = 0; i < arr.Length; i++)
+                    if (arr[i] == dbVal) { idx = i; break; }
+                return idx < 0 ? (FmtDb(dbVal), "") : (FmtDb(dbVal), "@ " + FmtHz(fx[idx]));
+            }
+            (string val, string ann) DegAtHz(double degVal, double[]? arr)
+            {
+                if (double.IsNaN(degVal) || arr == null || fx == null || fx.Length != arr.Length)
+                    return (FmtDeg(degVal), "");
+                int idx = -1;
+                for (int i = 0; i < arr.Length; i++)
+                    if (arr[i] == degVal) { idx = i; break; }
+                return idx < 0 ? (FmtDeg(degVal), "") : (FmtDeg(degVal), "@ " + FmtHz(fx[idx]));
+            }
 
             // --- Min/Max visibles ---
             double gMin = double.NaN, gMax = double.NaN;
@@ -1094,82 +1126,90 @@ namespace AudioHexViewer
             }
 
             // --- Cohérence γ² : min/moyenne sur la bande visible ---
+            // Les bins NaN (γ² indéfini, ex: bin DC sans signal d'entrée) sont exclus :
+            // ils ne représentent pas une perte de cohérence mesurée.
             double cMin = double.NaN, cAvg = double.NaN;
-            bool hasCoh = coh != null && coh.Length > 0;
-            if (hasCoh)
+            bool hasCoh = false;
+            if (coh != null && coh.Length > 0)
             {
-                cMin = coh!.Min();
-                cAvg = coh.Average();
+                var valid = coh.Where(v => !double.IsNaN(v)).ToArray();
+                if (valid.Length > 0)
+                {
+                    hasCoh = true;
+                    cMin = valid.Min();
+                    cAvg = valid.Average();
+                }
             }
 
-            dst.Add(new StatRow { Label = "Gain min", Value = FmtDb(gMin), Emphasis = StatEmphasis.Strong });
-            dst.Add(new StatRow { Label = "Gain max", Value = FmtDb(gMax), Emphasis = StatEmphasis.Strong });
-            dst.Add(new StatRow { Label = "φ min", Value = hasPhi ? FmtDeg(pMin) : "---", Emphasis = StatEmphasis.Strong });
-            dst.Add(new StatRow { Label = "φ max", Value = hasPhi ? FmtDeg(pMax) : "---", Emphasis = StatEmphasis.Strong });
+            // --- Normalisation status (point 1) ---
+            bool hasRef = _frfRefGainDb != null && _frfRefPhaseDeg != null;
+            string normStatus = (_frfNormEnabled && hasRef) ? "ON" : hasRef ? "OFF (ref. captured)" : "---";
+            dst.Add(new StatRow { Label = "Normalisation", Value = normStatus, Emphasis = StatEmphasis.Strong });
+
+            // Gain/Phase min/max avec fréquence associée en suffix "@xxx Hz" (Annotation, police réduite)
+            var (gMinV, gMinA) = DbAtHz(gMin, gain);
+            var (gMaxV, gMaxA) = DbAtHz(gMax, gain);
+            var (pMinV, pMinA) = hasPhi ? DegAtHz(pMin, phi) : ("---", "");
+            var (pMaxV, pMaxA) = hasPhi ? DegAtHz(pMax, phi) : ("---", "");
+
+            dst.Add(new StatRow { Label = "Gain min", Value = gMinV, Annotation = gMinA, Emphasis = StatEmphasis.Strong });
+            dst.Add(new StatRow { Label = "Gain max", Value = gMaxV, Annotation = gMaxA, Emphasis = StatEmphasis.Strong });
+            dst.Add(new StatRow { Label = "φ min",    Value = pMinV, Annotation = pMinA, Emphasis = StatEmphasis.Strong });
+            dst.Add(new StatRow { Label = "φ max",    Value = pMaxV, Annotation = pMaxA, Emphasis = StatEmphasis.Strong });
 
             dst.Add(new StatRow { IsSeparator = true });
 
-            // --- Cohérence γ² : section dédiée avec titre ---
-            dst.Add(new StatRow { Label = "COHÉRENCE γ²", Value = "", Emphasis = StatEmphasis.Medium });
-            dst.Add(new StatRow { Label = "γ² min", Value = hasCoh ? FmtPct(cMin) : "---", Emphasis = StatEmphasis.Strong });
-            dst.Add(new StatRow { Label = "γ² moy", Value = hasCoh ? FmtPct(cAvg) : "---", Emphasis = StatEmphasis.Strong });
+            // --- Coherence γ² : small section (reduced font via IsSmall) ---
+            dst.Add(new StatRow { Label = "COHERENCE γ²", Value = "", Emphasis = StatEmphasis.Medium, IsSmall = true });
+            dst.Add(new StatRow { Label = "γ² min", Value = hasCoh ? FmtPct(cMin) : "---", Emphasis = StatEmphasis.Normal, IsSmall = true });
+            dst.Add(new StatRow { Label = "γ² avg", Value = hasCoh ? FmtPct(cAvg) : "---", Emphasis = StatEmphasis.Normal, IsSmall = true });
+            // Pas de séparateur ici — le titre "Cursor 1" (IsBottomGroup) crée déjà la séparation visuelle forte
 
-
-            dst.Add(new StatRow { IsSeparator = true });
-
-            // --- Curseurs ---
-            void AddCursorBlock(string title, bool visible, double f, double y, bool usesY2)
+            // --- Curseurs (compact: titre + fréquence + valeur sur 2 lignes, IsSmall) ---
+            void AddCursorCompact(bool visible, double f, double yVal, bool usesY2)
             {
-                dst.Add(new StatRow { Label = "Frequency", Value = visible ? FmtHz(f) : "—", IsBottomGroup = true });
-
-                string what = usesY2 ? "φ" : "Gain";
-                dst.Add(new StatRow { Label = what, Value = visible ? (usesY2 ? FmtDeg(y) : FmtDb(y)) : "—", IsBottomGroup = true });
-
+                string valStr = usesY2 ? FmtDeg(yVal) : FmtDb(yVal);
+                dst.Add(new StatRow { Label = "Frequency", Value = visible ? FmtHz(f)   : "—", IsBottomGroup = true, IsSmall = true });
+                dst.Add(new StatRow { Label = usesY2 ? "φ" : "Gain", Value = visible ? valStr : "—", IsBottomGroup = true, IsSmall = true });
             }
 
             bool c1On = _cursorMarkLVisible && !double.IsNaN(_cursorMarkLFreq);
             bool c2On = _cursorMarkRVisible && !double.IsNaN(_cursorMarkRFreq);
 
-            // --- Cursor 1---
-            dst.Add(new StatRow { Label = "Cursor 1", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true });
+            dst.Add(new StatRow { Label = "Cursor 1", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true, IsSmall = true });
+            AddCursorCompact(c1On, _cursorMarkLFreq, _cursorMarkLDb, _cursorMarkLUsesY2);
 
-            AddCursorBlock("Cursor 1", c1On, _cursorMarkLFreq, _cursorMarkLDb, _cursorMarkLUsesY2);
             dst.Add(new StatRow { IsSeparator = true, IsBottomGroup = true });
 
-            // --- Cursor 2 ---
-            dst.Add(new StatRow { Label = "Cursor 2", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true });
+            dst.Add(new StatRow { Label = "Cursor 2", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true, IsSmall = true });
+            AddCursorCompact(c2On, _cursorMarkRFreq, _cursorMarkRDb, _cursorMarkRUsesY2);
 
-            AddCursorBlock("Cursor 2", c2On, _cursorMarkRFreq, _cursorMarkRDb, _cursorMarkRUsesY2);
             dst.Add(new StatRow { IsSeparator = true, IsBottomGroup = true });
 
-            // --- Delta ---
-            dst.Add(new StatRow { Label = "Δ Delta", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true });
+            dst.Add(new StatRow { Label = "Δ Delta", Value = "", Emphasis = StatEmphasis.Medium, IsBottomGroup = true, IsSmall = true });
 
             if (c1On && c2On)
             {
                 double df = Math.Abs(_cursorMarkRFreq - _cursorMarkLFreq);
-                dst.Add(new StatRow { Label = "ΔFrequency", Value = FmtHz(df) , IsBottomGroup = true });
+                dst.Add(new StatRow { Label = "ΔFrequency", Value = FmtHz(df), IsBottomGroup = true, IsSmall = true });
 
-                // Delta valeur seulement si mêmes unités (même axe)
                 if (_cursorMarkLUsesY2 == _cursorMarkRUsesY2)
                 {
                     double dy = _cursorMarkRDb - _cursorMarkLDb;
                     dst.Add(new StatRow
                     {
                         Label = _cursorMarkLUsesY2 ? "Δφ" : "ΔGain",
-                        Value = _cursorMarkLUsesY2 ? (dy.ToString("0.##") + " °") : (dy.ToString("0.##") + " dB"), IsBottomGroup = true
-
+                        Value = _cursorMarkLUsesY2 ? (dy.ToString("0.##") + " °") : (dy.ToString("0.##") + " dB"),
+                        IsBottomGroup = true, IsSmall = true
                     });
                 }
                 else
-                {
-                    dst.Add(new StatRow { Label = "ΔGain/Δφ", Value = "—", IsBottomGroup = true });
-                }
+                    dst.Add(new StatRow { Label = "ΔGain/Δφ", Value = "—", IsBottomGroup = true, IsSmall = true });
             }
             else
             {
-                dst.Add(new StatRow { Label = "ΔFrequency", Value = "—", IsBottomGroup = true });
-                dst.Add(new StatRow { Label = "ΔGain/Δφ", Value = "—", IsBottomGroup = true });
+                dst.Add(new StatRow { Label = "ΔFrequency", Value = "—", IsBottomGroup = true, IsSmall = true });
+                dst.Add(new StatRow { Label = "ΔGain/Δφ",  Value = "—", IsBottomGroup = true, IsSmall = true });
             }
         }
 

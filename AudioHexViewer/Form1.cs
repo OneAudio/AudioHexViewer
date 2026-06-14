@@ -1317,6 +1317,7 @@ namespace AudioHexViewer
                     getOutputFormat:    () => _requestedOutputFormat,
                     getAnalyzerSR:      () => currentFormat?.SampleRate ?? 0,
                     getAnalyzerN:       () => spectrumControl?.CurrentFftSize ?? 0,
+                    getChannelMode:     () => spectrumControl?.SelectedChannelMode ?? "",
                     onLoopbackRequest:  HandleLoopbackRequest,
                     settings:           _session,
                     saveSettings:       SaveSessionSettingsSilently,
@@ -2137,7 +2138,33 @@ namespace AudioHexViewer
                 spectrumControl.RunStateChanged += running =>
                 {
                     _spectrumRunning = running;
-                    if (running) EnsureReadRunning();
+                    if (running)
+                    {
+                        EnsureReadRunning();
+                        // Auto-start generator in White Noise @ -12 dBFS when entering
+                        // Bode Plot mode. Creates the GeneratorWindow if not yet open.
+                        if (spectrumControl.SelectedChannelMode == "Bode Plot")
+                        {
+                            // Ensure the window exists (creates it if necessary, does not Show it)
+                            if (_generatorWindow == null || _generatorWindow.IsDisposed)
+                            {
+                                _generatorWindow = new GeneratorWindow(
+                                    getOutputDevice:    () => _selectedOutputDevice,
+                                    getInputDevice:     () => _selectedInputDevice,
+                                    getOutputFormat:    () => _requestedOutputFormat,
+                                    getAnalyzerSR:      () => currentFormat?.SampleRate ?? 0,
+                                    getAnalyzerN:       () => spectrumControl?.CurrentFftSize ?? 0,
+                                    getChannelMode:     () => spectrumControl?.SelectedChannelMode ?? "",
+                                    onLoopbackRequest:  HandleLoopbackRequest,
+                                    settings:           _session,
+                                    saveSettings:       SaveSessionSettingsSilently,
+                                    onRunStateChanged:  UpdateTitleBar);
+                                _generatorWindow.Location = new System.Drawing.Point(
+                                    Location.X + Width + 4, Location.Y);
+                            }
+                            _generatorWindow.EnsureWhiteNoiseFrf();
+                        }
+                    }
                     else EnsureReadStoppedIfNoTabRunning();
                 };
                 // Window change -> recrée le worker SFFT pour appliquer immédiatement la nouvelle fenêtre

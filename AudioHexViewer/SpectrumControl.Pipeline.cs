@@ -155,6 +155,77 @@ namespace AudioHexViewer
                         out var coherence,   // <-- NOUVEAU (Cohérence γ²)
                         out avgFill);        // Fill count UI (EXISTANT)
 
+                    int bins = gainDb.Length;
+
+                    // ── Sauvegarde RAW (avant normalisation) pour le bouton "Cap Ref" ──
+                    var rawGain  = EnsureDspBuf(ref _frfGainDbRawBuf,  bins);
+                    var rawPhase = EnsureDspBuf(ref _frfPhaseDegRawBuf, bins);
+                    Array.Copy(gainDb,   rawGain,  bins);
+                    Array.Copy(phaseDeg, rawPhase, bins);
+                    _lastFrfGainDbRaw   = rawGain;
+                    _lastFrfPhaseDegRaw = rawPhase;
+                    _lastFrfFreqHzRaw   = frame.FreqAxisHz;
+
+                    // ── Normalisation (point 1) : H_corr = H_mesuré / H_ref ──────────
+                    if (_frfNormEnabled)
+                    {
+                        if (_frfRefGainDb != null && _frfRefPhaseDeg != null)
+                        {
+                            // Ré-échantillonne la référence sur l'axe courant si besoin
+                            // (changement de N FFT / Fs depuis la capture) — mis en cache
+                            // tant que `bins` ne change pas.
+                            if (_frfRefGainDbActive == null || _frfRefActiveBins != bins)
+                            {
+                                if (_frfRefGainDb.Length == bins)
+                                {
+                                    _frfRefGainDbActive   = _frfRefGainDb;
+                                    _frfRefPhaseDegActive = _frfRefPhaseDeg;
+                                }
+                                else if (_frfRefFreqHz != null)
+                                {
+                                    ResampleFrfReference(
+                                        _frfRefFreqHz, _frfRefGainDb, _frfRefPhaseDeg,
+                                        frame.FreqAxisHz,
+                                        out _frfRefGainDbActive, out _frfRefPhaseDegActive);
+                                }
+                                else
+                                {
+                                    _frfRefGainDbActive = null;
+                                    _frfRefPhaseDegActive = null;
+                                }
+
+                                _frfRefActiveBins = bins;
+                            }
+                        }
+                        else
+                        {
+                            _frfRefGainDbActive = null;
+                            _frfRefPhaseDegActive = null;
+                        }
+
+                        if (_frfRefGainDbActive != null && _frfRefPhaseDegActive != null &&
+                            _frfRefGainDbActive.Length == bins && _frfRefPhaseDegActive.Length == bins)
+                        {
+                            for (int k = 0; k < bins; k++)
+                            {
+                                double g = gainDb[k] - _frfRefGainDbActive[k];
+                                if (g < -200.0) g = -200.0;
+                                if (g > 200.0) g = 200.0;
+                                gainDb[k] = g;
+
+                                phaseDeg[k] = WrapDeg180(phaseDeg[k] - _frfRefPhaseDegActive[k]);
+                            }
+                        }
+                        else
+                        {
+                            // Référence absente ou incompatible (impossible à ré-échantillonner) :
+                            // on désactive proprement la normalisation plutôt que d'afficher
+                            // un résultat trompeur.
+                            _frfNormEnabled = false;
+                            ApplyFrfNormButtonsUi();
+                        }
+                    }
+
 
                     currentLeftSpectrum = gainDb;   // une seule courbe (gain)
                     //currentFrfPhaseDeg = phaseDeg;   // <-- NEW : stocke la phase (FULL) pour le plot / curseurs
@@ -280,12 +351,18 @@ namespace AudioHexViewer
             _plotFreqAxis = sharedFreqAxis;
 
             // 2) Décimer les deux voies avec les MÊMES bornes
+            bool isFrf = string.Equals(SelectedChannelMode, "Bode Plot", StringComparison.OrdinalIgnoreCase);
+
             if (currentLeftSpectrum != null)
-                _plotLeftSpectrum = DecimateWithBuckets(
-                    freqAxis, currentLeftSpectrum, bucketLo, bucketHi);
+                // FRF gain : moyenne (évite les remontées artificielles aux bords d'un notch)
+                // Spectre classique : max-hold (conserve les pics de bruit/harmoniques)
+                _plotLeftSpectrum = isFrf
+                    ? DecimateWithBucketsMean(freqAxis, currentLeftSpectrum, bucketLo, bucketHi)
+                    : DecimateWithBuckets(    freqAxis, currentLeftSpectrum, bucketLo, bucketHi);
 
             if (currentFrfPhaseDeg != null)
-                _plotFrfPhaseDeg = DecimateWithBuckets(
+                // Phase FRF : moyenne (même raison — évite les discontinuités de wrap amplifiées)
+                _plotFrfPhaseDeg = DecimateWithBucketsMean(
                     freqAxis, currentFrfPhaseDeg, bucketLo, bucketHi);
 
             // Cohérence : min-hold par bucket (on ne veut pas masquer une zone peu
@@ -326,18 +403,32 @@ namespace AudioHexViewer
             fMax = Math.Min(fMax, freqLast);
             if (fMin >= fMax) return null;
 
-            // Nombre de bins dans la plage visible
+            // Nombre de bins dans la plage visible [fMin, fMax]
+            // BinarySearch : valeur positive = bin exact trouvé, valeur négative = ~idx (premier bin >)
+            //
+            // i0 : premier bin dont la fréquence est >= fMin
             int i0 = Array.BinarySearch(freqFull, fMin);
-            if (i0 < 0) i0 = ~i0;
+            if (i0 < 0) i0 = ~i0;                  // ~idx → premier bin strictement > fMin
+            // si le bin exact fMin existe, i0 pointe dessus (inclus, correct)
+
+            // i1 : borne supérieure EXCLUSIVE — premier bin dont la fréquence est > fMax
             int i1 = Array.BinarySearch(freqFull, fMax);
-            if (i1 < 0) i1 = ~i1;
-            else         i1++;           // inclusif → exclusif
+            if (i1 < 0)
+                i1 = ~i1;                           // ~idx → premier bin > fMax (exclusif, correct)
+            else
+                i1++;                               // bin exact fMax trouvé : on l'inclut, i1 exclusif = i1+1
+            // Sécurité : ne jamais inclure un bin dont freqFull[i1-1] > fMax
+            // (peut arriver si fMax tombe pile sur un bin et qu'i1++ dépasse la plage demandée)
+            while (i1 > 0 && i1 <= freqFull.Length && freqFull[Math.Min(i1 - 1, freqFull.Length - 1)] > fMax)
+                i1--;
             i0 = Math.Max(0, i0);
-            i1 = Math.Min(nIn, i1);
+            i1 = Math.Min(freqFull.Length, i1);
             int span = i1 - i0;
             if (span <= 0) return null;
 
             // Pas de décimation nécessaire : 1 point = 1 bin
+            // On force les fréquences de bord à fMin/fMax pour éviter toute
+            // extrapolation graphique entre le point extrême et le bord de l'axe.
             if (span <= maxPoints)
             {
                 int n = span;
@@ -346,9 +437,11 @@ namespace AudioHexViewer
                 var hi = new double[n];
                 for (int j = 0; j < n; j++)
                 {
-                    fa[j] = freqFull[i0 + j];
-                    lo[j] = (j == 0)     ? double.MinValue : (freqFull[i0+j-1] + freqFull[i0+j]) * 0.5;
-                    hi[j] = (j == n - 1) ? double.MaxValue : (freqFull[i0+j]   + freqFull[i0+j+1]) * 0.5;
+                    fa[j] = (j == 0)     ? fMin
+                          : (j == n - 1) ? fMax
+                          : freqFull[i0 + j];
+                    lo[j] = (j == 0)     ? fMin : (freqFull[i0+j-1] + freqFull[i0+j]) * 0.5;
+                    hi[j] = (j == n - 1) ? fMax : (freqFull[i0+j]   + freqFull[i0+j+1]) * 0.5;
                 }
                 bucketLo = lo;
                 bucketHi = hi;
@@ -371,10 +464,13 @@ namespace AudioHexViewer
                 {
                     double fa2 = Math.Pow(10.0, logMin + j       * logStep);
                     double fb2 = Math.Pow(10.0, logMin + (j + 1) * logStep);
-                    bLo[j]     = fa2;
-                    bHi[j]     = fb2;
-                    // Centre géométrique = milieu en espace log (affiché sur l'axe X)
-                    freqOut[j] = Math.Pow(10.0, logMin + (j + 0.5) * logStep);
+                    bLo[j] = fa2;
+                    bHi[j] = fb2;
+                    // Centre géométrique = milieu en espace log (affiché sur l'axe X).
+                    // Bords fixés à fMin/fMax pour supprimer l'extrapolation graphique.
+                    freqOut[j] = (j == 0)        ? fMin
+                               : (j == nOut - 1) ? fMax
+                               : Math.Pow(10.0, logMin + (j + 0.5) * logStep);
                 }
             }
             else
@@ -389,9 +485,21 @@ namespace AudioHexViewer
                     if (b <= a) b = a + 1;
                     int center = (a + Math.Min(b, i1) - 1) / 2;
                     center = Math.Max(0, Math.Min(nIn - 1, center));
-                    bLo[j]     = freqFull[Math.Max(0, a)];
-                    bHi[j]     = (b < i1) ? freqFull[b] : double.MaxValue;
-                    freqOut[j] = freqFull[center];
+
+                    // Bords du bucket : on utilise fMin/fMax pour le premier/dernier
+                    // bucket afin que les points de bord soient exactement sur les
+                    // bornes de l'axe visible — évite l'extrapolation du chart WinForms
+                    // entre le dernier point tracé et le bord de l'axe, qui crée une
+                    // remontée/chute artificielle visible en mode LIN zoomé.
+                    bLo[j] = (j == 0)        ? fMin : freqFull[Math.Max(0, a)];
+                    bHi[j] = (j == nOut - 1) ? fMax : (b < i1 ? freqFull[b] : fMax);
+
+                    // Fréquence affichée sur l'axe X : centre du bin, sauf aux extrémités
+                    // où on colle exactement à la borne de l'axe pour supprimer toute
+                    // extrapolation graphique entre le dernier point réel et le bord.
+                    freqOut[j] = (j == 0)        ? fMin
+                               : (j == nOut - 1) ? fMax
+                               : freqFull[center];
                 }
             }
 
@@ -441,8 +549,49 @@ namespace AudioHexViewer
         }
 
         /// <summary>
-        /// Variante "min-hold" de <see cref="DecimateWithBuckets"/>, utilisée pour la
-        /// cohérence γ²(f) : on conserve la valeur la plus défavorable (la plus basse)
+        /// Variante "moyenne" de <see cref="DecimateWithBuckets"/>, utilisée pour la
+        /// courbe de gain FRF (mode Bode Plot).
+        /// Le max-hold (par défaut pour les spectres de puissance) introduit des
+        /// remontées artificielles aux bords d'un notch profond : les buckets qui
+        /// bordent le creux contiennent à la fois des bins dans la chute ET dans la
+        /// remontée, et le max-hold prend la remontée.
+        /// La moyenne donne une valeur représentative de la bande du bucket, sans
+        /// biaiser vers les extrêmes — bien adaptée à une FRF dont on veut restituer
+        /// fidèlement la forme (notch, résonance, flancs de filtre).
+        /// </summary>
+        private static double[] DecimateWithBucketsMean(
+            double[] freqFull,
+            double[] yFull,
+            double[] bucketLo,
+            double[] bucketHi)
+        {
+            int nIn  = Math.Min(freqFull.Length, yFull.Length);
+            int nOut = bucketLo.Length;
+            var yOut = new double[nOut];
+
+            for (int j = 0; j < nOut; j++)
+            {
+                double lo = bucketLo[j];
+                double hi = bucketHi[j];
+
+                int kLo = Array.BinarySearch(freqFull, lo);
+                if (kLo < 0) kLo = ~kLo;
+
+                int kHi = Array.BinarySearch(freqFull, hi);
+                if (kHi < 0) kHi = ~kHi;
+
+                kLo = Math.Max(0,       Math.Min(nIn - 1, kLo));
+                kHi = Math.Max(kLo + 1, Math.Min(nIn,     kHi));
+
+                // Moyenne simple des bins dans le bucket
+                double sum = 0.0;
+                for (int k = kLo; k < kHi; k++) sum += yFull[k];
+                yOut[j] = sum / (kHi - kLo);
+            }
+            return yOut;
+        }
+
+        /// on conserve la valeur la plus défavorable (la plus basse)
         /// de chaque bucket, afin qu'une zone peu fiable ne soit pas masquée par des
         /// bins voisins plus cohérents lors de la décimation.
         /// </summary>
@@ -470,10 +619,15 @@ namespace AudioHexViewer
                 kLo = Math.Max(0,        Math.Min(nIn - 1, kLo));
                 kHi = Math.Max(kLo + 1,  Math.Min(nIn,     kHi));  // exclusif
 
-                // Min-hold dans le bucket [kLo, kHi)
-                double yMin = yFull[kLo];
-                for (int k = kLo + 1; k < kHi; k++)
-                    if (yFull[k] < yMin) yMin = yFull[k];
+                // Min-hold dans le bucket [kLo, kHi), en ignorant les NaN (γ² indéfini,
+                // ex: bin DC). Si tout le bucket est NaN, la sortie reste NaN.
+                double yMin = double.NaN;
+                for (int k = kLo; k < kHi; k++)
+                {
+                    double v = yFull[k];
+                    if (double.IsNaN(v)) continue;
+                    if (double.IsNaN(yMin) || v < yMin) yMin = v;
+                }
 
                 yOut[j] = yMin;
             }

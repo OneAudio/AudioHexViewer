@@ -629,6 +629,7 @@ namespace AudioHexViewer
 
                 SyncCursorUiFromModel(); // met à jour les libellés Auto/Gain/Phase ou Auto/Left/Right
                 ApplyFrfPhiButtonsUi(); // montre/masque les boutons φ selon IsFrfMode()
+                ApplyFrfNormButtonsUi(); // montre/masque les boutons Cap Ref / Norm selon IsFrfMode()
 
 
                 // Informe l'extérieur immédiatement (même en LIVE)
@@ -1255,6 +1256,8 @@ namespace AudioHexViewer
             _plotFrfCoherence    = null;
             currentFrfPhaseDeg   = null;
             currentFrfCoherence  = null;
+            _lastFrfGainDbRaw    = null;
+            _lastFrfPhaseDegRaw  = null;
             freqAxis             = null;
             lastTimeLeft         = null;
             lastTimeRight        = null;

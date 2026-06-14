@@ -401,6 +401,26 @@ namespace AudioHexViewer.Core
                     _stats.SetNextEndAbs(_nextHopEndAbs);
                     _stats.SetProgress01(0.0); // on repart pour le hop suivant
 
+                    // ── Live-skip : rattrapage si le worker accumule du retard ────────
+                    // Si AbsWrite a progressé de plus d'un FFT devant _nextHopEndAbs
+                    // (worker trop lent, ou ring bien rempli au démarrage), on saute
+                    // directement au write pointer courant plutôt que de traiter toutes
+                    // les frames en retard une par une.
+                    // Sans ce skip, un ring de 35s à Fs=768kHz peut introduire jusqu'à
+                    // ~20s de délai entre un événement réel (DUT débranché) et son
+                    // apparition dans le graphique FRF.
+                    {
+                        long wNow = _ring.AbsWrite;
+                        long lag  = wNow - _nextHopEndAbs;
+                        if (lag > _fftSize)
+                        {
+                            // Saute à AbsWrite (aligné sur le hop sup)
+                            long hopsLate = (lag + _hop - 1) / _hop;
+                            _nextHopEndAbs += hopsLate * _hop;
+                            _stats.SetNextEndAbs(_nextHopEndAbs);
+                        }
+                    }
+
                     // (Option) petit yield
                     Thread.Yield();
 
