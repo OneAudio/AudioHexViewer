@@ -175,9 +175,12 @@ namespace AudioHexViewer
         private void ApplyFrfPhiButtonsUi()
         {
             bool frf = IsFrfMode();
-            btnPhiEnable.Visible  = frf;
-            btnPhiUnwrap.Visible  = frf;
-            lblPhaseGroup.Visible = frf;
+            // Always visible — grayed (Enabled=false) when not in Bode Plot mode
+            btnPhiEnable.Visible  = true;
+            btnPhiUnwrap.Visible  = true;
+            lblPhaseGroup.Visible = true;
+            btnPhiEnable.Enabled  = frf;
+            btnPhiUnwrap.Enabled  = frf;
 
             if (!frf) return;
 
@@ -333,14 +336,16 @@ namespace AudioHexViewer
         private void ApplyFrfNormButtonsUi()
         {
             bool frf = IsFrfMode();
-            btnFrfRefCapture.Visible = frf;
-            btnFrfNormToggle.Visible = frf;
-            lblNormGroup.Visible = frf;
-
-            if (!frf)
-                return;
+            // Always visible — grayed (Enabled=false) when not in Bode Plot mode
+            btnFrfRefCapture.Visible = true;
+            btnFrfNormToggle.Visible = true;
+            lblNormGroup.Visible     = true;
+            btnFrfRefCapture.Enabled = frf;
+            btnFrfNormToggle.Enabled = frf;
 
             bool hasRef = _frfRefGainDb != null && _frfRefPhaseDeg != null;
+
+            if (!frf) return;   // visual state below only applies in Bode mode
 
             // "Cap Ref" : vert tant qu'une référence est mémorisée (Ctrl+clic pour effacer)
             // CheckBox.Appearance.Button: Checked = pressed look

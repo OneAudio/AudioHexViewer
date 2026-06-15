@@ -5,9 +5,7 @@ Le 30/05/2026
 
 Liste des petites corrections à faire :
 
-1- Ajouter un bouton show/Hide en bas à droite pour afficher / masquer le panneau de mesures.
 2- Finir de réorganiser le panneau spectrum
-5- Ajouter les séparateurs gris manquant.
 
 Faire pareil coté interface de l'histogramme.
 
