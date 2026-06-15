@@ -293,6 +293,18 @@ namespace AudioHexViewer
         private GeneratorWindow? _generatorWindow;
 
         private bool _spectrumRunning;
+        private bool _generatorAutoStarted;  // true if generator was auto-started by Bode Plot RUN
+        private bool _measPanelVisible = true; // global Show/Hide measurement panel
+
+        private void ApplyMeasPanelVisible()
+        {
+            spectrumControl?.SetMeasPanelVisible(_measPanelVisible);
+            oscilloscopeControl?.SetMeasPanelVisible(_measPanelVisible);
+            histogramControl?.SetMeasPanelVisible(_measPanelVisible);
+            // Update View > Side Panel submenu checkmarks
+            if (menuSidePanelShow != null) menuSidePanelShow.Checked = _measPanelVisible;
+            if (menuSidePanelHide != null) menuSidePanelHide.Checked = !_measPanelVisible;
+        }
         private bool _histogramRunning;
 
         // Limitation de frquence pour la mise  jour des textes (pour viter le scintillement)
@@ -475,6 +487,22 @@ namespace AudioHexViewer
 
             levelFontRegular = new Font(this.Font, FontStyle.Regular);
             levelFontBold = new Font(this.Font, FontStyle.Bold);
+
+            // Side Panel visibility — View > Side Panel > Show/Hide
+            menuSidePanelShow.Click += (_, _) =>
+            {
+                _measPanelVisible = true;
+                ApplyMeasPanelVisible();
+                _session.ShowMeasPanel = true;
+                SaveSessionSettingsSilently();
+            };
+            menuSidePanelHide.Click += (_, _) =>
+            {
+                _measPanelVisible = false;
+                ApplyMeasPanelVisible();
+                _session.ShowMeasPanel = false;
+                SaveSessionSettingsSilently();
+            };
 
             // Libération propre
             this.FormClosed += (_, __) =>
@@ -1032,6 +1060,10 @@ namespace AudioHexViewer
             }
 
             oscilloscopeControl?.ApplySettings(_loadedSessionSettings.Oscilloscope);
+
+            // Restore Show/Hide measurement panel state
+            _measPanelVisible = _loadedSessionSettings.ShowMeasPanel;
+            ApplyMeasPanelVisible();
         }
 
         //
@@ -1082,6 +1114,9 @@ namespace AudioHexViewer
                 s.Oscilloscope = oscilloscopeControl.GetSettingsSnapshot();
             else
                 s.Oscilloscope = _session.Oscilloscope ?? new OscilloscopeSettings();
+
+            // Global UI state
+            s.ShowMeasPanel = _measPanelVisible;
 
             return s;
         }
@@ -2162,10 +2197,24 @@ namespace AudioHexViewer
                                 _generatorWindow.Location = new System.Drawing.Point(
                                     Location.X + Width + 4, Location.Y);
                             }
+                            _generatorAutoStarted = true;
                             _generatorWindow.EnsureWhiteNoiseFrf();
                         }
                     }
-                    else EnsureReadStoppedIfNoTabRunning();
+                    else
+                    {
+                        // Auto-stop generator when STOP is pressed in Bode Plot mode,
+                        // but only if we auto-started it (don't stop user's own session).
+                        if (spectrumControl.SelectedChannelMode == "Bode Plot" &&
+                            _generatorAutoStarted &&
+                            _generatorWindow != null && !_generatorWindow.IsDisposed &&
+                            _generatorWindow.IsGenerating)
+                        {
+                            _generatorWindow.StopGeneratorPublic();
+                        }
+                        _generatorAutoStarted = false;
+                        EnsureReadStoppedIfNoTabRunning();
+                    }
                 };
                 // Window change -> recrée le worker SFFT pour appliquer immédiatement la nouvelle fenêtre
                 spectrumControl.WindowTypeChangedForExternalFft += (_, __) =>
@@ -2829,7 +2878,6 @@ namespace AudioHexViewer
                 ApplyAnalysisSettings(_loadedSessionSettings);
 
             ApplyLoadedSessionSettingsToExistingControls();
-
         }
 
         private void splitContainer1_Panel2_Paint(object sender, PaintEventArgs e)

@@ -32,11 +32,11 @@ namespace AudioHexViewer
             if (_cursorLineL != null) _cursorLineL.Visible = onL;
             if (_cursorLineR != null) _cursorLineR.Visible = onR;
 
-            // Inline text labels (bottom of chart) are hidden when the floating box
-            // is shown instead (Graph=1 or Both=2) or Off (3).
-            bool showInlineLabels = (_cursorDispMode == 0 || _cursorDispMode == 2);
-            if (_lblCursorLInfo != null) _lblCursorLInfo.Visible = onL && showInlineLabels;
-            if (_lblCursorRInfo != null) _lblCursorRInfo.Visible = onR && showInlineLabels;
+            // Bottom info labels are permanently hidden — replaced by the floating
+            // cursor box (DrawCursorFloatBox) and the stats panel.
+            if (_lblCursorLInfo  != null) _lblCursorLInfo.Visible  = false;
+            if (_lblCursorRInfo  != null) _lblCursorRInfo.Visible  = false;
+            if (_lblCursorDeltaInfo != null) _lblCursorDeltaInfo.Visible = false;
 
             if (!onL) _cursorMarkLVisible = false;
             if (!onR) _cursorMarkRVisible = false;
@@ -172,11 +172,19 @@ namespace AudioHexViewer
         //
         private void ChartSpectrum_MouseMove(object? sender, MouseEventArgs e)
         {
-            // Delta label drag takes priority
-            if (_deltaLabelDragging)
+            var plot = GetPlotRectPixels(chartSpectrum, chartSpectrum.ChartAreas[0]);
+
+            // Delta label drags (ΔX horizontal, ΔY vertical) take priority
+            if (_dxDragging || _dyDragging)
             {
-                var plot = GetPlotRectPixels(chartSpectrum, chartSpectrum.ChartAreas[0]);
                 UpdateDeltaLabelDrag(e, plot);
+                return;
+            }
+
+            // Floating cursor box drag
+            if (_cursorBoxDragging)
+            {
+                ChartSpectrum_CursorBoxMouseMove(sender, e);
                 return;
             }
 
@@ -1261,14 +1269,13 @@ namespace AudioHexViewer
             if (onC1 && _cursorLineL != null)
             {
                 _cursorFreqL = freqAxis[_cursorIdxL];
-                UpdateOne(onC1, true, _cursorIdxL, _cursorLineL, _lblCursorLInfo, _cursorLockedL, c1Curve,
+                UpdateOne(onC1, true, _cursorIdxL, _cursorLineL, null, _cursorLockedL, c1Curve,
                     ref _cursorMarkLVisible, ref _cursorMarkLFreq, ref _cursorMarkLDb, ref _cursorMarkLColor, ref _cursorMarkLUsesY2);
 
             }
             else
             {
                 if (_cursorLineL != null) _cursorLineL.Visible = false;
-                if (_lblCursorLInfo != null) { _lblCursorLInfo.Text = ""; _lblCursorLInfo.Visible = false; }
                 _cursorMarkLVisible = false;
                 _cursorMarkLUsesY2 = false;
             }
@@ -1277,60 +1284,21 @@ namespace AudioHexViewer
             if (onC2 && _cursorLineR != null)
             {
                 _cursorFreqR = freqAxis[_cursorIdxR];
-                UpdateOne(onC2, false, _cursorIdxR, _cursorLineR, _lblCursorRInfo, _cursorLockedR, c2Curve,
+                UpdateOne(onC2, false, _cursorIdxR, _cursorLineR, null, _cursorLockedR, c2Curve,
                         ref _cursorMarkRVisible, ref _cursorMarkRFreq, ref _cursorMarkRDb, ref _cursorMarkRColor, ref _cursorMarkRUsesY2);
 
             }
             else
             {
                 if (_cursorLineR != null) _cursorLineR.Visible = false;
-                if (_lblCursorRInfo != null) { _lblCursorRInfo.Text = ""; _lblCursorRInfo.Visible = false; }
                 _cursorMarkRVisible = false;
                 _cursorMarkRUsesY2 = false;
             }
             //
             // --- Delta (C2 - C1) ---
+            // Bottom delta label permanently hidden — replaced by DrawCursorDeltaLabel (PostPaint overlay)
             if (_lblCursorDeltaInfo != null)
-            {
-                // visible seulement si au moins un curseur activé
-                if (!onC1 && !onC2)
-                {
-                    _lblCursorDeltaInfo.Text = "";
-                    _lblCursorDeltaInfo.Visible = false;
-                }
-                else
-                {
-                    _lblCursorDeltaInfo.Visible = true;
-
-                    // seulement si les 2 curseurs ont une valeur amplitude valide
-                    if (_cursorMarkLVisible && _cursorMarkRVisible)
-                    {
-                        double dF = _cursorMarkRFreq - _cursorMarkLFreq; // C2 - C1
-
-                        // Si les curseurs sont sur des courbes différentes (Gain vs Phase) => delta uniquement fréquence
-                        if (_cursorMarkLUsesY2 != _cursorMarkRUsesY2)
-                        {
-                            _lblCursorDeltaInfo.ForeColor = InfoTextColor;
-                            _lblCursorDeltaInfo.Text = $"Δ:  ΔF={dF:0.##} Hz";
-                        }
-                        else
-                        {
-                            double dY = _cursorMarkRDb - _cursorMarkLDb; // Y = dB (Gain) OU deg (Phase)
-
-                            string unit = _cursorMarkLUsesY2 ? "°" : (IsFrfMode() ? "dB" : CurrentLevelUnitLabel());
-
-                            _lblCursorDeltaInfo.ForeColor = InfoTextColor;
-                            _lblCursorDeltaInfo.Text = $"Δ:  ΔF={dF:0.##} Hz   ΔY={dY:0.##} {unit}";
-                        }
-
-                    }
-                    else
-                    {
-                        _lblCursorDeltaInfo.ForeColor = InfoTextColor;
-                        _lblCursorDeltaInfo.Text = "Δ:  —";
-                    }
-                }
-            }
+                _lblCursorDeltaInfo.Visible = false;
 
             //
             PositionCursorInfoLabels();

@@ -35,6 +35,14 @@ namespace AudioHexViewer
         private const int   H_DIVS        = 10;
         private const int   V_DIVS        = 8;
         private const float MEAS_W        = 200f;   // identique ChartStatsWidthPx = 200 (Spectrum)
+        private bool _measPanelVisible = true;       // global Show/Hide measurement panel
+
+        /// <summary>Shows or hides the measurement stats panel on the right.</summary>
+        public void SetMeasPanelVisible(bool visible)
+        {
+            _measPanelVisible = visible;
+            pnlScope.Invalidate();
+        }
         private const float MARGIN_LEFT   = 62f;
         private const float MARGIN_BOTTOM = 32f;
         private const float MARGIN_TOP    = 20f;  // zone pour la ligne d'info au-dessus de la grille
@@ -384,7 +392,12 @@ namespace AudioHexViewer
                 BackColor = System.Drawing.Color.Silver,
                 Text      = ""
             });
-            panelTop.Controls.Remove(lblTrigStatus);  // shown via canvas only
+            panelTop.Controls.Remove(lblTrigStatus);
+            // Restore to y=4 — same horizontal axis as "CURSORS SETTINGS" label (y=3)
+            lblTrigStatus.Location = new System.Drawing.Point(964, 4);
+            lblTrigStatus.Size     = new System.Drawing.Size(82, 18);
+            lblTrigStatus.Visible  = true;
+            panelTop.Controls.Add(lblTrigStatus);
             SetRunState(false);
         }
 
@@ -626,7 +639,8 @@ namespace AudioHexViewer
             var sz = pnlScope.ClientSize;
             if (sz.Width<60||sz.Height<60) return RectangleF.Empty;
             return new RectangleF(MARGIN_LEFT, MARGIN_TOP,
-                sz.Width-MARGIN_LEFT-MEAS_W, sz.Height-MARGIN_TOP-MARGIN_BOTTOM);
+                sz.Width-MARGIN_LEFT-(_measPanelVisible ? MEAS_W : 16f),  // ~2% margin when hidden (at 800px)
+                sz.Height-MARGIN_TOP-MARGIN_BOTTOM);
         }
 
         // ── Helpers curseurs X/Y ─────────────────────────────────────────────
@@ -1525,7 +1539,9 @@ namespace AudioHexViewer
             g.SmoothingMode=SmoothingMode.AntiAlias;
             g.TextRenderingHint=System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
-            var wave=new RectangleF(MARGIN_LEFT,MARGIN_TOP,sz.Width-MARGIN_LEFT-MEAS_W,sz.Height-MARGIN_TOP-MARGIN_BOTTOM);
+            var wave=new RectangleF(MARGIN_LEFT,MARGIN_TOP,
+                sz.Width-MARGIN_LEFT-(_measPanelVisible ? MEAS_W : 16f),  // ~2% margin when hidden (at 800px)
+                sz.Height-MARGIN_TOP-MARGIN_BOTTOM);
             if(wave.Width<20||wave.Height<20) return;
 
             // Fond : blanc en export (pour PDF), gris système en live
@@ -1543,17 +1559,17 @@ namespace AudioHexViewer
                     new PointF(MARGIN_LEFT + 2, 3));
             }
 
-            // Indicateur d'état (WAIT/TRIG'D/STOPPED) : au-dessus du panneau de
-            // mesures (même colonne que MEAS_W), donc plus jamais sous le bouton
-            // RUN dans panelTop — n'entre plus en collision avec _infoLine.
-            if (!string.IsNullOrEmpty(lblTrigStatus.Text))
-            {
-                using var fSt=new Font("Segoe UI",8.25f,FontStyle.Bold);
-                using var brSt=new SolidBrush(lblTrigStatus.ForeColor);
-                using var sfC=new StringFormat{Alignment=StringAlignment.Far,LineAlignment=StringAlignment.Center};
-                var rMeas=RectangleF.FromLTRB(wave.Right+8,0,wave.Right+MEAS_W-6,MARGIN_TOP);
-                g.DrawString(lblTrigStatus.Text,fSt,brSt,rMeas,sfC);
-            }
+            // WAIT/TRIG'D/STOPPED: now shown in panelTop via lblTrigStatus — no canvas drawing.
+
+
+
+
+
+
+
+
+
+
             DrawGrid(g,wave);
             DrawAxisLabels(g,wave);
 
@@ -1580,7 +1596,8 @@ namespace AudioHexViewer
             // Mini-carte d'acquisition (top-right, dans MARGIN_TOP)
             DrawAcqMinimap(g, wave);
 
-            DrawMeasurements(g,wave);
+            if (_measPanelVisible)
+                DrawMeasurements(g, wave);
 
             // Minimap mémoire (quand arrêté et buffer disponible)
             // (pas de DrawRectangle ici — la bordure de l'onglet vient de BackColor+Padding)

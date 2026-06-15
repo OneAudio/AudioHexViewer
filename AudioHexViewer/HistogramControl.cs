@@ -12,6 +12,14 @@ namespace AudioHexViewer
         private const int MaxScaleOverBin   = 8192;
         private const int StatsWidthPx      = 200;   // même que SpectrumControl.ChartStatsWidthPx
         private const int MinPlotWidthPx    = 420;   // même que SpectrumControl.ChartStatsMinPlotWidthPx
+        private bool _measPanelVisible = true;        // global Show/Hide measurement panel
+
+        /// <summary>Shows or hides the measurement stats panel on the right.</summary>
+        public void SetMeasPanelVisible(bool visible)
+        {
+            _measPanelVisible = visible;
+            ApplyChartStatsMargin();
+        }
 
         private static readonly int[] RangeLsbOptions =
         {
@@ -450,7 +458,7 @@ namespace AudioHexViewer
             if (chartHistogram == null || chartHistogram.ChartAreas.Count == 0) return;
             int w = chartHistogram.ClientSize.Width;
             if (w <= 0) return;
-            ApplyChartStatsMarginToChart(chartHistogram, w, scale: 1);
+            ApplyChartStatsMarginToChart(chartHistogram, w, scale: _measPanelVisible ? 1 : 0);
             chartHistogram.Invalidate();
         }
 
@@ -466,7 +474,8 @@ namespace AudioHexViewer
 
             float reservedPct = Math.Max(0f, Math.Min(45f, 100f * reserved / chartWidth));
             const float LeftPct = 5.5f;  // réduit avec labels en k
-            float width = (100f - LeftPct) - reservedPct;
+            float rightMargin = (scale == 0) ? 1f : 0f;  // small margin when panel hidden
+            float width = (100f - LeftPct) - reservedPct - rightMargin;
             if (width < 10f) width = 10f;
             area.Position.Auto = false;
             area.Position = new ElementPosition(LeftPct, 3f, width, 94f);
@@ -866,6 +875,8 @@ namespace AudioHexViewer
             float sExport = (chartHistogram.Width > 0) ? (float)chart.Width / chartHistogram.Width : 1f;
             // ── Labels Y custom dans la marge grise à gauche ─────────────────
             DrawCustomYLabels(g, area, cr, sExport, chart.Font);
+
+            if (!_measPanelVisible) return;
 
             // Rectangle du panneau stats aligné sur le plot réel (comme DrawChartStatsPanel de SpectrumControl)
             var pos      = area.Position;

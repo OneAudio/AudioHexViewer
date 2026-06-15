@@ -168,35 +168,39 @@ namespace AudioHexViewer
             UpdateDispButtons();
         }
 
+        // ── Cursor color (matches spectrum curve color) ──────────────────────
+        private Color CursorCol => Color.FromArgb(210, FftLeftColor);
+        private Color BgCol     => BackgroundColor;   // chart background colour
+
         // ── Floating cursor box: draw ────────────────────────────────────────
-        // Called from PostPaint when _cursorDispMode == 1 (Graph) or 2 (Both).
+        // Style identique oscilloscope : fond semi-transparent BgColor,
+        // police "Segoe UI" 9pt Bold, pas de bordure.
         internal void DrawCursorFloatBox(Graphics g, RectangleF plotRect)
         {
             if (_cursorDispMode != 1 && _cursorDispMode != 2) return;
             bool anyActive = CursorLeftEnabled || CursorRightEnabled;
             if (!anyActive) return;
 
-            using var font     = new Font("Segoe UI", 8f);
-            using var fontBold = new Font("Segoe UI", 8f, FontStyle.Bold);
-            using var brBg     = new SolidBrush(Color.FromArgb(210, BackColor));
-            using var penBd    = new Pen(Color.FromArgb(160, Color.Gray), 1f);
-            using var brTxt    = new SolidBrush(Color.DimGray);
-            using var fmtR     = new StringFormat { Alignment = StringAlignment.Far };
-
             var lines = BuildCursorFloatLines();
             if (lines.Count == 0) return;
 
-            float lineH = font.GetHeight(g) + 3f;
+            Color col = CursorCol;
+            using var fDx    = new Font("Segoe UI", 9f, FontStyle.Bold);
+            using var brBg   = new SolidBrush(Color.FromArgb(210, BgCol));
+            using var brTxt  = new SolidBrush(col);
+            using var fmtR   = new StringFormat { Alignment = StringAlignment.Far };
+
+            float lineH = fDx.GetHeight(g) + 2f;
             float maxLblW = 0f, maxValW = 0f;
             foreach (var (l, v) in lines)
             {
-                float lw = g.MeasureString(l, fontBold).Width;
-                float vw = g.MeasureString(v, font).Width;
+                float lw = g.MeasureString(l, fDx).Width;
+                float vw = g.MeasureString(v, fDx).Width;
                 if (lw > maxLblW) maxLblW = lw;
                 if (vw > maxValW) maxValW = vw;
             }
 
-            float pad = 6f, gap = 10f;
+            float pad = 4f, gap = 8f;
             float boxW = pad * 2f + maxLblW + gap + maxValW;
             float boxH = pad * 2f + lines.Count * lineH;
 
@@ -207,13 +211,12 @@ namespace AudioHexViewer
             _cursorBoxRect = new RectangleF(bx, by, boxW, boxH);
 
             g.FillRectangle(brBg, _cursorBoxRect);
-            g.DrawRectangle(penBd, bx, by, boxW, boxH);
 
             float ty = by + pad;
             foreach (var (l, v) in lines)
             {
-                g.DrawString(l, fontBold, brTxt, bx + pad, ty);
-                g.DrawString(v, font, brTxt, new RectangleF(bx + pad + maxLblW + gap, ty, maxValW, lineH), fmtR);
+                g.DrawString(l, fDx, brTxt, bx + pad, ty);
+                g.DrawString(v, fDx, brTxt, new RectangleF(bx + pad + maxLblW + gap, ty, maxValW, lineH), fmtR);
                 ty += lineH;
             }
         }
@@ -229,15 +232,18 @@ namespace AudioHexViewer
             static string FmtDb(double db) => $"{db:0.##} dB";
             static string FmtDeg(double d) => $"{d:0.##} °";
 
+            // "Level" in spectrum modes, "Gain" only in Bode Plot
+            string yLabel = IsFrfMode() ? "Gain" : "Level";
+
             if (c1On)
             {
                 lines.Add(("X1", FmtHz(_cursorMarkLFreq)));
-                lines.Add((_cursorMarkLUsesY2 ? "φ" : "Gain", _cursorMarkLUsesY2 ? FmtDeg(_cursorMarkLDb) : FmtDb(_cursorMarkLDb)));
+                lines.Add((_cursorMarkLUsesY2 ? "φ" : yLabel, _cursorMarkLUsesY2 ? FmtDeg(_cursorMarkLDb) : FmtDb(_cursorMarkLDb)));
             }
             if (c2On)
             {
                 lines.Add(("X2", FmtHz(_cursorMarkRFreq)));
-                lines.Add((_cursorMarkRUsesY2 ? "φ" : "Gain", _cursorMarkRUsesY2 ? FmtDeg(_cursorMarkRDb) : FmtDb(_cursorMarkRDb)));
+                lines.Add((_cursorMarkRUsesY2 ? "φ" : yLabel, _cursorMarkRUsesY2 ? FmtDeg(_cursorMarkRDb) : FmtDb(_cursorMarkRDb)));
             }
             if (c1On && c2On)
             {
@@ -246,7 +252,7 @@ namespace AudioHexViewer
                 if (_cursorMarkLUsesY2 == _cursorMarkRUsesY2)
                 {
                     double dy = _cursorMarkRDb - _cursorMarkLDb;
-                    lines.Add((_cursorMarkLUsesY2 ? "Δφ" : "ΔGain", _cursorMarkLUsesY2 ? FmtDeg(dy) : FmtDb(dy)));
+                    lines.Add((_cursorMarkLUsesY2 ? "Δφ" : "Δ" + yLabel, _cursorMarkLUsesY2 ? FmtDeg(dy) : FmtDb(dy)));
                 }
             }
             return lines;
@@ -274,8 +280,30 @@ namespace AudioHexViewer
             chartSpectrum.Invalidate();
         }
 
-        // ── Delta label arrow (Label button) ────────────────────────────────
-        // Draws a horizontal double-arrow between X1 and X2 cursor lines in the chart.
+        // ── Delta label + arrows (Label button) ─────────────────────────────
+        // Style identique oscilloscope :
+        //   - ΔX: texte "ΔF= xxx Hz\n1/ΔF= yyy Hz" + flèche double horizontale
+        //   - ΔY: texte "ΔLevel= xxx dB" + flèche double verticale
+        //   Police : "Segoe UI" 9pt Bold (même que oscilloscope fDx/fDy)
+        //   Fond : Color.FromArgb(210, BgColor)
+        //   Flèches : Pen 1.5px, AdjustableArrowCap(4f, 5f)
+
+        // Drag state — ΔX label moves horizontally AND vertically
+        private float     _dxLblFracX    = 0.50f;
+        private float     _dxLblFracY    = 0.05f;  // vertical position (fraction of plot height)
+        private RectangleF _dxLblRect    = RectangleF.Empty;
+        private bool      _dxDragging    = false;
+        private float     _dxDragStartX, _dxDragStartFrac;
+        private float     _dxDragStartY, _dxDragStartFracY;
+
+        // Drag state — ΔY label moves vertically AND horizontally
+        private float     _dyLblFracY    = 0.50f;
+        private float     _dyLblFracX    = 0.04f;  // horizontal position (fraction of plot width)
+        private RectangleF _dyLblRect    = RectangleF.Empty;
+        private bool      _dyDragging    = false;
+        private float     _dyDragStartY, _dyDragStartFrac;
+        private float     _dyDragStartX, _dyDragStartFracX;
+
         internal void DrawCursorDeltaLabel(Graphics g, RectangleF plotRect)
         {
             if (!_cursorLabelOn) return;
@@ -284,72 +312,169 @@ namespace AudioHexViewer
             bool c2On = CursorRightEnabled && _cursorMarkRVisible && !double.IsNaN(_cursorMarkRFreq);
             if (!c1On || !c2On) return;
 
-            // Find X pixel positions of X1/X2 cursor lines
+            Color col = CursorCol;
+
+            // ── ΔX : horizontal double arrow + text (identical to oscilloscope) ──
             float? px1 = FreqToPlotX(_cursorMarkLFreq, plotRect);
             float? px2 = FreqToPlotX(_cursorMarkRFreq, plotRect);
-            if (px1 == null || px2 == null) return;
 
-            float x1 = Math.Min(px1.Value, px2.Value);
-            float x2 = Math.Max(px1.Value, px2.Value);
-
-            // Arrow y — stored relative offset, draggable (clamped inside plot)
-            float arrowY = Math.Clamp(plotRect.Top + _deltaLabelOffY, plotRect.Top + 4f, plotRect.Bottom - 20f);
-
-            using var pen = new Pen(Color.DimGray, 1.5f);
-            pen.StartCap = System.Drawing.Drawing2D.LineCap.ArrowAnchor;
-            pen.EndCap   = System.Drawing.Drawing2D.LineCap.ArrowAnchor;
-
-            // Horizontal double arrow
-            g.DrawLine(pen, x1, arrowY, x2, arrowY);
-
-            // Delta text centred above arrow
-            double df = Math.Abs(_cursorMarkRFreq - _cursorMarkLFreq);
-            string label = df >= 1000.0 ? $"ΔF = {df / 1000.0:0.###} kHz" : $"ΔF = {df:0.##} Hz";
-            if (_cursorMarkLUsesY2 == _cursorMarkRUsesY2)
+            if (px1 != null && px2 != null)
             {
-                double dy = _cursorMarkRDb - _cursorMarkLDb;
-                string unit = _cursorMarkLUsesY2 ? "°" : " dB";
-                label += $"  Δ = {dy:0.##}{unit}";
+                double df   = Math.Abs(_cursorMarkRFreq - _cursorMarkLFreq);
+                string dts  = df >= 1000.0 ? $"{df / 1000.0:0.###} kHz" : $"{df:0.##} Hz";
+
+                using var fDx  = new Font("Segoe UI", 9f, FontStyle.Bold);
+                using var brL  = new SolidBrush(col);
+                using var brBg = new SolidBrush(Color.FromArgb(210, BgCol));
+
+                // Single line: only ΔF (no 1/ΔF — removed per point 2)
+                string txt = $"ΔF= {dts}";
+                var sz = g.MeasureString(txt, fDx);
+
+                float x1px = Math.Min(px1.Value, px2.Value);
+                float x2px = Math.Max(px1.Value, px2.Value);
+
+                float lx = Math.Clamp(plotRect.Left + _dxLblFracX * plotRect.Width - sz.Width / 2f,
+                                      plotRect.Left, plotRect.Right - sz.Width);
+                // ly driven by _dxLblFracY (vertical drag) — point 4
+                float ly = Math.Clamp(plotRect.Top + _dxLblFracY * plotRect.Height,
+                                      plotRect.Top, plotRect.Bottom - sz.Height - 14f);
+
+                _dxLblRect = new RectangleF(lx - 2, ly, sz.Width + 4, sz.Height + 2);
+                g.FillRectangle(brBg, _dxLblRect);
+                g.DrawString(txt, fDx, brL, lx, ly);
+
+                // Double arrow just below the label (follows the label vertically — point 4)
+                if (x2px - x1px > 8f)
+                {
+                    float ay = ly + sz.Height + 4f;
+                    using var penArrow = new Pen(col, 1.5f);
+                    var cap = new System.Drawing.Drawing2D.AdjustableArrowCap(4f, 5f, true);
+                    penArrow.CustomStartCap = cap;
+                    penArrow.CustomEndCap   = cap;
+                    g.DrawLine(penArrow, x1px, ay, x2px, ay);
+                }
             }
 
-            using var font = new Font("Segoe UI", 8f);
-            using var br   = new SolidBrush(Color.DimGray);
-            SizeF sz = g.MeasureString(label, font);
-            float tx = (x1 + x2) / 2f - sz.Width / 2f;
-            float ty = arrowY - sz.Height - 2f;
-            tx = Math.Clamp(tx, plotRect.Left, plotRect.Right - sz.Width);
-            ty = Math.Clamp(ty, plotRect.Top, plotRect.Bottom - sz.Height);
-            g.DrawString(label, font, br, tx, ty);
+            // ── ΔY : vertical double arrow + text ──────────────────────────────
+            // Only when both cursors are on the same axis type
+            if (_cursorMarkLUsesY2 == _cursorMarkRUsesY2)
+            {
+                double dy      = _cursorMarkRDb - _cursorMarkLDb;
+                bool   isPhase = _cursorMarkLUsesY2;
+                string yLabel  = IsFrfMode() ? "Gain" : "Level";
+                string dyLabel = isPhase ? $"Δφ= {dy:0.##} °" : $"Δ{yLabel}= {dy:0.##} dB";
 
-            // Drag target: arrow + text area
-            _deltaLabelRect = new RectangleF(Math.Min(tx, x1), ty, Math.Max(sz.Width, x2 - x1), sz.Height + 6f);
+                // Convert dB (or °) to pixel Y using the appropriate axis
+                float? py1 = DbToPlotY(_cursorMarkLDb, _cursorMarkLUsesY2, plotRect);
+                float? py2 = DbToPlotY(_cursorMarkRDb, _cursorMarkRUsesY2, plotRect);
+
+                if (py1 != null && py2 != null)
+                {
+                    using var fDy  = new Font("Segoe UI", 9f, FontStyle.Bold);
+                    using var brL  = new SolidBrush(col);
+                    using var brBg = new SolidBrush(Color.FromArgb(210, BgCol));
+
+                    var sz = g.MeasureString(dyLabel, fDy);
+
+                    // Horizontal position driven by _dyLblFracX (draggable left/right)
+                    float lx = Math.Clamp(plotRect.Left + _dyLblFracX * plotRect.Width,
+                                          plotRect.Left, plotRect.Right - sz.Width - 10f);
+                    float ly = Math.Clamp(plotRect.Top + _dyLblFracY * plotRect.Height - sz.Height / 2f,
+                                          plotRect.Top, plotRect.Bottom - sz.Height);
+
+                    _dyLblRect = new RectangleF(lx - 2, ly, sz.Width + 4, sz.Height + 2);
+                    g.FillRectangle(brBg, _dyLblRect);
+                    g.DrawString(dyLabel, fDy, brL, lx, ly);
+
+                    float ya = Math.Min(py1.Value, py2.Value);
+                    float yb = Math.Max(py1.Value, py2.Value);
+
+                    // Horizontal dashed lines at Y1 and Y2 levels
+                    using var penDash = new Pen(Color.FromArgb(140, col), 1.0f);
+                    penDash.DashStyle = System.Drawing.Drawing2D.DashStyle.Dash;
+                    g.DrawLine(penDash, plotRect.Left, ya, plotRect.Right, ya);
+                    g.DrawLine(penDash, plotRect.Left, yb, plotRect.Right, yb);
+
+                    // Vertical double arrow just to the right of the label
+                    if (yb - ya > 8f)
+                    {
+                        float ax = lx + sz.Width + 6f;
+                        using var penArrow = new Pen(col, 1.5f);
+                        var cap = new System.Drawing.Drawing2D.AdjustableArrowCap(4f, 5f, true);
+                        penArrow.CustomStartCap = cap;
+                        penArrow.CustomEndCap   = cap;
+                        g.DrawLine(penArrow, ax, ya, ax, yb);
+                    }
+                }
+            }
         }
 
-        // Delta label drag state
-        private float     _deltaLabelOffY = 50f;
-        private RectangleF _deltaLabelRect = RectangleF.Empty;
-        private bool      _deltaLabelDragging = false;
-        private float     _deltaLabelDragStartY;
-        private float     _deltaLabelDragStartOffY;
+        // ── Convert dB value → pixel Y in the plot rect ─────────────────────
+        private float? DbToPlotY(double dbVal, bool usesY2, RectangleF plotRect)
+        {
+            if (chartSpectrum == null || chartSpectrum.ChartAreas.Count == 0) return null;
+            var area = chartSpectrum.ChartAreas[0];
+            var axis = usesY2 ? area.AxisY2 : area.AxisY;
+            if (axis == null || axis.Maximum <= axis.Minimum) return null;
+            double min = axis.Minimum, max = axis.Maximum;
+            // Clamp to visible range
+            if (dbVal < min || dbVal > max) return null;
+            // Linear Y axis: top=max, bottom=min
+            float frac = (float)((max - dbVal) / (max - min));
+            return plotRect.Top + frac * plotRect.Height;
+        }
 
-        // Called from chart MouseDown to initiate delta label drag
+        // ── Delta label drags ────────────────────────────────────────────────
         internal bool TryStartDeltaLabelDrag(MouseEventArgs e, RectangleF plotRect)
         {
             if (!_cursorLabelOn || e.Button != MouseButtons.Left) return false;
-            if (!_deltaLabelRect.Contains(e.Location)) return false;
-            _deltaLabelDragging = true;
-            _deltaLabelDragStartY    = e.Y;
-            _deltaLabelDragStartOffY = _deltaLabelOffY;
-            return true;
+            if (_dxLblRect.Contains(e.Location))
+            {
+                _dxDragging = true;
+                _dxDragStartX     = e.X;
+                _dxDragStartFrac  = _dxLblFracX;
+                _dxDragStartY     = e.Y;
+                _dxDragStartFracY = _dxLblFracY;
+                return true;
+            }
+            if (_dyLblRect.Contains(e.Location))
+            {
+                _dyDragging = true;
+                _dyDragStartY     = e.Y;
+                _dyDragStartFrac  = _dyLblFracY;
+                _dyDragStartX     = e.X;
+                _dyDragStartFracX = _dyLblFracX;
+                return true;
+            }
+            return false;
         }
+
         internal void UpdateDeltaLabelDrag(MouseEventArgs e, RectangleF plotRect)
         {
-            if (!_deltaLabelDragging) return;
-            float delta = e.Y - _deltaLabelDragStartY;
-            _deltaLabelOffY = Math.Clamp(_deltaLabelDragStartOffY + delta, 4f, Math.Max(4f, plotRect.Height - 20f));
-            chartSpectrum?.Invalidate();
+            if (_dxDragging && plotRect.Width > 0)
+            {
+                float dx = e.X - _dxDragStartX;
+                float dy = e.Y - _dxDragStartY;
+                _dxLblFracX = Math.Clamp(_dxDragStartFrac  + dx / plotRect.Width,  0f, 1f);
+                _dxLblFracY = Math.Clamp(_dxDragStartFracY + dy / plotRect.Height, 0f, 1f);
+                chartSpectrum?.Invalidate();
+            }
+            else if (_dyDragging && plotRect.Height > 0)
+            {
+                float dy = e.Y - _dyDragStartY;
+                float dx = e.X - _dyDragStartX;
+                _dyLblFracY = Math.Clamp(_dyDragStartFrac  + dy / plotRect.Height, 0f, 1f);
+                _dyLblFracX = Math.Clamp(_dyDragStartFracX + dx / plotRect.Width,  0f, 1f);
+                chartSpectrum?.Invalidate();
+            }
         }
-        internal void StopDeltaLabelDrag() => _deltaLabelDragging = false;
+
+        internal void StopDeltaLabelDrag()
+        {
+            _dxDragging = false;
+            _dyDragging = false;
+        }
 
         // ── Converts a frequency (Hz) to an X pixel in the plot rect ─────────
         private float? FreqToPlotX(double hz, RectangleF plotRect)

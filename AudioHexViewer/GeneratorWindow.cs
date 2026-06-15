@@ -117,7 +117,7 @@ namespace AudioHexViewer
             btnAm20.Click += (_, _) => nudAmplitude.Value = -20m;
             btnAm60.Click += (_, _) => nudAmplitude.Value = -60m;
             cmbIMDPreset.SelectedIndexChanged += CmbIMDPreset_Changed;
-            btnRun.Click                    += BtnRun_Click;
+            btnRun.Click += (s, e) => { if (_isRunning) StopGenerator(); else StartGenerator(); };
             // ── Calibration et toggle Vrms ────────────────────────────────────
             btnCalibrateLevel.Click         += BtnCalibrateLevel_Click;
             rbAmpdBFS.CheckedChanged        += (_, _) => { if (rbAmpdBFS.Checked) SwitchAmplitudeUnit(toVrms: false); };
@@ -308,7 +308,10 @@ namespace AudioHexViewer
         private static int MixSR(MMDevice d) { try { return d.AudioClient.MixFormat.SampleRate; } catch { return 48000; } }
 
         // ── RUN / STOP ────────────────────────────────────────────────────────
-        private void BtnRun_Click(object? s, EventArgs e) { if (_isRunning) StopGenerator(); else StartGenerator(); }
+        /// <summary>Public wrapper for auto-stop from Form1 (Bode Plot STOP).</summary>
+        public void StopGeneratorPublic() => StopGenerator();
+
+
 
         /// <summary>
         /// Called automatically when the Spectrum tab enters RUN in Bode Plot mode.

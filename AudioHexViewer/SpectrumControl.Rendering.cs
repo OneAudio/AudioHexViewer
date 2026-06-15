@@ -625,7 +625,7 @@ namespace AudioHexViewer
                 UpdateOverlayInfo();
 
                 // IMPORTANT: en FRF (L/R) on masque le panneau stats -> on récupère toute la largeur
-                ApplyChartStatsMargin(chartSpectrum, invalidate: true, reservedScale: 1f);
+                ApplyChartStatsMargin(chartSpectrum, invalidate: true, _measPanelVisible ? 1f : 0f);
 
                 SyncCursorUiFromModel(); // met à jour les libellés Auto/Gain/Phase ou Auto/Left/Right
                 ApplyFrfPhiButtonsUi(); // montre/masque les boutons φ selon IsFrfMode()
@@ -636,10 +636,8 @@ namespace AudioHexViewer
                 // => le worker pourra éviter de calculer une voie inutile.
                 ChannelModeChanged?.Invoke(SelectedChannelMode);
 
-                // IMPORTANT :
-                // En mode LIVE on ne force PAS un redraw immédiat, car la voie nouvellement choisie
-                // n'a pas encore son spectre calculé (il arrive au prochain AcquireOnce()).
-                // Forcer un redraw met le Chart en état transitoire (séries vides + log) => exception.
+                // En mode LIVE : ne rien faire — la prochaine frame de données
+                // mettra à jour les séries correctement.
                 if (isLive)
                     return;
 

@@ -159,7 +159,7 @@ namespace AudioHexViewer
             SyncCursorUiFromModel();
 
             // Y2 axis visibility changed — force layout + redraw
-            ApplyChartStatsMargin(chartSpectrum, invalidate: true, reservedScale: 1f);
+            ApplyChartStatsMargin(chartSpectrum, invalidate: true, _measPanelVisible ? 1f : 0f);
             chartSpectrum.Invalidate();
         }
 

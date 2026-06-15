@@ -25,6 +25,9 @@ namespace AudioHexViewer
         public double GenCalVrmsFullScaleLeft   { get; set; } = 1.0;
         public bool   GenCalValidRight          { get; set; } = false;
         public double GenCalVrmsFullScaleRight  { get; set; } = 1.0;
+
+        // Global UI state — shared across all tabs
+        public bool ShowMeasPanel { get; set; } = true;
     }
 
     public sealed class UiSettings

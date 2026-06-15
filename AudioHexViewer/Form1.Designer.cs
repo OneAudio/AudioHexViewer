@@ -1,4 +1,4 @@
-using System.Drawing;
+﻿using System.Drawing;
 using System.Windows.Forms;
 
 namespace AudioHexViewer
@@ -43,6 +43,9 @@ namespace AudioHexViewer
             menuShowAllFormats = new ToolStripMenuItem();
             menuDataView = new ToolStripMenuItem();
             menuDebugInfo = new ToolStripMenuItem();
+            menuSidePanel      = new ToolStripMenuItem();
+            menuSidePanelShow  = new ToolStripMenuItem();
+            menuSidePanelHide  = new ToolStripMenuItem();
             panelDebugInfo = new Panel();
             lblDebugInfo = new Label();
             menuSampleSize = new ToolStripMenuItem();
@@ -137,10 +140,30 @@ namespace AudioHexViewer
             // 
             // menuData
             // 
-            menuData.DropDownItems.AddRange(new ToolStripItem[] { menuShowAllFormats, menuDataView, menuDebugInfo });
+            menuData.DropDownItems.AddRange(new ToolStripItem[] { menuShowAllFormats, menuDataView, menuDebugInfo, new ToolStripSeparator(), menuSidePanel });
             menuData.Name = "menuData";
             menuData.Size = new Size(44, 21);
             menuData.Text = "View";
+            // 
+            // menuSidePanel
+            // 
+            menuSidePanel.Name = "menuSidePanel";
+            menuSidePanel.Text = "Side Panel";
+            menuSidePanel.DropDownItems.AddRange(new ToolStripItem[] { menuSidePanelShow, menuSidePanelHide });
+            // 
+            // menuSidePanelShow
+            // 
+            menuSidePanelShow.Name        = "menuSidePanelShow";
+            menuSidePanelShow.Text        = "Show";
+            menuSidePanelShow.Checked     = true;
+            menuSidePanelShow.CheckOnClick = false;
+            // 
+            // menuSidePanelHide
+            // 
+            menuSidePanelHide.Name        = "menuSidePanelHide";
+            menuSidePanelHide.Text        = "Hide";
+            menuSidePanelHide.Checked     = false;
+            menuSidePanelHide.CheckOnClick = false;
             // 
             // menuShowAllFormats
             // 
@@ -466,6 +489,9 @@ namespace AudioHexViewer
         private ToolStripMenuItem menuShowAllFormats;
         private ToolStripMenuItem menuDataView;
         private ToolStripMenuItem menuDebugInfo;
+        private ToolStripMenuItem menuSidePanel;
+        private ToolStripMenuItem menuSidePanelShow;
+        private ToolStripMenuItem menuSidePanelHide;
         private Panel panelDebugInfo;
         private Label lblDebugInfo;
         private System.Windows.Forms.RichTextBox txtLeft;

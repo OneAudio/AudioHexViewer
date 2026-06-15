@@ -653,6 +653,15 @@ namespace AudioHexViewer
 
         private bool _statsShowLeft = true;
         private bool _statsShowRight = true;
+        private bool _measPanelVisible = true;  // global Show/Hide measurement panel
+
+        /// <summary>Shows or hides the measurement stats panel on the right.</summary>
+        public void SetMeasPanelVisible(bool visible)
+        {
+            _measPanelVisible = visible;
+            ApplyChartStatsMargin(chartSpectrum, invalidate: true,
+                reservedScale: _measPanelVisible ? 1f : 0f);
+        }
 
         private bool _thdMeasuresEnabled = false;
 
@@ -1412,7 +1421,7 @@ namespace AudioHexViewer
             UpdateOverlayInfo();
             // IMPORTANT (startup en FRF) : ApplySpectrumSettings() inhibe les events UI,
             // donc on force ici la mise en page du chart (marges / largeur) selon le mode courant.
-            ApplyChartStatsMargin(chartSpectrum, invalidate: true, reservedScale: 1f);            SyncCursorUiFromModel();
+            ApplyChartStatsMargin(chartSpectrum, invalidate: true, _measPanelVisible ? 1f : 0f);            SyncCursorUiFromModel();
             ApplyFrfPhiButtonsUi();
             ApplyFrfNormButtonsUi();
 
@@ -1453,39 +1462,8 @@ namespace AudioHexViewer
 
         private void ApplyChartStatsMargin(Chart chart, bool invalidate)
         {
-            var area = chart.ChartAreas.FirstOrDefault(a => a.Name == "SpectrumArea");
-            if (area == null) return;
-
-            int w = chart.ClientSize.Width;
-            if (w <= 0) return;
-
-            // Panneau Stats : on réserve toujours une zone à droite, y compris en mode FRF (Bode Plot).
-            // Important : l’axe Y2 (phase) reste dans le ChartArea ; le panneau est dessiné dans la zone réservée (hors plot).
-            int reserved = ChartStatsWidthPx;
-
-
-            // Si la fenêtre devient petite : on réduit la marge stats pour garder un plot utilisable
-            int maxReserved = Math.Max(120, w - ChartStatsMinPlotWidthPx);
-            reserved = Math.Min(reserved, maxReserved);
-
-            float reservedPct = 100f * reserved / w;
-            reservedPct = Math.Max(0f, Math.Min(45f, reservedPct)); // sécurité
-
-            // On force une position manuelle pour libérer une zone vide à droite du chartArea
-            area.Position.Auto = false;
-
-            // Marges "safe" (en %) pour éviter de rogner titres/axes
-            const float left = 3f;
-            const float top = 3f;
-            const float height = 94f;
-
-            float width = 97f - reservedPct; // 97% - marge stats
-            if (width < 10f) width = 10f;
-
-            area.Position = new ElementPosition(left, top, width, height);
-
-            if (invalidate)
-                chart.Invalidate();
+            // Delegate to reservedScale overload, respecting current panel visibility
+            ApplyChartStatsMargin(chart, invalidate, _measPanelVisible ? 1f : 0f);
         }
 
 
@@ -3156,7 +3134,7 @@ namespace AudioHexViewer
             reserved = Math.Min(reserved, maxReserved);
 
             float reservedPct = 100f * reserved / w;
-            reservedPct = Math.Max(0f, Math.Min(60f, reservedPct)); // tu peux monter à 60% si besoin
+            reservedPct = Math.Max(0f, Math.Min(60f, reservedPct));
 
             area.Position.Auto = false;
 
@@ -3164,7 +3142,10 @@ namespace AudioHexViewer
             const float top = 3f;
             const float height = 94f;
 
-            float width = 97f - reservedPct;
+            // When panel is hidden (reservedPct≈0), keep a small right margin (1%)
+            // so the chart is not glued to the edge.
+            float minRightMargin = reservedScale < 0.1f ? 2f : 0f;
+            float width = 97f - reservedPct - minRightMargin;
             if (width < 10f) width = 10f;
 
             area.Position = new ElementPosition(left, top, width, height);

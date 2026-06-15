@@ -469,36 +469,52 @@ namespace AudioHexViewer
             }
 
             /// ----------------------------
-            // Dessin des marqueurs de curseur
+            // Dessin des marqueurs de curseur — style identique oscilloscope :
+            // losange avec halo semi-transparent BgColor pour la visibilité
             /// ----------------------------
-            void DrawDownTriangle(double f, double yValue, bool useY2, Color color)
+            Color chartBackColor = BackgroundColor;   // doit être déclaré avant la fonction locale
+
+            void DrawDiamondMarker(double f, double yValue, bool useY2, Color color)
             {
-                float x = (float)area.AxisX.ValueToPixelPosition(f);
-                float y = useY2
+                float cx = (float)area.AxisX.ValueToPixelPosition(f);
+                float cy = useY2
                     ? (float)area.AxisY2.ValueToPixelPosition(yValue)
                     : (float)area.AxisY.ValueToPixelPosition(yValue);
 
-                float h = 10f * sExport;
-                float w = 12f * sExport;
+                float d  = 6f  * sExport;
+                float dh = (d + 3.5f) * sExport;
 
+                var g2 = e.ChartGraphics.Graphics;
+                g2.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+                // Halo (légèrement plus grand, couleur de fond semi-transparente)
+                var ptsHalo = new[]
+                {
+                    new PointF(cx,      cy - dh),
+                    new PointF(cx + dh, cy),
+                    new PointF(cx,      cy + dh),
+                    new PointF(cx - dh, cy)
+                };
+                using var brHalo = new SolidBrush(Color.FromArgb(180, chartBackColor));
+                g2.FillPolygon(brHalo, ptsHalo);
+
+                // Losange principal
                 var pts = new[]
                 {
-                    new PointF(x, y),
-                    new PointF(x - w/2f, y - h),
-                    new PointF(x + w/2f, y - h)
+                    new PointF(cx,     cy - d),
+                    new PointF(cx + d, cy),
+                    new PointF(cx,     cy + d),
+                    new PointF(cx - d, cy)
                 };
-
-                using var brush = new SolidBrush(Color.FromArgb(220, color));
-                e.ChartGraphics.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                e.ChartGraphics.Graphics.FillPolygon(brush, pts);
+                using var brDiamond = new SolidBrush(Color.FromArgb(240, color));
+                g2.FillPolygon(brDiamond, pts);
             }
 
-
             if (_cursorMarkLVisible)
-                DrawDownTriangle(_cursorMarkLFreq, _cursorMarkLDb, _cursorMarkLUsesY2, _cursorMarkLColor);
+                DrawDiamondMarker(_cursorMarkLFreq, _cursorMarkLDb, _cursorMarkLUsesY2, _cursorMarkLColor);
 
             if (_cursorMarkRVisible)
-                DrawDownTriangle(_cursorMarkRFreq, _cursorMarkRDb, _cursorMarkRUsesY2, _cursorMarkRColor);
+                DrawDiamondMarker(_cursorMarkRFreq, _cursorMarkRDb, _cursorMarkRUsesY2, _cursorMarkRColor);
 
             // ----------------------------
             // Y : labels majeurs (remplacement complet du Chart)
@@ -981,8 +997,9 @@ namespace AudioHexViewer
 
             try
             {
-                // Panneau Stats (tableau) : affiché dans tous les modes, y compris FRF/Bode.
-                DrawChartStatsPanel(e.ChartGraphics.Graphics, chart, area);
+                // Panneau Stats : seulement si visible
+                if (_measPanelVisible)
+                    DrawChartStatsPanel(e.ChartGraphics.Graphics, chart, area);
 
                 // Floating cursor box (Graph / Both modes)
                 DrawCursorFloatBox(e.ChartGraphics.Graphics, plotForText);
