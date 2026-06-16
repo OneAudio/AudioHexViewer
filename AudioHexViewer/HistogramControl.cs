@@ -869,21 +869,46 @@ namespace AudioHexViewer
             _lastBinWidth  = binWidth;
             _lastLsbRange  = lsbRange;
 
-            _statsLeft  = lCnt > 0
-                ? new StatsData(lCnt, dcL, lRms, lSigma, lMean, lDnl, lMin, lMax, lsbRange)
-                : new StatsData(0, dcL, 0, 0, 0, 0, 0, 0, 0);
-            _statsRight = rCnt > 0
-                ? new StatsData(rCnt, dcR, rRms, rSigma, rMean, rDnl, rMin, rMax, lsbRange)
-                : new StatsData(0, dcR, 0, 0, 0, 0, 0, 0, 0);
-
             // ── Normalisation PDF ───────────────────────────────────────────
-            // Quand ChkNorm est coché, chaque bin est divisé par (N·binWidth) → densité en 1/LSB.
             bool isNorm = _normEnabled;
             _isNormalized = isNorm;
 
-            // ── Averaging ───────────────────────────────────────────────────
+            // ── Averaging AVANT les stats (Gauss FIT sur bins moyennés) ──
             if (binsLeft  != null) binsLeft  = AccumulateAvg(binsLeft,  isLeft: true)  ?? binsLeft;
             if (binsRight != null) binsRight = AccumulateAvg(binsRight, isLeft: false) ?? binsRight;
+
+            // ── Stats recalculées sur les bins moyennés ───────────────
+            static void RecomputeStats(int[] bins, int bw, int lsr,
+                out long cnt, out double mean, out double sigma, out double rms, out int mn, out int mx)
+            {
+                cnt = 0; long sum = 0; long sumSq = 0; mn = int.MaxValue; mx = int.MinValue;
+                for (int i = 0; i < bins.Length; i++) {
+                    int v = bins[i]; if (v <= 0) continue;
+                    int code = -lsr + i * bw + bw / 2;
+                    cnt += v; sum += (long)v * code; sumSq += (long)v * code * code;
+                    if (code < mn) mn = code; if (code > mx) mx = code; }
+                mean = cnt > 0 ? (double)sum / cnt : 0;
+                double variance = cnt > 0 ? (double)sumSq / cnt - mean * mean : 0;
+                sigma = variance > 0 ? Math.Sqrt(variance) : 0;
+                rms   = cnt > 0 ? Math.Sqrt((double)sumSq / cnt) : 0;
+                if (mn == int.MaxValue) mn = mx = 0;
+            }
+            if (binsLeft != null) {
+                RecomputeStats(binsLeft, binWidth, lsbRange,
+                    out long lCntA, out double lMeanA, out double lSigmaA, out double lRmsA, out int lMinA, out int lMaxA);
+                lDnl = ComputeDnlMax(binsLeft, (int)lCntA, lMeanA, lSigmaA, lsbRange, binWidth);
+                _statsLeft = lCntA > 0
+                    ? new StatsData((int)lCntA, dcL, lRmsA, lSigmaA, lMeanA, lDnl, lMinA, lMaxA, lsbRange)
+                    : new StatsData(0, dcL, 0, 0, 0, 0, 0, 0, 0);
+            } else _statsLeft = new StatsData(0, dcL, 0, 0, 0, 0, 0, 0, 0);
+            if (binsRight != null) {
+                RecomputeStats(binsRight, binWidth, lsbRange,
+                    out long rCntA, out double rMeanA, out double rSigmaA, out double rRmsA, out int rMinA, out int rMaxA);
+                rDnl = ComputeDnlMax(binsRight, (int)rCntA, rMeanA, rSigmaA, lsbRange, binWidth);
+                _statsRight = rCntA > 0
+                    ? new StatsData((int)rCntA, dcR, rRmsA, rSigmaA, rMeanA, rDnl, rMinA, rMaxA, lsbRange)
+                    : new StatsData(0, dcR, 0, 0, 0, 0, 0, 0, 0);
+            } else _statsRight = new StatsData(0, dcR, 0, 0, 0, 0, 0, 0, 0);
 
             // ── Séries — couleurs issues de SpectrumColorSettings
             chartHistogram.Series.Clear();
@@ -950,11 +975,22 @@ namespace AudioHexViewer
                     int nPts = Math.Min(2048, (int)Math.Ceiling(2.0 * lsbRange / step) + 1);
                     step = 2.0 * lsbRange / Math.Max(1, nPts - 1);
 
+                    // Option E + B : couleur complémentaire + halo sombre
+                    var curveColor = Color.FromArgb(255, 255 - baseColor.R, 255 - baseColor.G, 255 - baseColor.B);
+                    var halo = new Series(name + "_halo")
+                    {
+                        ChartType         = SeriesChartType.Line,
+                        ChartArea         = "HistogramArea",
+                        Color             = Color.FromArgb(160, 0, 0, 0),
+                        BorderWidth       = 5,
+                        BorderDashStyle   = ChartDashStyle.Solid,
+                        IsVisibleInLegend = false
+                    };
                     var gs = new Series(name)
                     {
                         ChartType      = SeriesChartType.Line,
                         ChartArea      = "HistogramArea",
-                        Color          = Color.FromArgb(220, baseColor),
+                        Color          = curveColor,
                         BorderWidth    = 2,
                         BorderDashStyle = ChartDashStyle.Solid,
                         IsVisibleInLegend = false
@@ -963,9 +999,11 @@ namespace AudioHexViewer
                     {
                         double x = -lsbRange + k * step;
                         double y = scale * Math.Exp(-((x - mu) * (x - mu)) * inv2s2);
+                        halo.Points.AddXY(x, y);
                         gs.Points.AddXY(x, y);
                     }
-                    chartHistogram.Series.Add(gs);
+                    chartHistogram.Series.Add(halo);  // halo d'abord (Z-order bas)
+                    chartHistogram.Series.Add(gs);    // courbe par-dessus
                 }
 
                 if (binsLeft  != null) AddGaussSeries("GaussLeft",  _statsLeft,  BarLeftColor);

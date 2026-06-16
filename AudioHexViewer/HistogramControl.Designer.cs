@@ -33,7 +33,6 @@ namespace AudioHexViewer
             btnDiff         = new Button();
             lblYScale       = new Label();
             btnLockScale    = new Button();
-            btnOverlay      = new Button();
             sep1            = new Label();
             sep2            = new Label();
             sep3            = new Label();
@@ -92,7 +91,6 @@ namespace AudioHexViewer
                 lblRangePow, comboRangeLsb, lblBinPow, comboBinLsb,
                 lblOptions, btnGauss, btnNSigma, btnNorm, comboSigma, btnDiff,
                 lblYScale, btnLockScale,
-                btnOverlay,
                 sep1, sep2, sepAvg, sep3, sep4,
                 lblAveragingHist, comboAveraging, btnResetAvgHist, lblAvgCountHist,
                 sep3_unused, sep4_unused,
@@ -201,13 +199,6 @@ namespace AudioHexViewer
 
             Sep(sep4, 595);   // 431+62+9=502
 
-            // ── OVERLAY (x=965, y=60) — ancré comme Spectrum/Oscilloscope ────
-            btnOverlay.Location = new Point(965, 60);
-            btnOverlay.Size     = new Size(62, 24);
-            btnOverlay.Text     = "Overlay";
-            btnOverlay.Font     = std9;
-            btnOverlay.UseVisualStyleBackColor = true;
-            btnOverlay.Click   += this.BtnOverlay_Click;
 
             // ── Legacy checkboxes (hidden) ─────────────────────────────────────
             foreach (var cb in new CheckBox[] { chkDcMode, ChkGauss, ChkMarkers, ChkNorm, chkDiff, chkLockScale })
@@ -274,7 +265,6 @@ namespace AudioHexViewer
         private Button   btnDiff;
         private Label    lblYScale;
         private Button   btnLockScale;
-        private Button   btnOverlay;
         private Label    sep1;
         private Label    sep2;
         private Label    sep3;
