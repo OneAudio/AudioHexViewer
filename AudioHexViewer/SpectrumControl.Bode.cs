@@ -151,6 +151,15 @@ namespace AudioHexViewer
         }
 
         //
+        /// <summary>Sets LightGreen/normal appearance on a Bode CheckBox-as-Button.</summary>
+        private static void ApplyBodeToggleVisual(CheckBox b, bool active)
+        {
+            b.Checked = active;
+            b.UseVisualStyleBackColor = !active;
+            b.BackColor = active ? Color.LightGreen : SystemColors.Control;
+            b.ForeColor = Color.Black;
+        }
+
         private void BtnPhiEnable_Click(object? sender, EventArgs e)
         {
             _frfPhaseEnabled = !_frfPhaseEnabled;
@@ -184,9 +193,9 @@ namespace AudioHexViewer
 
             if (!frf) return;
 
-            // CheckBox.Appearance.Button: Checked = pressed look (native)
-            btnPhiEnable.Checked = _frfPhaseEnabled;
-            btnPhiUnwrap.Checked = _frfPhaseUnwrap;
+            // CheckBox.Appearance.Button: use explicit BackColor for green (not native blue)
+            ApplyBodeToggleVisual(btnPhiEnable, _frfPhaseEnabled);
+            ApplyBodeToggleVisual(btnPhiUnwrap, _frfPhaseUnwrap);
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -347,11 +356,10 @@ namespace AudioHexViewer
 
             if (!frf) return;   // visual state below only applies in Bode mode
 
-            // "Cap Ref" : vert tant qu'une référence est mémorisée (Ctrl+clic pour effacer)
-            // CheckBox.Appearance.Button: Checked = pressed look
-            btnFrfRefCapture.Checked = hasRef;
+            // CheckBox.Appearance.Button: use explicit BackColor for green (not native blue)
+            ApplyBodeToggleVisual(btnFrfRefCapture, hasRef);
+            ApplyBodeToggleVisual(btnFrfNormToggle, _frfNormEnabled && hasRef);
             btnFrfNormToggle.Enabled = hasRef;
-            btnFrfNormToggle.Checked = (_frfNormEnabled && hasRef);
 
             _toolTipFrfNorm ??= new ToolTip();
             _toolTipFrfNorm.SetToolTip(btnFrfRefCapture,

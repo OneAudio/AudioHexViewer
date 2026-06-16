@@ -1177,45 +1177,37 @@ namespace AudioHexViewer
         // Met à jour l'état de la ComboBox d'unité de niveau (dBFS/dBV)
         private void UpdateLevelUnitUi()
         {
-            if (comboLevelUnit == null)
-                return;
+            if (btnLevelUnit == null) return;
 
-            // En mode Bode Plot (FRF), l'unité Y de la combo ne doit pas intervenir (pas de calibration ici).
-            // On force donc dBFS et on grise la combo.
+            // En mode Bode Plot (FRF): force dBFS, button disabled
             if (IsFrfMode())
             {
-                comboLevelUnit.Enabled = false;
                 _levelUnit = "dBFS";
-                if (comboLevelUnit.SelectedIndex != 0)
-                    comboLevelUnit.SelectedIndex = 0;
+                btnLevelUnit.Text = "dBFS";
+                btnLevelUnit.Enabled = false;
+                btnLevelUnit.UseVisualStyleBackColor = true;
+                btnLevelUnit.BackColor = SystemColors.Control;
                 return;
             }
 
             bool canDbv = IsDbvAvailableForCurrentMode();
-
-            // On grise complètement la ComboBox tant que dBV n'est pas dispo,
-            // conformément au cahier des charges.
-            comboLevelUnit.Enabled = canDbv;
+            btnLevelUnit.Enabled = canDbv;
 
             if (!canDbv)
             {
                 _levelUnit = "dBFS";
-                if (comboLevelUnit.SelectedIndex != 0)
-                    comboLevelUnit.SelectedIndex = 0;
+                btnLevelUnit.Text = "dBFS";
+                btnLevelUnit.UseVisualStyleBackColor = true;
+                btnLevelUnit.BackColor = SystemColors.Control;
                 return;
             }
 
-            // Si dBV est dispo, on restaure la sélection cohérente
-            if (string.Equals(_levelUnit, "dBV", StringComparison.OrdinalIgnoreCase))
-            {
-                if (comboLevelUnit.SelectedIndex != 1)
-                    comboLevelUnit.SelectedIndex = 1;
-            }
-            else
-            {
-                if (comboLevelUnit.SelectedIndex != 0)
-                    comboLevelUnit.SelectedIndex = 0;
-            }
+            // Show active unit; green when dBV is selected
+            btnLevelUnit.Text = _levelUnit;
+            bool isDbv = string.Equals(_levelUnit, "dBV", StringComparison.OrdinalIgnoreCase);
+            btnLevelUnit.UseVisualStyleBackColor = !isDbv;
+            btnLevelUnit.BackColor = isDbv ? Color.LightGreen : SystemColors.Control;
+            btnLevelUnit.ForeColor = Color.Black;
         }
 
         // Calibrage d'une voie (L ou R) en Vrms connu.
@@ -1313,6 +1305,7 @@ namespace AudioHexViewer
                 _removeDcStats = !s.RemoveDC;
                 if (chkDcMode != null)
                     chkDcMode.Checked = s.RemoveDC; // coché = DC mode
+                UpdateDcAcButtonVisual();
 
                 // Window
                 if (comboWindow != null)
@@ -1320,9 +1313,9 @@ namespace AudioHexViewer
                     // Rétrocompatibilité : anciens noms → nouveaux noms
                     string wName = s.Window switch
                     {
-                        "Blackman-Harris 4"  => "Black-Harr 4",
-                        "Blackman-Harris  7" => "Black-Harr 7",
-                        "Blackman-Harris 7"  => "Black-Harr 7",
+                        "Black-Harr 4"       => "Blackman-Harris 4",
+                        "Black-Harr 7"       => "Blackman-Harris 7",
+                        "Blackman-Harris  7" => "Blackman-Harris 7",
                         _ => s.Window
                     };
                     int wIdx = comboWindow.Items.IndexOf(wName);

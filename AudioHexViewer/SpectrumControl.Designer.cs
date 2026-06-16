@@ -23,6 +23,10 @@
             lblCursors          = new Label();
             label1              = new Label();
             lblAvgProgress      = new Label();
+            btnLevelUnit        = new Button();
+            btnDcAc             = new Button();
+            lblCoupling         = new Label();
+            lblAvgCount         = new Label();
             btnOverlay          = new Button();
             chkPeakHold         = new CheckBox();
             btnResetPeakHold    = new Button();
@@ -163,11 +167,11 @@
                 btnX2, btnX2Chan, btnX2Set, btnX2Peak, btnDispLabel,
                 lblPhaseGroup, tlpPhi,
                 lblNormGroup, tlpNorm,
-                lblUnits, lblAxisSet, comboLevelUnit, chkLogX,
+                lblUnits, lblAxisSet, comboLevelUnit, btnLevelUnit, chkLogX,
                 btnThdSettings, btnResetPeakHold,
                 btnResetAvg, lblAvgProgress,
                 btnOverlay,
-                chkDcMode,
+                chkDcMode, btnDcAc, lblCoupling, lblAvgCount,
                 btnC1, btnC1Track, btnC1PrevPk, btnC1Pk, btnC1NextPk, btnC1Set,
                 btnC2, btnC2Track, btnC2PrevPk, btnC2Pk, btnC2NextPk, btnC2Set,
                 tlpCursors,
@@ -200,94 +204,108 @@
             }
 
             // ── 1. CHANNEL MODE (x=16) ───────────────────────────────────────
-            SecLbl(lblChannel, 16, "CHANNEL MODE");
+            SecLbl(lblChannel, 16, "TRACE MODE");
             comboChannel.DropDownStyle = ComboBoxStyle.DropDownList; comboChannel.Font = std9;
-            comboChannel.Location = new Point(16, 18); comboChannel.Name = "comboChannel";
-            comboChannel.Size = new Size(100, 24); comboChannel.TabIndex = 7;
-            chkDcMode.AutoSize = true; chkDcMode.Font = gS;
-            chkDcMode.Location = new Point(16, 62); chkDcMode.Name = "chkDcMode"; chkDcMode.TabIndex = 8;
-            chkDcMode.Text = "DC mode"; chkDcMode.UseVisualStyleBackColor = true;
+            comboChannel.Location = new Point(11, 18); comboChannel.Name = "comboChannel";
+            comboChannel.Size = new Size(82, 24); comboChannel.TabIndex = 7;
+            // chkDcMode hidden — replaced by btnDcAc toggle button
+            chkDcMode.Visible = false; chkDcMode.Location = new Point(-200, -200);
+            // btnDcAc: same size as cursor buttons (45×24)
+            // COUPLING label above btnDcAc
+            lblCoupling.AutoSize = true; lblCoupling.Font = gS; lblCoupling.ForeColor = SystemColors.GrayText;
+            lblCoupling.Location = new Point(11, 46); lblCoupling.Name = "lblCoupling"; lblCoupling.Text = "COUPLE";
+            // AVG Count label above lblAvgProgress (y=46, same as COUPLING)
+            lblAvgCount.AutoSize = true; lblAvgCount.Font = gS; lblAvgCount.ForeColor = SystemColors.GrayText;
+            lblAvgCount.Location = new Point(58, 46); lblAvgCount.Name = "lblAvgCount"; lblAvgCount.Text = "N AVG";
+            btnDcAc.Location = new Point(11, 60); btnDcAc.Name = "btnDcAc";
+            btnDcAc.Size = new Size(45, 24); btnDcAc.Font = std9;
+            btnDcAc.Text = "AC"; btnDcAc.UseVisualStyleBackColor = true; btnDcAc.TabIndex = 8;
 
-            Sep(sep1, 124);
+            sep1.BackColor = SystemColors.ControlDark; sep1.Location = new Point(102, 6);
+            sep1.Size = new Size(1, 80); sep1.Text = "";
 
             // ── 2. WINDOWING (x=133, w=84) ───────────────────────────────────
-            SecLbl(lblWindow, 133, "WINDOWING");
+            SecLbl(lblWindow, 112, "WINDOWING");
             comboWindow.DropDownStyle = ComboBoxStyle.DropDownList; comboWindow.Font = std9;
-            comboWindow.Location = new Point(133, 18); comboWindow.Name = "comboWindow";
-            comboWindow.Size = new Size(84, 24); comboWindow.TabIndex = 3;
+            comboWindow.Location = new Point(112, 18); comboWindow.Name = "comboWindow";
+            comboWindow.Size = new Size(133, 24); comboWindow.TabIndex = 3;
 
-            Sep(sepCursorInternal, 225);   // sep between WINDOWING and AVERAGING (reuse label)
+            // sepCursorInternal no longer used as WIN/AVG sep (avg now under window)
+            sepCursorInternal.Visible = false;
 
             // ── 3. AVERAGING (x=234, w=66) ───────────────────────────────────
-            SecLbl(lblAveraging, 234, "AVERAGING");
+            // AVERAGING label above the comboAveraging row
+            lblAveraging.AutoSize = true; lblAveraging.Font = gS;
+            lblAveraging.ForeColor = SystemColors.GrayText; lblAveraging.Visible = true;
+            lblAveraging.Location = new Point(112, 46); lblAveraging.Text = "AVERAGING";
             comboAveraging.DropDownStyle = ComboBoxStyle.DropDownList; comboAveraging.Font = std9;
-            comboAveraging.Location = new Point(234, 18); comboAveraging.Name = "comboAveraging";
-            comboAveraging.Size = new Size(66, 24); comboAveraging.TabIndex = 5;
-            btnResetAvg.Location = new Point(234, 60); btnResetAvg.Name = "btnResetAvg";
-            btnResetAvg.Size = new Size(50, 24); btnResetAvg.TabIndex = 12;
-            btnResetAvg.Text = "CLEAR"; btnResetAvg.UseVisualStyleBackColor = true;
+            comboAveraging.Location = new Point(112, 60); comboAveraging.Name = "comboAveraging";
+            comboAveraging.Size = new Size(86, 24); comboAveraging.TabIndex = 5;
+            btnResetAvg.Location = new Point(200, 60); btnResetAvg.Name = "btnResetAvg";
+            btnResetAvg.Size = new Size(45, 24); btnResetAvg.TabIndex = 12;
+            btnResetAvg.Text = "CLR"; btnResetAvg.UseVisualStyleBackColor = true;
             btnResetAvg.Click += BtnResetAvg_Click;
             lblAvgProgress.AutoSize = false;
             lblAvgProgress.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
             lblAvgProgress.ForeColor = Color.Firebrick;
-            lblAvgProgress.Location = new Point(288, 60); lblAvgProgress.Size = new Size(12, 24);
-            lblAvgProgress.TextAlign = ContentAlignment.MiddleLeft;
+            lblAvgProgress.Location = new Point(58, 60); lblAvgProgress.Size = new Size(35, 24);
+            lblAvgProgress.TextAlign = ContentAlignment.MiddleRight;
             lblAvgProgress.Name = "lblAvgProgress"; lblAvgProgress.TabIndex = 14; lblAvgProgress.Text = "";
 
-            Sep(sep2, 308);
+            Sep(sep2, 254);
 
             // ── 4. DISTORTION (x=317, w=62) ──────────────────────────────────
-            SecLbl(lblDistortion, 317, "DISTORTION");
+            SecLbl(lblDistortion, 264, "DISTORTION");
             chkEnableThd.Appearance = Appearance.Button; chkEnableThd.Font = std9;
-            chkEnableThd.Location = new Point(317, 34); chkEnableThd.Name = "chkEnableThd";
+            chkEnableThd.Location = new Point(264, 34); chkEnableThd.Name = "chkEnableThd";
             chkEnableThd.Size = new Size(62, 24); chkEnableThd.TabIndex = 30;
             chkEnableThd.Text = "THD"; chkEnableThd.TextAlign = ContentAlignment.MiddleCenter;
             chkEnableThd.UseVisualStyleBackColor = true; chkEnableThd.CheckedChanged += ChkEnableThd_CheckedChanged;
-            btnThdSettings.Location = new Point(317, 60); btnThdSettings.Name = "btnThdSettings";
+            btnThdSettings.Location = new Point(264, 60); btnThdSettings.Name = "btnThdSettings";
             btnThdSettings.Size = new Size(62, 24); btnThdSettings.TabIndex = 31; btnThdSettings.TabStop = false;
             btnThdSettings.Text = "Setting"; btnThdSettings.UseMnemonic = false;
             btnThdSettings.UseVisualStyleBackColor = true; btnThdSettings.Click += BtnThdSettings_Click;
 
-            Sep(sep3, 387);
+            Sep(sep3, 335);
 
             // ── 5. PEAK HOLD (x=396, w=62) ───────────────────────────────────
-            SecLbl(lblPeakHold, 396, "PEAK HOLD");
+            SecLbl(lblPeakHold, 345, "PEAK HOLD");
             chkPeakHold.Appearance = Appearance.Button; chkPeakHold.Font = std9;
-            chkPeakHold.Location = new Point(396, 34); chkPeakHold.Name = "chkPeakHold";
+            chkPeakHold.Location = new Point(345, 34); chkPeakHold.Name = "chkPeakHold";
             chkPeakHold.Size = new Size(62, 24); chkPeakHold.TabIndex = 17;
             chkPeakHold.Text = "PEAK H"; chkPeakHold.TextAlign = ContentAlignment.MiddleCenter;
             chkPeakHold.UseVisualStyleBackColor = true; chkPeakHold.CheckedChanged += chkPeakHold_CheckedChanged;
-            btnResetPeakHold.Location = new Point(396, 60); btnResetPeakHold.Name = "btnResetPeakHold";
+            btnResetPeakHold.Location = new Point(345, 60); btnResetPeakHold.Name = "btnResetPeakHold";
             btnResetPeakHold.Size = new Size(62, 24); btnResetPeakHold.TabIndex = 18; btnResetPeakHold.TabStop = false;
             btnResetPeakHold.Text = "Reset"; btnResetPeakHold.UseVisualStyleBackColor = true;
             btnResetPeakHold.Click += BtnResetPeakHold_Click;
 
-            Sep(sep4, 466);
+            Sep(sep4, 416);
 
             // ── 6. CURSORS SETTINGS (x=475, 5×45=225px) ──────────────────────
             // Cols: X1/Chan/Set/Peak/Disp at x=475|520|565|610|655
             // Short internal sep between PEAK(610+45=655) and DISPLAY(655): x=655
             // Title centred: 475 + 225/2 = 587 → place label to auto-centre
-            ColLbl(lblCursors,    519, 4,  "CURSORS SETTINGS");
-            ColLbl(lblColCursor,  478, 19, "CURSOR");
-            ColLbl(lblColChannel, 531, 19, "CHAN");
-            ColLbl(lblColSetVal,  568, 19, "SET VAL");
-            ColLbl(lblColPeak,    620, 19, "PEAK");
-            ColLbl(lblColDisplay, 658, 19, "DISPLAY");
+            ColLbl(lblCursors,    500, 4,  "CURSORS SETTINGS");
+            ColLbl(lblColCursor,  429, 19, "CURSOR");
+            ColLbl(lblColChannel, 475, 19, "TRACE");
+            ColLbl(lblColSetVal,  519, 19, "SET VAL");
+            ColLbl(lblColPeak,    571, 19, "PEAK");
+            ColLbl(lblColDisplay, 620, 19, "DISPLAY");
             lblCursors.Click += label2_Click;
-            BtnC(btnX1,        475, 34, 45, "X1",    14);
-            BtnC(btnX1Chan,    520, 34, 45, "Gain",  15);
-            BtnC(btnX1Set,     565, 34, 45, "X1= ?", 20);
-            BtnC(btnX1Peak,    610, 34, 45, "Peak",  21);
-            BtnC(btnDispGraph, 655, 34, 45, "Panel", 22);
-            BtnC(btnX2,        475, 60, 45, "X2",    16);
-            BtnC(btnX2Chan,    520, 60, 45, "Gain",  17);
-            BtnC(btnX2Set,     565, 60, 45, "X2= ?", 23);
-            BtnC(btnX2Peak,    610, 60, 45, "Peak",  24);
-            BtnC(btnDispLabel, 655, 60, 45, "Label", 25);
+            BtnC(btnX1,        426, 34, 45, "X1",    14);
+            BtnC(btnX1Chan,    471, 34, 45, "Gain",  15);
+            BtnC(btnX1Set,     516, 34, 45, "X1= ?", 20);
+            BtnC(btnX1Peak,    561, 34, 45, "Peak",  21);
+            BtnC(btnDispGraph, 619, 34, 45, "Panel", 22);
+            BtnC(btnX2,        426, 60, 45, "X2",    16);
+            BtnC(btnX2Chan,    471, 60, 45, "Gain",  17);
+            BtnC(btnX2Set,     516, 60, 45, "X2= ?", 23);
+            BtnC(btnX2Peak,    561, 60, 45, "Peak",  24);
+            BtnC(btnDispLabel, 619, 60, 45, "Label", 25);
             // Short sep (between PEAK col end and DISPLAY col, h=50, y=34)
-            sep6.BackColor = SystemColors.ControlDark;
-            sep6.Location  = new Point(655, 34); sep6.Size = new Size(1, 50); sep6.Text = "";
+            sep6.BackColor = System.Drawing.Color.Silver;
+            sep6.Location  = new Point(612, 34); sep6.Size = new Size(1, 50); sep6.Text = "";
 
             // Legacy stubs
             foreach (var b in new Control[] { btnC1, btnC1Track, btnC1PrevPk, btnC1Pk, btnC1NextPk, btnC1Set,
@@ -296,42 +314,42 @@
             tlpCursors.ColumnCount = 1; tlpCursors.Location = new Point(-200, -200);
             tlpCursors.Name = "tlpCursors"; tlpCursors.Size = new Size(1, 1); tlpCursors.TabIndex = 33; tlpCursors.Visible = false;
 
-            Sep(sep5, 708);
+            Sep(sep5, 673);
 
             // ── 7. BODE PLOT (x=717): PHASE(x=717,w=47) gap(8) NORM(x=772,w=62) ──
             // Title centred on total 117px: center = 717+58 = 775 → label auto-sized
             // BODE PLOT title centred on 117px zone (x=717..834): center=775, label ~65px → x≈742
-            SecLbl(lblBodePlot, 742, "BODE PLOT");
+            SecLbl(lblBodePlot, 721, "BODE PLOT");
 
             lblPhaseGroup.AutoSize = false; lblPhaseGroup.Font = gS; lblPhaseGroup.ForeColor = SystemColors.GrayText;
-            lblPhaseGroup.Location = new Point(717, 19); lblPhaseGroup.Name = "lblPhaseGroup";
-            lblPhaseGroup.Size = new Size(47, 12); lblPhaseGroup.TabIndex = 98;
+            lblPhaseGroup.Location = new Point(683, 19); lblPhaseGroup.Name = "lblPhaseGroup";
+            lblPhaseGroup.Size = new Size(62, 12); lblPhaseGroup.TabIndex = 98;
             lblPhaseGroup.Text = "PHASE"; lblPhaseGroup.TextAlign = ContentAlignment.MiddleCenter;
 
             tlpPhi.ColumnCount = 1; tlpPhi.ColumnStyles.Clear();
-            tlpPhi.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 47F));
+            tlpPhi.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 62F));
             tlpPhi.Controls.Clear();
             tlpPhi.Controls.Add(btnPhiEnable, 0, 0); tlpPhi.Controls.Add(btnPhiUnwrap, 0, 1);
-            tlpPhi.Location = new Point(717, 34); tlpPhi.Margin = new Padding(0); tlpPhi.Name = "tlpPhi";
+            tlpPhi.Location = new Point(683, 34); tlpPhi.Margin = new Padding(0); tlpPhi.Name = "tlpPhi";
             tlpPhi.RowCount = 2; tlpPhi.RowStyles.Clear();
             tlpPhi.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
             tlpPhi.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
-            tlpPhi.Size = new Size(47, 50); tlpPhi.TabIndex = 36;
+            tlpPhi.Size = new Size(62, 50); tlpPhi.TabIndex = 36;
 
             btnPhiEnable.Appearance = Appearance.Button; btnPhiEnable.Dock = DockStyle.Fill;
             btnPhiEnable.Margin = new Padding(0); btnPhiEnable.Name = "btnPhiEnable";
-            btnPhiEnable.Size = new Size(47, 24); btnPhiEnable.TabIndex = 8;
+            btnPhiEnable.Size = new Size(62, 24); btnPhiEnable.TabIndex = 8;
             btnPhiEnable.Text = "φ"; btnPhiEnable.Font = std9;
             btnPhiEnable.TextAlign = ContentAlignment.MiddleCenter; btnPhiEnable.UseVisualStyleBackColor = true;
 
             btnPhiUnwrap.Appearance = Appearance.Button; btnPhiUnwrap.Dock = DockStyle.Fill;
             btnPhiUnwrap.Margin = new Padding(0); btnPhiUnwrap.Name = "btnPhiUnwrap";
-            btnPhiUnwrap.Size = new Size(47, 24); btnPhiUnwrap.TabIndex = 9;
+            btnPhiUnwrap.Size = new Size(62, 24); btnPhiUnwrap.TabIndex = 9;
             btnPhiUnwrap.Text = "Uw"; btnPhiUnwrap.Font = std9;
             btnPhiUnwrap.TextAlign = ContentAlignment.MiddleCenter; btnPhiUnwrap.UseVisualStyleBackColor = true;
 
             lblNormGroup.AutoSize = false; lblNormGroup.Font = gS; lblNormGroup.ForeColor = SystemColors.GrayText;
-            lblNormGroup.Location = new Point(772, 19); lblNormGroup.Name = "lblNormGroup";
+            lblNormGroup.Location = new Point(753, 19); lblNormGroup.Name = "lblNormGroup";
             lblNormGroup.Size = new Size(62, 12); lblNormGroup.TabIndex = 97;
             lblNormGroup.Text = "NORM"; lblNormGroup.TextAlign = ContentAlignment.MiddleCenter;
 
@@ -339,7 +357,7 @@
             tlpNorm.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 62F));
             tlpNorm.Controls.Clear();
             tlpNorm.Controls.Add(btnFrfRefCapture, 0, 0); tlpNorm.Controls.Add(btnFrfNormToggle, 0, 1);
-            tlpNorm.Location = new Point(772, 34); tlpNorm.Margin = new Padding(0); tlpNorm.Name = "tlpNorm";
+            tlpNorm.Location = new Point(753, 34); tlpNorm.Margin = new Padding(0); tlpNorm.Name = "tlpNorm";
             tlpNorm.RowCount = 2; tlpNorm.RowStyles.Clear();
             tlpNorm.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
             tlpNorm.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
@@ -357,24 +375,27 @@
             btnFrfNormToggle.Text = "Norm"; btnFrfNormToggle.Font = std9;
             btnFrfNormToggle.TextAlign = ContentAlignment.MiddleCenter; btnFrfNormToggle.UseVisualStyleBackColor = true;
 
-            Sep(sep7, 842);
+            Sep(sep7, 824);
 
             // ── 8. AXIS SET (x=851, w=62) ────────────────────────────────────
-            SecLbl(lblAxisSet, 857, "AXIS SET");
-            lblUnits.AutoSize = true; lblUnits.Font = gS; lblUnits.ForeColor = SystemColors.GrayText;
-            lblUnits.Location = new Point(857, 19); lblUnits.Name = "lblUnits"; lblUnits.TabIndex = 13;
-            lblUnits.Text = "dB UNIT";
-            comboLevelUnit.DropDownStyle = ComboBoxStyle.DropDownList; comboLevelUnit.Font = std9;
-            comboLevelUnit.Location = new Point(857, 34); comboLevelUnit.Name = "comboLevelUnit";
-            comboLevelUnit.Size = new Size(62, 24); comboLevelUnit.TabIndex = 14;
+            SecLbl(lblAxisSet, 844, "AXIS SET");
+            // lblUnits hidden — replaced by btnLevelUnit toggle button
+            lblUnits.Visible = false;
+            // comboLevelUnit hidden — replaced by btnLevelUnit
+            comboLevelUnit.Visible = false; comboLevelUnit.Location = new Point(-200,-200);
+            // btnLevelUnit: toggle button dBFS ↔ dBV (same position as comboLevelUnit)
+            btnLevelUnit.Location = new Point(834, 34); btnLevelUnit.Name = "btnLevelUnit";
+            btnLevelUnit.Size = new Size(62, 24); btnLevelUnit.TabIndex = 14;
+            btnLevelUnit.Text = "dBFS"; btnLevelUnit.Font = std9;
+            btnLevelUnit.UseVisualStyleBackColor = true;
             chkLogX.Appearance = Appearance.Button; chkLogX.Font = std9;
-            chkLogX.Location = new Point(857, 60); chkLogX.Name = "chkLogX";
+            chkLogX.Location = new Point(834, 60); chkLogX.Name = "chkLogX";
             chkLogX.Size = new Size(62, 24); chkLogX.TabIndex = 11;
             chkLogX.Text = "LOG"; chkLogX.TextAlign = ContentAlignment.MiddleCenter;
 
             // sep8 at x=933 (right edge of graph)
             sep8.BackColor = SystemColors.ControlDark;
-            sep8.Location  = new Point(933, 6); sep8.Size = new Size(1, 76); sep8.Text = "";
+            sep8.Location  = new Point(908, 6); sep8.Size = new Size(1, 76); sep8.Text = "";
 
             // ── OVERLAY (x=960, centred between sep7=933 and RUN=1050) ────────
             btnOverlay.Location = new Point(965, 60); btnOverlay.Name = "btnOverlay";
@@ -553,6 +574,10 @@
 
         private Panel    panelTop;
         private Label    lblUnits;
+        private Button   btnLevelUnit;    // toggle dBFS/dBV (replaces comboLevelUnit)
+        private Button   btnDcAc;         // toggle AC/DC mode (replaces chkDcMode)
+        private Label    lblCoupling;      // "COUPLE" title above btnDcAc
+        private Label    lblAvgCount;       // "N AVG" title above lblAvgProgress
         private ComboBox comboLevelUnit;
         private Label    lblWindow;
         private ComboBox comboWindow;

@@ -470,8 +470,8 @@ namespace AudioHexViewer
             comboWindow.Items.Add("Rectangular");
             comboWindow.Items.Add("Hann");
             comboWindow.Items.Add("Hamming");
-            comboWindow.Items.Add("Black-Harr 4");
-            comboWindow.Items.Add("Black-Harr 7");
+            comboWindow.Items.Add("Blackman-Harris 4");
+            comboWindow.Items.Add("Blackman-Harris 7");
             comboWindow.SelectedIndex = 0; // Fênêtre par défaut : 0= Rectangulaire
             comboWindow.SelectedIndexChanged += (s, e) =>
             {
@@ -567,7 +567,21 @@ namespace AudioHexViewer
             //UpdateAcDcButtonText();
             //UpdateLogLinButtonText();
 
-            // Checkbox DC mode
+            // AC/DC toggle button (replaces chkDcMode checkbox)
+            if (btnDcAc != null)
+            {
+                UpdateDcAcButtonVisual();
+                btnDcAc.Click += (s, e) =>
+                {
+                    if (_isRestoringSettings) return;
+                    _removeDcStats = !_removeDcStats; // toggle AC↔DC
+                    UpdateDcAcButtonVisual();
+                    RemoveDcChanged?.Invoke(this, EventArgs.Empty);
+                    UpdateOverlayInfo();
+                };
+            }
+
+            // Legacy chkDcMode wiring kept for session restore compatibility
             if (chkDcMode != null)
             {
                 chkDcMode.CheckedChanged += (s, e) =>
@@ -662,32 +676,20 @@ namespace AudioHexViewer
                     RunStateChanged?.Invoke(false);
                 }
             };
-            // Unité de niveau (FFT) : dBFS / dBV (si calibré)
-            if (comboLevelUnit != null)
+            // Level unit: toggle button dBFS ↔ dBV (replaces comboLevelUnit combo)
+            if (btnLevelUnit != null)
             {
-                comboLevelUnit.Items.Clear();
-                comboLevelUnit.Items.Add("dBFS");
-                comboLevelUnit.Items.Add("dBV");
-                comboLevelUnit.SelectedIndex = 0;
-
-                comboLevelUnit.SelectedIndexChanged += (s, e) =>
+                btnLevelUnit.Text = "dBFS";
+                btnLevelUnit.Click += (s, e) =>
                 {
-                    if (_isRestoringSettings)
-                        return;
-
-                    _levelUnit = (comboLevelUnit.SelectedItem as string) ?? "dBFS";
-
-                    // Si on n'a pas la calibration pour le mode courant, on force dBFS
-                    if (_levelUnit == "dBV" && !IsDbvAvailableForCurrentMode())
-                    {
+                    if (_isRestoringSettings) return;
+                    if (_levelUnit == "dBFS" && IsDbvAvailableForCurrentMode())
+                        _levelUnit = "dBV";
+                    else
                         _levelUnit = "dBFS";
-                        comboLevelUnit.SelectedIndex = 0;
-                    }
-
-                    // éviter des limites incohérentes après un changement d'unité
                     customYMin = null;
                     customYMax = null;
-
+                    UpdateLevelUnitUi();
                     if (!isLive)
                         UpdateSpectrumChartAndStats();
                 };
@@ -1127,6 +1129,18 @@ namespace AudioHexViewer
         }
 
         //
+        private void UpdateDcAcButtonVisual()
+        {
+            if (btnDcAc == null) return;
+            // DC = keep DC component (active state = green)
+            // AC = remove DC component (default, normal appearance)
+            bool isDc = !_removeDcStats;   // _removeDcStats=true means AC (remove DC)
+            btnDcAc.Text = isDc ? "DC" : "AC";
+            btnDcAc.UseVisualStyleBackColor = !isDc;
+            btnDcAc.BackColor = isDc ? Color.LightGreen : SystemColors.Control;
+            btnDcAc.ForeColor = Color.Black;
+        }
+
         private void UpdateToggleButtonVisual(CheckBox? b)
         {
             if (b == null) return;
