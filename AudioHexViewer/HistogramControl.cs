@@ -14,6 +14,14 @@ namespace AudioHexViewer
         private const int MinPlotWidthPx    = 420;   // même que SpectrumControl.ChartStatsMinPlotWidthPx
         private bool _measPanelVisible = true;        // global Show/Hide measurement panel
 
+        // ── Toggle states (replaces legacy CheckBox controls) ─────────────────
+        private bool _dcMode       = true;   // true = keep DC, false = remove DC (AC mode)
+        private bool _gaussEnabled = false;
+        private bool _normEnabled  = false;
+        private bool _vbarsEnabled = false;
+        private bool _diffEnabled  = false;
+        private bool _scaleLocked  = false;
+
         /// <summary>Shows or hides the measurement stats panel on the right.</summary>
         public void SetMeasPanelVisible(bool visible)
         {
@@ -180,6 +188,7 @@ namespace AudioHexViewer
             InitializeComponent();
             InitChart();
             InitDefaults();
+            InitPanelButtons();
             SetupLiveTimer();
             UpdateRunButtonAppearance();
         }
@@ -267,7 +276,7 @@ namespace AudioHexViewer
         public AudioHexViewer.HistogramSettings GetHistogramSettingsSnapshot() =>
             new AudioHexViewer.HistogramSettings
             {
-                AC              = chkDcMode.Checked,
+                AC              = _dcMode,
                 Channel         = comboChannel.SelectedItem as string ?? "Both",
                 RangeLsb        = GetRangeLsb(),
                 BinLsb          = GetBinLsb(),
@@ -278,7 +287,7 @@ namespace AudioHexViewer
         public void ApplyHistogramSettings(AudioHexViewer.HistogramSettings s)
         {
             if (s == null) return;
-            chkDcMode.Checked = s.AC;
+            _dcMode = s.AC;
             int ci = comboChannel.Items.IndexOf(s.Channel);
             if (ci >= 0) comboChannel.SelectedIndex = ci;
             int ri = comboRangeLsb.Items.IndexOf(s.RangeLsb.ToString());
@@ -409,7 +418,7 @@ namespace AudioHexViewer
             foreach (var v in BinLsbOptions) comboBinLsb.Items.Add(v.ToString());
 
             comboChannel.SelectedItem = "Both";
-            chkDcMode.Checked = true;
+            _dcMode = true;
 
             comboRangeLsb.SelectedIndex = FindClosestIndex(RangeLsbOptions, 4194304);
             comboBinLsb.SelectedIndex   = FindClosestIndex(BinLsbOptions, 32768);
@@ -449,6 +458,149 @@ namespace AudioHexViewer
                 ? (int)Math.Max(10, Math.Round(GetWindowSamples() * 1000.0 / _sampleRate))
                 : 1000;
         }
+
+        // ── Panneau de contrôle — nouveaux boutons toggle ──────────────────────
+        private void InitPanelButtons()
+        {
+            UpdateDcAcHistVisual();
+            btnDcAcHist.Click += (_, _) => { _dcMode = !_dcMode; UpdateDcAcHistVisual(); RebuildHistogram(); };
+
+            UpdateHistToggle(btnGauss, _gaussEnabled);
+            btnGauss.Click += (_, _) => { _gaussEnabled = !_gaussEnabled; UpdateHistToggle(btnGauss, _gaussEnabled); RebuildHistogram(); };
+
+            UpdateHistToggle(btnNorm, _normEnabled);
+            btnNorm.Click += (_, _) => { _normEnabled = !_normEnabled; UpdateHistToggle(btnNorm, _normEnabled); RebuildHistogram(); };
+
+            UpdateHistToggle(btnNSigma, _vbarsEnabled);
+            comboSigma.Enabled = _vbarsEnabled;
+            btnNSigma.Click += (_, _) =>
+            {
+                _vbarsEnabled = !_vbarsEnabled;
+                UpdateHistToggle(btnNSigma, _vbarsEnabled);
+                comboSigma.Enabled = _vbarsEnabled;
+                chartHistogram.Invalidate();
+            };
+
+            UpdateHistToggle(btnDiff, _diffEnabled);
+            btnDiff.Click += (_, _) =>
+            {
+                _diffEnabled = !_diffEnabled;
+                _isDiff = _diffEnabled;
+                UpdateHistToggle(btnDiff, _diffEnabled);
+                RebuildHistogram();
+            };
+
+            UpdateLockScaleVisual();
+            btnLockScale.Click += (_, _) =>
+            {
+                _scaleLocked = !_scaleLocked;
+                _isScaleLocked = _scaleLocked;
+                UpdateLockScaleVisual();
+                if (!_scaleLocked) RebuildHistogram();
+            };
+
+            comboAveraging.SelectedIndexChanged += (_, _) => ResetHistAvg();
+        }
+
+        // ── Averaging state ────────────────────────────────────────────────────
+        private long[]? _avgAccumL = null;
+        private long[]? _avgAccumR = null;
+        private int     _avgCountL = 0;
+        private int     _avgCountR = 0;
+
+        private int GetHistAvgTarget()
+        {
+            if (comboAveraging == null) return 1;
+            return comboAveraging.SelectedIndex switch
+            {
+                1 => 2, 2 => 4, 3 => 8, 4 => 16,
+                5 => 32, 6 => 64, 7 => 128,
+                _ => 1
+            };
+        }
+
+        private void ResetHistAvg()
+        {
+            _avgAccumL = null; _avgCountL = 0;
+            _avgAccumR = null; _avgCountR = 0;
+            UpdateAvgCountLabel();
+        }
+
+        private void UpdateAvgCountLabel()
+        {
+            if (lblAvgCountHist == null) return;
+            int target = GetHistAvgTarget();
+            if (target <= 1) { lblAvgCountHist.Text = ""; return; }
+            int current = Math.Min(Math.Max(_avgCountL, _avgCountR), target);
+            lblAvgCountHist.Text      = current.ToString();
+            lblAvgCountHist.ForeColor = current >= target ? Color.Green : Color.Firebrick;
+        }
+
+        private int[]? AccumulateAvg(int[] bins, bool isLeft)
+        {
+            int target = GetHistAvgTarget();
+            if (target <= 1)
+            {
+                if (isLeft) { _avgAccumL = null; _avgCountL = 0; }
+                else        { _avgAccumR = null; _avgCountR = 0; }
+                UpdateAvgCountLabel();
+                return bins;
+            }
+            ref long[]? accum = ref isLeft ? ref _avgAccumL : ref _avgAccumR;
+            ref int     count = ref isLeft ? ref _avgCountL : ref _avgCountR;
+            int n = bins.Length;
+            if (accum == null || accum.Length != n) { accum = new long[n]; count = 0; }
+            if (count >= target)
+                for (int i = 0; i < n; i++) accum[i] = accum[i] - accum[i] / target + bins[i];
+            else
+            {
+                for (int i = 0; i < n; i++) accum[i] += bins[i];
+                count++;
+            }
+            UpdateAvgCountLabel();
+            int divisor = Math.Min(count, target);
+            var result  = new int[n];
+            for (int i = 0; i < n; i++) result[i] = (int)(accum[i] / divisor);
+            return result;
+        }
+
+        // Overlay: delegated to Form1 via event (HistogramControl doesn't implement IOverlayHost)
+        public event EventHandler? OverlayRequested;
+
+        private void BtnOverlay_Click(object? sender, EventArgs e)
+            => OverlayRequested?.Invoke(this, EventArgs.Empty);
+
+        private void UpdateDcAcHistVisual()
+        {
+            // DC mode (_dcMode=true) = garder DC = vert
+            // AC mode (_dcMode=false) = retirer DC = normal
+            bool isDc = _dcMode;
+            btnDcAcHist.Text = isDc ? "DC" : "AC";
+            btnDcAcHist.UseVisualStyleBackColor = !isDc;
+            btnDcAcHist.BackColor = isDc ? Color.LightGreen : SystemColors.Control;
+            btnDcAcHist.ForeColor = Color.Black;
+        }
+
+        private static void UpdateHistToggle(Button b, bool active)
+        {
+            b.UseVisualStyleBackColor = !active;
+            b.BackColor = active ? Color.LightGreen : SystemColors.Control;
+            b.ForeColor = Color.Black;
+        }
+
+        private void UpdateLockScaleVisual()
+        {
+            bool locked = _scaleLocked;
+            btnLockScale.Text = locked ? "LOCK" : "AUTO";
+            btnLockScale.UseVisualStyleBackColor = !locked;
+            btnLockScale.BackColor = locked ? Color.LightGreen : SystemColors.Control;
+            btnLockScale.ForeColor = Color.Black;
+        }
+
+        private void BtnResetAvgHist_Click(object? sender, EventArgs e)
+            => ResetHistAvg();
+
+
 
         // ══════════════════════════════════════════════════════════════════════
         // Proportions : marge droite pour le panneau stats (= SpectrumControl)
@@ -571,7 +723,7 @@ namespace AudioHexViewer
         private void ChkDcMode_CheckedChanged(object sender, EventArgs e)             => RebuildHistogram();
         private void ChkLockScale_CheckedChanged(object sender, EventArgs e)
         {
-            _isScaleLocked = chkLockScale.Checked;
+            _isScaleLocked = _scaleLocked;
             if (_isScaleLocked && chartHistogram.ChartAreas.Count > 0)
             {
                 // Capture l'échelle actuelle au moment du verrouillage
@@ -588,7 +740,7 @@ namespace AudioHexViewer
         private void ChkMarkers_CheckedChanged(object sender, EventArgs e)        => chartHistogram.Invalidate();
         private void ChkDiff_CheckedChanged(object sender, EventArgs e)
         {
-            _isDiff = chkDiff.Checked;
+            _isDiff = _diffEnabled;
             RebuildHistogram();
         }
         private void ComboSigma_SelectedIndexChanged(object sender, EventArgs e)  => chartHistogram.Invalidate();
@@ -615,7 +767,7 @@ namespace AudioHexViewer
             }
 
             string mode = comboChannel.SelectedItem as string ?? "Both";
-            bool ac = !chkDcMode.Checked;
+            bool ac = !_dcMode;
 
             int lsbRange = Math.Max(1, GetRangeLsb());
             int binWidth = Math.Max(1, GetBinLsb());
@@ -726,10 +878,14 @@ namespace AudioHexViewer
 
             // ── Normalisation PDF ───────────────────────────────────────────
             // Quand ChkNorm est coché, chaque bin est divisé par (N·binWidth) → densité en 1/LSB.
-            bool isNorm = ChkNorm.Checked;
+            bool isNorm = _normEnabled;
             _isNormalized = isNorm;
 
-            // Séries — couleurs issues de SpectrumColorSettings
+            // ── Averaging ───────────────────────────────────────────────────
+            if (binsLeft  != null) binsLeft  = AccumulateAvg(binsLeft,  isLeft: true)  ?? binsLeft;
+            if (binsRight != null) binsRight = AccumulateAvg(binsRight, isLeft: false) ?? binsRight;
+
+            // ── Séries — couleurs issues de SpectrumColorSettings
             chartHistogram.Series.Clear();
 
             // ── Helper : vue différentielle (mesuré − gaussienne idéale) ─────
@@ -774,7 +930,7 @@ namespace AudioHexViewer
             // Dessinée APRÈS les barres pour passer au premier plan.
             // Formule : y = (N·bw / (σ·√(2π))) · exp(−(x−μ)²/(2σ²))
             // N = count en fenêtre, bw = binWidth → le pic correspond au count max attendu.
-            if (ChkGauss.Checked && !_isDiff)
+            if (_gaussEnabled && !_isDiff)
             {
                 void AddGaussSeries(string name, StatsData d, Color baseColor)
                 {
@@ -905,7 +1061,7 @@ namespace AudioHexViewer
             var panelRect = RectangleF.FromLTRB(pLeft, pTop, pRight, pBot);
 
             // ── Marqueurs ±nσ sur le plot ────────────────────────────────────
-            if (ChkMarkers.Checked)
+            if (_vbarsEnabled)
             {
                 int nSigma = Math.Max(1, Math.Min(3, comboSigma.SelectedIndex + 1));
                 string chanMode = comboChannel.SelectedItem as string ?? "Both";

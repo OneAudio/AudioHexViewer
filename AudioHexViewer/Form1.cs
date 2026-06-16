@@ -2123,6 +2123,10 @@ namespace AudioHexViewer
                     else EnsureReadStoppedIfNoTabRunning();
                 };
 
+                // Overlay: delegate to spectrumControl which implements IOverlayHost
+                histogramControl.OverlayRequested += (_, _) =>
+                    spectrumControl?.ShowOverlayForm();
+
                 histogramControl.Dock = DockStyle.Fill;
                 histogramControl.SetGlobalSampleSize(analysisSampleSize);
                 histogramControl.UpdateHopSamples(analysisHopSamples);

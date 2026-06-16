@@ -377,5 +377,8 @@ namespace AudioHexViewer
             OpenOverlaysWindow();
         }
 
+        /// <summary>Opens the overlay window — callable from other tabs (e.g. HistogramControl).</summary>
+        public void ShowOverlayForm() => OpenOverlaysWindow();
+
     }
 }
