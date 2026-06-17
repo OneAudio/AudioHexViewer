@@ -354,17 +354,10 @@ namespace AudioHexViewer
                 return;
             }
 
-            if (v >= 1000.0)
+            if (v >= 0.0)
             {
-                double k = v / 1000.0;
-
-                // 1k, 2k, 10k, 20k... (et 1.5k si un jour ça arrive)
-                bool isInt = Math.Abs(k - Math.Round(k)) < 1e-9;
-                e.LocalizedValue = isInt ? $"{k:0}k" : $"{k:0.#}k";
-            }
-            else if (v >= 0.0)
-            {
-                e.LocalizedValue = $"{v:0}";
+                // LIN : utilise le pas majeur courant pour adapter la précision
+                e.LocalizedValue = FormatHzKWithStep(v, _axisXMajorStepHz);
             }
             else
             {
@@ -757,26 +750,14 @@ namespace AudioHexViewer
                     if (_isRestoringSettings)
                         return;
 
+                    // Fmin/Fmax sont conservés lors du passage LOG↔LIN, avec validation.
                     if (chkLogX.Checked)
                     {
-                        // LIN → LOG
-                        // On sauvegarde la plage LIN courante, puis on restaure la plage LOG
-                        // mémorisée. Si aucune plage LOG n'a encore été définie (?? null),
-                        // on hérite de la plage LIN (carry-over) pour ne pas perdre le réglage.
-                        double? prevFMin = customFMin;
-                        double? prevFMax = customFMax;
-                        _customFMinLin = prevFMin;
-                        _customFMaxLin = prevFMax;
-                        customFMin = _customFMinLog ?? prevFMin;
-                        customFMax = _customFMaxLog ?? prevFMax;
-
-                        // Valider customFMin pour le mode LOG : > 0 et >= décade de ΔF
+                        // LIN → LOG : fMin doit être > 0
                         if (customFMin.HasValue)
                         {
                             if (customFMin.Value <= 0)
-                            {
-                                customFMin = null;
-                            }
+                                customFMin = null;  // 0 Hz invalide en LOG → auto (ΔF)
                             else if (_sampleRate > 0 && lastFftSize > 0)
                             {
                                 double deltaF    = (double)_sampleRate / lastFftSize;
@@ -785,27 +766,19 @@ namespace AudioHexViewer
                                     customFMin = null;
                             }
                         }
-                        // Valider customFMax
-                        if (customFMax.HasValue && customFMax.Value <= (customFMin ?? 0))
-                            customFMax = null;
                     }
                     else
                     {
-                        // LOG → LIN
-                        // Même logique : carry-over si pas de plage LIN mémorisée.
-                        double? prevFMin = customFMin;
-                        double? prevFMax = customFMax;
-                        _customFMinLog = prevFMin;
-                        _customFMaxLog = prevFMax;
-                        customFMin = _customFMinLin ?? prevFMin;
-                        customFMax = _customFMaxLin ?? prevFMax;
-
-                        // Valider customFMin pour le mode LIN : >= 0
-                        if (customFMin.HasValue && customFMin.Value < 0)
-                            customFMin = null;
-                        // Valider customFMax
-                        if (customFMax.HasValue && customFMax.Value <= (customFMin ?? 0))
-                            customFMax = null;
+                        // LOG → LIN : si customFMin est une valeur "technique" ΔF
+                        // (inférieure à la première décade significative), la remettre à null
+                        // pour que LIN utilise fMinAuto = 0 Hz.
+                        if (customFMin.HasValue && _sampleRate > 0 && lastFftSize > 0)
+                        {
+                            double deltaF = (double)_sampleRate / lastFftSize;
+                            // Seuil : si fMin ≤ 10×ΔF, c'est probablement une valeur auto LOG
+                            if (customFMin.Value <= deltaF * 10.0)
+                                customFMin = null;  // → LIN démarrera à 0 Hz
+                        }
                     }
 
                     // IMPORTANT (anti-artifacts)
@@ -974,6 +947,15 @@ namespace AudioHexViewer
                 else
                     dlg.MainYScale = SpectrumAxisDialog.YScaleMode.Dbfs;
 
+                // IMPORTANT : SampleRateHz et FftSizeN doivent être définis EN PREMIER.
+                // SyncFromMinMax/SyncFromCenterSpan utilisent Nyq et SpanMin qui dépendent
+                // de ces valeurs. Les définir après FMinHz/FMaxHz corrompait les bornes
+                // (Nyq=0 → ClampSpanForCenter réduisait le span à SpanMin=1 Hz).
+                dlg.SampleRateHz = _sampleRate;
+                double fmaxCap = SpectrumAxisDialog.GetAllowedFmax(_sampleRate);
+                dlg.SetFmaxMaximum(fmaxCap);
+                dlg.FftSizeN = lastFftSize;
+
                 // IMPORTANT: set YMax first, then YMin (YMin is derived via the selected range).
                 dlg.YMax = yMaxCurrent;
                 dlg.YMin = yMinCurrent;
@@ -988,16 +970,8 @@ namespace AudioHexViewer
                 dlg.PhaseMaxDeg = customPhaseMax ?? 180.0;
                 dlg.PhaseMinDeg = customPhaseMin ?? -180.0;
 
-
-
-                dlg.SampleRateHz = _sampleRate;
-                // 🔧 Ajuster dynamiquement la borne max de Fmax
-                double fmaxCap = SpectrumAxisDialog.GetAllowedFmax(_sampleRate);
-                dlg.SetFmaxMaximum(fmaxCap);
-
                 dlg.FitYProvider = GetCurrentYRangeGlobal;
                 dlg.FitY2Provider = GetVisiblePhaseRangeDeg_ForFitY2;
-                dlg.FftSizeN = lastFftSize;
 
                 // Pré-sélectionner l'unité verticale courante
                 dlg.VerticalUnit = _levelUnit;
@@ -1027,17 +1001,7 @@ namespace AudioHexViewer
                     customFMin = dlg.FMinHz;   // plus de *1000
                     customFMax = dlg.FMaxHz;
 
-                    // Mémoriser le customFMin/FMax dans les variables du mode courant
-                    if (chkLogX?.Checked == true)
-                    {
-                        _customFMinLog = customFMin;
-                        _customFMaxLog = customFMax;
-                    }
-                    else
-                    {
-                        _customFMinLin = customFMin;
-                        _customFMaxLin = customFMax;
-                    }
+
 
                     if (phaseUiEnabled)
                     {
@@ -1121,6 +1085,51 @@ namespace AudioHexViewer
         }
 
         //
+        // Formate une fréquence avec une précision adaptée au pas de graduation LIN.
+        // Exemples : (9950, 50)→"9.95k"  (9975, 25)→"9.975k"  (10000, 1000)→"10k"
+        private static string FormatHzKWithStep(double hz, double stepHz)
+        {
+            if (double.IsNaN(hz) || double.IsInfinity(hz)) return "";
+            if (stepHz <= 0) stepHz = Math.Max(1.0, Math.Abs(hz) / 10.0);
+
+            // Éviter "-0" pour des valeurs proches de zéro
+            if (Math.Abs(hz) < 1e-9) return "0";
+
+            if (hz >= 1000.0)
+            {
+                double khz     = hz / 1000.0;
+                double stepKhz = stepHz / 1000.0;
+
+                // Décimales selon le pas ET selon la valeur elle-même
+                // (évite d'arrondir 12,5k → "13k" quand dec=0)
+                int dec = 0;
+                if (stepKhz < 1.0)  dec = 1;
+                if (stepKhz < 0.1)  dec = 2;
+                if (stepKhz < 0.01) dec = 3;
+
+                // S'assurer que la valeur est représentable sans erreur d'arrondi
+                for (int d2 = dec; d2 <= 3; d2++)
+                {
+                    double rounded = Math.Round(khz, d2);
+                    if (Math.Abs(rounded - khz) < 0.0005) { dec = d2; break; }
+                    dec = d2 + 1;
+                }
+                dec = Math.Min(dec, 3);
+
+                string fmt = dec == 0 ? "0" : "0." + new string('#', dec);
+                return khz.ToString(fmt, System.Globalization.CultureInfo.InvariantCulture) + "k";
+            }
+            else if (hz >= 0)
+            {
+                int dec = 0;
+                if (stepHz < 10.0) dec = 1;
+                if (stepHz < 1.0)  dec = 2;
+                string fmt = dec == 0 ? "0" : "0." + new string('#', dec);
+                return hz.ToString(fmt, System.Globalization.CultureInfo.InvariantCulture);
+            }
+            return "";
+        }
+
         private static string FormatHzK(double hz)
         {
             if (hz < 1.0)
@@ -1445,18 +1454,19 @@ namespace AudioHexViewer
             int spanHz, int plotWidthPx = 800)
         {
             // Nombre de divisions cible selon la largeur physique du plot.
-            // Cible : ~100 px par division majeure (ni trop dense, ni trop vide).
-            const int targetPxPerDiv = 100;
-            int targetSeg = Math.Max(3, Math.Min(16, plotWidthPx / targetPxPerDiv));
+            int targetPxPerDiv = spanHz < 1000 ? 140 : (spanHz < 5000 ? 120 : 100);
+            int targetSeg = Math.Max(3, Math.Min(12, plotWidthPx / targetPxPerDiv));
             int minSeg = Math.Max(3,  targetSeg - 2);
-            int maxSeg = Math.Min(16, targetSeg + 3);
+            int maxSeg = Math.Min(12, targetSeg + 2);
 
             // 1) Si span exact dans la plage [minSeg, maxSeg] => on prend direct
             if (TryChooseBestExactStep(spanHz, out int seg, out int step, minSeg, maxSeg))
                 return (seg, step, spanHz);
 
-            // 2) Sinon, on ajuste span autour de spanHz (recherche locale)
-            const int searchRadius = 2000;
+            // 2) Recherche locale avec rayon LIMITÉ à 25% du span.
+            //    On évite d'élargir excessivement la plage pour trouver un step "plus rond" :
+            //    ex. span=20Hz → ne pas accepter span=30Hz juste pour avoir step=10Hz au lieu de 5Hz.
+            int searchRadius = Math.Max(10, spanHz / 4);
 
             int bestSeg = 0;
             int bestStep = 0;

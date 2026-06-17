@@ -994,33 +994,44 @@ namespace AudioHexViewer
                             (float)area.AxisX.ValueToPixelPosition(fMin + xMajor) -
                             (float)area.AxisX.ValueToPixelPosition(fMin));
 
-                        string sampleTxt    = FormatHzK(fMin + xMajor * 0.4);
-                        float  minorLabelW  = g_lin.MeasureString(sampleTxt, minorFont).Width;
-                        float  minPxPerDiv  = minorLabelW + 6f * sExport;
+                        // ── Sélection du pas mineur par liste de pas "audio naturels" ──
+                        // Au lieu de diviser xMajor par un diviseur fixe, on cherche le plus
+                        // grand pas naturel (1, 2, 5, 10, 20, 50, 100... Hz) qui :
+                        //   1) divise xMajor en un nombre entier de subdivisions
+                        //   2) laisse assez de place pour le label (marge ×1.8 pour tenir compte
+                        //      de la zone d'exclusion autour des labels majeurs)
+                        //   3) n'est pas une valeur à virgule en kHz (évite "12,5k" → "13k")
 
-                        // Chercher le meilleur diviseur entier avec espace
+                        // Label représentatif : valeur typique d'un label mineur
+                        string sampleTxt = FormatHzKWithStep(fMin + xMajor * 0.5 + 1, 0);
+                        float  minorLabelW = g_lin.MeasureString(sampleTxt, minorFont).Width
+                                          + 4f * sExport; // + marge inter-labels
+
+                        float minPxPerMinor = minorLabelW * 1.8f;
+
+                        // Pas naturels décroissants (du plus grossier au plus fin)
+                        double[] niceSteps = {
+                            100000, 50000, 20000, 10000, 5000, 2000, 1000,
+                            500, 200, 100, 50, 20, 10, 5, 2, 1,
+                            0.5, 0.2, 0.1
+                        };
+
                         xMinor = 0;
-                        foreach (int d in new[] { 10, 5, 4, 2 })
+                        foreach (double ns in niceSteps)
                         {
-                            double cand = xMajor / d;
-                            if (cand <= 0) continue;
-                            bool isInt    = Math.Abs(cand - Math.Round(cand)) < 1e-6;
-                            bool hasSpace = (xPxPerMajor / d) >= minPxPerDiv;
-                            if (isInt && hasSpace) { xMinor = cand; break; }
+                            if (ns >= xMajor) continue;           // pas trop grand
+                            double ratio = xMajor / ns;
+                            if (Math.Abs(ratio - Math.Round(ratio)) > 1e-9) continue; // divise xMajor ?
+                            double pxPerNs = xPxPerMajor / ratio;
+                            if (pxPerNs < minPxPerMinor) continue; // assez de place ?
+                            // Pas kHz-entier pour les valeurs ≥ 1000 Hz
+                            if (ns >= 1000 && Math.Abs(ns / 1000.0 - Math.Round(ns / 1000.0)) > 1e-9)
+                                continue;
+                            xMinor = ns;
+                            break;
                         }
 
-                        // Fallback : diviseur le plus grossier avec espace (pas forcément entier)
-                        if (xMinor <= 0)
-                        {
-                            foreach (int d in new[] { 2, 4, 5, 10 })
-                            {
-                                double cand = xMajor / d;
-                                if (cand <= 0) continue;
-                                if ((xPxPerMajor / d) >= minPxPerDiv) { xMinor = cand; break; }
-                            }
-                        }
-
-                        // Fallback absolu
+                        // Fallback absolu (pas naturel le plus grossier possible)
                         if (xMinor <= 0) xMinor = xMajor / 2.0;
 
                         // Synchroniser la grille native
@@ -1036,7 +1047,7 @@ namespace AudioHexViewer
                             double q = (fm - fMin) / xMajor;
                             if (Math.Abs(q - Math.Round(q)) > 1e-6) continue;
                             float  xPx = (float)area.AxisX.ValueToPixelPosition(fm);
-                            var    sz  = g_lin.MeasureString(FormatHzK(fm), majorFont);
+                            var    sz  = g_lin.MeasureString(FormatHzKWithStep(fm, xMajor), majorFont);
                             float  xL  = xPx - sz.Width / 2f;
                             majorRanges.Add((xL - 4f * sExport, xL + sz.Width + 4f * sExport));
                         }
@@ -1064,7 +1075,7 @@ namespace AudioHexViewer
                                 g_lin.Restore(sv);
 
                                 // Label mineur
-                                string lbl   = FormatHzK(f);
+                                string lbl   = FormatHzKWithStep(f, xMinor);
                                 var    sz2   = g_lin.MeasureString(lbl, minorFont);
                                 float  xText = xPixel - sz2.Width / 2f;
                                 float  yText = bottom + minorTickLen + 2f * sExport;

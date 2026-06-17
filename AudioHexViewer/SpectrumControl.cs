@@ -485,12 +485,9 @@ namespace AudioHexViewer
         // Axes personnalisés (null = auto)
         private double? customYMin = null;
         private double? customYMax = null;
-        private double? customFMin = null;   // en Hz — valeur active (LOG ou LIN selon mode)
+        private double? customFMin = null;   // en Hz
         private double? customFMax = null;   // en Hz
-        private double? _customFMinLog = null;  // mémorisé pour restauration au retour en LOG
-        private double? _customFMinLin = null;  // mémorisé pour restauration au retour en LIN
-        private double? _customFMaxLog = null;  // idem pour FMax
-        private double? _customFMaxLin = null;
+        private double _axisXMajorStepHz = 1000.0; // pas majeur LIN courant (pour formatage labels)
 
         private double? customPhaseMin = null; // deg
         private double? customPhaseMax = null; // deg
@@ -1815,7 +1812,8 @@ namespace AudioHexViewer
             else
             {
                 fMinAuto = 0.0;
-                area.AxisX.IsMarginVisible = true;
+                area.AxisX.IsMarginVisible = false;  // désactivé : évite le padding
+                                                       // automatique qui décale le 0 vers ΔF
             }
 
 
@@ -2074,6 +2072,7 @@ namespace AudioHexViewer
 
                     var grid = ChooseBestStepWithSpanAdjustment(spanHz, plotWidthPx);
                     double xMajor = grid.StepHz;
+                    _axisXMajorStepHz = xMajor; // mémorisé pour FormatHzKWithStep
 
                     double fMaxAdjusted = fMin + grid.SpanAdjustedHz;
 

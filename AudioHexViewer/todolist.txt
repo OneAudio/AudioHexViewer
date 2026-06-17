@@ -4,10 +4,10 @@ Le 30/05/2026
 -------------
 
 Liste des petites corrections à faire :
+Refaire propre les menus de test F9/F10 pour la THD ?
 
-2- Finir de réorganiser le panneau spectrum
-
-Faire pareil coté interface de l'histogramme.
+Revoir le fonctionnement de l'axe X de spectrum
+Revoir le fonctionnement de l'axe Y de spectrum
 
 A faire aussi Aprés :
 1) Mettre des icônes dans la bande grise libérée.
