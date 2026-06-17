@@ -768,6 +768,8 @@ namespace AudioHexViewer
             {
                 _updating = false;
             }
+
+            PreviewChanged?.Invoke();
         }
 
         private void SyncFromCenterSpan()
@@ -815,6 +817,8 @@ namespace AudioHexViewer
             {
                 _updating = false;
             }
+
+            PreviewChanged?.Invoke();
         }
 
         private double ClampSpanForCenter(double span, double center)

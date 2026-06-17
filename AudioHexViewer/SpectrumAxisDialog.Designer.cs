@@ -177,6 +177,7 @@ namespace AudioHexViewer
             tabX.Controls.AddRange(new Control[] { tabMinMax, tabCenterSpan });
             Controls.Add(tabX);
 
+
             // ════════════════════════════════════════════════════════════════
             //  BUTTONS
             // ════════════════════════════════════════════════════════════════

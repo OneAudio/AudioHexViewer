@@ -485,8 +485,12 @@ namespace AudioHexViewer
         // Axes personnalisés (null = auto)
         private double? customYMin = null;
         private double? customYMax = null;
-        private double? customFMin = null;   // en Hz
+        private double? customFMin = null;   // en Hz — valeur active (LOG ou LIN selon mode)
         private double? customFMax = null;   // en Hz
+        private double? _customFMinLog = null;  // mémorisé pour restauration au retour en LOG
+        private double? _customFMinLin = null;  // mémorisé pour restauration au retour en LIN
+        private double? _customFMaxLog = null;  // idem pour FMax
+        private double? _customFMaxLin = null;
 
         private double? customPhaseMin = null; // deg
         private double? customPhaseMax = null; // deg
@@ -1861,7 +1865,7 @@ namespace AudioHexViewer
                 //yMinAuto = -160.0;
                 //yMaxAuto = 40.0;
                 useDbvAxis = false; // pas de dBV sur un ratio
-                area.AxisY.Title = "Gain (dB)";
+                area.AxisY.Title = "";  // dessiné en PostPaint
             }
 
             // --- Axe Y2 : Phase (uniquement en mode Bode Plot ET phase activée) ---
@@ -1915,11 +1919,11 @@ namespace AudioHexViewer
                     yMaxAuto += shifts.Max();
                 }
 
-                area.AxisY.Title = "Level (dBV)";
+                area.AxisY.Title = "";  // dessiné en PostPaint
             }
             else
             {
-                area.AxisY.Title = "Level (dBFS)";
+                area.AxisY.Title = "";  // dessiné en PostPaint
             }
 
             // Cap sur le range auto pour éviter un axe Y qui parte trop haut
@@ -1962,10 +1966,10 @@ namespace AudioHexViewer
             bool _axChanged =
                 double.IsNaN(_axCachedFmin) ||
                 double.IsNaN(_axCachedYmin) ||
-                Math.Abs(fMin - _axCachedFmin) > 0.01 ||
-                Math.Abs(fMax - _axCachedFmax) > 0.01 ||
-                Math.Abs(yMin - _axCachedYmin) > 0.01 ||
-                Math.Abs(yMax - _axCachedYmax) > 0.01 ||
+                Math.Abs(fMin - _axCachedFmin) > Math.Max(1e-3, Math.Abs(_axCachedFmin) * 1e-6) ||
+                Math.Abs(fMax - _axCachedFmax) > Math.Max(1e-3, Math.Abs(_axCachedFmax) * 1e-6) ||
+                Math.Abs(yMin - _axCachedYmin) > Math.Max(1e-3, Math.Abs(_axCachedYmin) * 1e-6) ||
+                Math.Abs(yMax - _axCachedYmax) > Math.Max(1e-3, Math.Abs(_axCachedYmax) * 1e-6) ||
                 Math.Abs(yMinor - _axCachedYminor) > 1e-6 ||
                 useLog != _axCachedUseLog ||
                 chartSpectrum.ClientSize != _axCachedChartSize;

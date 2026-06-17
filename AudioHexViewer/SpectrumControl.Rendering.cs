@@ -135,6 +135,14 @@ namespace AudioHexViewer
             if (_cursorLineR != null) _cursorLineR.LineColor = Color.FromArgb(180, FftRightColor);
         }
 
+        // Suffixe d'unité pour les labels Y selon le mode courant.
+        // Bode Plot → " dB", dBV → " dBV", dBFS → " dBFS"
+        private string YUnitSuffix()
+        {
+            if (SelectedChannelMode == "Bode Plot") return " dB";
+            return _levelUnit == "dBV" ? " dBV" : " dBFS";
+        }
+
         private static string FormatDbMinor(double db, double stepMinor)
         {
             if (!(stepMinor > 0))
@@ -501,7 +509,7 @@ namespace AudioHexViewer
             var area0 = chartSpectrum.ChartAreas[0];
             area0.Name = "SpectrumArea";
             area0.AxisX.Title = "";  // titre dessiné en PostPaint pour contrôle précis du Y
-            area0.AxisY.Title = "Level (dBFS)";
+            area0.AxisY.Title = "";  // dessiné en PostPaint
             area0.AxisY.Minimum = -200;
             area0.AxisY.Maximum = 0;
 
@@ -749,24 +757,60 @@ namespace AudioHexViewer
                     if (_isRestoringSettings)
                         return;
 
-                    // Bascule LIN→LOG : réinitialiser customFMin inconditionnellement.
-                    //
-                    // Problème fondamental : customFMin peut contenir n'importe quelle valeur
-                    // saisie en LIN (y compris 0, ou sub-Hz comme 0,001 Hz) qui est invalide
-                    // pour l'axe LOG. Toutes les tentatives de "corriger conditionnellement"
-                    // (si < ΔF, si <= 0…) ont échoué car fMinAuto peut lui-même être
-                    // incorrect dans certains états transitoires.
-                    //
-                    // Solution définitive : en passant en LOG, on part toujours de l'auto
-                    // (fMinAuto = ΔF courant, décade inférieure). L'utilisateur qui souhaite
-                    // un Fmin custom en LOG l'entre via le dialog APRÈS avoir basculé en LOG,
-                    // où la validation contre ΔF se fait correctement.
                     if (chkLogX.Checked)
-                        customFMin = null;
+                    {
+                        // LIN → LOG
+                        // On sauvegarde la plage LIN courante, puis on restaure la plage LOG
+                        // mémorisée. Si aucune plage LOG n'a encore été définie (?? null),
+                        // on hérite de la plage LIN (carry-over) pour ne pas perdre le réglage.
+                        double? prevFMin = customFMin;
+                        double? prevFMax = customFMax;
+                        _customFMinLin = prevFMin;
+                        _customFMaxLin = prevFMax;
+                        customFMin = _customFMinLog ?? prevFMin;
+                        customFMax = _customFMaxLog ?? prevFMax;
+
+                        // Valider customFMin pour le mode LOG : > 0 et >= décade de ΔF
+                        if (customFMin.HasValue)
+                        {
+                            if (customFMin.Value <= 0)
+                            {
+                                customFMin = null;
+                            }
+                            else if (_sampleRate > 0 && lastFftSize > 0)
+                            {
+                                double deltaF    = (double)_sampleRate / lastFftSize;
+                                double minDecade = Math.Pow(10.0, Math.Floor(Math.Log10(deltaF)));
+                                if (customFMin.Value < minDecade)
+                                    customFMin = null;
+                            }
+                        }
+                        // Valider customFMax
+                        if (customFMax.HasValue && customFMax.Value <= (customFMin ?? 0))
+                            customFMax = null;
+                    }
+                    else
+                    {
+                        // LOG → LIN
+                        // Même logique : carry-over si pas de plage LIN mémorisée.
+                        double? prevFMin = customFMin;
+                        double? prevFMax = customFMax;
+                        _customFMinLog = prevFMin;
+                        _customFMaxLog = prevFMax;
+                        customFMin = _customFMinLin ?? prevFMin;
+                        customFMax = _customFMaxLin ?? prevFMax;
+
+                        // Valider customFMin pour le mode LIN : >= 0
+                        if (customFMin.HasValue && customFMin.Value < 0)
+                            customFMin = null;
+                        // Valider customFMax
+                        if (customFMax.HasValue && customFMax.Value <= (customFMin ?? 0))
+                            customFMax = null;
+                    }
 
                     // IMPORTANT (anti-artifacts)
-                    // Le passage LOG <-> LIN change l'echantillonnage visuel de l'axe X
-                    // et peut faire apparaitre un 'ghost' d'une moyenne precedente.
+                    // Le passage LOG <-> LIN change l'échantillonnage visuel de l'axe X
+                    // et peut faire apparaître un ghost d'une moyenne précédente.
                     ResetAveragingState();
 
                     UpdateSpectrumChartAndStats();
@@ -913,6 +957,10 @@ namespace AudioHexViewer
             double fMinCurrent = customFMin ?? area.AxisX.Minimum;   // Hz
             double fMaxCurrent = customFMax ?? area.AxisX.Maximum;   // Hz
 
+            // Sauvegarde pour restauration si Cancel
+            double? savedFMin = customFMin;
+            double? savedFMax = customFMax;
+
             using (var dlg = new SpectrumAxisDialog())
             {
                 // Main Y axis unit must be set before injecting YMin/YMax (so the dialog can clamp/round correctly).
@@ -954,13 +1002,42 @@ namespace AudioHexViewer
                 // Pré-sélectionner l'unité verticale courante
                 dlg.VerticalUnit = _levelUnit;
 
-                if (dlg.ShowDialog(FindForm()) == DialogResult.OK)
+                // Preview live : mettre à jour le graphe à chaque changement de plage X
+                dlg.PreviewChanged = () =>
+                {
+                    customFMin = dlg.FMinHz;
+                    customFMax = dlg.FMaxHz;
+                    if (!isLive) UpdateSpectrumChartAndStats();
+                    else        chartSpectrum.Invalidate();
+                };
+
+                if (dlg.ShowDialog(FindForm()) != DialogResult.OK)
+                {
+                    // Cancel : restaurer les valeurs d'avant le preview
+                    customFMin = savedFMin;
+                    customFMax = savedFMax;
+                    if (!isLive) UpdateSpectrumChartAndStats();
+                    else        chartSpectrum.Invalidate();
+                    return;
+                }
                 {
                     customYMin = dlg.YMin;
                     customYMax = dlg.YMax;
 
                     customFMin = dlg.FMinHz;   // plus de *1000
                     customFMax = dlg.FMaxHz;
+
+                    // Mémoriser le customFMin/FMax dans les variables du mode courant
+                    if (chkLogX?.Checked == true)
+                    {
+                        _customFMinLog = customFMin;
+                        _customFMaxLog = customFMax;
+                    }
+                    else
+                    {
+                        _customFMinLin = customFMin;
+                        _customFMaxLin = customFMax;
+                    }
 
                     if (phaseUiEnabled)
                     {
@@ -1007,12 +1084,18 @@ namespace AudioHexViewer
 
                     // Appliquer l'unité verticale choisie dans le dialog
                     string newUnit = dlg.VerticalUnit;
+                    string prevUnit = _levelUnit;
                     if (newUnit == "dBV" && IsDbvAvailableForCurrentMode())
                         _levelUnit = "dBV";
                     else
                         _levelUnit = "dBFS";
-                    customYMin = null;
-                    customYMax = null;
+                    // Réinitialiser l'échelle Y seulement si l'unité a changé
+                    // (sinon on écrase les valeurs saisies par l'utilisateur)
+                    if (_levelUnit != prevUnit)
+                    {
+                        customYMin = null;
+                        customYMax = null;
+                    }
                     UpdateLevelUnitUi();
 
                     ResetAveragingState();

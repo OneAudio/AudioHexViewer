@@ -567,7 +567,7 @@ namespace AudioHexViewer
 
                             //string txt = y.ToString(fmt, CultureInfo.InvariantCulture);
                             // En mode Bode Plot (FRF), l’axe Y2 correspond à la phase => unité en degrés sur les labels majeurs
-                            string txt = y.ToString(fmt, CultureInfo.InvariantCulture) + " dB";
+                            string txt = y.ToString(fmt, CultureInfo.InvariantCulture) + YUnitSuffix();
 
                             SizeF sz = e.ChartGraphics.Graphics.MeasureString(txt, majorFont);
 
@@ -1112,12 +1112,44 @@ namespace AudioHexViewer
                 var saved = g.Save();
                 g.ResetClip();
 
-                using (var pBorder = new Pen(Color.Black, 1f))
+                using (var pBorder = new Pen(LabelMajorColor, 1f))
                 {
                     g.DrawRectangle(pBorder, x0, y0, x1 - x0, y1 - y0);
                 }
 
                 g.Restore(saved);
+            }
+
+            // ── Titre axe Y dessiné en PostPaint ────────────────────────────────
+            // Le titre natif MS Chart Y est désactivé (Title="") car sa distance
+            // aux labels n'est pas contrôlable. On le dessine ici pivoté à 90°,
+            // à une position X fixe suffisamment à gauche des labels.
+            {
+                string yTitle = (SelectedChannelMode == "Bode Plot") ? "Gain (dB)"
+                              : (_levelUnit == "dBV") ? "Level (dBV)" : "Level (dBFS)";
+
+                var  g    = e.ChartGraphics.Graphics;
+                Font baseFont  = area.AxisY.LabelStyle.Font ?? chart.Font;
+                using (Font titleFont  = new Font(baseFont.FontFamily, baseFont.Size, baseFont.Style))
+                using (var  titleBrush = new SolidBrush(LabelMajorColor))
+                {
+                    var   sz     = g.MeasureString(yTitle, titleFont);
+                    float yTop   = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
+                    float yBot   = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
+                    float yMid   = (yTop + yBot) / 2f;
+
+                    // Le texte pivoté à -90° a une emprise horizontale = sz.Height.
+                    // On le positionne de façon que son bord droit soit à 4px du
+                    // bord gauche du Chart, bien à gauche des labels Y.
+                    float xPivot = sz.Height + 2f * sExport;
+
+                    var saved2 = g.Save();
+                    g.ResetClip();
+                    g.TranslateTransform(xPivot, yMid + sz.Width / 2f);
+                    g.RotateTransform(-90f);
+                    g.DrawString(yTitle, titleFont, titleBrush, 0f, 0f);
+                    g.Restore(saved2);
+                }
             }
 
             // ── Titre axe X dessiné en PostPaint ────────────────────────────────
