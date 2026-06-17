@@ -2119,6 +2119,7 @@ namespace AudioHexViewer
                 histogramControl.RunStateChanged += running =>
                 {
                     _histogramRunning = running;
+                    tabAnalysis?.Invalidate();
                     if (running) EnsureReadRunning();
                     else EnsureReadStoppedIfNoTabRunning();
                 };
@@ -2173,6 +2174,7 @@ namespace AudioHexViewer
                 spectrumControl.RunStateChanged += running =>
                 {
                     _spectrumRunning = running;
+                    tabAnalysis?.Invalidate();
                     if (running)
                     {
                         EnsureReadRunning();
@@ -2267,6 +2269,7 @@ namespace AudioHexViewer
                 oscilloscopeControl.RunStateChanged += running =>
                 {
                     _oscilloscopeRunning = running;
+                    tabAnalysis?.Invalidate();
                     if (running) EnsureReadRunning();
                     else EnsureReadStoppedIfNoTabRunning();
                 };
@@ -2593,6 +2596,44 @@ namespace AudioHexViewer
 
             // Active/désactive le timer selon l'onglet visible
             tabAnalysis.SelectedIndexChanged += (_, _) => UpdateVuInTimer();
+
+            // ── Owner-draw tab headers : vert clair si l'onglet est en RUN ──
+            tabAnalysis.DrawMode = TabDrawMode.OwnerDrawFixed;
+            // "Oscilloscope" est le plus large — on mesure sa largeur + marges
+            tabAnalysis.SizeMode = TabSizeMode.Fixed;
+            using (var g = tabAnalysis.CreateGraphics())
+            using (var fMeasure = new Font(tabAnalysis.Font, FontStyle.Bold))
+            {
+                var sz = g.MeasureString("Oscilloscope", fMeasure);
+                tabAnalysis.ItemSize = new Size((int)Math.Ceiling(sz.Width) + 20, tabAnalysis.ItemSize.Height);
+            }
+            tabAnalysis.DrawItem += (s, e) =>
+            {
+                var tab  = tabAnalysis.TabPages[e.Index];
+                bool isSelected = tabAnalysis.SelectedIndex == e.Index;
+
+                // Détermine si cet onglet est en cours de RUN
+                bool isRunning =
+                    (tab == tabSpectrum      && _spectrumRunning)     ||
+                    (tab == tabOscilloscope  && _oscilloscopeRunning) ||
+                    (tab == tabHistogram     && _histogramRunning);
+
+                // Fond : vert clair si RUN, sinon fond standard
+                Color backColor = isRunning
+                    ? Color.LightGreen
+                    : (isSelected ? SystemColors.Window : SystemColors.Control);
+
+                using var brush = new SolidBrush(backColor);
+                e.Graphics.FillRectangle(brush, e.Bounds);
+
+                // Texte : TextRenderer (GDI) pour rendu ClearType identique au natif
+                var sf    = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                Color textColor = isRunning ? Color.DarkGreen : SystemColors.ControlText;
+                FontStyle fs = isRunning ? FontStyle.Bold : FontStyle.Regular;
+                using var font = new Font(tabAnalysis.Font, fs);
+                TextRenderer.DrawText(e.Graphics, tab.Text, font, e.Bounds, textColor,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+            };
         }
 
         // ── Barre de titre ────────────────────────────────────────────────
