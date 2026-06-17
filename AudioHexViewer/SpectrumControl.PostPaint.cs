@@ -847,128 +847,253 @@ namespace AudioHexViewer
 
             if (useLog)
             {
-                double fMin = area.AxisX.Minimum;
+                // ── Grille LOG complète dessinée par PostPaint (style REW) ───────────
+                // Le Chart natif a ses grilles/ticks/labels X désactivés.
+                // On dessine ici TOUT l'axe X : majeurs (k=1) et mineurs (k=2..9)
+                // pour chaque décade d couvrant [fMin, fMax].
+                //
+                // Règle d'affichage des labels (identique REW) :
+                //   • k=1 (décade) → label MAJEUR, police normale, trait solide
+                //   • k=2..9       → label MINEUR, police réduite, trait pointillé
+                //   • anti-chevauchement : on skip le label si trop proche du précédent
+                //
+                // fMin = valeur réelle (peut être non-décade, ex. 23 Hz ou 340 Hz).
+
+                double fMin = customFMin.HasValue && customFMin.Value > 0
+                              ? customFMin.Value
+                              : area.AxisX.Minimum;
                 double fMax = area.AxisX.Maximum;
 
                 if (fMin <= 0 || fMax <= fMin)
-                    return;
+                    goto skipLogAxis;
 
-                using (Pen minorPen = new Pen(GridMinorColor, 1f))
-                using (Pen tickPen = new Pen(LabelMinorColor, 1f))
                 {
-                    minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
+                    var g_log = e.ChartGraphics.Graphics;
 
-                    float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
+                    float top    = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
                     float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
 
                     Font baseFont = area.AxisX.LabelStyle.Font ?? chart.Font;
+                    using (Font majorFont = new Font(baseFont.FontFamily, baseFont.Size, baseFont.Style))
                     using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
-                    using (Brush minorBrush = new SolidBrush(LabelMinorColor))
+                    using (Pen majorGridPen = new Pen(GridMajorColor, 1f))
+                    using (Pen minorGridPen = new Pen(GridMinorColor, 1f))
+                    using (Pen majorTickPen = new Pen(LabelMajorColor, 1f))
+                    using (Pen minorTickPen = new Pen(LabelMinorColor, 1f))
                     {
-                        float lastLabelRight = float.NegativeInfinity;
+                        minorGridPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
 
-                        double decadeStart = Math.Pow(10, Math.Floor(Math.Log10(fMin)));
-                        double decadeEnd = Math.Pow(10, Math.Ceiling(Math.Log10(fMax)));
+                        // Anti-chevauchement séparé : les majeurs (k=1) sont TOUJOURS
+                        // affichés ; seuls les mineurs (k=2..9) sont soumis au filtre.
+                        float lastMinorLabelRight = float.NegativeInfinity;
 
-                        for (double d = decadeStart; d <= decadeEnd; d *= 10.0)
+                        float majorTickLen = 7f * sExport;
+                        float minorTickLen = 4f * sExport;
+
+                        // Décade de départ : décade inférieure contenant fMin
+                        double decadeStart = Math.Pow(10.0, Math.Floor(Math.Log10(fMin)));
+                        double decadeEnd   = Math.Pow(10.0, Math.Ceiling(Math.Log10(fMax)));
+
+                        // Passe 1 : dessiner les majeurs en premier pour connaître
+                        // leurs emprises et les exclure des mineurs.
+                        var majorRangesLog = new System.Collections.Generic.List<(float L, float R)>();
+
+                        for (double d = decadeStart; d <= decadeEnd * 1.0001; d *= 10.0)
+                        {
+                            double f = d; // k=1
+                            if (f < fMin || f > fMax) continue;
+
+                            float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
+                            var sv = g_log.Save();
+                            g_log.ResetClip();
+
+                            g_log.DrawLine(majorGridPen, xPixel, top, xPixel, bottom);
+                            g_log.DrawLine(majorTickPen, xPixel, bottom, xPixel, bottom + majorTickLen);
+
+                            string txt  = FormatHzK(f);
+                            var    sz   = g_log.MeasureString(txt, majorFont);
+                            float  xText = xPixel - sz.Width / 2f;
+                            float  yText = bottom + majorTickLen + 2f * sExport;
+
+                            using (var brush = new SolidBrush(LabelMajorColor))
+                                g_log.DrawString(txt, majorFont, brush, xText, yText);
+
+                            majorRangesLog.Add((xText - 2f * sExport, xText + sz.Width + 2f * sExport));
+                            g_log.Restore(sv);
+                        }
+
+                        // Passe 2 : mineurs k=2..9, anti-collision avec majeurs ET mineurs précédents
+                        for (double d = decadeStart; d <= decadeEnd * 1.0001; d *= 10.0)
                         {
                             for (int k = 2; k <= 9; k++)
                             {
                                 double f = d * k;
-                                if (f < fMin || f > fMax)
-                                    continue;
+                                if (f < fMin || f > fMax) continue;
 
                                 float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
+                                var sv = g_log.Save();
+                                g_log.ResetClip();
 
-                                e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, top, xPixel, bottom);
+                                // Grille + tick mineur (toujours dessinés)
+                                g_log.DrawLine(minorGridPen, xPixel, top, xPixel, bottom);
+                                g_log.DrawLine(minorTickPen, xPixel, bottom, xPixel, bottom + minorTickLen);
 
-                                float minorTickLen = 5f * sExport;
-                                e.ChartGraphics.Graphics.DrawLine(tickPen, xPixel, bottom, xPixel, bottom + minorTickLen);
+                                // Label mineur : soumis à l'anti-chevauchement
+                                string txt   = FormatHzK(f);
+                                var    sz    = g_log.MeasureString(txt, minorFont);
+                                float  xText = xPixel - sz.Width / 2f;
+                                float  yText = bottom + minorTickLen + 2f * sExport;
+                                float  xR    = xText + sz.Width;
 
-                                string txt = FormatHzK(f);
+                                bool skip = xText <= lastMinorLabelRight + 2f * sExport;
+                                if (!skip)
+                                {
+                                    foreach (var (mL, mR) in majorRangesLog)
+                                        if (xR > mL && xText < mR) { skip = true; break; }
+                                }
 
-                                var sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
-                                float xText = xPixel - sz.Width / 2f;
+                                if (!skip)
+                                {
+                                    using var brush = new SolidBrush(LabelMinorColor);
+                                    g_log.DrawString(txt, minorFont, brush, xText, yText);
+                                    lastMinorLabelRight = xR;
+                                }
 
-                                float minorLabelYOffset = 10f * sExport;
-                                float yText = bottom - minorTickLen + minorLabelYOffset;
-
-                                if (xText <= lastLabelRight + 4f * sExport)
-                                    continue;
-
-                                using var b = new SolidBrush(LabelMinorColor);
-                                e.ChartGraphics.Graphics.DrawString(txt, minorFont, b, xText, yText);
-
-                                lastLabelRight = xText + sz.Width;
+                                g_log.Restore(sv);
                             }
                         }
                     }
                 }
+
+                skipLogAxis:;
             }
             else
             {
-                double fMin = area.AxisX.Minimum;
-                double fMax = area.AxisX.Maximum;
-
+                double fMin   = area.AxisX.Minimum;
+                double fMax   = area.AxisX.Maximum;
                 double xMajor = area.AxisX.MajorGrid.Interval;
                 double xMinor = area.AxisX.MinorGrid.Interval;
 
                 if (xMajor > 0)
                 {
-                    if (xMinor <= 0)
-                        xMinor = xMajor / 5.0;
+                    float top    = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
+                    float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
+                    var   g_lin  = e.ChartGraphics.Graphics;
 
-                    if (xMinor > 0)
+                    Font baseFont  = area.AxisX.LabelStyle.Font ?? chart.Font;
+                    Font majorFont = new Font(baseFont.FontFamily, baseFont.Size, baseFont.Style);
+                    Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style);
+                    try
                     {
-                        float top = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Maximum);
-                        float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
+                        // ── Choix du diviseur mineur optimal ────────────────────────────
+                        // Priorité 1 : diviseur qui produit des valeurs entières en Hz
+                        //              ET assez de pixels pour afficher le label.
+                        // Priorité 2 : si aucun entier possible, diviseur le plus fin
+                        //              qui garantit l'espace physique minimum.
+                        float xPxPerMajor = Math.Abs(
+                            (float)area.AxisX.ValueToPixelPosition(fMin + xMajor) -
+                            (float)area.AxisX.ValueToPixelPosition(fMin));
+
+                        string sampleTxt    = FormatHzK(fMin + xMajor * 0.4);
+                        float  minorLabelW  = g_lin.MeasureString(sampleTxt, minorFont).Width;
+                        float  minPxPerDiv  = minorLabelW + 6f * sExport;
+
+                        // Chercher le meilleur diviseur entier avec espace
+                        xMinor = 0;
+                        foreach (int d in new[] { 10, 5, 4, 2 })
+                        {
+                            double cand = xMajor / d;
+                            if (cand <= 0) continue;
+                            bool isInt    = Math.Abs(cand - Math.Round(cand)) < 1e-6;
+                            bool hasSpace = (xPxPerMajor / d) >= minPxPerDiv;
+                            if (isInt && hasSpace) { xMinor = cand; break; }
+                        }
+
+                        // Fallback : diviseur le plus grossier avec espace (pas forcément entier)
+                        if (xMinor <= 0)
+                        {
+                            foreach (int d in new[] { 2, 4, 5, 10 })
+                            {
+                                double cand = xMajor / d;
+                                if (cand <= 0) continue;
+                                if ((xPxPerMajor / d) >= minPxPerDiv) { xMinor = cand; break; }
+                            }
+                        }
+
+                        // Fallback absolu
+                        if (xMinor <= 0) xMinor = xMajor / 2.0;
+
+                        // Synchroniser la grille native
+                        area.AxisX.MinorGrid.Interval = xMinor;
+
+                        // ── Labels mineurs avec anti-collision majeurs+mineurs ───────
+                        var majorRanges = new System.Collections.Generic.List<(float L, float R)>();
+                        const double eps = 1e-9;
+
+                        // Pré-calculer les emprises des labels majeurs natifs du Chart
+                        for (double fm = fMin; fm <= fMax + eps; fm += xMajor)
+                        {
+                            double q = (fm - fMin) / xMajor;
+                            if (Math.Abs(q - Math.Round(q)) > 1e-6) continue;
+                            float  xPx = (float)area.AxisX.ValueToPixelPosition(fm);
+                            var    sz  = g_lin.MeasureString(FormatHzK(fm), majorFont);
+                            float  xL  = xPx - sz.Width / 2f;
+                            majorRanges.Add((xL - 4f * sExport, xL + sz.Width + 4f * sExport));
+                        }
 
                         using (Pen minorPen = new Pen(LabelMinorColor, 1f))
                         {
                             minorPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
+                            float minorTickLen  = 5f * sExport;
+                            float lastLabelRight = float.NegativeInfinity;
 
-                            Font baseFont = area.AxisX.LabelStyle.Font ?? chart.Font;
-                            using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
-                            using (Brush minorBrush = new SolidBrush(LabelMinorColor))
+                            for (double f = fMin; f <= fMax + eps; f += xMinor)
                             {
-                                float minorTickLen = 5f * sExport;
-                                float lastLabelRight = float.NegativeInfinity;
+                                if (f < fMin - eps) continue;
 
-                                double firstMinor = fMin + xMinor;
-                                const double eps = 1e-9;
+                                // Ignorer les positions majeures
+                                double q = (f - fMin) / xMajor;
+                                if (Math.Abs(q - Math.Round(q)) < 1e-6) continue;
 
-                                for (double f = firstMinor; f <= fMax + eps; f += xMinor)
-                                {
-                                    if (f < fMin - eps) continue;
+                                float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
 
-                                    double q = (f - fMin) / xMajor;
-                                    if (Math.Abs(q - Math.Round(q)) < 1e-6)
-                                        continue;
+                                // Tick mineur
+                                var sv = g_lin.Save();
+                                g_lin.ResetClip();
+                                g_lin.DrawLine(minorPen, xPixel, bottom, xPixel, bottom + minorTickLen);
+                                g_lin.Restore(sv);
 
-                                    float xPixel = (float)area.AxisX.ValueToPixelPosition(f);
+                                // Label mineur
+                                string lbl   = FormatHzK(f);
+                                var    sz2   = g_lin.MeasureString(lbl, minorFont);
+                                float  xText = xPixel - sz2.Width / 2f;
+                                float  yText = bottom + minorTickLen + 2f * sExport;
 
-                                    e.ChartGraphics.Graphics.DrawLine(minorPen, xPixel, bottom, xPixel, bottom + minorTickLen);
+                                if (xText <= lastLabelRight + 4f * sExport) continue;
 
-                                    string txt = FormatHzK(f);
+                                bool collides = false;
+                                float xR = xText + sz2.Width;
+                                foreach (var (mL, mR) in majorRanges)
+                                    if (xR > mL && xText < mR) { collides = true; break; }
+                                if (collides) continue;
 
-                                    var sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
-                                    float xText = xPixel - sz.Width / 2f;
+                                var sv2 = g_lin.Save();
+                                g_lin.ResetClip();
+                                using var b = new SolidBrush(LabelMinorColor);
+                                g_lin.DrawString(lbl, minorFont, b, xText, yText);
+                                g_lin.Restore(sv2);
 
-                                    float yText = bottom + minorTickLen + 2f * sExport;
-
-                                    if (xText <= lastLabelRight + 4f * sExport)
-                                        continue;
-
-                                    using var b = new SolidBrush(LabelMinorColor);
-                                    e.ChartGraphics.Graphics.DrawString(txt, minorFont, b, xText, yText);
-                                    lastLabelRight = xText + sz.Width;
-                                }
+                                lastLabelRight = xText + sz2.Width;
                             }
                         }
                     }
+                    finally
+                    {
+                        majorFont.Dispose();
+                        minorFont.Dispose();
+                    }
                 }
             }
-
             // Cadre du plot
             {
                 var g = e.ChartGraphics.Graphics;
@@ -993,6 +1118,32 @@ namespace AudioHexViewer
                 }
 
                 g.Restore(saved);
+            }
+
+            // ── Titre axe X dessiné en PostPaint ────────────────────────────────
+            // Positionné en coordonnées Chart client fixes (pas relatives au plot),
+            // pour rester stable quelle que soit la hauteur de la ChartArea.
+            {
+                const string xTitle = "Frequency (Hz)";
+                var  g    = e.ChartGraphics.Graphics;
+                Font baseFont  = area.AxisX.LabelStyle.Font ?? chart.Font;
+                using (Font titleFont  = new Font(baseFont.FontFamily, baseFont.Size, baseFont.Style))
+                using (var  titleBrush = new SolidBrush(LabelMajorColor))
+                {
+                    var   sz      = g.MeasureString(xTitle, titleFont);
+                    float xLeft   = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Minimum);
+                    float xRight  = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Maximum);
+                    float xCenter = (xLeft + xRight) / 2f;
+
+                    // Y fixe : 10px avant le bas du contrôle Chart
+                    float yTitle = chart.ClientSize.Height - sz.Height - 4f * sExport;
+
+                    var saved2 = g.Save();
+                    g.ResetClip();
+                    g.DrawString(xTitle, titleFont, titleBrush,
+                                 xCenter - sz.Width / 2f, yTitle);
+                    g.Restore(saved2);
+                }
             }
 
             try

@@ -162,15 +162,14 @@ namespace AudioHexViewer
             return count;
         }
 
-        private static bool TryChooseBestExactStep(int spanHz, out int segments, out int stepHz)
+        private static bool TryChooseBestExactStep(int spanHz, out int segments, out int stepHz,
+                                                     int minSeg = 3, int maxSeg = 10)
         {
-            int[] candidates = { 3, 4, 5, 6, 7, 8, 9, 10 };
-
             int bestSeg = -1;
             int bestStep = -1;
             int bestZeros = -1;
 
-            foreach (int s in candidates)
+            for (int s = minSeg; s <= maxSeg; s++)
             {
                 if (s <= 0) continue;
                 if (spanHz % s != 0) continue;
@@ -179,7 +178,7 @@ namespace AudioHexViewer
                 int zeros = CountTrailingZeros(step);
 
                 // priorité 1 : max trailing zeros
-                // tie-break  : step le plus grand (moins chargé)
+                // tie-break  : step le plus grand (moins chargé = moins de divisions)
                 if (zeros > bestZeros || (zeros == bestZeros && step > bestStep))
                 {
                     bestZeros = zeros;
@@ -368,6 +367,66 @@ namespace AudioHexViewer
 
         }
 
+        // ── Nice numbers pour l'axe Y ─────────────────────────────────────────
+        // Choisit un pas majeur "audio naturel" (1, 2, 5, 10, 20, 40, 50, 100 dB…)
+        // tel que span / step ∈ [minDivisions, maxDivisions].
+        private static double ChooseNiceYStep(double span, int minDivisions = 3, int maxDivisions = 8)
+        {
+            if (span <= 0) return 10.0;
+
+            // Séquence de mantisses "audio-friendly" (×10^n pour couvrir toute plage)
+            // On préfère 10, 20, 40 plutôt que 25, 30, 35 — plus naturels en dBFS.
+            double[] mantissas = { 1.0, 2.0, 4.0, 5.0, 10.0 };
+
+            double bestStep = span; // fallback : une seule division
+
+            // On cherche la plus petite mantisse × puissance de 10 qui donne
+            // au moins minDivisions et au plus maxDivisions graduations.
+            double magnitude = Math.Pow(10.0, Math.Floor(Math.Log10(span / maxDivisions)));
+
+            for (int exp = -1; exp <= 3; exp++)
+            {
+                double scale = magnitude * Math.Pow(10.0, exp);
+                foreach (double m in mantissas)
+                {
+                    double step = m * scale;
+                    if (step <= 0) continue;
+                    double divs = span / step;
+                    if (divs >= minDivisions - 0.001 && divs <= maxDivisions + 0.001)
+                    {
+                        // Parmi les candidats valides, prendre le plus grand step
+                        // (moins de divisions = plus lisible) — sauf si bestStep
+                        // n'est pas encore valide.
+                        double bestDivs = span / bestStep;
+                        bool bestIsValid = bestDivs >= minDivisions - 0.001 && bestDivs <= maxDivisions + 0.001;
+                        if (!bestIsValid || step > bestStep)
+                            bestStep = step;
+                    }
+                }
+            }
+
+            return bestStep;
+        }
+
+        // Choisit le nombre de subdivisions mineures le plus adapté au pas majeur :
+        // - pas divisible par 5  → 5 subdivisions (le plus courant)
+        // - pas divisible par 4  → 4 subdivisions (ex. 40 dB → 4×10)
+        // - sinon               → 2 subdivisions
+        private static int ChooseMinorPerMajor(double yMajor)
+        {
+            if (yMajor <= 0) return 5;
+
+            // Vérifier la divisibilité à 1e-9 près pour éviter les erreurs flottantes
+            bool div5 = Math.Abs((yMajor / 5.0) - Math.Round(yMajor / 5.0)) < 1e-9 * yMajor;
+            bool div4 = Math.Abs((yMajor / 4.0) - Math.Round(yMajor / 4.0)) < 1e-9 * yMajor;
+            bool div2 = Math.Abs((yMajor / 2.0) - Math.Round(yMajor / 2.0)) < 1e-9 * yMajor;
+
+            if (div5) return 5;
+            if (div4) return 4;
+            if (div2) return 2;
+            return 5; // fallback
+        }
+
         //
         private static int GetStepDecimals(double step)
         {
@@ -441,7 +500,7 @@ namespace AudioHexViewer
 
             var area0 = chartSpectrum.ChartAreas[0];
             area0.Name = "SpectrumArea";
-            area0.AxisX.Title = "Frequency (Hz)";
+            area0.AxisX.Title = "";  // titre dessiné en PostPaint pour contrôle précis du Y
             area0.AxisY.Title = "Level (dBFS)";
             area0.AxisY.Minimum = -200;
             area0.AxisY.Maximum = 0;
@@ -676,24 +735,9 @@ namespace AudioHexViewer
                     RunStateChanged?.Invoke(false);
                 }
             };
-            // Level unit: toggle button dBFS ↔ dBV (replaces comboLevelUnit combo)
-            if (btnLevelUnit != null)
-            {
-                btnLevelUnit.Text = "dBFS";
-                btnLevelUnit.Click += (s, e) =>
-                {
-                    if (_isRestoringSettings) return;
-                    if (_levelUnit == "dBFS" && IsDbvAvailableForCurrentMode())
-                        _levelUnit = "dBV";
-                    else
-                        _levelUnit = "dBFS";
-                    customYMin = null;
-                    customYMax = null;
-                    UpdateLevelUnitUi();
-                    if (!isLive)
-                        UpdateSpectrumChartAndStats();
-                };
-            }
+            // btnAxisOpen : ouvre le dialogue Axis Parameters (remplace btnLevelUnit + _btnAxis)
+            if (btnAxisOpen != null)
+                btnAxisOpen.Click += (_, __) => ShowAxisDialog();
 
             UpdateLevelUnitUi();
 
@@ -853,58 +897,7 @@ namespace AudioHexViewer
             UpdateSpectrumChartAndStats();
         }
 
-        private void InitAxisButtonUi()
-        {
-            if (_btnAxis != null)
-                return; // already initialized
-
-            // Parent it to the chart so it stays positioned relative to the graph area.
-            _btnAxis = new Button();
-            _btnAxis.Name = "btnAxis";
-            _btnAxis.Text = "Axis Setup";
-            _btnAxis.AutoSize = true;
-            _btnAxis.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            _btnAxis.Padding = new Padding(8, 2, 8, 2);
-            _btnAxis.FlatStyle = FlatStyle.Flat;
-            _btnAxis.FlatAppearance.BorderSize = 1;
-            _btnAxis.TabStop = false;
-            _btnAxis.Cursor = Cursors.Hand;
-
-            // Keep the button attached to the bottom-left corner of its parent.
-            _btnAxis.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
-
-            // Slightly translucent background (still readable).
-            // Note: WinForms button doesn't support true alpha in all themes, but this is safe.
-            _btnAxis.BackColor = Color.FromArgb(230, SystemColors.Control);
-
-            // Open the same dialog as the existing right-click on the chart.
-            _btnAxis.Click += (_, __) => ShowAxisDialog();
-
-            // Tooltip (optional but nice UX)
-            _toolTipAxis ??= new ToolTip();
-            _toolTipAxis.SetToolTip(_btnAxis, "Axis Parameters");
-
-            chartSpectrum.Controls.Add(_btnAxis);
-            _btnAxis.BringToFront();
-
-            // Initial placement + keep in place on resize.
-            PositionAxisButton();
-            chartSpectrum.Resize += (_, __) => PositionAxisButton();
-        }
-
-        private void PositionAxisButton()
-        {
-            if (_btnAxis == null)
-                return;
-
-            const int marginPx = 6;
-
-            int x = marginPx;
-            int y = Math.Max(marginPx, chartSpectrum.ClientSize.Height - _btnAxis.Height - marginPx);
-
-            _btnAxis.Location = new Point(x, y);
-            _btnAxis.BringToFront();
-        }
+        // InitAxisButtonUi et PositionAxisButton supprimés — remplacés par btnAxisOpen dans panelTop
 
         //
         private void ShowAxisDialog()
@@ -958,6 +951,8 @@ namespace AudioHexViewer
                 dlg.FitY2Provider = GetVisiblePhaseRangeDeg_ForFitY2;
                 dlg.FftSizeN = lastFftSize;
 
+                // Pré-sélectionner l'unité verticale courante
+                dlg.VerticalUnit = _levelUnit;
 
                 if (dlg.ShowDialog(FindForm()) == DialogResult.OK)
                 {
@@ -1010,6 +1005,16 @@ namespace AudioHexViewer
                     if (customFMax <= customFMin)
                         customFMax = customFMin + 10.0;
 
+                    // Appliquer l'unité verticale choisie dans le dialog
+                    string newUnit = dlg.VerticalUnit;
+                    if (newUnit == "dBV" && IsDbvAvailableForCurrentMode())
+                        _levelUnit = "dBV";
+                    else
+                        _levelUnit = "dBFS";
+                    customYMin = null;
+                    customYMax = null;
+                    UpdateLevelUnitUi();
+
                     ResetAveragingState();
                     UpdateSpectrumChartAndStats();
 
@@ -1047,7 +1052,8 @@ namespace AudioHexViewer
             return hz.ToString("0");
         }
 
-        private void ApplyAxisXModeSafe(ChartArea area, bool useLog, double fMin, double fMax)
+        private void ApplyAxisXModeSafe(ChartArea area, bool useLog, double fMin, double fMax,
+                                          bool fMinIsCustom = false)
         {
             // Normalisation des bornes
             if (double.IsNaN(fMin) || double.IsInfinity(fMin)) fMin = 0.0;
@@ -1058,17 +1064,10 @@ namespace AudioHexViewer
                 // LOG => min strictement > 0
                 fMin = Math.Max(LogXAbsMinHz, fMin);
 
-                // ── RÈGLE ABSOLUE en LOG : fMin >= décade inférieure de ΔF ────────────
-                // Calcul de ΔF directement depuis les paramètres FFT instantanés
-                // (_sampleRate et lastFftSize sont mis à jour AVANT ApplyChartAxes).
-                // Ce calcul ne dépend ni de freqAxis (qui peut être null/vide), ni de
-                // customFMin (qui peut persister depuis une autre config).
-                //
-                // Exemple : SR = 192 kHz, N = 32 768 → ΔF = 5,86 Hz → décade = 1 Hz
-                //   → fMin sera >= 1 Hz, peu importe ce qui était passé en argument.
-                //
-                // C'est l'application stricte de la règle énoncée :
-                //   "ΔF du SR en cours détermine la décade minimum autorisée pour LOG"
+                // ── Plancher absolu : fMin >= décade inférieure de ΔF ───────────────
+                // Appliqué dans TOUS les cas (custom ou auto) car un bin en-dessous
+                // de ΔF n'existe pas dans le spectre FFT.
+                // Ex : SR=192 kHz, N=32768 → ΔF=5,86 Hz → plancher = 1 Hz.
                 if (_sampleRate > 0 && lastFftSize > 0)
                 {
                     double deltaF       = (double)_sampleRate / lastFftSize;
@@ -1077,14 +1076,9 @@ namespace AudioHexViewer
                         fMin = minDecadeFft;
                 }
 
-                // Snap à la décade inférieure (sécurité — corrige le bug original
-                // des labels majeurs invisibles, et idempotent si fMin est déjà une décade)
-                if (fMin > 0.0)
-                {
-                    double decade = Math.Pow(10.0, Math.Floor(Math.Log10(fMin)));
-                    fMin = Math.Max(LogXAbsMinHz, decade);
-                }
-
+                // En LOG, fMin est passé directement au Chart sans snap.
+                // Toute la grille X est gérée par PostPaint (style REW),
+                // donc le Chart n'a plus besoin d'un Minimum calé sur une décade.
                 if (fMax <= fMin) fMax = fMin * 10.0;
             }
             else
@@ -1110,10 +1104,43 @@ namespace AudioHexViewer
             else
             {
                 // Changement de mode LOG↔LIN : toggle atomique nécessaire.
+                //
+                // WORKAROUND bug MS Chart WinForms :
+                // Quand IsLogarithmic bascule, le Chart recalcule InnerPlotPosition
+                // automatiquement, ce qui fait "bouger" physiquement la zone de tracé
+                // (elle rétrécit côté labels X en LOG, s'élargit en LIN).
+                // Solution : capturer InnerPlotPosition AVANT le toggle, le verrouiller
+                // (Auto = false) pendant le toggle, puis le restaurer exactement.
+                // Cela empêche le Chart de le recalculer.
+                var ip = area.InnerPlotPosition;
+                bool ipWasAuto = ip.Auto;
+                float ipX = ip.X, ipY = ip.Y, ipW = ip.Width, ipH = ip.Height;
+
+                // Si InnerPlotPosition n'a pas encore été calculé (première frame),
+                // on ne le gèle pas — le Chart doit pouvoir faire son premier layout.
+                bool hasValidIp = (ipW > 1f && ipH > 1f);
+
+                if (hasValidIp)
+                {
+                    area.InnerPlotPosition.Auto = false;
+                    area.InnerPlotPosition.X      = ipX;
+                    area.InnerPlotPosition.Y      = ipY;
+                    area.InnerPlotPosition.Width  = ipW;
+                    area.InnerPlotPosition.Height = ipH;
+                }
+
                 area.AxisX.IsLogarithmic = false;
                 area.AxisX.Minimum = fMin;
                 area.AxisX.Maximum = fMax;
                 area.AxisX.IsLogarithmic = useLog;
+
+                // Restaurer l'état Auto si c'était le cas avant (laisse le Chart
+                // recalculer librement lors d'un resize, mais pas lors du toggle LOG/LIN).
+                // On NE restaure PAS Auto=true ici : on veut que la position reste stable
+                // jusqu'au prochain resize explicite.
+                // (Le resize déclenche ApplyChartStatsMargin qui repose area.Position,
+                //  ce qui force un nouveau layout complet et un nouveau InnerPlotPosition
+                //  cohérent — donc pas de dérive à long terme.)
             }
         }
 
@@ -1121,6 +1148,16 @@ namespace AudioHexViewer
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
+
+            // Lors d'un resize, on libère l'InnerPlotPosition qu'on avait gelé pendant
+            // le toggle LOG/LIN, afin que le Chart puisse le recalculer proprement
+            // pour les nouvelles dimensions.
+            if (chartSpectrum != null)
+            {
+                var area = chartSpectrum.ChartAreas.FindByName("SpectrumArea");
+                if (area != null)
+                    area.InnerPlotPosition.Auto = true;
+            }
 
             // On laisse le live tick faire le refresh quand live,
             // sinon on peut rafraîchir directement.
@@ -1321,14 +1358,21 @@ namespace AudioHexViewer
 
 
         //
-        private static (int Segments, int StepHz, int SpanAdjustedHz) ChooseBestStepWithSpanAdjustment(int spanHz)
+        private static (int Segments, int StepHz, int SpanAdjustedHz) ChooseBestStepWithSpanAdjustment(
+            int spanHz, int plotWidthPx = 800)
         {
-            // 1) Si span exact => on prend direct
-            if (TryChooseBestExactStep(spanHz, out int seg, out int step))
+            // Nombre de divisions cible selon la largeur physique du plot.
+            // Cible : ~100 px par division majeure (ni trop dense, ni trop vide).
+            const int targetPxPerDiv = 100;
+            int targetSeg = Math.Max(3, Math.Min(16, plotWidthPx / targetPxPerDiv));
+            int minSeg = Math.Max(3,  targetSeg - 2);
+            int maxSeg = Math.Min(16, targetSeg + 3);
+
+            // 1) Si span exact dans la plage [minSeg, maxSeg] => on prend direct
+            if (TryChooseBestExactStep(spanHz, out int seg, out int step, minSeg, maxSeg))
                 return (seg, step, spanHz);
 
             // 2) Sinon, on ajuste span autour de spanHz (recherche locale)
-            // Recherche dans une fenêtre raisonnable +/- 2000 Hz (modifiable)
             const int searchRadius = 2000;
 
             int bestSeg = 0;
@@ -1339,20 +1383,16 @@ namespace AudioHexViewer
 
             for (int delta = 1; delta <= searchRadius; delta++)
             {
-                // On teste spanHz - delta puis spanHz + delta (symétrique)
                 int[] spansToTry = { spanHz - delta, spanHz + delta };
 
                 foreach (int candidateSpan in spansToTry)
                 {
                     if (candidateSpan <= 0) continue;
 
-                    if (TryChooseBestExactStep(candidateSpan, out int s, out int st))
+                    if (TryChooseBestExactStep(candidateSpan, out int s, out int st, minSeg, maxSeg))
                     {
                         int zeros = CountTrailingZeros(st);
 
-                        // priorité 1 : max trailing zeros
-                        // priorité 2 : delta minimal (span ajusté le plus proche)
-                        // tie-break : step le plus grand
                         if (zeros > bestZeros ||
                             (zeros == bestZeros && delta < bestDelta) ||
                             (zeros == bestZeros && delta == bestDelta && st > bestStep))
@@ -1366,15 +1406,13 @@ namespace AudioHexViewer
                     }
                 }
 
-                // petit early-exit : si on trouve 4 zéros (ex 10000), c'est déjà excellent
-                if (bestZeros >= 4)
-                    break;
+                if (bestZeros >= 4) break;
             }
 
-            // fallback absolu (ne devrait pas arriver) : 6 segments
+            // fallback : segmentation au plus proche de targetSeg
             if (bestSeg == 0)
             {
-                bestSeg = 6;
+                bestSeg = targetSeg;
                 bestStep = Math.Max(1, spanHz / bestSeg);
                 bestSpanAdj = bestStep * bestSeg;
             }

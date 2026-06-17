@@ -37,8 +37,6 @@ namespace AudioHexViewer
         // Opens the same "Axis Parameters" dialog as the right-click on the chart.
         // IMPORTANT: UI-only (no FFT / no scheduling).
         // --------------------------------------------------------------------
-        private Button? _btnAxis;
-        private ToolTip? _toolTipAxis;
         private ToolTip? _toolTipFrfNorm;
 
 
@@ -759,7 +757,6 @@ namespace AudioHexViewer
 
             // "Axis" button in the bottom-left corner of the chart (UI helper).
             // Keeps the existing right-click access to the same dialog.
-            InitAxisButtonUi();
 
             // Curseurs
             InitCursorBarUi();    // legacy binding (keeps CursorsBar.cs working)
@@ -1827,7 +1824,7 @@ namespace AudioHexViewer
             if (useLog && fMin <= 0)
                 fMin = fMinAuto;
 
-            ApplyAxisXModeSafe(area, useLog, fMin, fMax);
+            ApplyAxisXModeSafe(area, useLog, fMin, fMax, fMinIsCustom: customFMin.HasValue);
 
 
             // Sécurités de base
@@ -1946,29 +1943,19 @@ namespace AudioHexViewer
             if (yMin >= yMax)
                 yMin = yMax - 10.0; // au moins 10 dB de span
 
-            // ---------------- Grilles & divisions ----------------
-            const int majorDivCount = 4;
-            const int minorPerMajor = 5;
+            // ---------------- Grilles & divisions Y ("Nice numbers") ----------------
+            // Objectif : choisir yMajor parmi des valeurs "audio naturelles"
+            // (1, 2, 5, 10, 20, 40, 50, 100 dB) de façon à avoir entre 3 et 8
+            // divisions majeures visibles, quel que soit le span.
+            // yMinor est ensuite déduit en divisant yMajor par le nombre de
+            // subdivisions mineures le plus adapté (2, 4 ou 5).
 
             double ySpan = yMax - yMin;
             if (ySpan <= 0) ySpan = 1.0;
 
-            double rawMinor = ySpan / (majorDivCount * minorPerMajor);
-            if (rawMinor <= 0) rawMinor = 1.0;
-
-            double yMinor = rawMinor;
-
-            double scaled = yMinor * 100.0;
-            double scaledRound = Math.Round(scaled);
-            bool hasMoreThan2Decimals = Math.Abs(scaled - scaledRound) > 1e-9;
-
-            if (hasMoreThan2Decimals)
-                yMinor = Math.Round(yMinor, 2, MidpointRounding.AwayFromZero);
-
-            if (yMinor <= 0)
-                yMinor = 0.01;
-
-            double yMajor = minorPerMajor * yMinor;
+            double yMajor = ChooseNiceYStep(ySpan, minDivisions: 3, maxDivisions: 8);
+            int    minorPerMajor = ChooseMinorPerMajor(yMajor);
+            double yMinor = yMajor / minorPerMajor;
 
 
             // ── Cache axe : skip les 120+ assignments si les paramètres n'ont pas changé ──
@@ -2046,21 +2033,21 @@ namespace AudioHexViewer
                         area.AxisX.IsLogarithmic = true;
                     area.AxisX.LogarithmBase = 10.0;
 
-                    area.AxisX.Interval = 1.0;
-                    area.AxisX.LabelStyle.Interval = 1.0;
-                    area.AxisX.MajorTickMark.Interval = 1.0;
+                    // En LOG, toute la grille X est dessinée par PostPaint (style REW).
+                    // Le Chart ne fait que positionner les données — on désactive tout
+                    // le rendu natif de l'axe X pour éviter tout conflit de calage.
+                    area.AxisX.MajorGrid.Enabled      = false;
+                    area.AxisX.MinorGrid.Enabled      = false;
+                    area.AxisX.MajorTickMark.Enabled  = false;
+                    area.AxisX.MinorTickMark.Enabled  = false;
+                    area.AxisX.LabelStyle.ForeColor   = Color.Transparent;
+                    area.AxisX.StripLines.Clear();
 
-                    area.AxisX.MajorGrid.Enabled = true;
-                    area.AxisX.MajorGrid.LineDashStyle = ChartDashStyle.Solid;
-                    area.AxisX.MajorGrid.Interval = 1.0;
-
-                    area.AxisX.MinorGrid.Enabled = false;
-
-                    ApplyLogXMinorGridStripLines(area.AxisX);
-
-                    area.AxisX.MajorGrid.IntervalOffset = 0.0;
-                    area.AxisX.MinorGrid.IntervalOffset = 0.0;
-                    area.AxisX.MinorTickMark.IntervalOffset = 0.0;
+                    area.AxisX.Interval               = 1.0;   // nécessaire pour que IsLogarithmic fonctionne
+                    area.AxisX.MajorGrid.Interval     = 1.0;
+                    area.AxisX.MajorGrid.IntervalOffset     = 0.0;
+                    area.AxisX.LabelStyle.IntervalOffset    = 0.0;
+                    area.AxisX.MajorTickMark.IntervalOffset = 0.0;
                 }
                 else
                 {
@@ -2075,7 +2062,13 @@ namespace AudioHexViewer
                     int spanHz = (int)Math.Round(xSpan);
                     if (spanHz < 1) spanHz = 1;
 
-                    var grid = ChooseBestStepWithSpanAdjustment(spanHz);
+                    // Largeur du plot en pixels pour adapter la densité de grille.
+                    // On utilise la largeur cliente du chart multipliée par la fraction
+                    // occupée par la ChartArea (position en %).
+                    int plotWidthPx = (int)(chartSpectrum.ClientSize.Width * area.Position.Width / 100f);
+                    if (plotWidthPx < 100) plotWidthPx = 800; // fallback si layout pas encore prêt
+
+                    var grid = ChooseBestStepWithSpanAdjustment(spanHz, plotWidthPx);
                     double xMajor = grid.StepHz;
 
                     double fMaxAdjusted = fMin + grid.SpanAdjustedHz;
@@ -2121,10 +2114,9 @@ namespace AudioHexViewer
             } // end if (_axChanged)
 
             // Toujours restaurer la couleur des labels X après ApplyAxisXModeSafe.
-            // ApplyAxisXModeSafe bascule IsLogarithmic=false puis=true, ce qui peut
-            // réinitialiser ForeColor en interne. Ce bloc s'exécute à chaque frame,
-            // quelle que soit la valeur de axChanged.
-            area.AxisX.LabelStyle.ForeColor = LabelMajorColor;
+            // En LOG : labels X natifs masqués (tout dessiné par PostPaint).
+            // En LIN : labels X natifs visibles (couleur normale).
+            area.AxisX.LabelStyle.ForeColor = useLog ? Color.Transparent : LabelMajorColor;
 
             // Les labels Y/Y2 sont dessinés par PostPaint → toujours masquer les labels natifs,
             // même si _axChanged=false (ApplyChartTheme peut avoir remis ForeColor=LabelMajorColor).
@@ -3133,7 +3125,8 @@ namespace AudioHexViewer
 
             const float left = 3f;
             const float top = 3f;
-            const float height = 94f;
+            // 91% au lieu de 94% : réserve 9% en bas pour le titre X et le bouton Axis Setup
+            const float height = 91f;
 
             // When panel is hidden (reservedPct≈0), keep a small right margin (1%)
             // so the chart is not glued to the edge.

@@ -49,6 +49,10 @@ namespace AudioHexViewer
 
             cmbYRange.SelectedIndexChanged += (_, __) => { if (!_updating) ValidateAndApplyMainY(); };
 
+            cmbVertUnit.SelectedIndexChanged += (_, __) => { if (!_updating) UpdateVertUnitLabels(); };
+            // Sélection initiale
+            if (cmbVertUnit.Items.Count > 0) cmbVertUnit.SelectedIndex = 0;
+
             // Default scale (caller will overwrite MainYScale before showing the dialog)
             ApplyMainYScaleToUi();
 
@@ -173,6 +177,31 @@ namespace AudioHexViewer
         public Action? PreviewChanged { get; set; }
 
 
+        // ── Vertical Unit (dBFS / dBV) ──────────────────────────────────────
+        // Initialisé par l'appelant avant ShowDialog, lu après DialogResult.OK.
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        [Browsable(false)]
+        public string VerticalUnit
+        {
+            get => cmbVertUnit.SelectedItem as string ?? "dBFS";
+            set
+            {
+                int idx = cmbVertUnit.Items.IndexOf(value);
+                cmbVertUnit.SelectedIndex = (idx >= 0) ? idx : 0;
+                // Mettre à jour le libellé "Range (dBFS/dBV)"
+                UpdateVertUnitLabels();
+            }
+        }
+
+        private void UpdateVertUnitLabels()
+        {
+            string unit = VerticalUnit;
+            if (lblYMin != null) lblYMin.Text = $"Range ({unit})";
+            if (lblYMax != null) lblYMax.Text = _yScaleMode == YScaleMode.DbGain
+                ? "Gain Top (dB)"
+                : $"Level Top ({unit})";
+        }
+
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [Browsable(false)]
         public double YMax
@@ -181,7 +210,7 @@ namespace AudioHexViewer
             set
             {
                 // Round UP to upper multiple of 5 dB then clamp to unit bounds
-                double v = RoundUpToStep(value, 10.0);
+                double v = RoundUpToStep(value, 5.0);
                 v = Clamp(v, _yMinAllowed, _yMaxAllowed);
 
                 _updating = true;

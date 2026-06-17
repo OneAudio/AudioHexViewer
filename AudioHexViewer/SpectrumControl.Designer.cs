@@ -24,6 +24,7 @@
             label1              = new Label();
             lblAvgProgress      = new Label();
             btnLevelUnit        = new Button();
+            btnAxisOpen         = new Button();
             btnDcAc             = new Button();
             lblCoupling         = new Label();
             lblAvgCount         = new Label();
@@ -167,7 +168,7 @@
                 btnX2, btnX2Chan, btnX2Set, btnX2Peak, btnDispLabel,
                 lblPhaseGroup, tlpPhi,
                 lblNormGroup, tlpNorm,
-                lblUnits, lblAxisSet, comboLevelUnit, btnLevelUnit, chkLogX,
+                lblUnits, lblAxisSet, comboLevelUnit, btnLevelUnit, btnAxisOpen, chkLogX,
                 btnThdSettings, btnResetPeakHold,
                 btnResetAvg, lblAvgProgress,
                 btnOverlay,
@@ -379,15 +380,16 @@
 
             // ── 8. AXIS SET (x=851, w=62) ────────────────────────────────────
             SecLbl(lblAxisSet, 844, "AXIS SET");
-            // lblUnits hidden — replaced by btnLevelUnit toggle button
+            // lblUnits et comboLevelUnit masqués (unité maintenant dans AxisDialog)
             lblUnits.Visible = false;
-            // comboLevelUnit hidden — replaced by btnLevelUnit
             comboLevelUnit.Visible = false; comboLevelUnit.Location = new Point(-200,-200);
-            // btnLevelUnit: toggle button dBFS ↔ dBV (same position as comboLevelUnit)
-            btnLevelUnit.Location = new Point(834, 34); btnLevelUnit.Name = "btnLevelUnit";
-            btnLevelUnit.Size = new Size(62, 24); btnLevelUnit.TabIndex = 14;
-            btnLevelUnit.Text = "dBFS"; btnLevelUnit.Font = std9;
-            btnLevelUnit.UseVisualStyleBackColor = true;
+            // btnLevelUnit masqué — remplacé par btnAxisOpen
+            btnLevelUnit.Visible = false; btnLevelUnit.Location = new Point(-200,-200);
+            // btnAxisOpen : ouvre le dialogue Axis Parameters (remplace dBFS/dBV + Axis Setup)
+            btnAxisOpen.Location = new Point(834, 34); btnAxisOpen.Name = "btnAxisOpen";
+            btnAxisOpen.Size = new Size(62, 24); btnAxisOpen.TabIndex = 14;
+            btnAxisOpen.Text = "AXIS"; btnAxisOpen.Font = std9;
+            btnAxisOpen.UseVisualStyleBackColor = true;
             chkLogX.Appearance = Appearance.Button; chkLogX.Font = std9;
             chkLogX.Location = new Point(834, 60); chkLogX.Name = "chkLogX";
             chkLogX.Size = new Size(62, 24); chkLogX.TabIndex = 11;
@@ -574,7 +576,8 @@
 
         private Panel    panelTop;
         private Label    lblUnits;
-        private Button   btnLevelUnit;    // toggle dBFS/dBV (replaces comboLevelUnit)
+        private Button   btnLevelUnit;    // toggle dBFS/dBV (remplacé — masqué)
+        private Button   btnAxisOpen;     // ouvre le dialogue Axis Parameters
         private Button   btnDcAc;         // toggle AC/DC mode (replaces chkDcMode)
         private Label    lblCoupling;      // "COUPLE" title above btnDcAc
         private Label    lblAvgCount;       // "N AVG" title above lblAvgProgress

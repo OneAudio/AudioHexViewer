@@ -104,12 +104,21 @@ namespace AudioHexViewer
                 DropDownStyle = ComboBoxStyle.DropDownList, Font = std
             };
 
-            Controls.AddRange(new Control[] { lblYMax, numYMax, btnFitY, lblYMin, cmbYRange });
+            y += 25; // 79 — Vertical Unit row
+            lblVertUnit = RowLbl("Vertical Unit", y);
+            cmbVertUnit = new ComboBox {
+                Location = new Point(CTLX, y), Size = new Size(CTLW, ROW),
+                DropDownStyle = ComboBoxStyle.DropDownList, Font = std
+            };
+            cmbVertUnit.Items.AddRange(new object[] { "dBFS", "dBV" });
+
+            Controls.AddRange(new Control[] { lblYMax, numYMax, btnFitY, lblYMin, cmbYRange,
+                                              lblVertUnit, cmbVertUnit });
 
             // ════════════════════════════════════════════════════════════════
             //  PHASE
             // ════════════════════════════════════════════════════════════════
-            y += 27; // 81
+            y += 27; // 106
             Controls.Add(MakeSec("PHASE", y));
 
             y += 20; // 104 — Phase max row
@@ -209,9 +218,9 @@ namespace AudioHexViewer
         }
 
         // ── Field declarations ────────────────────────────────────────────
-        private Label lblYMax = null!, lblYMin = null!;
+        private Label lblYMax = null!, lblYMin = null!, lblVertUnit = null!;
         private NumericUpDown numYMax = null!;
-        private ComboBox cmbYRange = null!;
+        private ComboBox cmbYRange = null!, cmbVertUnit = null!;
         private Label lblY2Max = null!, lblY2Min = null!;
         private NumericUpDown numY2Max = null!;
         private ComboBox cmbY2Range = null!;
