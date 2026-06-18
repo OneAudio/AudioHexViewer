@@ -489,6 +489,14 @@ namespace AudioHexViewer
         private double? customFMax = null;   // en Hz
         private double _axisXMajorStepHz = 1000.0; // pas majeur LIN courant (pour formatage labels)
 
+        // Verrouillage de InnerPlotPosition pour éviter les redimensionnements parasites.
+        // MS Chart recalcule InnerPlotPosition quand les labels Y changent de largeur,
+        // ce qui déplace la zone de tracé et désaligne le PostPaint.
+        // Solution : capturer au premier PostPaint valide et verrouiller.
+        private float _ipX = -1f, _ipY = -1f, _ipW = -1f, _ipH = -1f;
+        private bool  _ipLocked = false;
+        private float _areaWidthPct = 94f; // mis à jour par ApplyChartStatsMargin
+
         private double? customPhaseMin = null; // deg
         private double? customPhaseMax = null; // deg
 
@@ -658,6 +666,7 @@ namespace AudioHexViewer
         public void SetMeasPanelVisible(bool visible)
         {
             _measPanelVisible = visible;
+            _ipLocked = false; // panel stats change → recalcul InnerPlotPosition
             ApplyChartStatsMargin(chartSpectrum, invalidate: true,
                 reservedScale: _measPanelVisible ? 1f : 0f);
         }
@@ -786,6 +795,8 @@ namespace AudioHexViewer
 
             chartSpectrum.PostPaint -= ChartSpectrum_PostPaint;
             chartSpectrum.PostPaint += ChartSpectrum_PostPaint;
+            chartSpectrum.PrePaint  -= ChartSpectrum_PrePaint;
+            chartSpectrum.PrePaint  += ChartSpectrum_PrePaint;
 
 
             InitCursors();
@@ -1955,7 +1966,15 @@ namespace AudioHexViewer
             double ySpan = yMax - yMin;
             if (ySpan <= 0) ySpan = 1.0;
 
-            double yMajor = ChooseNiceYStep(ySpan, minDivisions: 3, maxDivisions: 8);
+            // Adapter le nombre de divisions à la hauteur physique du plot.
+            // Cible : ~50px par division majeure (label dBFS ≈ 14px, laisse ~36px de marge).
+            // Même principe que pour l'axe X (plotWidthPx → targetSeg).
+            int plotHeightPx = (int)(chartSpectrum.ClientSize.Height * area.Position.Height / 100f);
+            if (plotHeightPx < 50) plotHeightPx = 400; // fallback si layout pas encore prêt
+
+            // Style REW : pas de label mineur, un seul pas adaptatif.
+            // maxLabels détermine la densité maximale selon la hauteur du plot.
+            double yMajor = ChooseNiceYStep(ySpan, plotHeightPx);
             int    minorPerMajor = ChooseMinorPerMajor(yMajor);
             double yMinor = yMajor / minorPerMajor;
 
@@ -1980,24 +1999,31 @@ namespace AudioHexViewer
                 _currentYMinor = yMinor;
                 _currentYMajor = yMajor;
 
+                // ── Alignement sur les multiples du pas (style REW) ─────────────
+                // Ancrage sur le PREMIER multiple de yMajor >= yMin (ceil from bottom).
+                // Ex : yMin=-47, yMajor=5 → ceil(-47/5)*5 = -45 → offset = -45-(-47) = 2
+                // → grid/labels à -45,-40,-35,...,-10 (multiples de 5, indép. de yMax)
+                double firstMajor = Math.Ceiling(yMin / yMajor) * yMajor;
+                double yOffset    = firstMajor - yMin; // >= 0, distance de yMin au 1er multiple
+
                 area.AxisY.Interval = yMajor;
-                area.AxisY.IntervalOffset = 0.0;
+                area.AxisY.IntervalOffset = yOffset;
 
                 area.AxisY.LabelStyle.Interval = yMajor;
-                area.AxisY.LabelStyle.IntervalOffset = 0.0;
+                area.AxisY.LabelStyle.IntervalOffset = yOffset;
 
                 area.AxisY.MajorTickMark.Enabled = true;
                 area.AxisY.MajorTickMark.Interval = yMajor;
-                area.AxisY.MajorTickMark.IntervalOffset = 0.0;
+                area.AxisY.MajorTickMark.IntervalOffset = yOffset;
 
                 area.AxisY.MajorGrid.Enabled = true;
                 area.AxisY.MajorGrid.Interval = yMajor;
-                area.AxisY.MajorGrid.IntervalOffset = 0.0;
+                area.AxisY.MajorGrid.IntervalOffset = yOffset;
                 area.AxisY.MajorGrid.LineDashStyle = ChartDashStyle.Solid;
 
                 area.AxisY.MinorGrid.Enabled = true;
                 area.AxisY.MinorGrid.Interval = yMinor;
-                area.AxisY.MinorGrid.IntervalOffset = 0.0;
+                area.AxisY.MinorGrid.IntervalOffset = yOffset % yMinor;
                 area.AxisY.MinorGrid.LineDashStyle = ChartDashStyle.Dot;
                 area.AxisY.MinorGrid.LineColor = GridMinorColor;
 
@@ -2123,8 +2149,51 @@ namespace AudioHexViewer
 
             // Les labels Y/Y2 sont dessinés par PostPaint → toujours masquer les labels natifs,
             // même si _axChanged=false (ApplyChartTheme peut avoir remis ForeColor=LabelMajorColor).
-            area.AxisY.LabelStyle.ForeColor  = Color.Transparent;
-            area.AxisY2.LabelStyle.ForeColor = Color.Transparent;
+            // Désactiver complètement les labels Y dans MS Chart.
+            // Raison : MS Chart mesure leur largeur pour ajuster InnerPlotPosition,
+            // même quand ForeColor=Transparent. Avec Enabled=false, il ne réserve
+            // plus d'espace et n'a aucune raison de changer InnerPlotPosition.
+            // Tous les labels Y sont dessinés dans ChartSpectrum_PostPaint.
+            area.AxisY.LabelStyle.Enabled  = false;
+            area.AxisY2.LabelStyle.Enabled = false;
+
+            // ── InnerPlotPosition calculé explicitement en pixels ──────────────
+            // On ne laisse JAMAIS MS Chart auto-calculer InnerPlotPosition :
+            // il le ferait en mesurant les labels Y (même transparents), et les
+            // changerait à chaque variation de format ("−10" → "−0.5 dBFS").
+            // Solution : désactiver les labels MS Chart (on dessine en PostPaint)
+            // et calculer InnerPlotPosition depuis les dimensions réelles.
+            {
+                int cW = chartSpectrum.ClientSize.Width;
+                int cH = chartSpectrum.ClientSize.Height;
+                float aWpx = cW * _areaWidthPct / 100f;
+                float aHpx = cH * 91f / 100f;  // height toujours 91%
+
+                // Marges fixes en pixels
+                const float leftPx  = 72f; // place pour labels Y + ticks
+                const float topPx   =  5f;
+                const float botPx   = 28f; // place pour labels X + titre
+                const float rightPx =  4f;
+
+                float ipX = aWpx > 10f ? 100f * leftPx  / aWpx : 8f;
+                float ipY = aHpx > 10f ? 100f * topPx   / aHpx : 1f;
+                float ipW = 100f - ipX - (aWpx > 10f ? 100f * rightPx / aWpx : 0.5f);
+                float ipH = 100f - ipY - (aHpx > 10f ? 100f * botPx   / aHpx : 5f);
+
+                // Clamp sécurité
+                if (ipW < 10f) ipW = 10f;
+                if (ipH < 10f) ipH = 10f;
+
+                area.InnerPlotPosition.Auto   = false;
+                area.InnerPlotPosition.X      = ipX;
+                area.InnerPlotPosition.Y      = ipY;
+                area.InnerPlotPosition.Width  = ipW;
+                area.InnerPlotPosition.Height = ipH;
+
+                // Mettre à jour le cache (pour PrePaint)
+                _ipX = ipX; _ipY = ipY; _ipW = ipW; _ipH = ipH;
+                _ipLocked = true;
+            }
 
             return new AxisConfig
             {
@@ -3138,6 +3207,7 @@ namespace AudioHexViewer
             if (width < 10f) width = 10f;
 
             area.Position = new ElementPosition(left, top, width, height);
+            _areaWidthPct = width; // mémorisé pour le calcul de InnerPlotPosition
 
             if (invalidate)
                 chart.Invalidate();

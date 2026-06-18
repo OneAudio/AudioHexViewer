@@ -405,6 +405,26 @@ namespace AudioHexViewer
         }
 
         //
+        // ── PrePaint : enforcement de InnerPlotPosition ─────────────────────
+        // MS Chart recalcule InnerPlotPosition pendant le layout (déclenché par
+        // ResumeUpdates, changement d'interval, etc.). PrePaint fire APRÈS le layout
+        // mais AVANT le rendu : c'est le seul moment où on peut encore imposer notre
+        // valeur sans que la frame soit déjà dessinée avec la mauvaise position.
+        private void ChartSpectrum_PrePaint(object sender, ChartPaintEventArgs e)
+        {
+            var area = e.ChartElement as ChartArea;
+            if (area == null || area.Name != "SpectrumArea") return;
+
+            if (_ipLocked)
+            {
+                area.InnerPlotPosition.Auto   = false;
+                area.InnerPlotPosition.X      = _ipX;
+                area.InnerPlotPosition.Y      = _ipY;
+                area.InnerPlotPosition.Width  = _ipW;
+                area.InnerPlotPosition.Height = _ipH;
+            }
+        }
+
         private void ChartSpectrum_PostPaint(object sender, ChartPaintEventArgs e)
         {
             var chart = (System.Windows.Forms.DataVisualization.Charting.Chart)sender;
@@ -419,6 +439,19 @@ namespace AudioHexViewer
             var area = e.ChartElement as ChartArea;
             if (area == null || area.Name != "SpectrumArea")
                 return;
+
+            // ── Capture de InnerPlotPosition (PostPaint = premier moment valide) ──
+            // On capture ici la valeur calculée par MS Chart pour la verrouiller
+            // AVANT le prochain rendu (appliqué dans UpdateSpectrumChartAndStats).
+            if (!isExport)
+            {
+                var ip = area.InnerPlotPosition;
+                if (!_ipLocked && ip.Width > 1f && ip.Height > 1f)
+                {
+                    _ipX = ip.X; _ipY = ip.Y; _ipW = ip.Width; _ipH = ip.Height;
+                    _ipLocked = true;
+                }
+            }
 
             RectangleF plotForText = GetPlotRectPixels(chart, area);
 
@@ -558,8 +591,11 @@ namespace AudioHexViewer
                         if (Math.Abs(yMajor - Math.Round(yMajor)) < 1e-9) fmt = "0";
                         else fmt = "F" + GetStepDecimals(yMajor);
 
-                        // On parcourt du haut vers le bas (comme les mineurs)
-                        double yStart = yMin + Math.Floor((yMax - yMin) / yMajor) * yMajor;
+                        // Premier label : plus grand multiple de yMajor ≤ yMax.
+                        // Ex : yMax=-7, yMajor=5 → floor(-7/5)*5 = -10 → labels à -10,-15,...
+                        // La grille native (SpectrumControl.cs) est ancrée sur
+                        // ceil(yMin/yMajor)*yMajor avec IntervalOffset, même ensemble de valeurs.
+                        double yStart = Math.Floor(yMax / yMajor) * yMajor;
 
                         for (double y = yStart; y >= yMin - 1e-9; y -= yMajor)
                         {
@@ -652,68 +688,9 @@ namespace AudioHexViewer
             }
 
             // ----------------------------
-            // Y : ticks + labels mineurs
-            // ----------------------------
+            // Y : labels mineurs supprimés (style REW — un seul pas adaptatif).
+            // Les lignes de grille mineures horizontales restent via area.AxisY.MinorGrid.
             {
-                double yMajor = area.AxisY.MajorGrid.Interval;
-                double yMinor = area.AxisY.MinorGrid.Interval;
-
-                if (yMajor > 0 && yMinor > 0)
-                {
-                    double yMin = area.AxisY.Minimum;
-                    double yMax = area.AxisY.Maximum;
-
-                    float xLeftPlot = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Minimum);
-
-                    Font baseFont = area.AxisY.LabelStyle.Font ?? chart.Font;
-                    using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
-                    using (Pen p = new Pen(LabelMinorColor, 1.0f))
-                    {
-                        float tickLenLeft = 5f * sExport;
-                        float gap = 1f * sExport;
-                        float margin = 8f * sExport;
-
-                        float lastLabelBottom = float.NegativeInfinity;
-
-                        double yStart = yMin + Math.Floor((yMax - yMin) / yMinor) * yMinor;
-                        double y0 = yMin;
-
-                        int minorPerMajor = (int)Math.Round(yMajor / yMinor);
-                        if (minorPerMajor <= 0) minorPerMajor = 5;
-
-                        for (double y = yStart; y >= yMin - 1e-9; y -= yMinor)
-                        {
-                            int idx = (int)Math.Round((y - y0) / yMinor);
-                            int m = idx % minorPerMajor;
-                            if (m < 0) m += minorPerMajor;
-                            if (m == 0) continue;
-
-                            float yPix = (float)area.AxisY.ValueToPixelPosition(y);
-
-                            e.ChartGraphics.Graphics.DrawLine(p, xLeftPlot - gap, yPix, xLeftPlot - gap - tickLenLeft, yPix);
-
-                            string txt = FormatDbMinor(y, yMinor);
-
-                            SizeF sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
-                            float xText = xLeftPlot - sz.Width - margin;
-                            float yText = yPix - sz.Height / 2f;
-
-                            if (yText <= lastLabelBottom + 2f * sExport) continue;
-
-                            var g = e.ChartGraphics.Graphics;
-                            var saved = g.Save();
-                            g.ResetClip();
-
-                            using var b = new SolidBrush(LabelMinorColor);
-                            g.DrawString(txt, minorFont, b, xText, yText);
-
-                            g.Restore(saved);
-
-                            lastLabelBottom = yText + sz.Height;
-                        }
-                    }
-                }
-                //
                 // ----------------------------
                 // Y2 : ticks + labels mineurs (Phase en Bode Plot)
                 // Même style que l'axe Y principal, sans grille supplémentaire.

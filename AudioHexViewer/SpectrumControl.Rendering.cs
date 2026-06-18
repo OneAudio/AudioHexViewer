@@ -371,42 +371,30 @@ namespace AudioHexViewer
         // ── Nice numbers pour l'axe Y ─────────────────────────────────────────
         // Choisit un pas majeur "audio naturel" (1, 2, 5, 10, 20, 40, 50, 100 dB…)
         // tel que span / step ∈ [minDivisions, maxDivisions].
-        private static double ChooseNiceYStep(double span, int minDivisions = 3, int maxDivisions = 8)
+        // Style REW : pas adaptatif pour l'axe Y, labels majeurs uniquement.
+        // Choisit le plus petit pas de la liste qui maintient labelCount ≤ maxLabels.
+        // maxLabels est déduit de la hauteur physique du plot (≈1 label / 65px).
+        private static double ChooseNiceYStep(double span, int plotHeightPx = 400)
         {
             if (span <= 0) return 10.0;
 
-            // Séquence de mantisses "audio-friendly" (×10^n pour couvrir toute plage)
-            // On préfère 10, 20, 40 plutôt que 25, 30, 35 — plus naturels en dBFS.
-            double[] mantissas = { 1.0, 2.0, 4.0, 5.0, 10.0 };
+            // Pas de référence REW (du plus fin au plus grossier)
+            double[] steps = { 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0 };
 
-            double bestStep = span; // fallback : une seule division
+            // Nombre maximum de labels majeurs selon la hauteur du plot
+            // ~65px par label → confort de lecture sans chevauchement
+            int maxLabels = Math.Max(3, Math.Min(20, plotHeightPx / 32));
 
-            // On cherche la plus petite mantisse × puissance de 10 qui donne
-            // au moins minDivisions et au plus maxDivisions graduations.
-            double magnitude = Math.Pow(10.0, Math.Floor(Math.Log10(span / maxDivisions)));
-
-            for (int exp = -1; exp <= 3; exp++)
+            // Choisir le plus petit pas tel que le nombre de labels ≤ maxLabels
+            foreach (double step in steps)
             {
-                double scale = magnitude * Math.Pow(10.0, exp);
-                foreach (double m in mantissas)
-                {
-                    double step = m * scale;
-                    if (step <= 0) continue;
-                    double divs = span / step;
-                    if (divs >= minDivisions - 0.001 && divs <= maxDivisions + 0.001)
-                    {
-                        // Parmi les candidats valides, prendre le plus grand step
-                        // (moins de divisions = plus lisible) — sauf si bestStep
-                        // n'est pas encore valide.
-                        double bestDivs = span / bestStep;
-                        bool bestIsValid = bestDivs >= minDivisions - 0.001 && bestDivs <= maxDivisions + 0.001;
-                        if (!bestIsValid || step > bestStep)
-                            bestStep = step;
-                    }
-                }
+                int labelCount = (int)Math.Floor(span / step) + 1;
+                if (labelCount <= maxLabels)
+                    return step;
             }
 
-            return bestStep;
+            // Fallback : step le plus grossier
+            return steps[steps.Length - 1];
         }
 
         // Choisit le nombre de subdivisions mineures le plus adapté au pas majeur :
@@ -914,6 +902,9 @@ namespace AudioHexViewer
             UpdateSpectrumChartAndStats();
         }
 
+        // Mémorise le dernier onglet X sélectionné dans le dialog Axis (Mini/Maxi=0 ou Center/Span=1)
+        private int _axisDialogTabX = 0;
+
         // InitAxisButtonUi et PositionAxisButton supprimés — remplacés par btnAxisOpen dans panelTop
 
         //
@@ -927,12 +918,18 @@ namespace AudioHexViewer
             // Valeurs actuelles (si custom non null, on les utilise)
             double yMinCurrent = customYMin ?? area.AxisY.Minimum;
             double yMaxCurrent = customYMax ?? area.AxisY.Maximum;
-            double fMinCurrent = customFMin ?? area.AxisX.Minimum;   // Hz
+            // En LIN sans custom, Fmin = 0 (pas ΔF qui peut traîner dans le chart).
+            // En LOG sans custom, on lit le Minimum du chart (= décade de ΔF).
+            double fMinCurrent = customFMin ?? (_xAxisIsLog ? area.AxisX.Minimum : 0.0);
             double fMaxCurrent = customFMax ?? area.AxisX.Maximum;   // Hz
 
             // Sauvegarde pour restauration si Cancel
-            double? savedFMin = customFMin;
-            double? savedFMax = customFMax;
+            double? savedFMin    = customFMin;
+            double? savedFMax    = customFMax;
+            double? savedYMin    = customYMin;
+            double? savedYMax    = customYMax;
+            double? savedPhMin   = customPhaseMin;
+            double? savedPhMax   = customPhaseMax;
 
             using (var dlg = new SpectrumAxisDialog())
             {
@@ -976,20 +973,38 @@ namespace AudioHexViewer
                 // Pré-sélectionner l'unité verticale courante
                 dlg.VerticalUnit = _levelUnit;
 
-                // Preview live : mettre à jour le graphe à chaque changement de plage X
+                dlg.IsLogX            = _xAxisIsLog;
+                dlg.IsUnwrappedPhase  = _frfPhaseUnwrap;
+
+                // Restaurer le dernier onglet X sélectionné
+                dlg.XTabSelectedIndex = _axisDialogTabX;
+
+                // Preview live : mise à jour du graphe à chaque changement X, Y ou Phase
                 dlg.PreviewChanged = () =>
                 {
                     customFMin = dlg.FMinHz;
                     customFMax = dlg.FMaxHz;
+                    customYMax = dlg.YMax;
+                    customYMin = dlg.YMin;
+                    if (phaseUiEnabled)
+                    {
+                        customPhaseMax = dlg.PhaseMaxDeg;
+                        customPhaseMin = dlg.PhaseMinDeg;
+                    }
                     if (!isLive) UpdateSpectrumChartAndStats();
                     else        chartSpectrum.Invalidate();
                 };
 
                 if (dlg.ShowDialog(FindForm()) != DialogResult.OK)
                 {
-                    // Cancel : restaurer les valeurs d'avant le preview
-                    customFMin = savedFMin;
-                    customFMax = savedFMax;
+                    // Cancel : restaurer toutes les valeurs d'avant le preview
+                    _axisDialogTabX = dlg.XTabSelectedIndex;
+                    customFMin    = savedFMin;
+                    customFMax    = savedFMax;
+                    customYMin    = savedYMin;
+                    customYMax    = savedYMax;
+                    customPhaseMin = savedPhMin;
+                    customPhaseMax = savedPhMax;
                     if (!isLive) UpdateSpectrumChartAndStats();
                     else        chartSpectrum.Invalidate();
                     return;
@@ -1045,6 +1060,9 @@ namespace AudioHexViewer
                     }
                     if (customFMax <= customFMin)
                         customFMax = customFMin + 10.0;
+
+                    // Mémoriser l'onglet X sélectionné
+                    _axisDialogTabX = dlg.XTabSelectedIndex;
 
                     // Appliquer l'unité verticale choisie dans le dialog
                     string newUnit = dlg.VerticalUnit;
@@ -1241,9 +1259,9 @@ namespace AudioHexViewer
         {
             base.OnResize(e);
 
-            // Lors d'un resize, on libère l'InnerPlotPosition qu'on avait gelé pendant
-            // le toggle LOG/LIN, afin que le Chart puisse le recalculer proprement
-            // pour les nouvelles dimensions.
+            // Sur resize, invalider le verrou InnerPlotPosition pour que MS Chart
+            // recalcule proprement avec les nouvelles dimensions.
+            _ipLocked = false;
             if (chartSpectrum != null)
             {
                 var area = chartSpectrum.ChartAreas.FindByName("SpectrumArea");

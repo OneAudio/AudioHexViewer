@@ -97,11 +97,17 @@ namespace AudioHexViewer
             numYMax.Minimum = -200; numYMax.Maximum = 0; numYMax.Font = std;
             btnFitY = FitBtn(y);
 
-            y += 25; // 54 — Range row
-            lblYMin = RowLbl("Range (dBFS)", y);
-            cmbYRange = new ComboBox {
-                Location = new Point(CTLX, y), Size = new Size(CTLW, ROW),
-                DropDownStyle = ComboBoxStyle.DropDownList, Font = std
+            y += 25; // 54 — Range row (libre, plus de liste fixe)
+            lblYMin = RowLbl("Range (dB)", y);
+            numYRange = new NumericUpDown();
+            ((ISupportInitialize)numYRange).BeginInit();
+            numYRange.Location = new Point(CTLX, y); numYRange.Size = new Size(CTLW, ROW);
+            numYRange.Minimum = 1; numYRange.Maximum = 400;
+            numYRange.Increment = 5; numYRange.DecimalPlaces = 0; numYRange.Font = std;
+            ((ISupportInitialize)numYRange).EndInit();
+            btnDefRange = new Button {
+                Location = new Point(FITX, y), Size = new Size(FITW, ROW),
+                Text = "Def", Font = std, UseVisualStyleBackColor = true
             };
 
             y += 25; // 79 — Vertical Unit row
@@ -112,8 +118,8 @@ namespace AudioHexViewer
             };
             cmbVertUnit.Items.AddRange(new object[] { "dBFS", "dBV" });
 
-            Controls.AddRange(new Control[] { lblYMax, numYMax, btnFitY, lblYMin, cmbYRange,
-                                              lblVertUnit, cmbVertUnit });
+            Controls.AddRange(new Control[] { lblYMax, numYMax, btnFitY, lblYMin, numYRange,
+                                              btnDefRange, lblVertUnit, cmbVertUnit });
 
             // ════════════════════════════════════════════════════════════════
             //  PHASE
@@ -125,7 +131,7 @@ namespace AudioHexViewer
             lblY2Max = RowLbl("Phase max (°)", y);
             numY2Max.Location = new Point(CTLX, y); numY2Max.Size = new Size(CTLW, ROW);
             numY2Max.Increment = 15; numY2Max.DecimalPlaces = 0;
-            numY2Max.Minimum = -360; numY2Max.Maximum = 360; numY2Max.Font = std;
+            numY2Max.Minimum = -180; numY2Max.Maximum = 180; numY2Max.Font = std;
             btnFitY2 = FitBtn(y);
 
             y += 25; // 125 — Phase range row
@@ -134,8 +140,12 @@ namespace AudioHexViewer
                 Location = new Point(CTLX, y), Size = new Size(CTLW, ROW),
                 DropDownStyle = ComboBoxStyle.DropDownList, Font = std
             };
+            btnDefPhaseRange = new Button {
+                Location = new Point(FITX, y), Size = new Size(FITW, ROW),
+                Text = "Def", Font = std, UseVisualStyleBackColor = true
+            };
 
-            Controls.AddRange(new Control[] { lblY2Max, numY2Max, btnFitY2, lblY2Min, cmbY2Range });
+            Controls.AddRange(new Control[] { lblY2Max, numY2Max, btnFitY2, lblY2Min, cmbY2Range, btnDefPhaseRange });
 
             // ════════════════════════════════════════════════════════════════
             //  FREQUENCY RANGE
@@ -221,7 +231,9 @@ namespace AudioHexViewer
         // ── Field declarations ────────────────────────────────────────────
         private Label lblYMax = null!, lblYMin = null!, lblVertUnit = null!;
         private NumericUpDown numYMax = null!;
-        private ComboBox cmbYRange = null!, cmbVertUnit = null!;
+        private NumericUpDown numYRange = null!;
+        private Button btnDefRange = null!, btnDefPhaseRange = null!;
+        private ComboBox cmbVertUnit = null!;
         private Label lblY2Max = null!, lblY2Min = null!;
         private NumericUpDown numY2Max = null!;
         private ComboBox cmbY2Range = null!;
