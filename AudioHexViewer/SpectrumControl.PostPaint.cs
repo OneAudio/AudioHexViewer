@@ -415,6 +415,11 @@ namespace AudioHexViewer
             var area = e.ChartElement as ChartArea;
             if (area == null || area.Name != "SpectrumArea") return;
 
+            // MS Chart peut réactiver LabelStyle pendant son layout interne.
+            // On force la désactivation ici (après le layout, avant le rendu).
+            area.AxisY.LabelStyle.Enabled  = false;
+            area.AxisY2.LabelStyle.Enabled = false;
+
             if (_ipLocked)
             {
                 area.InnerPlotPosition.Auto   = false;
@@ -628,62 +633,69 @@ namespace AudioHexViewer
             }
 
             skipCustomYLabels:
-            // ----------------------------
-            // Y2 : labels majeurs (remplacement complet du Chart)
-            // ----------------------------
+            // ── Y2 : labels majeurs Phase (PostPaint, labels natifs désactivés) ──
+            // Un seul bloc d'autorité. Pas de labels mineurs sur l'axe de phase.
             if (area.AxisY2.Enabled == AxisEnabled.True)
             {
                 double yMajor2 = area.AxisY2.Interval;
-                if (yMajor2 <= 0) yMajor2 = area.AxisY2.MajorGrid.Interval; // sécurité
+                if (yMajor2 <= 0) yMajor2 = area.AxisY2.MajorGrid.Interval;
+
+                float xRightPlot = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Maximum);
+                // Labels droite-alignés à 40px du bord droit du plot.
+                // Titre vertical à 44px (après les labels).
+                float xLabelRight = xRightPlot + 40f;
+                float xTitlePivot = xRightPlot + 45f;
+
+                Font baseFont2 = area.AxisY2.LabelStyle.Font ?? chart.Font;
+                using Font majorFont2 = new Font(baseFont2.FontFamily, baseFont2.Size, baseFont2.Style);
+                using var brushMaj2  = new SolidBrush(LabelMajorColor);
 
                 if (yMajor2 > 0)
                 {
                     double yMin2 = area.AxisY2.Minimum;
                     double yMax2 = area.AxisY2.Maximum;
 
-                    // même repère X que tes mineurs, mais côté droit
-                    float xRightPlot = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Maximum);
+                    string fmt = (Math.Abs(yMajor2 - Math.Round(yMajor2)) < 1e-9) ? "0"
+                                 : "F" + GetStepDecimals(yMajor2);
 
-                    Font baseFont = area.AxisY2.LabelStyle.Font ?? chart.Font;
-                    using (Font majorFont = new Font(baseFont.FontFamily, baseFont.Size, baseFont.Style))
+                    // Itère du haut vers le bas (yStart = plus grand multiple)
+                    double yStart = yMin2 + Math.Floor((yMax2 - yMin2) / yMajor2) * yMajor2;
+                    float lastBottom = float.NegativeInfinity;
+
+                    var gM = e.ChartGraphics.Graphics;
+                    var savedM = gM.Save();
+                    gM.ResetClip();
+                    for (double y = yStart; y >= yMin2 - 1e-9; y -= yMajor2)
                     {
-                        float margin = 8f * sExport;
-                        float gap = 1f * sExport;
-                        float lastLabelBottom = float.NegativeInfinity;
-
-                        string fmt;
-                        if (Math.Abs(yMajor2 - Math.Round(yMajor2)) < 1e-9) fmt = "0";
-                        else fmt = "F" + GetStepDecimals(yMajor2);
-
-                        double yStart = yMin2 + Math.Floor((yMax2 - yMin2) / yMajor2) * yMajor2;
-
-                        for (double y = yStart; y >= yMin2 - 1e-9; y -= yMajor2)
-                        {
-                            float yPix = (float)area.AxisY2.ValueToPixelPosition(y);
-
-                            //string txt = y.ToString(fmt, CultureInfo.InvariantCulture);
-                            // Phase axis (Y2) in FRF/Bode plot: add degree symbol on major labels
-                            string txt = y.ToString(fmt, CultureInfo.InvariantCulture) + "°";
-
-                            SizeF sz = e.ChartGraphics.Graphics.MeasureString(txt, majorFont);
-
-                            float xText = xRightPlot + gap + margin;
-                            float yText = yPix - sz.Height / 2f;
-
-                            if (yText <= lastLabelBottom + 2f * sExport) continue;
-
-                            var g = e.ChartGraphics.Graphics;
-                            var saved = g.Save();
-                            g.ResetClip();
-
-                            using var b = new SolidBrush(LabelMajorColor);
-                            g.DrawString(txt, majorFont, b, xText, yText);
-
-                            g.Restore(saved);
-
-                            lastLabelBottom = yText + sz.Height;
-                        }
+                        float yPix  = (float)area.AxisY2.ValueToPixelPosition(y);
+                        string txt  = y.ToString(fmt, CultureInfo.InvariantCulture) + "°";
+                        SizeF  sz   = gM.MeasureString(txt, majorFont2);
+                        float  xTxt = xLabelRight - sz.Width;   // right-align
+                        float  yTxt = yPix - sz.Height / 2f;
+                        if (yTxt <= lastBottom + 2f * sExport) continue;
+                        gM.DrawString(txt, majorFont2, brushMaj2, xTxt, yTxt);
+                        lastBottom = yTxt + sz.Height;
                     }
+                    gM.Restore(savedM);
+
+                    // ── Titre "Phase (°)" vertical ─────────────────────────
+                    float yTop2 = (float)area.AxisY2.ValueToPixelPosition(yMax2);
+                    float yBot2 = (float)area.AxisY2.ValueToPixelPosition(yMin2);
+                    float yMid2 = (yTop2 + yBot2) / 2f;
+                    const string titleTxt = "Phase (°)";
+                    SizeF  szT = gM.MeasureString(titleTxt, majorFont2);
+                    var savedT = gM.Save();
+                    gM.ResetClip();
+                    gM.TranslateTransform(xTitlePivot, yMid2 + szT.Width / 2f);
+                    gM.RotateTransform(-90f);
+                    using var sfTitle = new System.Drawing.StringFormat(
+                        System.Drawing.StringFormatFlags.NoWrap)
+                        { Trimming = System.Drawing.StringTrimming.None };
+                    var oldHint = gM.TextRenderingHint;
+                    gM.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                    gM.DrawString(titleTxt, majorFont2, brushMaj2, 0f, 0f, sfTitle);
+                    gM.TextRenderingHint = oldHint;
+                    gM.Restore(savedT);
                 }
             }
 
@@ -691,82 +703,7 @@ namespace AudioHexViewer
             // Y : labels mineurs supprimés (style REW — un seul pas adaptatif).
             // Les lignes de grille mineures horizontales restent via area.AxisY.MinorGrid.
             {
-                // ----------------------------
-                // Y2 : ticks + labels mineurs (Phase en Bode Plot)
-                // Même style que l'axe Y principal, sans grille supplémentaire.
-                // Subdivisions secondaires fixes : 5
-                // ----------------------------
-                if (area.AxisY2.Enabled == AxisEnabled.True)
-                {
-                    double yMajor2 = area.AxisY2.Interval;
-                    if (yMajor2 > 0)
-                    {
-                        double yMinor2 = yMajor2 / 5.0; // demandé : 5 subdivisions secondaires
-
-                        double yMin2 = area.AxisY2.Minimum;
-                        double yMax2 = area.AxisY2.Maximum;
-
-                        // Bord droit du plot (en pixels)
-                        float xRightPlot = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Maximum);
-
-                        Font baseFont = area.AxisY.LabelStyle.Font ?? chart.Font;
-                        using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
-                        using (Pen p = new Pen(LabelMinorColor, 1.0f))
-                        {
-                            float tickLenRight = 5f * sExport;  // même longueur que Y (gauche)
-                            float gap = 1f * sExport;           // même gap
-                            float margin = 8f * sExport;        // même margin (mais côté droit)
-
-                            float lastLabelBottom = float.NegativeInfinity;
-
-                            // Démarrage aligné sur la grille minor
-                            double y0 = yMin2;
-                            double yStart = yMin2 + Math.Floor((yMax2 - yMin2) / yMinor2) * yMinor2;
-
-                            // minorPerMajor = 5 (fixe) ; m==0 => tick major => skip (déjà géré par Chart)
-                            int minorPerMajor = 5;
-
-                            for (double y = yStart; y >= yMin2 - 1e-9; y -= yMinor2)
-                            {
-                                int idx = (int)Math.Round((y - y0) / yMinor2);
-                                int m = idx % minorPerMajor;
-                                if (m < 0) m += minorPerMajor;
-                                if (m == 0) continue; // pas de label/tick mineur sur un major
-
-                                float yPix = (float)area.AxisY2.ValueToPixelPosition(y);
-
-                                // Tick mineur côté droit
-                                e.ChartGraphics.Graphics.DrawLine(p,
-                                    xRightPlot + gap,
-                                    yPix,
-                                    xRightPlot + gap + tickLenRight,
-                                    yPix);
-
-                                // Format label mineur : cohérent avec le pas (comme dB), mais sans "deg" ni symbole
-                                string txt = FormatDbMinor(y, yMinor2); // réutilise la logique de décimales existante
-
-                                SizeF sz = e.ChartGraphics.Graphics.MeasureString(txt, minorFont);
-                                float xText = xRightPlot + gap + tickLenRight + margin;
-                                float yText = yPix - sz.Height / 2f;
-
-                                // Anti-chevauchement vertical (même logique que Y)
-                                if (yText <= lastLabelBottom + 0f * sExport)
-                                    continue;
-
-                                var g = e.ChartGraphics.Graphics;
-                                var saved = g.Save();
-                                g.ResetClip();
-
-                                using var b = new SolidBrush(LabelMinorColor);
-                                g.DrawString(txt, minorFont, b, xText, yText);
-
-                                g.Restore(saved);
-
-                                lastLabelBottom = yText + sz.Height;
-                            }
-                        }
-                    }
-                }
+                // Phase : pas de labels mineurs (Y2 majeurs seulement).
 
 
                 // ---------------------------------------------------------
@@ -1135,10 +1072,18 @@ namespace AudioHexViewer
                     g.ResetClip();
                     g.TranslateTransform(xPivot, yMid + sz.Width / 2f);
                     g.RotateTransform(-90f);
-                    g.DrawString(yTitle, titleFont, titleBrush, 0f, 0f);
+                    var sfY = new System.Drawing.StringFormat(System.Drawing.StringFormatFlags.NoWrap)
+                              { Trimming = System.Drawing.StringTrimming.None };
+                    var oldHint = g.TextRenderingHint;
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                    g.DrawString(yTitle, titleFont, titleBrush, 0f, 0f, sfY);
+                    g.TextRenderingHint = oldHint;
+                    sfY.Dispose();
                     g.Restore(saved2);
                 }
             }
+
+            // Y2 labels + titre : gérés dans le bloc unique Y2 ci-dessus.
 
             // ── Titre axe X dessiné en PostPaint ────────────────────────────────
             // Positionné en coordonnées Chart client fixes (pas relatives au plot),

@@ -1885,22 +1885,45 @@ namespace AudioHexViewer
 
             if (showY2)
             {
-                area.AxisY2.Title = "Phase (deg)";
+                area.AxisY2.Title = "";  // dessiné en PostPaint avec décalage contrôlé
                 double pmin = customPhaseMin ?? -180.0;
                 double pmax = customPhaseMax ?? 180.0;
 
-                pmin = Math.Max(-360.0, Math.Min(360.0, pmin));
-                pmax = Math.Max(-360.0, Math.Min(360.0, pmax));
-                if (pmax <= pmin) pmax = Math.Min(360.0, pmin + 1.0);
+                // Bornes selon mode : ±180° wrapped, ±1800° unwrapped
+                double phAbsMax = _frfPhaseUnwrap ? 1800.0 : 180.0;
+                pmin = Math.Max(-phAbsMax, Math.Min(phAbsMax, pmin));
+                pmax = Math.Max(-phAbsMax, Math.Min(phAbsMax, pmax));
+                if (pmax <= pmin) pmax = Math.Min(phAbsMax, pmin + 1.0);
 
                 area.AxisY2.Minimum = pmin;
                 area.AxisY2.Maximum = pmax;
 
                 double span = pmax - pmin;
-                area.AxisY2.Interval = Math.Max(1.0, span / 4.0);
+                int phPx = (int)(chartSpectrum.ClientSize.Height * area.Position.Height / 100f);
+                if (phPx < 50) phPx = 400;
+                area.AxisY2.Interval = ChooseNicePhaseStep(span, phPx);
 
-                area.AxisY2.MajorGrid.Enabled = false;
-                area.AxisY2.MinorGrid.Enabled = false;
+                // Offset : premier label = plus petit multiple du pas >= pmin.
+                // Garantit que 0° est toujours un label pour les sous-multiples de 360°.
+                double step2 = area.AxisY2.Interval;
+                double phaseFirst = Math.Ceiling(pmin / step2) * step2;
+                double phaseOff   = phaseFirst - pmin;  // distance depuis le Minimum
+                // Labels dessinés en PostPaint → désactiver les labels natifs.
+                // MS Chart ignore LabelStyle.Interval quand IntervalOffset est
+                // explicite et calcule son propre auto-interval → parasites.
+                area.AxisY2.LabelStyle.Enabled          = false;
+                area.AxisY2.LabelStyle.Interval         = step2;
+                area.AxisY2.MajorGrid.Interval          = step2;
+                area.AxisY2.MajorTickMark.Interval      = step2;
+
+                area.AxisY2.IntervalOffset              = phaseOff;
+                area.AxisY2.LabelStyle.IntervalOffset   = phaseOff;
+                area.AxisY2.MajorGrid.IntervalOffset    = phaseOff;
+                area.AxisY2.MajorTickMark.IntervalOffset = phaseOff;
+
+                area.AxisY2.MajorGrid.Enabled    = false;
+                area.AxisY2.MinorGrid.Enabled    = false;
+                area.AxisY2.MinorTickMark.Enabled = false;
             }
 
             // Limite supérieure autorisée (utile en dBV après calibration).
@@ -2170,10 +2193,14 @@ namespace AudioHexViewer
                 float aHpx = cH * 91f / 100f;  // height toujours 91%
 
                 // Marges fixes en pixels
-                const float leftPx  = 72f; // place pour labels Y + ticks
-                const float topPx   =  5f;
-                const float botPx   = 28f; // place pour labels X + titre
-                const float rightPx =  4f;
+                const float leftPx = 72f; // place pour labels Y + ticks
+                const float topPx  =  5f;
+                const float botPx  = 28f; // place pour labels X + titre
+                // En Bode Plot, l'axe Y2 (phase) est dessiné à droite du plot :
+                // il faut une marge droite suffisante (~50px) pour ses labels.
+                // Sans phase, 4px suffisent.
+                bool hasBodePlot = (SelectedChannelMode == "Bode Plot");
+                float rightPx = hasBodePlot ? 54f : 4f;
 
                 float ipX = aWpx > 10f ? 100f * leftPx  / aWpx : 8f;
                 float ipY = aHpx > 10f ? 100f * topPx   / aHpx : 1f;

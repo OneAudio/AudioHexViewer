@@ -374,6 +374,28 @@ namespace AudioHexViewer
         // Style REW : pas adaptatif pour l'axe Y, labels majeurs uniquement.
         // Choisit le plus petit pas de la liste qui maintient labelCount ≤ maxLabels.
         // maxLabels est déduit de la hauteur physique du plot (≈1 label / 65px).
+        // Pas adaptatif pour l'axe Y2 Phase (en degrés).
+        // Sous-multiples de 360° du plus fin au plus grossier.
+        // Retourne le PLUS PETIT pas tel que labelCount ≤ maxLabels.
+        private static double ChooseNicePhaseStep(double span, int plotHeightPx = 400)
+        {
+            if (span <= 0) return 45.0;
+
+            // Du plus fin (1°) au plus grossier (720°)
+            double[] steps = { 1, 2, 5, 10, 15, 20, 30, 45, 90, 180, 360, 720 };
+
+            // ~50px par label pour la phase (labels courts "0°", "45°", "-90°")
+            int maxLabels = Math.Max(3, Math.Min(20, plotHeightPx / 50));
+
+            foreach (double step in steps)
+            {
+                int labelCount = (int)Math.Floor(span / step) + 1;
+                if (labelCount <= maxLabels)
+                    return step;
+            }
+            return steps[steps.Length - 1];
+        }
+
         private static double ChooseNiceYStep(double span, int plotHeightPx = 400)
         {
             if (span <= 0) return 10.0;
@@ -956,8 +978,10 @@ namespace AudioHexViewer
                 // IMPORTANT: set YMax first, then YMin (YMin is derived via the selected range).
                 dlg.YMax = yMaxCurrent;
                 dlg.YMin = yMinCurrent;
-                dlg.FMinHz = fMinCurrent;   // *** en Hz ***
-                dlg.FMaxHz = fMaxCurrent;   // *** en Hz ***
+                // Setter les deux valeurs simultanément sous _updating=true
+                // pour éviter que SyncFromMinMax s'exécute avec un fMax
+                // intermédiaire (20000 Hz default) et corrompe customFMin.
+                dlg.InitFreqRange(fMinCurrent, fMaxCurrent);
 
                 // Y2 Phase (deg) — uniquement si l'affichage phase est actif
                 bool phaseUiEnabled = IsFrfMode() && _frfPhaseEnabled;
@@ -980,8 +1004,17 @@ namespace AudioHexViewer
                 dlg.XTabSelectedIndex = _axisDialogTabX;
 
                 // Preview live : mise à jour du graphe à chaque changement X, Y ou Phase
+                // IMPORTANT : préfixe dialogReady pour bloquer PreviewChanged
+                // pendant toute la séquence d'init (avant ShowDialog).
+                // Sans ce garde, SyncFromMinMax ou ValidateAndApplyMainY
+                // peuvent écrire dans customFMin/customFMax avec des valeurs
+                // intermédiaires et corrompre les valeurs au prochain démarrage.
+                bool dialogReady = false;
+                dlg.Shown += (_, __) => dialogReady = true;
+
                 dlg.PreviewChanged = () =>
                 {
+                    if (!dialogReady) return;  // ignorer les events d'init
                     customFMin = dlg.FMinHz;
                     customFMax = dlg.FMaxHz;
                     customYMax = dlg.YMax;
