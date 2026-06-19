@@ -776,6 +776,29 @@ namespace AudioHexViewer
             btnPhiEnable.Click += BtnPhiEnable_Click;
             btnPhiUnwrap.Click += BtnPhiUnwrap_Click;
             btnFrfRefCapture.Click += BtnFrfRefCapture_Click;
+
+            // Clic droit sur "Cap Ref" : menu Save / Load / Clear
+            {
+                var menuCapRef    = new ContextMenuStrip();
+                var miSave        = new ToolStripMenuItem("Save reference...") { Image = null };
+                var miLoad        = new ToolStripMenuItem("Load reference...") { Image = null };
+                var miClear       = new ToolStripMenuItem("Clear reference")   { Image = null };
+                miSave .Click    += (_, _) => SaveFrfReference();
+                miLoad .Click    += (_, _) => LoadFrfReference();
+                miClear.Click    += (_, _) => ClearFrfReference();
+                menuCapRef.Items.Add(miSave);
+                menuCapRef.Items.Add(miLoad);
+                menuCapRef.Items.Add(new ToolStripSeparator());
+                menuCapRef.Items.Add(miClear);
+                // Griser Save et Clear si pas de référence en mémoire
+                menuCapRef.Opening += (_, _) =>
+                {
+                    bool hasRef     = _frfRefGainDb != null;
+                    miSave .Enabled = hasRef;
+                    miClear.Enabled = hasRef;
+                };
+                btnFrfRefCapture.ContextMenuStrip = menuCapRef;
+            }
             btnFrfNormToggle.Click += BtnFrfNormToggle_Click;
 
             // état initial (phase OFF, wrap ON)

@@ -830,8 +830,12 @@ namespace AudioHexViewer
                     double gxxInst = (double)X.Real * X.Real + (double)X.Imaginary * X.Imaginary;
                     double gyyInst = (double)Y.Real * Y.Real + (double)Y.Imaginary * Y.Imaginary;
 
-                    var yConj = new Complex32(Y.Real, -Y.Imaginary);
-                    var gxy32 = X * yConj;
+                    // CONVENTION H1 : Gxy = Y · X*  (et non X · Y*) pour que
+                    // H = Gxy/Gxx donne Y/X directement (et non son conjugué).
+                    // Le calcul X·Y* donnait H* → phase inversée (un RC LPF
+                    // mesurait +90° au lieu de -90° aux hautes fréquences).
+                    var xConj = new Complex32(X.Real, -X.Imaginary);
+                    var gxy32 = Y * xConj;
                     var gxyInst = new System.Numerics.Complex(gxy32.Real, gxy32.Imaginary);
 
                     _frfGxx![k] = a * _frfGxx[k] + b * gxxInst;
@@ -859,8 +863,12 @@ namespace AudioHexViewer
                     double gxxInst = (double)X.Real * X.Real + (double)X.Imaginary * X.Imaginary;
                     double gyyInst = (double)Y.Real * Y.Real + (double)Y.Imaginary * Y.Imaginary;
 
-                    var yConj = new Complex32(Y.Real, -Y.Imaginary);
-                    var gxy32 = X * yConj;
+                    // CONVENTION H1 : Gxy = Y · X*  (et non X · Y*) pour que
+                    // H = Gxy/Gxx donne Y/X directement (et non son conjugué).
+                    // Le calcul X·Y* donnait H* → phase inversée (un RC LPF
+                    // mesurait +90° au lieu de -90° aux hautes fréquences).
+                    var xConj = new Complex32(X.Real, -X.Imaginary);
+                    var gxy32 = Y * xConj;
                     var gxyInst = new System.Numerics.Complex(gxy32.Real, gxy32.Imaginary);
 
                     // Retire la frame la plus ancienne de la somme si l'anneau est plein

@@ -191,7 +191,13 @@ namespace AudioHexViewer
             btnPhiEnable.Enabled  = frf;
             btnPhiUnwrap.Enabled  = frf;
 
-            if (!frf) return;
+            if (!frf)
+            {
+                // Hors Bode Plot : remettre apparence neutre même si boutons étaient verts
+                ApplyBodeToggleVisual(btnPhiEnable, false);
+                ApplyBodeToggleVisual(btnPhiUnwrap, false);
+                return;
+            }
 
             // CheckBox.Appearance.Button: use explicit BackColor for green (not native blue)
             ApplyBodeToggleVisual(btnPhiEnable, _frfPhaseEnabled);
@@ -285,20 +291,138 @@ namespace AudioHexViewer
             }
         }
 
-        private void BtnFrfRefCapture_Click(object? sender, EventArgs e)
+        // ════════════════════════════════════════════════════════════════════
+        // Référence FRF : Clear / Save / Load
+        // ════════════════════════════════════════════════════════════════════
+
+        internal void ClearFrfReference()
         {
-            // Ctrl+clic : efface la référence courante et désactive la normalisation.
-            if (ModifierKeys.HasFlag(Keys.Control))
+            _frfRefGainDb         = null;
+            _frfRefPhaseDeg       = null;
+            _frfRefFreqHz         = null;
+            _frfRefGainDbActive   = null;
+            _frfRefPhaseDegActive = null;
+            _frfRefActiveBins     = -1;
+            _frfNormEnabled       = false;
+            ApplyFrfNormButtonsUi();
+            chartSpectrum.Invalidate();
+        }
+
+        internal void SaveFrfReference()
+        {
+            if (_frfRefGainDb == null || _frfRefPhaseDeg == null || _frfRefFreqHz == null)
             {
-                _frfRefGainDb = null;
-                _frfRefPhaseDeg = null;
-                _frfRefFreqHz = null;
-                _frfRefGainDbActive = null;
+                MessageBox.Show("No reference captured yet.\nCapture a reference first (\"Cap Ref\").",
+                    "Save Bode Reference", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using var dlg = new SaveFileDialog
+            {
+                Title       = "Save Bode Reference",
+                Filter      = "AudioHexViewer Reference (*.ahvref)|*.ahvref|CSV (*.csv)|*.csv",
+                DefaultExt  = "ahvref",
+                FileName    = $"BodeRef_{DateTime.Now:yyyyMMdd_HHmmss}"
+            };
+            if (dlg.ShowDialog(FindForm()) != DialogResult.OK) return;
+
+            try
+            {
+                using var sw = new System.IO.StreamWriter(
+                    dlg.FileName, false, System.Text.Encoding.UTF8);
+
+                double df = _frfRefFreqHz.Length > 1
+                    ? _frfRefFreqHz[1] - _frfRefFreqHz[0] : 0.0;
+
+                sw.WriteLine("# AudioHexViewer Bode Reference");
+                sw.WriteLine($"# Date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                sw.WriteLine($"# SampleRate: {_sampleRate}");
+                sw.WriteLine($"# FFTSize: {lastFftSize}");
+                sw.WriteLine($"# DeltaF: {df:F6} Hz");
+                sw.WriteLine($"# Bins: {_frfRefGainDb.Length}");
+                sw.WriteLine("Frequency (Hz),Gain (dB),Phase (deg)");
+
+                var ic = System.Globalization.CultureInfo.InvariantCulture;
+                int n  = _frfRefGainDb.Length;
+                for (int k = 0; k < n; k++)
+                    sw.WriteLine(string.Format(ic, "{0:F6},{1:F6},{2:F6}",
+                        _frfRefFreqHz[k], _frfRefGainDb[k], _frfRefPhaseDeg[k]));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error saving reference:\n{ex.Message}",
+                    "Save Bode Reference", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        internal void LoadFrfReference()
+        {
+            using var dlg = new OpenFileDialog
+            {
+                Title      = "Load Bode Reference",
+                Filter     = "AudioHexViewer Reference (*.ahvref)|*.ahvref|CSV (*.csv)|*.csv|All files (*.*)|*.*",
+                DefaultExt = "ahvref"
+            };
+            if (dlg.ShowDialog(FindForm()) != DialogResult.OK) return;
+
+            try
+            {
+                var freqs  = new System.Collections.Generic.List<double>();
+                var gains  = new System.Collections.Generic.List<double>();
+                var phases = new System.Collections.Generic.List<double>();
+                var ic     = System.Globalization.CultureInfo.InvariantCulture;
+
+                foreach (var line in System.IO.File.ReadLines(dlg.FileName,
+                    System.Text.Encoding.UTF8))
+                {
+                    if (string.IsNullOrWhiteSpace(line)
+                        || line.StartsWith('#')
+                        || line.StartsWith("Frequency")) continue;
+
+                    var p = line.Split(',');
+                    if (p.Length < 3) continue;
+
+                    if (double.TryParse(p[0], System.Globalization.NumberStyles.Float, ic, out double f)
+                     && double.TryParse(p[1], System.Globalization.NumberStyles.Float, ic, out double g)
+                     && double.TryParse(p[2], System.Globalization.NumberStyles.Float, ic, out double ph))
+                    {
+                        freqs .Add(f);
+                        gains .Add(g);
+                        phases.Add(ph);
+                    }
+                }
+
+                if (freqs.Count < 2)
+                {
+                    MessageBox.Show("File contains insufficient data (< 2 bins).",
+                        "Load Bode Reference", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                _frfRefGainDb         = gains .ToArray();
+                _frfRefPhaseDeg       = phases.ToArray();
+                _frfRefFreqHz         = freqs .ToArray();
+                // Invalide le cache actif → ré-échantillonnage auto à la prochaine frame
+                _frfRefGainDbActive   = null;
                 _frfRefPhaseDegActive = null;
-                _frfRefActiveBins = -1;
-                _frfNormEnabled = false;
+                _frfRefActiveBins     = -1;
+
                 ApplyFrfNormButtonsUi();
                 chartSpectrum.Invalidate();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading reference:\n{ex.Message}",
+                    "Load Bode Reference", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void BtnFrfRefCapture_Click(object? sender, EventArgs e)
+        {
+            // Ctrl+clic : efface la référence (conservé pour compatibilité clavier).
+            if (ModifierKeys.HasFlag(Keys.Control))
+            {
+                ClearFrfReference();
                 return;
             }
 
@@ -354,7 +478,13 @@ namespace AudioHexViewer
 
             bool hasRef = _frfRefGainDb != null && _frfRefPhaseDeg != null;
 
-            if (!frf) return;   // visual state below only applies in Bode mode
+            if (!frf)
+            {
+                // Hors Bode Plot : remettre apparence neutre
+                ApplyBodeToggleVisual(btnFrfRefCapture, false);
+                ApplyBodeToggleVisual(btnFrfNormToggle, false);
+                return;
+            }
 
             // CheckBox.Appearance.Button: use explicit BackColor for green (not native blue)
             ApplyBodeToggleVisual(btnFrfRefCapture, hasRef);
