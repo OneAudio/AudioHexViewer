@@ -600,8 +600,8 @@ namespace AudioHexViewer
         private bool _cursorMarkLUsesY2;
         private bool _cursorMarkRUsesY2;
 
-        private double _cursorTargetHzL = 1000.0; // valeur init au choix
-        private double _cursorTargetHzR = 1000.0;
+        private double _cursorTargetHzL = double.NaN; // NaN → auto-place à 1/3 de l'axe
+        private double _cursorTargetHzR = double.NaN; // NaN → auto-place à 2/3 de l'axe
 
         public event EventHandler? WindowTypeChangedForExternalFft;
 

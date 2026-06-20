@@ -476,6 +476,42 @@ namespace AudioHexViewer
             return true;
         }
 
+        /// <summary>
+        /// Place le curseur à 1/3 (isLeft=true) ou 2/3 (isLeft=false) de l'axe
+        /// visible courant. Appelé à la première activation du curseur.
+        /// </summary>
+        private void AutoPlaceCursor(bool isLeft)
+        {
+            if (freqAxis == null || freqAxis.Length == 0) return;
+
+            bool useLog = (chkLogX != null && chkLogX.Checked);
+            int  minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
+
+            double fLow  = minIdx < freqAxis.Length ? freqAxis[minIdx] : freqAxis[0];
+            double fHigh = freqAxis[freqAxis.Length - 1];
+            if (fHigh <= fLow || fLow <= 0) { fLow = 1.0; fHigh = Math.Max(2.0, fHigh); }
+
+            double frac  = isLeft ? 1.0 / 3.0 : 2.0 / 3.0;
+            double freq  = useLog
+                ? fLow * Math.Pow(fHigh / fLow, frac)
+                : fLow + (fHigh - fLow) * frac;
+
+            if (isLeft)
+            {
+                _cursorTargetHzL = freq;
+                _cursorIdxL = FindNearestFreqIndex(freqAxis, freq, minIdx);
+                _cursorFreqL = freqAxis[_cursorIdxL];
+                _cursorLockedL = false;   // jamais verrouillé au placement initial
+            }
+            else
+            {
+                _cursorTargetHzR = freq;
+                _cursorIdxR = FindNearestFreqIndex(freqAxis, freq, minIdx);
+                _cursorFreqR = freqAxis[_cursorIdxR];
+                _cursorLockedR = false;
+            }
+        }
+
         public void SetCursor1FrequencyHz(double targetHz)
         {
             if (freqAxis == null || freqAxis.Length == 0) return;
@@ -1120,6 +1156,7 @@ namespace AudioHexViewer
 
             // --- Garder la fréquence des curseurs constante même si N change ---
             // (recalcule l'index à partir de la fréquence mémorisée)
+
             if (useLog)
             {
                 if (_cursorFreqL <= 0.0) _cursorFreqL = LogXAbsMinHz;

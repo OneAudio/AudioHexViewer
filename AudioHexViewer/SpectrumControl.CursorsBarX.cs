@@ -47,8 +47,22 @@ namespace AudioHexViewer
             SyncCursorXUi();
 
             // Wire events
-            btnX1.Click        += (_, _) => { CursorLeftEnabled  = !CursorLeftEnabled;  SyncCursorXUi(); };
-            btnX2.Click        += (_, _) => { CursorRightEnabled = !CursorRightEnabled; SyncCursorXUi(); };
+            btnX1.Click += (_, _) =>
+            {
+                CursorLeftEnabled = !CursorLeftEnabled;
+                // Premier placement 1/3 de l'axe si encore jamais positionné
+                if (CursorLeftEnabled && double.IsNaN(_cursorTargetHzL))
+                    AutoPlaceCursor(isLeft: true);
+                SyncCursorXUi();
+            };
+            btnX2.Click += (_, _) =>
+            {
+                CursorRightEnabled = !CursorRightEnabled;
+                // Premier placement 2/3 de l'axe si encore jamais positionné
+                if (CursorRightEnabled && double.IsNaN(_cursorTargetHzR))
+                    AutoPlaceCursor(isLeft: false);
+                SyncCursorXUi();
+            };
 
             btnX1Chan.Click    += (_, _) => { CycleChannelBtn(isX1: true);  SyncCursorXUi(); };
             btnX2Chan.Click    += (_, _) => { CycleChannelBtn(isX1: false); SyncCursorXUi(); };
@@ -121,6 +135,20 @@ namespace AudioHexViewer
         {
             if (btnDispGraph == null || btnDispLabel == null) return;
 
+            bool anyCursor = CursorLeftEnabled || CursorRightEnabled;
+
+            // Grisé si aucun curseur actif (les boutons Display n'ont pas de sens)
+            btnDispGraph.Enabled = anyCursor;
+            btnDispLabel.Enabled = anyCursor;
+
+            if (!anyCursor)
+            {
+                SetBtnToggle(btnDispGraph, false);
+                btnDispGraph.Text = "Panel";
+                SetBtnToggle(btnDispLabel, false);
+                return;
+            }
+
             (string txt, bool active) = _cursorDispMode switch
             {
                 0 => ("Panel", true),
@@ -168,8 +196,35 @@ namespace AudioHexViewer
             UpdateDispButtons();
         }
 
-        // ── Cursor color (matches spectrum curve color) ──────────────────────
-        private Color CursorCol => Color.FromArgb(210, FftLeftColor);
+        // ── Cursor color (matches the trace the cursors are on) ──────────────
+        // Utilise directement _cursorMarkL/RColor qui reflètent déjà la couleur
+        // de la courbe où se trouve chaque curseur (Gain rouge, Phase bleu,
+        // Right bleu, Left rouge, etc.).
+        // Si les deux curseurs ont des couleurs différentes (mode L+R avec
+        // C1 sur Left et C2 sur Right), on retombe sur FftLeftColor.
+        private Color CursorCol
+        {
+            get
+            {
+                bool c1Active = CursorLeftEnabled  && _cursorMarkLVisible;
+                bool c2Active = CursorRightEnabled && _cursorMarkRVisible;
+
+                Color baseColor;
+                if (c1Active && c2Active)
+                {
+                    // Les deux actifs : si les couleurs concordent, on l'utilise ;
+                    // sinon (curseurs sur courbes différentes), repli sur FftLeftColor.
+                    baseColor = (_cursorMarkLColor.ToArgb() == _cursorMarkRColor.ToArgb())
+                              ? _cursorMarkLColor
+                              : FftLeftColor;
+                }
+                else if (c1Active) baseColor = _cursorMarkLColor;
+                else if (c2Active) baseColor = _cursorMarkRColor;
+                else               baseColor = FftLeftColor;
+
+                return Color.FromArgb(210, baseColor);
+            }
+        }
         private Color BgCol     => BackgroundColor;   // chart background colour
 
         // ── Floating cursor box: draw ────────────────────────────────────────
