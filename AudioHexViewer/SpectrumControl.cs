@@ -1002,28 +1002,43 @@ namespace AudioHexViewer
 
             var area = chartSpectrum.ChartAreas["SpectrumArea"];
 
-            // Plage X affichée (custom sinon axe)
+            // ── Mêmes voies que le rendu ───────────────────────────────────────
+            // Évite de scanner une voie inactive dont le DC serait très élevé.
+            string mode = SelectedChannelMode ?? "L+R";
+            bool scanLeft  = (mode == "Left"  || mode == "L+R" || mode == "Bode Plot")
+                             && currentLeftSpectrum  != null;
+            bool scanRight = (mode == "Right" || mode == "L+R")
+                             && currentRightSpectrum != null;
+
+            if (!scanLeft && !scanRight)
+                return (-200.0, 0.0);
+
+            // ── Plage X affichée ───────────────────────────────────────────────
             double fMin = customFMin ?? area.AxisX.Minimum;
             double fMax = customFMax ?? area.AxisX.Maximum;
 
             if (fMax <= fMin)
                 return (-200.0, 0.0);
 
-            // Trouver indices correspondant à la plage X
             int i0 = FindNearestFreqIndex(freqAxis, fMin);
             int i1 = FindNearestFreqIndex(freqAxis, fMax);
 
             if (i0 > i1) { int tmp = i0; i0 = i1; i1 = tmp; }
 
-            // En log tu caches le bin 0 (k=0) (cf. startIndex=1) :contentReference[oaicite:2]{index=2}
+            // ── Même startIndex que le rendu ───────────────────────────────────
+            // En mode LOG : startIndex = 1 (bin 0 hors axe logarithmique).
+            // En mode LIN : startIndex = 0 SAUF si on veut exclure la composante
+            // DC qui peut dominer le fit. On réplique exactement la logique de
+            // UpdateSpectrumChartAndStats : startIndex = useLog ? 1 : 0.
             bool useLog = (chkLogX != null && chkLogX.Checked);
-            if (useLog && i0 < 1) i0 = 1;
+            int startIdx = useLog ? 1 : 0;
+            if (i0 < startIdx) i0 = startIdx;
 
             // Sécurité bornes
             i0 = Math.Max(0, Math.Min(i0, freqAxis.Length - 1));
             i1 = Math.Max(0, Math.Min(i1, freqAxis.Length - 1));
 
-            const double FloorDb = -199.9; // on ignore le plancher -200
+            const double FloorDb = -199.9;
 
             double min = double.PositiveInfinity;
             double max = double.NegativeInfinity;
@@ -1032,26 +1047,21 @@ namespace AudioHexViewer
             {
                 if (arr == null) return;
                 int n = Math.Min(arr.Length, freqAxis.Length);
-
                 int a = Math.Min(i0, n - 1);
                 int b = Math.Min(i1, n - 1);
-
                 for (int i = a; i <= b; i++)
                 {
                     double v = arr[i];
                     if (double.IsNaN(v) || double.IsInfinity(v)) continue;
-
-                    // ignorer bins au plancher (sinon min reste collé à -200)
                     if (v <= FloorDb) continue;
-
                     if (v < min) min = v;
                     if (v > max) max = v;
                 }
             }
 
-            // Global sur 2 voies
-            Scan(currentLeftSpectrum);
-            Scan(currentRightSpectrum);
+            // Seulement les voies réellement affichées
+            if (scanLeft)  Scan(currentLeftSpectrum);
+            if (scanRight) Scan(currentRightSpectrum);
 
             // Si tout est au plancher (ou pas de data), fallback
             if (min == double.PositiveInfinity || max == double.NegativeInfinity)

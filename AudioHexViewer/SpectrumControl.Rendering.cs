@@ -714,6 +714,7 @@ namespace AudioHexViewer
                 SyncCursorUiFromModel(); // met à jour les libellés Auto/Gain/Phase ou Auto/Left/Right
                 ApplyFrfPhiButtonsUi(); // montre/masque les boutons φ selon IsFrfMode()
                 ApplyFrfNormButtonsUi(); // montre/masque les boutons Cap Ref / Norm selon IsFrfMode()
+                UpdateDcAcButtonForMode(); // Grise AC/DC en Bode Plot (DC non pertinent)
 
 
                 // Informe l'extérieur immédiatement (même en LIVE)
@@ -1312,13 +1313,39 @@ namespace AudioHexViewer
         private void UpdateDcAcButtonVisual()
         {
             if (btnDcAc == null) return;
-            // DC = keep DC component (active state = green)
-            // AC = remove DC component (default, normal appearance)
-            bool isDc = !_removeDcStats;   // _removeDcStats=true means AC (remove DC)
+            bool isDc = !_removeDcStats;
             btnDcAc.Text = isDc ? "DC" : "AC";
             btnDcAc.UseVisualStyleBackColor = !isDc;
             btnDcAc.BackColor = isDc ? Color.LightGreen : SystemColors.Control;
             btnDcAc.ForeColor = Color.Black;
+        }
+
+        /// <summary>
+        /// En mode Bode Plot, le couplage DC n'a pas de sens (H1 = Y/X).
+        /// On grise le bouton AC/DC et on force AC (_removeDcStats = true).
+        /// Hors Bode Plot, on restaure l'état sauvegardé.
+        /// </summary>
+        private void UpdateDcAcButtonForMode()
+        {
+            if (btnDcAc == null) return;
+            bool isBode = IsFrfMode();
+            if (isBode)
+            {
+                // Forcer AC, griser le bouton
+                _removeDcStats = true;
+                btnDcAc.Enabled = false;
+                btnDcAc.Text = "AC";
+                btnDcAc.UseVisualStyleBackColor = true;
+                btnDcAc.BackColor = SystemColors.Control;
+                btnDcAc.ForeColor = SystemColors.GrayText;
+            }
+            else
+            {
+                // Restaurer le bouton interactif avec l'état réel
+                btnDcAc.Enabled = true;
+                btnDcAc.ForeColor = Color.Black;
+                UpdateDcAcButtonVisual();
+            }
         }
 
         private void UpdateToggleButtonVisual(CheckBox? b)
