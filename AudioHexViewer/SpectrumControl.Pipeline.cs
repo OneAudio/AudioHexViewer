@@ -229,7 +229,14 @@ namespace AudioHexViewer
 
                     currentLeftSpectrum = gainDb;   // une seule courbe (gain)
                     //currentFrfPhaseDeg = phaseDeg;   // <-- NEW : stocke la phase (FULL) pour le plot / curseurs
-                    currentFrfPhaseDeg = _frfPhaseUnwrap ? DspMath.UnwrapPhaseDegrees(phaseDeg) : phaseDeg;
+                    // Unwrap avec pré-lissage complexe pondéré par la magnitude.
+                    // Au notch (|H|≈0), la phase est aléatoire (atan2 de bruit).
+                    // Le lissage du vecteur complexe H = mag·exp(j·phase) pondéré
+                    // par mag fait que le bin notch ne contribue presque rien :
+                    // les voisins dominent et la phase lissée est continue.
+                    currentFrfPhaseDeg = _frfPhaseUnwrap
+                        ? DspMath.UnwrapPhaseDegrees(phaseDeg)
+                        : phaseDeg;
                     currentFrfCoherence = coherence;
 
                     currentRightSpectrum = null;
@@ -698,8 +705,11 @@ namespace AudioHexViewer
             _lastPeakFsRight = pkR;
 
             // dBFS RMS (déjà utilisé dans le dialogue CAL V)
-            _lastRmsDbfsLeft = (rmsL.HasValue) ? Math.Max(-200.0, 20.0 * Math.Log10(rmsL.Value * Math.Sqrt(2.0))) : null;
-            _lastRmsDbfsRight = (rmsR.HasValue) ? Math.Max(-200.0, 20.0 * Math.Log10(rmsR.Value * Math.Sqrt(2.0))) : null;
+            // dBFS rms = RMS réel en FS, sans facteur √2.
+            // (Ancien code × Math.Sqrt(2.0) convertissait en peak-équivalent sinus
+            //  → +3.01 dB sur tout signal non sinusoïdal dont le bruit gaussien.)
+            _lastRmsDbfsLeft  = rmsL.HasValue ? Math.Max(-200.0, 20.0 * Math.Log10(rmsL.Value)) : null;
+            _lastRmsDbfsRight = rmsR.HasValue ? Math.Max(-200.0, 20.0 * Math.Log10(rmsR.Value)) : null;
 
             // --- VOLTS (si calibré) ---
             // Vrms = RMS AC (DC retiré) * gain

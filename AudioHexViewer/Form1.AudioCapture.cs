@@ -294,6 +294,7 @@ namespace AudioHexViewer
             _pipeline!.Stats.SetWorkerState("STOP");
 
             StopSineTestSource();
+            StopFilePlayback();
 
             // Fermeture propre du log de diagnostic si actif
             CloseDiagLog();
@@ -739,7 +740,15 @@ namespace AudioHexViewer
         //
         private void EnsureReadRunning()
         {
-            if (capture != null) return; // déjà démarré
+            if (capture != null || _isFilePlayback) return; // déjà démarré
+
+            // Post-Process mode : lire le fichier au lieu de la carte son
+            if (_postProcessMode && !string.IsNullOrEmpty(_postProcessFilePath))
+            {
+                StartFilePlayback(_postProcessFilePath!);
+                return;
+            }
+
             StartCapture();
         }
 

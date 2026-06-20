@@ -143,8 +143,11 @@ namespace AudioHexViewer.Core
 
             for (int i = 0; i < n; i++)
             {
-                int lv = (int)(_snapshotL[i] * scale);
-                int rv = (int)(_snapshotR[i] * scale);
+                // Math.Round évite la double-largeur du bin 0 qu'introduit (int).
+                // Sans arrondi, toutes les valeurs dans (-1/scale, +1/scale)
+                // atterrissent dans le bin 0 → pic parasite ×2 dans l'histogramme.
+                int lv = (int)Math.Round(_snapshotL[i] * scale);
+                int rv = (int)Math.Round(_snapshotR[i] * scale);
 
                 if (lv > max24pos) lv = max24pos;
                 if (lv < min24neg) lv = min24neg;

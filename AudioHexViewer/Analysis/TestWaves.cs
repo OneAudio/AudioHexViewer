@@ -157,5 +157,91 @@ namespace AudioHexViewer.Core
             state = x;
             return ((x & 0xFFFFFF) / (double)0x1000000) * 2.0 - 1.0;
         }
+
+        // ── DC pur ────────────────────────────────────────────────────────────
+        public static void FillStereoDC(float[] l, float[] r, int count, double dcLevel)
+        {
+            float v = (float)Math.Max(-1.0, Math.Min(1.0, dcLevel));
+            for (int i = 0; i < count; i++) { l[i] = v; r[i] = v; }
+        }
+
+        // ── Onde carrée ───────────────────────────────────────────────────────
+        // x = ±amp selon le signe de sin(phase).
+        public static void FillStereoSquare(float[] l, float[] r, int count,
+                                            double amp, double dphi, ref double phase)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                double x = Math.Sin(phase) >= 0 ? amp : -amp;
+                l[i] = r[i] = (float)x;
+                phase += dphi;
+                if (phase > 2.0 * Math.PI) phase -= 2.0 * Math.PI;
+            }
+        }
+
+        // ── Deux tons (IMD) ───────────────────────────────────────────────────
+        public static void FillStereoTwoTone(float[] l, float[] r, int count,
+                                             double amp1, double amp2,
+                                             double dphi1, double dphi2,
+                                             ref double phase1, ref double phase2)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                double x = amp1 * Math.Sin(phase1) + amp2 * Math.Sin(phase2);
+                l[i] = r[i] = (float)Math.Max(-1.0, Math.Min(1.0, x));
+                phase1 += dphi1; if (phase1 > 2 * Math.PI) phase1 -= 2 * Math.PI;
+                phase2 += dphi2; if (phase2 > 2 * Math.PI) phase2 -= 2 * Math.PI;
+            }
+        }
+
+        // ── Bruit blanc gaussien (Box-Muller) ─────────────────────────────────
+        public static void FillStereoGaussianNoise(float[] l, float[] r, int count,
+                                                   double rmsAmp,
+                                                   ref uint rngState,
+                                                   ref double spare,
+                                                   ref bool hasSpare)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                double g;
+                if (hasSpare) { g = spare; hasSpare = false; }
+                else
+                {
+                    double u, v, s;
+                    do
+                    {
+                        u = NextUniform(ref rngState);
+                        v = NextUniform(ref rngState);
+                        s = u * u + v * v;
+                    } while (s >= 1.0 || s == 0.0);
+                    double mul = Math.Sqrt(-2.0 * Math.Log(s) / s);
+                    g = u * mul;
+                    spare = v * mul;
+                    hasSpare = true;
+                }
+                l[i] = r[i] = (float)Math.Max(-1.0, Math.Min(1.0, g * rmsAmp));
+            }
+        }
+
+        // ── Dents de scie (rampe montante) ────────────────────────────────────
+        // x(φ) = amp * (φ/π − 1)  ∈ [−amp, +amp) sur [0, 2π)
+        public static void FillStereoSawtooth(float[] l, float[] r, int count,
+                                              double amp, double dphi, ref double phase)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                double x = amp * (phase / Math.PI - 1.0);
+                l[i] = r[i] = (float)Math.Max(-1.0, Math.Min(1.0, x));
+                phase += dphi;
+                if (phase >= 2.0 * Math.PI) phase -= 2.0 * Math.PI;
+            }
+        }
+
+        // ── Silence (zéros parfaits) ──────────────────────────────────────────
+        public static void FillStereoSilence(float[] l, float[] r, int count)
+        {
+            Array.Clear(l, 0, count);
+            Array.Clear(r, 0, count);
+        }
     }
 }

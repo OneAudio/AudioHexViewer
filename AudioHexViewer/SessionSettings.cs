@@ -38,6 +38,10 @@ namespace AudioHexViewer
         // Périphérique de sortie du générateur
         public string? OutputDeviceId       { get; set; }
         public int     RequestedOutputSR    { get; set; } = 0;   // 0 = Auto (Shared)
+        // ── Post-Process (lecture de fichier audio) ──────────────────────────
+        public bool    PostProcessMode     { get; set; } = false;
+        public string? PostProcessFilePath { get; set; }
+        public bool    PostProcessLoop     { get; set; } = false;
     }
 
     public sealed class AnalysisSettings

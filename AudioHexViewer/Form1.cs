@@ -183,11 +183,14 @@ namespace AudioHexViewer
         // ─────────────────────────────────────────────────────────────────────
 
         // --- Test source: sine 1 kHz -> écrit dans _pipeline?.Ring à la place de la carte son ---
-        private bool _useSineTest = false;
+        // _useSineTest : propriété dans Form1.TestSignals.cs
+        // ── Post-Process mode ─────────────────────────────────────────────────
+        private bool    _postProcessMode     = false;
+        private string? _postProcessFilePath = null;
+        private bool    _postProcessLoop     = false;
         // --- Test source: signal de référence "mesures" (THD/SINAD/SNR/SFDR) ---
-        private bool _useMetricsRefTest = false;
-        private CancellationTokenSource? _sineCts;
-        private Task? _sineTask;
+        // _useMetricsRefTest : propriété dans Form1.TestSignals.cs
+        // _sineCts / _sineTask : déclarés dans Form1.TestSignals.cs
 
 
 
@@ -794,6 +797,7 @@ namespace AudioHexViewer
 
             // Ajouter au menu principal (top-level)
             menuStrip1.Items.Add(menuCursors);
+
         }
 
         //
@@ -993,6 +997,10 @@ namespace AudioHexViewer
         {
             // 1) IN / OUT
             captureOutput = ui.CaptureOutput;
+            // Post-Process mode
+            _postProcessMode     = ui.PostProcessMode;
+            _postProcessFilePath = ui.PostProcessFilePath;
+            _postProcessLoop     = ui.PostProcessLoop;
 
             // 2) Device ID — restaurer depuis la liste des périphériques d'entrée
             if (!string.IsNullOrEmpty(ui.DeviceId))
@@ -1076,6 +1084,9 @@ namespace AudioHexViewer
 
             // UI
             s.Ui.DeviceId = _selectedInputDevice?.ID;
+            s.Ui.PostProcessMode     = _postProcessMode;
+            s.Ui.PostProcessFilePath = _postProcessFilePath;
+            s.Ui.PostProcessLoop     = _postProcessLoop;
             s.Ui.CaptureOutput = captureOutput;
             s.Ui.MainDataFormat = _dataViewForm!.comboDisplayMode.SelectedItem as string;
             // Périphérique de sortie générateur
@@ -1310,7 +1321,10 @@ namespace AudioHexViewer
                 currentInputFormat:  _requestedCaptureFormat as WaveFormatExtensible,
                 currentOutputFormat: _requestedOutputFormat,
                 onInfosClick:        ShowDeviceInfoDialog,
-                currentBufferSize:   analysisBufferSize);
+                currentBufferSize:   analysisBufferSize,
+                currentPostProcess:  _postProcessMode,
+                currentFilePath:     _postProcessFilePath,
+                currentLoop:         _postProcessLoop);
 
             if (dlg.ShowDialog(this) == DialogResult.OK)
             {
@@ -1318,25 +1332,40 @@ namespace AudioHexViewer
                 if (dlg.SelectedBufferSize != analysisBufferSize)
                     SetAnalysisBufferSize(dlg.SelectedBufferSize);
 
-                bool deviceChanged = dlg.SelectedInputDevice?.ID != _selectedInputDevice?.ID;
-                bool srChanged     = (dlg.SelectedInputFormat?.SampleRate ?? 0) != (_requestedCaptureFormat?.SampleRate ?? 0);
+                // ── Post-Process mode ─────────────────────────────────────────
+                bool ppChanged  = dlg.PostProcessMode != _postProcessMode
+                               || dlg.PostProcessFilePath != _postProcessFilePath;
+                _postProcessMode     = dlg.PostProcessMode;
+                _postProcessFilePath = dlg.PostProcessFilePath;
+                _postProcessLoop     = dlg.PostProcessLoop;
 
-                _selectedInputDevice    = dlg.SelectedInputDevice;
-                _selectedOutputDevice   = dlg.SelectedOutputDevice;
-                _requestedCaptureFormat = dlg.SelectedInputFormat;
-                _requestedOutputFormat  = dlg.SelectedOutputFormat;
-
-                if (deviceChanged || srChanged)
+                if (_postProcessMode)
                 {
-                    currentFormat = null;
-                    UpdateDeviceInfo();
-                    UpdateDeviceSummary();
+                    // Post-Process : arrêt de la capture live si active
+                    if (capture != null) StopCapture();
+                    if (ppChanged && _isFilePlayback) StopFilePlayback();
+                    UpdateTitleBar();
+                }
+                else
+                {
+                    // Normal device mode
+                    if (_isFilePlayback) StopFilePlayback();
 
-                    // Si la capture est active, la redémarrer avec les nouveaux paramètres
-                if (capture != null)
+                    bool deviceChanged = dlg.SelectedInputDevice?.ID != _selectedInputDevice?.ID;
+                    bool srChanged     = (dlg.SelectedInputFormat?.SampleRate ?? 0) != (_requestedCaptureFormat?.SampleRate ?? 0);
+
+                    _selectedInputDevice    = dlg.SelectedInputDevice;
+                    _selectedOutputDevice   = dlg.SelectedOutputDevice;
+                    _requestedCaptureFormat = dlg.SelectedInputFormat;
+                    _requestedOutputFormat  = dlg.SelectedOutputFormat;
+
+                    if (deviceChanged || srChanged)
                     {
-                        StopCapture();
-                        StartCapture();
+                        currentFormat = null;
+                        UpdateDeviceInfo();
+                        UpdateDeviceSummary();
+
+                        if (capture != null) { StopCapture(); StartCapture(); }
                     }
                 }
             }
@@ -1373,13 +1402,24 @@ namespace AudioHexViewer
         {
             try
             {
+                // Infos fichier Offline si disponibles
+                AudioFileInfo? fileInfo = (_isFilePlayback && _postProcessFilePath != null)
+                    ? new AudioFileInfo(
+                        FullPath:      _postProcessFilePath,
+                        SampleRate:    _fileInfoSR,
+                        BitsPerSample: _fileInfoBits,
+                        Channels:      _fileInfoChannels,
+                        Duration:      _fileInfoDuration)
+                    : null;
+
                 using var dlg = new DeviceInfoDialog(
                     inputDevice:  _selectedInputDevice,
                     outputDevice: _selectedOutputDevice,
                     activeFormat: currentFormat,
                     isCapturing:  capture != null,
                     isLoopback:   captureOutput,
-                    srOptions:    _sampleRateOptions);
+                    srOptions:    _sampleRateOptions,
+                    audioFile:    fileInfo);
                 dlg.ShowDialog(this);
             }
             catch (Exception ex)
@@ -2664,6 +2704,28 @@ namespace AudioHexViewer
             }
 
             // Titre : "AudioHexViewer" seul si rien d'actif, sinon ajoute les infos
+            // Indicateur fichier audio (mode Post-Process)
+            if (_isFilePlayback && _audioFileName != null)
+            {
+                string chanStr = _fileInfoChannels > 1 ? "Stéréo" : "Mono";
+                string srStr   = _fileInfoSR >= 1000
+                    ? $"{_fileInfoSR / 1000.0:0.###} kHz" : $"{_fileInfoSR} Hz";
+                int tmins = (int)_fileInfoDuration.TotalMinutes;
+                int tsecs = _fileInfoDuration.Seconds;
+                parts.Add($"Read file: {_audioFileName}  →  "
+                        + $"{srStr}  {_fileInfoBits} Bits  {chanStr}  "
+                        + $"[T: {tmins:00}mn {tsecs:00}s]");
+            }
+            else if (_postProcessMode && !_isFilePlayback)
+            {
+                // Post-Process mode actif mais pas encore en lecture
+                parts.Add("Post-Process Mode  (press RUN to start)");
+            }
+
+            // Indicateur signal de test
+            if (_isTestSignalRunning)
+                parts.Add($"[TEST: {TestSignalInfo.GetDisplayName(_currentTestType)}]");
+
             Text = parts.Count > 0
                 ? $"AudioHexViewer  —  {string.Join("   |   ", parts)}"
                 : "AudioHexViewer";

@@ -701,6 +701,21 @@ namespace AudioHexViewer
                 if (_isRestoringSettings)
                     return;
 
+                // Bode Plot non disponible en mode lecture de fichier
+                if (FilePlaybackActive &&
+                    (comboChannel.SelectedItem as string) == "Bode Plot")
+                {
+                    // Revert silencieux vers L+R
+                    int lr = comboChannel.Items.IndexOf("L+R");
+                    if (lr >= 0) comboChannel.SelectedIndex = lr;
+                    MessageBox.Show(
+                        "Bode Plot mode is not available in file playback mode.\n"
+                      + "Please use a live audio device for Bode Plot measurements.",
+                        "File Playback",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
                 // Mise à jour immédiate de l'UI d'unité (même en LIVE)
                 UpdateLevelUnitUi();
                 // F

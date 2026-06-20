@@ -208,6 +208,18 @@ namespace AudioHexViewer
         // Source de vérité : le mode sélectionné dans le contrôle Channel
         public string SelectedChannelMode => comboChannel.SelectedItem as string ?? "L+R";
 
+        /// <summary>Vrai quand un fichier audio est en lecture (désactive Bode Plot).</summary>
+        public bool FilePlaybackActive { get; set; } = false;
+
+        /// <summary>Change le mode voie depuis le code (sans déclencher les gardes UI).</summary>
+        public void SetChannelModeFromCode(string mode)
+        {
+            if (comboChannel == null) return;
+            int idx = comboChannel.Items.IndexOf(mode);
+            if (idx >= 0 && comboChannel.SelectedIndex != idx)
+                comboChannel.SelectedIndex = idx;
+        }
+
         // FRF / Bode : Right = entrée, Left = sortie
 
         public bool IsLeftChannelActive =>

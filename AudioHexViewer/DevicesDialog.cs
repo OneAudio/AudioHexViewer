@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
+using System.IO;
 
 namespace AudioHexViewer
 {
@@ -19,6 +20,11 @@ namespace AudioHexViewer
         public MMDevice?             SelectedOutputDevice { get; private set; }
         public WaveFormatExtensible? SelectedOutputFormat { get; private set; }
         public int                   SelectedBufferSize   { get; private set; } = 128 * 1024;
+        public bool                  PostProcessMode      { get; private set; }
+        public string?               PostProcessFilePath  { get; private set; }
+        public bool                  PostProcessLoop      { get; private set; }
+
+        private string? _postProcessFilePath;   // working copy while dialog is open
 
         private static readonly int[] BufferOptions =
             { 16*1024, 32*1024, 64*1024, 128*1024, 256*1024, 512*1024 };
@@ -35,7 +41,10 @@ namespace AudioHexViewer
             WaveFormatExtensible?    currentInputFormat,
             WaveFormatExtensible?    currentOutputFormat,
             Action                   onInfosClick,
-            int                      currentBufferSize = 128 * 1024)
+            int                      currentBufferSize   = 128 * 1024,
+            bool                     currentPostProcess  = false,
+            string?                  currentFilePath     = null,
+            bool                     currentLoop         = false)
         {
             _srOptions = sampleRateOptions;
             _onInfos   = onInfosClick;
@@ -88,6 +97,17 @@ namespace AudioHexViewer
             btnOk.Click     += BtnOk_Click;
             AcceptButton = btnOk;
             CancelButton = btnCancel;
+
+            // ── Post-Process section ──────────────────────────────────────
+            _postProcessFilePath = currentFilePath;
+            chkLoop.Checked = currentLoop;
+            if (!string.IsNullOrEmpty(currentFilePath))
+                lblFilePath.Text = Path.GetFileName(currentFilePath);
+
+            btnLive.Click        += (_, _) => SetMode(false);
+            btnOffline.Click += (_, _) => SetMode(true);
+            btnOpenFile.Click    += BtnOpenFile_Click;
+            SetMode(currentPostProcess);
         }
 
         // ── Format label (Windows mix format) ────────────────────────────────
@@ -224,11 +244,81 @@ namespace AudioHexViewer
 
         private void BtnOk_Click(object? sender, EventArgs e)
         {
-            SelectedInputDevice  = (cmbInputDevice.SelectedItem  as DeviceItem)?.Device;
-            SelectedOutputDevice = (cmbOutputDevice.SelectedItem as DeviceItem)?.Device;
-            SelectedInputFormat  = SrItemToFormat(cmbInputRate.SelectedItem  as SrItem);
-            SelectedOutputFormat = SrItemToFormat(cmbOutputRate.SelectedItem as SrItem);
+            PostProcessMode     = _isPostProcessMode;
+            PostProcessFilePath = _postProcessFilePath;
+            PostProcessLoop     = chkLoop.Checked;
+
+            if (!PostProcessMode)
+            {
+                // Normal mode: collect device selection
+                SelectedInputDevice  = (cmbInputDevice.SelectedItem  as DeviceItem)?.Device;
+                SelectedOutputDevice = (cmbOutputDevice.SelectedItem as DeviceItem)?.Device;
+                SelectedInputFormat  = SrItemToFormat(cmbInputRate.SelectedItem  as SrItem);
+                SelectedOutputFormat = SrItemToFormat(cmbOutputRate.SelectedItem as SrItem);
+            }
             DialogResult = DialogResult.OK;
+        }
+
+        private bool _isPostProcessMode;
+
+        /// <summary>
+        /// Bascule entre les modes LIVE et POST-PROCESS.
+        /// Met à jour l'apparence des boutons et active/désactive les contrôles.
+        /// </summary>
+        private void SetMode(bool isPostProcess)
+        {
+            _isPostProcessMode = isPostProcess;
+
+            // ── Apparence des boutons exclusifs ──────────────────────────
+            // Bouton actif : fond bleu, texte blanc
+            // Bouton inactif : fond système, texte normal
+            static void StyleBtn(Button b, bool active)
+            {
+                b.BackColor = active
+                    ? System.Drawing.Color.FromArgb(0, 122, 204)
+                    : SystemColors.Control;
+                b.ForeColor = active
+                    ? System.Drawing.Color.White
+                    : SystemColors.ControlText;
+                b.FlatAppearance.BorderColor = active
+                    ? System.Drawing.Color.FromArgb(0, 100, 180)
+                    : SystemColors.ControlDark;
+            }
+            StyleBtn(btnLive,        !isPostProcess);
+            StyleBtn(btnOffline,  isPostProcess);
+
+            // ── Activation des contrôles selon le mode ───────────────────
+            // LIVE : device/SR actifs, section fichier grisée
+            // POST-PROCESS : device/SR grisés, section fichier active
+            cmbInputDevice.Enabled = !isPostProcess;
+            cmbInputRate.Enabled   = !isPostProcess;
+            lblInputDevice.Enabled = !isPostProcess;
+            lblInputSR.Enabled     = !isPostProcess;
+            btnOpenFile.Enabled    =  isPostProcess;
+            chkLoop.Enabled        =  isPostProcess;
+            lblSelectFile.Enabled  =  isPostProcess;
+            lblFilePath.Enabled    =  isPostProcess;
+        }
+
+        // Conservé pour compatibilité appelants éventuels
+        private void ApplyPostProcessUi(bool isPostProcess) => SetMode(isPostProcess);
+
+        private void BtnOpenFile_Click(object? sender, EventArgs e)
+        {
+            using var dlg = new OpenFileDialog
+            {
+                Title  = "Select Audio File",
+                Filter = "Audio Files|*.wav;*.mp3;*.aiff;*.aif;*.wma|All Files|*.*",
+            };
+            if (!string.IsNullOrEmpty(_postProcessFilePath))
+                try { dlg.InitialDirectory = Path.GetDirectoryName(_postProcessFilePath) ?? ""; } catch { }
+
+            if (dlg.ShowDialog(this) == DialogResult.OK)
+            {
+                _postProcessFilePath  = dlg.FileName;
+                lblFilePath.Text      = Path.GetFileName(dlg.FileName);
+                lblFilePath.ForeColor = System.Drawing.Color.SteelBlue;
+            }
         }
 
         private static WaveFormatExtensible? SrItemToFormat(SrItem? item)
