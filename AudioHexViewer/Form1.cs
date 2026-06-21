@@ -307,6 +307,7 @@ namespace AudioHexViewer
             // Update View > Side Panel submenu checkmarks
             if (menuSidePanelShow != null) menuSidePanelShow.Checked = _measPanelVisible;
             if (menuSidePanelHide != null) menuSidePanelHide.Checked = !_measPanelVisible;
+            SyncToolbarSidePanel();
         }
         private bool _histogramRunning;
 
@@ -490,6 +491,9 @@ namespace AudioHexViewer
 
             levelFontRegular = new Font(this.Font, FontStyle.Regular);
             levelFontBold = new Font(this.Font, FontStyle.Bold);
+
+            // ── Barre d'icônes (panelTop) ────────────────────────────────────
+            InitToolbar();
 
             // Side Panel visibility — View > Side Panel > Show/Hide
             menuSidePanelShow.Click += (_, _) =>
@@ -774,7 +778,7 @@ namespace AudioHexViewer
                     }
                 );
 
-                if (dlg.ShowDialog(this) == DialogResult.OK)
+                if (ShowDialogSafe(dlg) == DialogResult.OK)
                 {
                     if (dlg.C1Hz.HasValue)
                         spectrumControl.SetCursor1FrequencyHz(dlg.C1Hz.Value);
@@ -829,7 +833,7 @@ namespace AudioHexViewer
 
                 using (var dlg = new ThdSettingsDialog(_session.Spectrum.Thd, sr))
                 {
-                    if (dlg.ShowDialog(this) != DialogResult.OK)
+                    if (ShowDialogSafe(dlg) != DialogResult.OK)
                         return;
 
                     _session.Spectrum.Thd = dlg.Result;
@@ -901,7 +905,7 @@ namespace AudioHexViewer
                 ?? SpectrumColorSettings.Defaults();
 
             using var dlg = new SpectrumColorsDialog(current, persistedDefaults);
-            if (dlg.ShowDialog(this) != DialogResult.OK)
+            if (ShowDialogSafe(dlg) != DialogResult.OK)
                 return;
 
             spectrumControl.ApplySpectrumColorSettings(dlg.SelectedColors);
@@ -1326,7 +1330,7 @@ namespace AudioHexViewer
                 currentFilePath:     _postProcessFilePath,
                 currentLoop:         _postProcessLoop);
 
-            if (dlg.ShowDialog(this) == DialogResult.OK)
+            if (ShowDialogSafe(dlg) == DialogResult.OK)
             {
                 // Apply buffer size if changed
                 if (dlg.SelectedBufferSize != analysisBufferSize)
@@ -1373,29 +1377,13 @@ namespace AudioHexViewer
 
         private void menuGenerator_Click(object? sender, EventArgs e)
         {
-            if (_generatorWindow == null || _generatorWindow.IsDisposed)
-            {
-                _generatorWindow = new GeneratorWindow(
-                    getOutputDevice:    () => _selectedOutputDevice,
-                    getInputDevice:     () => _selectedInputDevice,
-                    getOutputFormat:    () => _requestedOutputFormat,
-                    getAnalyzerSR:      () => currentFormat?.SampleRate ?? 0,
-                    getAnalyzerN:       () => spectrumControl?.CurrentFftSize ?? 0,
-                    getChannelMode:     () => spectrumControl?.SelectedChannelMode ?? "",
-                    onLoopbackRequest:  HandleLoopbackRequest,
-                    settings:           _session,
-                    saveSettings:       SaveSessionSettingsSilently,
-                    onRunStateChanged:  UpdateTitleBar);
+            EnsureGeneratorWindowCreated();
 
-                // Positionner à côté de la fenêtre principale
-                _generatorWindow.Location = new System.Drawing.Point(
-                    Location.X + Width + 4, Location.Y);
-            }
-
-            if (_generatorWindow.WindowState == FormWindowState.Minimized)
+            if (_generatorWindow!.WindowState == FormWindowState.Minimized)
                 _generatorWindow.WindowState = FormWindowState.Normal;
 
             _generatorWindow.Show(this);
+            OnGeneratorWindowShown();
         }
 
         private void ShowDeviceInfoDialog()
@@ -1420,7 +1408,7 @@ namespace AudioHexViewer
                     isLoopback:   captureOutput,
                     srOptions:    _sampleRateOptions,
                     audioFile:    fileInfo);
-                dlg.ShowDialog(this);
+                ShowDialogSafe(dlg);
             }
             catch (Exception ex)
             {
@@ -1702,7 +1690,7 @@ namespace AudioHexViewer
         private void menuAbout_Click(object? sender, EventArgs e)
         {
             using var about = new SplashScreen(aboutMode: true);
-            about.ShowDialog(this);
+            ShowDialogSafe(about);
         }
         //
         private void comboDisplayMode_SelectedIndexChanged(object? sender, EventArgs e)
@@ -2676,6 +2664,27 @@ namespace AudioHexViewer
             };
         }
 
+        // ── Safe dialog helpers ────────────────────────────────────────────────
+        // When the main window is TopMost, modal dialogs can sometimes appear
+        // behind it (known WinForms / Win32 issue with WS_EX_TOPMOST windows).
+        // These helpers temporarily disable TopMost around ShowDialog calls.
+
+        private DialogResult ShowDialogSafe(Form dialog)
+        {
+            bool wasTopMost = TopMost;
+            if (wasTopMost) TopMost = false;
+            try   { return dialog.ShowDialog(this); }
+            finally { if (wasTopMost) TopMost = true; }
+        }
+
+        private DialogResult ShowCommonDialogSafe(CommonDialog dialog)
+        {
+            bool wasTopMost = TopMost;
+            if (wasTopMost) TopMost = false;
+            try   { return dialog.ShowDialog(this); }
+            finally { if (wasTopMost) TopMost = true; }
+        }
+
         // ── Barre de titre ────────────────────────────────────────────────
         private void UpdateTitleBar()
         {
@@ -2960,8 +2969,9 @@ namespace AudioHexViewer
         //
         private void alwaysOnTopToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            // Le ToolStripMenuItem appelle ce handler aprs avoir chang son tat Checked
+            // Le ToolStripMenuItem appelle ce handler après avoir changé son état Checked
             this.TopMost = alwaysOnTopToolStripMenuItem.Checked;
+            SyncToolbarAlwaysOnTop();
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -3054,7 +3064,7 @@ namespace AudioHexViewer
                 FileName   = $"AudioHexViewer_{TabKindName(tab)}_{DateTime.Now:yyyyMMdd_HHmmss}.png"
             };
 
-            if (sfd.ShowDialog(this) != DialogResult.OK) return;
+            if (ShowCommonDialogSafe(sfd) != DialogResult.OK) return;
 
             try   { DoExportPng(sfd.FileName, scale: 2); }
             catch (Exception ex) { MessageBox.Show(ex.Message, "Export PNG", MessageBoxButtons.OK, MessageBoxIcon.Error); }
@@ -3107,7 +3117,7 @@ namespace AudioHexViewer
                 _                      => "Histogram"
             });
 
-            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+            if (ShowDialogSafe(dlg) != DialogResult.OK) return;
 
             try
             {
@@ -3170,7 +3180,7 @@ namespace AudioHexViewer
                 hasHistogram:  histogramControl    != null,
                 hasOscillo:    oscilloscopeControl != null);
 
-            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+            if (ShowDialogSafe(dlg) != DialogResult.OK) return;
 
             string outPath = dlg.FilePath;
             if (string.IsNullOrWhiteSpace(outPath)) return;

@@ -81,6 +81,19 @@
   </ItemGroup>
 
 
+  <!-- ── Icônes de la toolbar (EmbeddedResource → chargées via GetManifestResourceStream) ── -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\Icons\*.png" />
+  </ItemGroup>
+
+  <!-- ── Toolbar : fichiers partiels Form1 ─────────────────────────────────── -->
+  <ItemGroup>
+    <Compile Update="Form1.Toolbar.cs">
+      <SubType>Code</SubType>
+      <DependentUpon>Form1.cs</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
   <!-- ── Phase 3 : fichiers partiels Form1 ────────────────────────────────── -->
   <!-- DependentUpon évite que le SDK WinForms les traite comme des contrôles  -->
   <!-- indépendants et tente de leur associer un .resx séparé.                 -->

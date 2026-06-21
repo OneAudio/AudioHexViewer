@@ -19,6 +19,10 @@ namespace AudioHexViewer
         {
             InitializeComponent();
 
+            // Allow closing the dialog with the Escape key
+            KeyPreview = true;
+            KeyDown   += (_, e) => { if (e.KeyCode == Keys.Escape) Close(); };
+
             _colors   = Clone(initial ?? SpectrumColorSettings.Defaults());
             _colors.Normalize();
             _defaults = Clone(defaults ?? SpectrumColorSettings.Defaults());

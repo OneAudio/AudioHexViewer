@@ -311,6 +311,15 @@ namespace AudioHexViewer
         /// <summary>Public wrapper for auto-stop from Form1 (Bode Plot STOP).</summary>
         public void StopGeneratorPublic() => StopGenerator();
 
+        /// <summary>Public wrapper to start the generator from the toolbar (right-click).</summary>
+        public void StartGeneratorPublic() => StartGenerator();
+
+        /// <summary>
+        /// Raised whenever the generator starts or stops.
+        /// The bool argument is true when generating, false when stopped.
+        /// </summary>
+        public event Action<bool>? IsGeneratingChanged;
+
 
 
         /// <summary>
@@ -391,6 +400,7 @@ namespace AudioHexViewer
                 else             StartShared(outDev, _provider);
                 SetRunState(true);
                 _onRunStateChanged?.Invoke();
+                IsGeneratingChanged?.Invoke(true);
                 StartDoneTimerIfOneShot(type, p);
             }
             catch (Exception ex) { Cleanup(); MessageBox.Show(this, $"Cannot start:\n{ex.Message}", "Generator", MessageBoxButtons.OK, MessageBoxIcon.Error); }
@@ -445,6 +455,7 @@ namespace AudioHexViewer
                 _onLoopbackRequest(_provider);
                 _loopbackActive = true;
                 SetRunState(true);
+                IsGeneratingChanged?.Invoke(true);
                 StartDoneTimerIfOneShot(p.Type, p);
             }
             catch (Exception ex) { _loopbackActive=false; _provider=null; MessageBox.Show(this, ex.Message, "Generator", MessageBoxButtons.OK, MessageBoxIcon.Error); }
@@ -458,6 +469,7 @@ namespace AudioHexViewer
             Cleanup();
             SetRunState(false);
             _onRunStateChanged?.Invoke();
+            IsGeneratingChanged?.Invoke(false);
         }
 
         private void Cleanup()
