@@ -1133,6 +1133,10 @@ namespace AudioHexViewer
             {
                 // sécurité : ne jamais laisser un crash UI tuer l'application
             }
+
+            // ── AHV watermark — top-right of plot area (live view only) ──
+            if (!isExport)
+                GraphWatermark.Draw(e.ChartGraphics.Graphics, plotForText);
         }
 
         private void RebuildStatsRowsFromLabels()

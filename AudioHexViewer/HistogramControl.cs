@@ -1070,6 +1070,22 @@ namespace AudioHexViewer
             // ── Labels Y custom dans la marge grise à gauche ─────────────────
             DrawCustomYLabels(g, area, cr, sExport, chart.Font);
 
+            // ── AHV watermark — inner plot area (always drawn) ──
+            {
+                // Use InnerPlotPosition (same logic as GetPlotRectPixels in SpectrumControl)
+                var apos = area.Position;
+                var ip   = area.InnerPlotPosition;
+                float aX = cr.Width  * apos.X        / 100f;
+                float aY = cr.Height * apos.Y        / 100f;
+                float aW = cr.Width  * apos.Width    / 100f;
+                float aH = cr.Height * apos.Height   / 100f;
+                float wLeft  = aX + aW * ip.X                   / 100f;
+                float wTop   = aY + aH * ip.Y                   / 100f;
+                float wRight = aX + aW * (ip.X + ip.Width)      / 100f;
+                float wBot   = aY + aH * (ip.Y + ip.Height)     / 100f;
+                GraphWatermark.Draw(g, RectangleF.FromLTRB(wLeft, wTop, wRight, wBot));
+            }
+
             if (!_measPanelVisible) return;
 
             // Rectangle du panneau stats aligné sur le plot réel (comme DrawChartStatsPanel de SpectrumControl)

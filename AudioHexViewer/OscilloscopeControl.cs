@@ -1599,6 +1599,9 @@ namespace AudioHexViewer
             if (_measPanelVisible)
                 DrawMeasurements(g, wave);
 
+            // ── AHV watermark — top-right of the plot area ────────────
+            GraphWatermark.Draw(g, wave);
+
             // Minimap mémoire (quand arrêté et buffer disponible)
             // (pas de DrawRectangle ici — la bordure de l'onglet vient de BackColor+Padding)
         }
