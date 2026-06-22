@@ -18,7 +18,7 @@ namespace AudioHexViewer
     internal partial class OscilloscopeControl : IOverlayHost
     {
         // ===== Overlays V3 (bibliothèque interne, dédiée Oscilloscope) =====
-        private readonly OverlayLibrary _overlayLibrary = new OverlayLibrary(GetOscilloscopeOverlayDir());
+        private readonly OverlayLibrary _overlayLibrary = new OverlayLibrary(GetOscilloscopeOverlayDir(), ".scop.json");
 
         private OverlaysForm? _overlaysForm;
 
@@ -46,8 +46,9 @@ namespace AudioHexViewer
 
         private static string GetOscilloscopeOverlayDir()
         {
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            return Path.Combine(appData, "AudioHexViewer", "Overlays", "Oscilloscope");
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "AudioHexViewer", "Overlays", "Oscilloscope");
         }
 
         // Couleur d'un overlay selon son index de slot (0-based), palette partagée avec le Spectrum
@@ -71,6 +72,7 @@ namespace AudioHexViewer
         }
 
         public string OverlayLibraryGetFolderPath() => _overlayLibrary.LibraryDirectory;
+        public string OverlayLibraryGetFileExtension() => _overlayLibrary.FileExtension;
 
         private int OverlayLibraryGetNextFreeSlotNumber()
         {

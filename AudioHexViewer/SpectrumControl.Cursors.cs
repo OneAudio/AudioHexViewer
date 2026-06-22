@@ -580,6 +580,268 @@ namespace AudioHexViewer
         public bool TryFindPreviousPeakFrequencyForCursor2(out double peakHz)
             => TryFindAdjacentPeakFrequencyForCursor(isCursor1: false, direction: -1, out peakHz);
 
+        // ── Negative Peak (global minimum) ────────────────────────────────────
+        // Finds the frequency of the lowest dBFS value in the visible range.
+
+        public bool TryFindNegativePeakFrequencyForCursor1(out double peakHz)
+            => TryFindNegativePeakFrequencyForCursor(isCursor1: true, out peakHz);
+
+        public bool TryFindNegativePeakFrequencyForCursor2(out double peakHz)
+            => TryFindNegativePeakFrequencyForCursor(isCursor1: false, out peakHz);
+
+        // ── Prev / Next Negative Peak (local minima navigation) ──────────────
+
+        public bool TryFindNextNegativePeakFrequencyForCursor1(out double peakHz)
+            => TryFindAdjacentNegativePeakFrequencyForCursor(isCursor1: true, direction: +1, out peakHz);
+
+        public bool TryFindPreviousNegativePeakFrequencyForCursor1(out double peakHz)
+            => TryFindAdjacentNegativePeakFrequencyForCursor(isCursor1: true, direction: -1, out peakHz);
+
+        public bool TryFindNextNegativePeakFrequencyForCursor2(out double peakHz)
+            => TryFindAdjacentNegativePeakFrequencyForCursor(isCursor1: false, direction: +1, out peakHz);
+
+        public bool TryFindPreviousNegativePeakFrequencyForCursor2(out double peakHz)
+            => TryFindAdjacentNegativePeakFrequencyForCursor(isCursor1: false, direction: -1, out peakHz);
+
+        /// <summary>
+        /// Finds the global minimum (lowest dBFS) in the visible frequency range.
+        /// Mirror of TryFindPeakFrequencyForCursor — searches for min instead of max.
+        /// </summary>
+        private bool TryFindNegativePeakFrequencyForCursor(bool isCursor1, out double peakHz)
+        {
+            peakHz = 0;
+
+            if (freqAxis == null || freqAxis.Length == 0) return false;
+
+            var curve = ResolveCurveForCursor(isCursor1);
+            if (curve == ResolvedCurve.None) return false;
+
+            double[]? spec     = null;
+            double[]? plotSpec = null;
+
+            switch (curve)
+            {
+                case ResolvedCurve.Left:
+                    spec     = currentLeftSpectrum;  plotSpec = _plotLeftSpectrum;  break;
+                case ResolvedCurve.Right:
+                    spec     = currentRightSpectrum; plotSpec = _plotRightSpectrum; break;
+                case ResolvedCurve.Gain:
+                    spec     = currentLeftSpectrum;  plotSpec = _plotLeftSpectrum;  break;
+                case ResolvedCurve.Phase:
+                    spec     = currentFrfPhaseDeg;   plotSpec = _plotFrfPhaseDeg;   break;
+            }
+
+            if (spec == null || spec.Length == 0) return false;
+
+            var (fMin, fMax) = GetVisibleFreqRangeHz();
+            if (fMax <= fMin) return false;
+
+            bool useLog = (chkLogX != null && chkLogX.Checked);
+            int  minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
+
+            int i0 = Math.Max(LowerBound(freqAxis, fMin), minIdx);
+            int i1 = Math.Min(UpperBound(freqAxis, fMax) - 1,
+                              Math.Min(freqAxis.Length - 1, spec.Length - 1));
+            if (i1 <= i0) return false;
+
+            // Phase 1: find the visual bucket with minimum value (decimated data)
+            double[]? plotFreq = _plotFreqAxis;
+            int bestFullRes = -1;
+
+            if (plotSpec != null && plotFreq != null &&
+                plotSpec.Length > 0 && plotFreq.Length == plotSpec.Length)
+            {
+                int pi0 = Math.Max(0, LowerBound(plotFreq, fMin));
+                int pi1 = Math.Min(plotSpec.Length - 1, UpperBound(plotFreq, fMax) - 1);
+                pi0 = Math.Min(pi0, plotSpec.Length - 1);
+                pi1 = Math.Max(pi0, pi1);
+
+                int    bestPlot   = pi0;
+                double bestPlotDb = plotSpec[pi0];
+                for (int j = pi0 + 1; j <= pi1; j++)
+                    if (plotSpec[j] < bestPlotDb) { bestPlotDb = plotSpec[j]; bestPlot = j; }
+
+                double bucketCenter = plotFreq[bestPlot];
+                double halfBucket   = (bestPlot > 0 && bestPlot < plotFreq.Length - 1)
+                    ? (plotFreq[bestPlot + 1] - plotFreq[bestPlot - 1]) * 0.5
+                    : (plotFreq.Length > 1 ? Math.Abs(plotFreq[1] - plotFreq[0])
+                                           : (fMax - fMin) / Math.Max(1, plotFreq.Length));
+
+                int ri0 = Math.Max(i0, LowerBound(freqAxis, bucketCenter - halfBucket));
+                int ri1 = Math.Min(i1, UpperBound(freqAxis, bucketCenter + halfBucket) - 1);
+                if (ri1 > ri0)
+                {
+                    bestFullRes = ri0;
+                    double bestDb2 = spec[ri0];
+                    for (int i = ri0 + 1; i <= ri1; i++)
+                        if (spec[i] < bestDb2) { bestDb2 = spec[i]; bestFullRes = i; }
+                }
+            }
+
+            if (bestFullRes >= 0) { peakHz = freqAxis[bestFullRes]; return true; }
+
+            // Fallback: full-res minimum
+            int best = i0;
+            double bd = spec[i0];
+            for (int i = i0 + 1; i <= i1; i++)
+                if (spec[i] < bd) { bd = spec[i]; best = i; }
+
+            peakHz = freqAxis[best];
+            return true;
+        }
+
+        /// <summary>
+        /// Finds the previous or next local minimum (notch) relative to the current
+        /// cursor position.  Mirror of TryFindAdjacentPeakFrequencyForCursor:
+        ///   • groups built from points BELOW (median − threshold) instead of ABOVE
+        ///   • representative of each group = minimum value (instead of maximum)
+        /// </summary>
+        private bool TryFindAdjacentNegativePeakFrequencyForCursor(bool isCursor1, int direction, out double peakHz)
+        {
+            peakHz = 0;
+
+            if (freqAxis == null || freqAxis.Length == 0) return false;
+            if (direction != -1 && direction != +1) return false;
+
+            var curve = ResolveCurveForCursor(isCursor1);
+            if (curve == ResolvedCurve.None) return false;
+
+            double[]? spec     = null;
+            double[]? plotSpec = null;
+            double[]? plotFreq = _plotFreqAxis;
+
+            switch (curve)
+            {
+                case ResolvedCurve.Left:
+                    spec = currentLeftSpectrum;  plotSpec = _plotLeftSpectrum;  break;
+                case ResolvedCurve.Right:
+                    spec = currentRightSpectrum; plotSpec = _plotRightSpectrum; break;
+                case ResolvedCurve.Gain:
+                    spec = currentLeftSpectrum;  plotSpec = _plotLeftSpectrum;  break;
+                case ResolvedCurve.Phase:
+                    spec = currentFrfPhaseDeg;   plotSpec = _plotFrfPhaseDeg;   break;
+            }
+
+            if (spec == null || spec.Length == 0) return false;
+            if (plotFreq == null || plotSpec == null || plotFreq.Length == 0) return false;
+
+            var area = chartSpectrum.ChartAreas["SpectrumArea"];
+            double fMin = area.AxisX.Minimum;
+            double fMax = area.AxisX.Maximum;
+            if (fMax <= fMin) return false;
+
+            bool useLog = (chkLogX != null && chkLogX.Checked);
+            int  minIdx = useLog ? GetMinIndexForLog(freqAxis) : 0;
+
+            int i0 = Math.Max(LowerBound(freqAxis, fMin), minIdx);
+            int i1 = Math.Min(UpperBound(freqAxis, fMax) - 1,
+                              Math.Min(freqAxis.Length - 1, spec.Length - 1));
+            if (i1 <= i0) return false;
+
+            // Current cursor position
+            int cur = isCursor1 ? _cursorIdxL : _cursorIdxR;
+            cur = Math.Max(i0, Math.Min(cur, i1));
+            double curHz = freqAxis[cur];
+
+            // Median of visible plot values → noise floor
+            var tmp = new List<double>(plotSpec.Length);
+            for (int i = 0; i < plotSpec.Length; i++)
+            {
+                double v = plotSpec[i];
+                if (!double.IsNaN(v) && !double.IsInfinity(v)) tmp.Add(v);
+            }
+            if (tmp.Count == 0) return false;
+            tmp.Sort();
+            double median = (tmp.Count & 1) == 1
+                ? tmp[tmp.Count / 2]
+                : 0.5 * (tmp[tmp.Count / 2 - 1] + tmp[tmp.Count / 2]);
+
+            // Groups BELOW (median − threshold) — the deeper the notch, the better
+            double notchThreshold = median - _noiseToPeakThresholdDb;
+
+            var notchesHz = new List<double>();
+            bool   inGroup     = false;
+            double groupBotDb  = double.PositiveInfinity;
+            double groupBotHz  = 0;
+            int    n           = Math.Min(plotFreq.Length, plotSpec.Length);
+
+            for (int i = 0; i < n; i++)
+            {
+                double v = plotSpec[i];
+                if (double.IsNaN(v) || double.IsInfinity(v)) continue;
+
+                if (v <= notchThreshold)
+                {
+                    if (!inGroup) { inGroup = true; groupBotDb = v; groupBotHz = plotFreq[i]; }
+                    else if (v < groupBotDb) { groupBotDb = v; groupBotHz = plotFreq[i]; }
+                }
+                else if (inGroup)
+                {
+                    notchesHz.Add(groupBotHz);
+                    inGroup = false;
+                }
+            }
+            if (inGroup) notchesHz.Add(groupBotHz);
+
+            if (notchesHz.Count == 0) return false;
+
+            // navEps — same logic as adjacent peak
+            double navEps;
+            if (_plotFreqAxis != null && _plotFreqAxis.Length >= 2)
+            {
+                int pi = Math.Max(0, Math.Min(_plotFreqAxis.Length - 1,
+                             LowerBound(_plotFreqAxis, curHz)));
+                navEps = (pi > 0 && pi < _plotFreqAxis.Length - 1)
+                    ? (_plotFreqAxis[pi + 1] - _plotFreqAxis[pi - 1]) * 0.5
+                    : Math.Abs(_plotFreqAxis[1] - _plotFreqAxis[0]);
+            }
+            else
+                navEps = freqAxis.Length > 1 ? freqAxis[1] - freqAxis[0] : 1.0;
+
+            double selectedHz = 0;
+            bool   found      = false;
+
+            if (direction > 0)
+            {
+                for (int k = 0; k < notchesHz.Count; k++)
+                    if (notchesHz[k] > curHz + navEps) { selectedHz = notchesHz[k]; found = true; break; }
+            }
+            else
+            {
+                for (int k = notchesHz.Count - 1; k >= 0; k--)
+                    if (notchesHz[k] < curHz - navEps) { selectedHz = notchesHz[k]; found = true; break; }
+            }
+
+            if (!found) return false;
+
+            // Refine to full-res minimum in the bucket
+            double hb;
+            if (_plotFreqAxis != null && _plotFreqAxis.Length >= 2)
+            {
+                int pi = Math.Max(0, Math.Min(_plotFreqAxis.Length - 1,
+                             LowerBound(_plotFreqAxis, selectedHz)));
+                hb = (pi > 0 && pi < _plotFreqAxis.Length - 1)
+                    ? (_plotFreqAxis[pi + 1] - _plotFreqAxis[pi - 1]) * 0.5
+                    : Math.Abs(_plotFreqAxis[1] - _plotFreqAxis[0]);
+            }
+            else hb = navEps;
+
+            int ri0 = Math.Max(i0, LowerBound(freqAxis, selectedHz - hb));
+            int ri1 = Math.Min(i1, UpperBound(freqAxis, selectedHz + hb) - 1);
+            if (ri1 > ri0)
+            {
+                int    best2 = ri0;
+                double bd2   = spec[ri0];
+                for (int k = ri0 + 1; k <= ri1; k++)
+                    if (spec[k] < bd2) { bd2 = spec[k]; best2 = k; }
+                peakHz = freqAxis[best2];
+                return true;
+            }
+
+            peakHz = selectedHz;
+            return true;
+        }
+
         private bool TryFindAdjacentPeakFrequencyForCursor(bool isCursor1, int direction, out double peakHz)
         {
             peakHz = 0;

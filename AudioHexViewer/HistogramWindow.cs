@@ -34,7 +34,10 @@ namespace AudioHexViewer
         private static HistogramSettings? cachedSettings;
 
         private static string SettingsFilePath =>
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "HistogramSettings.json");
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "AudioHexViewer",
+                "HistogramSettings.json");
 
 
         private void LoadSettingsIfAny()

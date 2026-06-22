@@ -76,6 +76,10 @@ namespace AudioHexViewer
 
             InitializeComponent();
             InitVuBars();   // ← WAS MISSING: wire pnlVuMeter.Paint event
+
+            // Close (= hide) on Escape
+            KeyPreview = true;
+            KeyDown   += (_, e) => { if (e.KeyCode == Keys.Escape) Close(); };
             InitWavePreview();
             foreach (var v in Enum.GetValues<SignalType>())
                 cmbType.Items.Add(new TypeItem(v));

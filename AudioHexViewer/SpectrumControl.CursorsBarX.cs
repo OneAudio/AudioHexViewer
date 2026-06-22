@@ -121,8 +121,12 @@ namespace AudioHexViewer
             bool isX1 = (sender == btnX1Peak);
 
             var menu = new ContextMenuStrip();
-            menu.Items.Add("Prev Peak", null, (_, _) => MoveCursorToAdjacentPeak(isX1, next: false));
-            menu.Items.Add("Next Peak", null, (_, _) => MoveCursorToAdjacentPeak(isX1, next: true));
+            menu.Items.Add("Prev Peak",  null, (_, _) => MoveCursorToAdjacentPeak(isX1, next: false));
+            menu.Items.Add("Next Peak",  null, (_, _) => MoveCursorToAdjacentPeak(isX1, next: true));
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("Negative Peak",      null, (_, _) => MoveCursorToNegativePeak(isX1));
+            menu.Items.Add("Prev Negative Peak", null, (_, _) => MoveCursorToAdjacentNegativePeak(isX1, next: false));
+            menu.Items.Add("Next Negative Peak", null, (_, _) => MoveCursorToAdjacentNegativePeak(isX1, next: true));
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Threshold Settings...", null, (_, _) => OpenNoiseToPeakThresholdDialog());
 

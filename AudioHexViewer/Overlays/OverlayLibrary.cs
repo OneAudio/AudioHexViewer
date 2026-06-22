@@ -20,9 +20,11 @@ namespace AudioHexViewer
     internal sealed class OverlayLibrary
     {
         private readonly string _libraryDir;
+        private readonly string _fileExtension;   // ".spec.json" | ".scop.json"
         private readonly JsonSerializerOptions _jsonOptions;
 
         public string LibraryDirectory => _libraryDir;
+        public string FileExtension    => _fileExtension;
         public int SlotNumber { get; }
         private string VisibilityListPath => Path.Combine(_libraryDir, "_overlay_visibility.txt");
 
@@ -79,9 +81,10 @@ namespace AudioHexViewer
         }
 
 
-        public OverlayLibrary(string? libraryDir = null)
+        public OverlayLibrary(string? libraryDir = null, string fileExtension = ".spec.json")
         {
-            _libraryDir = libraryDir ?? GetDefaultLibraryDir();
+            _libraryDir    = libraryDir ?? GetDefaultLibraryDir();
+            _fileExtension = fileExtension.StartsWith(".") ? fileExtension : "." + fileExtension;
             Directory.CreateDirectory(_libraryDir);
 
             _jsonOptions = new JsonSerializerOptions
@@ -138,7 +141,7 @@ namespace AudioHexViewer
 
             var entries = new List<OverlayEntry>();
 
-            foreach (var path in Directory.EnumerateFiles(_libraryDir, "*.overlay.json", SearchOption.TopDirectoryOnly))
+            foreach (var path in Directory.EnumerateFiles(_libraryDir, "*" + _fileExtension, SearchOption.TopDirectoryOnly))
             {
                 var fileName = Path.GetFileName(path);
                 if (hidden.Contains(fileName))
@@ -247,7 +250,7 @@ namespace AudioHexViewer
                 fileNameBase = $"Overlay_{DateTime.Now:yyyy-MM-dd HH-mm-ss}";
 
             var safeBase = MakeSafeFileName(fileNameBase);
-            var filePath = GetUniquePath(Path.Combine(_libraryDir, safeBase + ".overlay.json"));
+            var filePath = GetUniquePath(Path.Combine(_libraryDir, safeBase + _fileExtension));
 
             WriteOverlayFile(filePath, overlay);
 
@@ -273,10 +276,10 @@ namespace AudioHexViewer
             var baseName = Path.GetFileName(sourcePath);
 
             // Si l'utilisateur importe un .json générique, on force l'extension .overlay.json
-            if (!baseName.EndsWith(".overlay.json", StringComparison.OrdinalIgnoreCase))
+            if (!baseName.EndsWith(_fileExtension, StringComparison.OrdinalIgnoreCase))
             {
                 var noExt = Path.GetFileNameWithoutExtension(baseName);
-                baseName = noExt + ".overlay.json";
+                baseName = noExt + _fileExtension;
             }
 
             var destPath = Path.Combine(_libraryDir, baseName);
@@ -332,7 +335,7 @@ namespace AudioHexViewer
             overlay.Name = newName.Trim();
 
             var safeBase = MakeSafeFileName(overlay.Name);
-            var newPath = GetUniquePath(Path.Combine(_libraryDir, safeBase + ".overlay.json"));
+            var newPath = GetUniquePath(Path.Combine(_libraryDir, safeBase + _fileExtension));
 
             WriteOverlayFile(newPath, overlay);
 
@@ -414,8 +417,9 @@ namespace AudioHexViewer
 
         private static string GetDefaultLibraryDir()
         {
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            return Path.Combine(appData, "AudioHexViewer", "Overlays");
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "AudioHexViewer", "Overlays", "Spectrum");
         }
 
         private static string MakeSafeFileName(string name)

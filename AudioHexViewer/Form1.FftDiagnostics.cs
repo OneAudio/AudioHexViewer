@@ -43,7 +43,10 @@ namespace AudioHexViewer
                 else
                 {
                     // ── Démarrage du log ──────────────────────────────────────
-                    string folder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                    string folder = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                        "AudioHexViewer", "logs");
+                    Directory.CreateDirectory(folder);
                     _diagLogPath   = Path.Combine(folder,
                         $"AudioHexViewer_Diag_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
 

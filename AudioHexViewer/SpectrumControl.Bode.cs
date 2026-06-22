@@ -308,28 +308,32 @@ namespace AudioHexViewer
             chartSpectrum.Invalidate();
         }
 
+        // ── BodeRef folder ────────────────────────────────────────────────────
+        private static string GetBodeRefDir()
+        {
+            string dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "AudioHexViewer", "BodeRef");
+            Directory.CreateDirectory(dir);
+            return dir;
+        }
+
         internal void SaveFrfReference()
         {
             if (_frfRefGainDb == null || _frfRefPhaseDeg == null || _frfRefFreqHz == null)
             {
-                MessageBox.Show("No reference captured yet.\nCapture a reference first (\"Cap Ref\").",
+                MessageBox.Show("No reference captured yet.\nCapture a reference first (\"Capture\").",
                     "Save Bode Reference", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            using var dlg = new SaveFileDialog
-            {
-                Title       = "Save Bode Reference",
-                Filter      = "AudioHexViewer Reference (*.ahvref)|*.ahvref|CSV (*.csv)|*.csv",
-                DefaultExt  = "ahvref",
-                FileName    = $"BodeRef_{DateTime.Now:yyyyMMdd_HHmmss}"
-            };
-            if (dlg.ShowDialog(FindForm()) != DialogResult.OK) return;
+            string fileName = $"BodeRef_{DateTime.Now:yyyyMMdd_HHmmss}.ahvref";
+            string filePath = Path.Combine(GetBodeRefDir(), fileName);
 
             try
             {
                 using var sw = new System.IO.StreamWriter(
-                    dlg.FileName, false, System.Text.Encoding.UTF8);
+                    filePath, false, System.Text.Encoding.UTF8);
 
                 double df = _frfRefFreqHz.Length > 1
                     ? _frfRefFreqHz[1] - _frfRefFreqHz[0] : 0.0;
@@ -347,6 +351,9 @@ namespace AudioHexViewer
                 for (int k = 0; k < n; k++)
                     sw.WriteLine(string.Format(ic, "{0:F6},{1:F6},{2:F6}",
                         _frfRefFreqHz[k], _frfRefGainDb[k], _frfRefPhaseDeg[k]));
+
+                MessageBox.Show($"Reference saved:\n{filePath}",
+                    "Save Bode Reference", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
@@ -359,9 +366,10 @@ namespace AudioHexViewer
         {
             using var dlg = new OpenFileDialog
             {
-                Title      = "Load Bode Reference",
-                Filter     = "AudioHexViewer Reference (*.ahvref)|*.ahvref|CSV (*.csv)|*.csv|All files (*.*)|*.*",
-                DefaultExt = "ahvref"
+                Title            = "Load Bode Reference",
+                Filter           = "AudioHexViewer Reference (*.ahvref)|*.ahvref|CSV (*.csv)|*.csv|All files (*.*)|*.*",
+                DefaultExt       = "ahvref",
+                InitialDirectory = GetBodeRefDir()
             };
             if (dlg.ShowDialog(FindForm()) != DialogResult.OK) return;
 
@@ -499,7 +507,7 @@ namespace AudioHexViewer
             _toolTipFrfNorm.SetToolTip(btnFrfNormToggle,
                 hasRef
                     ? "Enable/disable normalisation: H_corr = H_measured / H_ref"
-                    : "Capture a reference first (\"Cap Ref\")");
+                    : "Capture a reference first (\"Capture\")");
         }
 
     }

@@ -263,7 +263,7 @@ namespace AudioHexViewer
 
         // ===== Overlays V3 (bibliothèque interne) =====
         // Cache en mémoire pour éviter de relire les .overlay.json à chaque rafraîchissement du chart.
-        private readonly OverlayLibrary _overlayLibrary = new OverlayLibrary();
+        private readonly OverlayLibrary _overlayLibrary = new OverlayLibrary(fileExtension: ".spec.json");
 
         private OverlaysForm? _overlaysForm;
 

@@ -367,7 +367,7 @@
             btnFrfRefCapture.Appearance = Appearance.Button; btnFrfRefCapture.Dock = DockStyle.Fill;
             btnFrfRefCapture.Margin = new Padding(0); btnFrfRefCapture.Name = "btnFrfRefCapture";
             btnFrfRefCapture.Size = new Size(62, 24); btnFrfRefCapture.TabIndex = 10;
-            btnFrfRefCapture.Text = "Cap Ref"; btnFrfRefCapture.Font = std9;
+            btnFrfRefCapture.Text = "Capture"; btnFrfRefCapture.Font = std9;
             btnFrfRefCapture.TextAlign = ContentAlignment.MiddleCenter; btnFrfRefCapture.UseVisualStyleBackColor = true;
 
             btnFrfNormToggle.Appearance = Appearance.Button; btnFrfNormToggle.Dock = DockStyle.Fill;

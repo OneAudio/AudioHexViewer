@@ -27,6 +27,7 @@ namespace AudioHexViewer
 
         // Divers
         string OverlayLibraryGetFolderPath();
+        string OverlayLibraryGetFileExtension();
         Color OverlayGetSlotColor1Based(int slotNumber);
     }
 }

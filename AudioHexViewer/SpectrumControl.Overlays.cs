@@ -209,6 +209,8 @@ namespace AudioHexViewer
             return _overlayLibrary.LibraryDirectory;
         }
 
+        public string OverlayLibraryGetFileExtension() => _overlayLibrary.FileExtension;
+
         //
         public System.Drawing.Color OverlayGetSlotColor1Based(int slotNumber)
         {

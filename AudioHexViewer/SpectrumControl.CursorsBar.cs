@@ -452,6 +452,58 @@ namespace AudioHexViewer
 
             SyncCursorUiFromModel();
         }
+
+        // ── Negative Peak (global minimum) ───────────────────────────────────
+        private void MoveCursorToNegativePeak(bool isC1)
+        {
+            if (isC1)
+            {
+                if (!CursorLeftEnabled) CursorLeftEnabled = true;
+                if (TryFindNegativePeakFrequencyForCursor1(out var hz))
+                    SetCursor1FrequencyHz(hz);
+            }
+            else
+            {
+                if (!CursorRightEnabled) CursorRightEnabled = true;
+                if (TryFindNegativePeakFrequencyForCursor2(out var hz))
+                    SetCursor2FrequencyHz(hz);
+            }
+            SyncCursorUiFromModel();
+        }
+
+        // ── Prev / Next Negative Peak (local minima navigation) ──────────────
+        private void MoveCursorToAdjacentNegativePeak(bool isC1, bool next)
+        {
+            if (isC1)
+            {
+                if (!CursorLeftEnabled) CursorLeftEnabled = true;
+                if (next)
+                {
+                    if (TryFindNextNegativePeakFrequencyForCursor1(out var hz))
+                        SetCursor1FrequencyHz(hz);
+                }
+                else
+                {
+                    if (TryFindPreviousNegativePeakFrequencyForCursor1(out var hz))
+                        SetCursor1FrequencyHz(hz);
+                }
+            }
+            else
+            {
+                if (!CursorRightEnabled) CursorRightEnabled = true;
+                if (next)
+                {
+                    if (TryFindNextNegativePeakFrequencyForCursor2(out var hz))
+                        SetCursor2FrequencyHz(hz);
+                }
+                else
+                {
+                    if (TryFindPreviousNegativePeakFrequencyForCursor2(out var hz))
+                        SetCursor2FrequencyHz(hz);
+                }
+            }
+            SyncCursorUiFromModel();
+        }
         //
         //
         private void OpenSimpleSetDialog(bool isC1)

@@ -11,6 +11,10 @@ namespace AudioHexViewer
     internal sealed partial class OverlaysForm : Form
     {
         private readonly IOverlayHost _owner;
+        // File extension for this host's overlay library (".spec.json" or ".scop.json")
+        private string Ext       => _owner.OverlayLibraryGetFileExtension();
+        private string ExtGlob   => "*" + Ext;
+        private string ExtFilter => $"Overlay ({ExtGlob})|{ExtGlob}|JSON (*.json)|*.json|All files (*.*)|*.*";
         private readonly List<OverlayEntry> _entries = new List<OverlayEntry>();
         private bool _isRefreshing;
 
@@ -20,6 +24,10 @@ namespace AudioHexViewer
             InitializeComponent();
             InitColorIcons();
             RefreshList();
+
+            // Close on Escape
+            KeyPreview = true;
+            KeyDown   += (_, e) => { if (e.KeyCode == Keys.Escape) Close(); };
         }
 
         private void RefreshList()
@@ -197,7 +205,7 @@ namespace AudioHexViewer
         {
             using (var ofd = new OpenFileDialog())
             {
-                ofd.Filter = "Overlay (*.overlay.json)|*.overlay.json|JSON (*.json)|*.json|All files (*.*)|*.*";
+                ofd.Filter = ExtFilter;
                 ofd.Title = "Importer un overlay";
                 ofd.Multiselect = true;
 
@@ -212,9 +220,9 @@ namespace AudioHexViewer
                     {
                         string baseName = Path.GetFileName(file);
 
-                        // Si import .json générique -> on force ".overlay.json"
-                        if (!baseName.EndsWith(".overlay.json", StringComparison.OrdinalIgnoreCase))
-                            baseName = Path.GetFileNameWithoutExtension(baseName) + ".overlay.json";
+                        // If importing a generic .json file, force the correct extension
+                        if (!baseName.EndsWith(Ext, StringComparison.OrdinalIgnoreCase))
+                            baseName = Path.GetFileNameWithoutExtension(baseName) + Ext;
 
                         string destPath = Path.Combine(libraryDir, baseName);
 
@@ -271,8 +279,8 @@ namespace AudioHexViewer
                 using (var sfd = new SaveFileDialog())
                 {
                     var baseName = MakeSafeFileName(entry.Name);
-                    sfd.FileName = baseName + ".overlay.json";
-                    sfd.Filter = "Overlay (*.overlay.json)|*.overlay.json|JSON (*.json)|*.json|All files (*.*)|*.*";
+                    sfd.FileName = baseName + Ext;
+                    sfd.Filter = ExtFilter;
                     sfd.Title = "Exporter l'overlay";
 
                     if (sfd.ShowDialog(this) != DialogResult.OK)
@@ -303,7 +311,7 @@ namespace AudioHexViewer
                     foreach (var entry in selection)
                     {
                         var baseName = MakeSafeFileName(entry.Name);
-                        var target = Path.Combine(fbd.SelectedPath, baseName + ".overlay.json");
+                        var target = Path.Combine(fbd.SelectedPath, baseName + Ext);
                         // Eviter d'écraser: si existe, on ajoute (2), (3)...
                         target = GetUniquePath(target);
 

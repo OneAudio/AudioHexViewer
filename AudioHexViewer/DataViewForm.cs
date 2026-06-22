@@ -27,6 +27,10 @@ namespace AudioHexViewer
         {
             InitializeComponent();
 
+            // Close (= hide) on Escape
+            KeyPreview = true;
+            KeyDown   += (_, e) => { if (e.KeyCode == Keys.Escape) Close(); };
+
             // VU-mètre : double-buffering + Paint
             typeof(Control)
                 .GetMethod("SetStyle",

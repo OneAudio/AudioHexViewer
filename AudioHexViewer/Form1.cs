@@ -489,6 +489,9 @@ namespace AudioHexViewer
         {
             InitializeComponent();
 
+            // ── One-shot file location migration (new paths since this version) ──
+            FileLocationMigration.RunOnce();
+
             levelFontRegular = new Font(this.Font, FontStyle.Regular);
             levelFontBold = new Font(this.Font, FontStyle.Bold);
 
@@ -1472,6 +1475,10 @@ namespace AudioHexViewer
 
             RefreshAllFormatsWindow();
 
+            // Close (= hide) on Escape
+            dlg.KeyPreview = true;
+            dlg.KeyDown   += (_, e) => { if (e.KeyCode == Keys.Escape) dlg.Close(); };
+
             // Refresh à chaque tick audio (throttlé via _lastAllFormatsDumpL change)
             dlg.FormClosing += (_, e2) =>
             {
@@ -1976,14 +1983,18 @@ namespace AudioHexViewer
         //
         private string GetCalibrationFilePath()
         {
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            return Path.Combine(baseDir, "AudioHexViewer.cal");
+            string dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "AudioHexViewer");
+            Directory.CreateDirectory(dir);
+            return Path.Combine(dir, "AudioHexViewer.cal");
         }
         //
         private string GetRecordsFolderPath()
         {
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            string dir = Path.Combine(baseDir, "records");
+            string dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "AudioHexViewer", "records");
 
             if (!Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
