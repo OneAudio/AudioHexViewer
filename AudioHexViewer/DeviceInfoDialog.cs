@@ -241,7 +241,7 @@ namespace AudioHexViewer
             AddRow(flow, "Sample rate", srStr);
             AddRow(flow, "Bit depth",   $"{fi.BitsPerSample} bits");
             string chanStr = fi.Channels == 1 ? "1  (Mono)"
-                           : fi.Channels == 2 ? "2  (Stéréo)"
+                           : fi.Channels == 2 ? "2  (Stereo)"
                            : $"{fi.Channels}";
             AddRow(flow, "Channels",    chanStr);
 

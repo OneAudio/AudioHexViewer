@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -443,7 +443,7 @@ namespace AudioHexViewer
                     return candidate;
             }
 
-            throw new IOException("Impossible de générer un nom de fichier unique (trop de collisions).");
+            throw new IOException("Unable to generate a unique file name (too many collisions).");
         }
     }
 

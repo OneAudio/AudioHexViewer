@@ -68,10 +68,8 @@ namespace AudioHexViewer
                         if (actualFormat == null)
                         {
                             MessageBox.Show(
-                                $"Le SR {requestedSr / 1000.0:0.###} kHz n'est pas supporté en mode\n" +
-                                "Exclusif par ce périphérique (aucun format 32/24/16 bits accepté).\n\n" +
-                                "Choisis 'Auto (Windows)' dans le menu Sample Rate.",
-                                "Format non supporté",
+                                $"The sample rate {requestedSr / 1000.0:0.###} kHz is not supported in Exclusive mode\nby this device (no 32/24/16-bit format accepted).\n\nSelect 'Auto (Windows)' in the Sample Rate menu.",
+                                "Unsupported Format",
                                 MessageBoxButtons.OK,
                                 MessageBoxIcon.Warning);
                             capture = null;
@@ -196,21 +194,21 @@ namespace AudioHexViewer
                 switch (unchecked((uint)ex.HResult))
                 {
                     case 0x88890008: // AUDCLNT_E_UNSUPPORTED_FORMAT
-                        errMsg = $"Format non supporté par le driver en mode Exclusif.\n" +
-                                 $"({_requestedCaptureFormat?.SampleRate / 1000.0:0.###} kHz / 32 bits Float)\n\n" +
-                                 "Solution : choisir 'Auto' dans le menu Sample Rate, ou essayer un autre SR.";
+                        errMsg = $"Format not supported by the driver in Exclusive mode.\n" +
+                                 $"({_requestedCaptureFormat?.SampleRate / 1000.0:0.###} kHz / 32-bit Float)\n\n" +
+                                 "Fix: select 'Auto' in the Sample Rate menu, or try a different SR.";
                         break;
                     case 0x88890001: // AUDCLNT_E_ALREADY_INITIALIZED
                     case 0x88890014: // AUDCLNT_E_DEVICE_IN_USE
-                        errMsg = "Le périphérique est déjà utilisé par une autre application en mode Exclusif.\n\n" +
-                                 "Ferme REW, le panneau Son de Windows, ou toute autre appli audio, puis réessaie.";
+                        errMsg = "The device is already in use by another application in Exclusive mode.\n\n" +
+                                 "Close REW, the Windows Sound panel, or any other audio application, then retry.";
                         break;
                     case 0x88890004: // AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED
-                        errMsg = "Taille de buffer incompatible avec ce driver en mode Exclusif.\n" +
-                                 "Essaie un autre SR ou repasse en mode Auto.";
+                        errMsg = "Buffer size incompatible with this driver in Exclusive mode.\n" +
+                                 "Try a different SR or switch back to Auto mode.";
                         break;
                     default:
-                        errMsg = $"Erreur lors du démarrage de la capture :\n{ex.Message}\n(HRESULT: 0x{ex.HResult:X8})";
+                        errMsg = $"Error starting capture:\n{ex.Message}\n(HRESULT: 0x{ex.HResult:X8})";
                         break;
                 }
                 MessageBox.Show(errMsg, "Erreur capture", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -313,7 +311,7 @@ namespace AudioHexViewer
         {
             if (currentFormat == null)
             {
-                MessageBox.Show("Dmarre la lecture (READ) avant d'enregistrer.");
+                MessageBox.Show("Start playback (READ) before recording.");
                 return;
             }
 
@@ -321,7 +319,7 @@ namespace AudioHexViewer
             {
                 if (isRecordingOneSecond)
                 {
-                    MessageBox.Show("Un enregistrement est dj en cours.");
+                    MessageBox.Show("A recording is already in progress.");
                     return;
                 }
 
@@ -546,8 +544,8 @@ namespace AudioHexViewer
                             ? $" | DROP={dropsWindow} pkt ⚠"
                             : " | DROP=0 ✓";
 
-                        string diagMsg = $"DIAG: reçu={_diagSamplesReceived} attendu={_diagSamplesExpected} " +
-                                         $"déficit={deficit} ({_diagDeficitMs:F1}ms){lockInfo}{dropInfo}";
+                        string diagMsg = $"DIAG: received={_diagSamplesReceived} expected={_diagSamplesExpected} " +
+                                         $"deficit={deficit} ({_diagDeficitMs:F1}ms){lockInfo}{dropInfo}";
 
                         System.Diagnostics.Debug.WriteLine(diagMsg);
                         _pipeline!.Stats.SetLastError(diagMsg);

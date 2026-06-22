@@ -35,9 +35,9 @@ namespace AudioHexViewer
                     _diagLogWriter?.Close();
                     _diagLogWriter = null;
 
-                    string path = _diagLogPath ?? "(inconnu)";
+                    string path = _diagLogPath ?? "(unknown)";
                     BeginInvoke((Action)(() =>
-                        MessageBox.Show($"Log arrêté.\nFichier : {path}",
+                        MessageBox.Show($"Log stopped.\nFile: {path}",
                             "Diagnostic Log", MessageBoxButtons.OK, MessageBoxIcon.Information)));
                 }
                 else
@@ -52,22 +52,22 @@ namespace AudioHexViewer
 
                     // En-tête lisible
                     var snap   = _pipeline!.Stats.Snapshot();
-                    string mode = (_requestedCaptureFormat != null) ? "Exclusif" : "Shared";
-                    _diagLogWriter.WriteLine("# AudioHexViewer - Log de diagnostic FFT");
-                    _diagLogWriter.WriteLine($"# Démarré   : {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
+                    string mode = (_requestedCaptureFormat != null) ? "Exclusive" : "Shared";
+                    _diagLogWriter.WriteLine("# AudioHexViewer - FFT Diagnostic Log");
+                    _diagLogWriter.WriteLine($"# Started    : {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
                     _diagLogWriter.WriteLine($"# SR={snap.SampleRate} Hz | N={snap.FftSize} | " +
                                              $"Hop={snap.Hop} | Overlap={snap.Overlap01 * 100:F1}% | Mode={mode}");
                     _diagLogWriter.WriteLine("#");
-                    _diagLogWriter.WriteLine("# HopActuel  = AbsEnd[n] - AbsEnd[n-1]");
-                    _diagLogWriter.WriteLine("# HopErreur  = HopActuel - HopAttendu  (>0 = gap = discontinuité)");
-                    _diagLogWriter.WriteLine("# Drained    = frames drainés par l'UI ce tick (>1 = drain multiple, normal)");
-                    _diagLogWriter.WriteLine("# Drops      = paquets audio perdus (canal plein) depuis FFT précédente");
-                    _diagLogWriter.WriteLine("# LockWait   = attente max sur _pipeline?.Ring depuis FFT précédente");
-                    _diagLogWriter.WriteLine("# FrmSkipped = FramesSkipped cumulé SfftWorker (vrais TryReadWindow miss)");
-                    _diagLogWriter.WriteLine("# Anomalie   = UI_DRAIN si drain>1 normal | HOP⚠(REEL) si vrai gap | DROP si perte");
+                    _diagLogWriter.WriteLine("# HopActual  = AbsEnd[n] - AbsEnd[n-1]");
+                    _diagLogWriter.WriteLine("# HopError   = HopActual - HopExpected  (>0 = gap = discontinuity)");
+                    _diagLogWriter.WriteLine("# Drained    = frames drained by UI this tick (>1 = multiple drain, normal)");
+                    _diagLogWriter.WriteLine("# Drops      = audio packets lost (ring full) since last FFT");
+                    _diagLogWriter.WriteLine("# LockWait   = max wait on _pipeline?.Ring since last FFT");
+                    _diagLogWriter.WriteLine("# FrmSkipped = cumulative FramesSkipped in SfftWorker (real TryReadWindow misses)");
+                    _diagLogWriter.WriteLine("# Anomaly    = UI_DRAIN if drain>1 normal | HOP⚠(REAL) if true gap | DROP if loss");
                     _diagLogWriter.WriteLine("#");
                     _diagLogWriter.WriteLine(
-                        "Timestamp;FFT#;AbsEnd;HopActuel;HopAttendu;HopErreur_ms;Drained;Drops;LockWait_ms;FrmSkipped;Anomalie;FftPerSec;FftAvgMs;DebugBarInfo");
+                        "Timestamp;FFT#;AbsEnd;HopActual;HopExpected;HopError_ms;Drained;Drops;LockWait_ms;FrmSkipped;Anomaly;FftPerSec;FftAvgMs;DebugBarInfo");
 
                     // Reset des compteurs spécifiques au log
                     _diagLogFftIndex    = 0;
@@ -79,7 +79,7 @@ namespace AudioHexViewer
 
                     string path = _diagLogPath;
                     BeginInvoke((Action)(() =>
-                        MessageBox.Show($"Log démarré.\nFichier : {path}\n\nF8 pour arrêter.",
+                        MessageBox.Show($"Log started.\nFile: {path}\n\nPress F8 to stop.",
                             "Diagnostic Log", MessageBoxButtons.OK, MessageBoxIcon.Information)));
                 }
             }
@@ -138,7 +138,7 @@ namespace AudioHexViewer
                     if (drops > 0)
                         anomalie += $"DROP={drops} ";
                     if (!isFirstFft && hopActuel > (long)drained * hopAttendu + hopAttendu / 2)
-                        anomalie += "HOP⚠(REEL) ";
+                        anomalie += "HOP⚠(REAL) ";
                     else if (drained > 1)
                         anomalie += $"UI_DRAIN={drained} ";
                     if (anomalie.Length == 0)

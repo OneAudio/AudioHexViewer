@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
@@ -120,7 +120,7 @@ namespace AudioHexViewer
             chart.Dock = DockStyle.Fill;
 
             var area = new ChartArea("HistogramArea");
-            area.AxisX.Title = "Code (LSB, centré)";
+            area.AxisX.Title = "Code (LSB, centered)";
             area.AxisY.Title = "Count";
             area.AxisX.MajorGrid.LineColor = Color.LightGray;
             area.AxisY.MajorGrid.LineColor = Color.LightGray;

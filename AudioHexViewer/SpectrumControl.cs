@@ -354,8 +354,8 @@ namespace AudioHexViewer
         private double[]? _lastFrfFreqHzRaw;
 
         // FRF (Bode) UI toggles
-        private bool _frfPhaseEnabled = false;   // bouton "enable φ" : OFF par défaut
-        private bool _frfPhaseUnwrap = false;    // bouton "unwrap φ" : OFF => wrap par défaut
+        private bool _frfPhaseEnabled = false;   // "enable φ" button: OFF by default
+        private bool _frfPhaseUnwrap = false;    // "unwrap φ" button: OFF => wrapped by défaut
 
         private double[]? freqAxis;
 
@@ -551,8 +551,8 @@ namespace AudioHexViewer
         private double[]? _binsPowR;   // ComplexBinsToPowerInto output R
         private double[]? _binsDbL;    // PowerToDbFsInto output L (= currentLeftSpectrum)
         private double[]? _binsDbR;    // PowerToDbFsInto output R (= currentRightSpectrum)
-        private double[]? _frfGainDbRawBuf;   // copie pré-normalisation de gainDb  (pour "Cap Ref")
-        private double[]? _frfPhaseDegRawBuf; // copie pré-normalisation de phaseDeg (pour "Cap Ref")
+        private double[]? _frfGainDbRawBuf;   // pre-normalisation copy of gainDb  (forr "Cap Ref")
+        private double[]? _frfPhaseDegRawBuf; // pre-normalisation copy of phaseDeg (forur "Cap Ref")
 
         private static double[] EnsureDspBuf(ref double[]? buf, int n)
         {
@@ -612,8 +612,8 @@ namespace AudioHexViewer
         private bool _cursorMarkLUsesY2;
         private bool _cursorMarkRUsesY2;
 
-        private double _cursorTargetHzL = double.NaN; // NaN → auto-place à 1/3 de l'axe
-        private double _cursorTargetHzR = double.NaN; // NaN → auto-place à 2/3 de l'axe
+        private double _cursorTargetHzL = double.NaN; // NaN → auto-placed at 1/3 of the axis
+        private double _cursorTargetHzR = double.NaN; // NaN → auto-placed at 2/3 of the axis
 
         public event EventHandler? WindowTypeChangedForExternalFft;
 
@@ -987,7 +987,7 @@ namespace AudioHexViewer
             _metricsOpt.MaxHarmonics = countExclFund + 1;
 
             // Pas de recalcul FFT ici : le spectre vient du nouveau core (FeedExternalSpectrum).
-            UpdateOverlayInfo();   // rafraîchit "Coherent Avg:" si UseCohAvg a changé
+            UpdateOverlayInfo();   // refreshes "Coherent Avg:" if UseCohAvg changed
             RebuildStatsRowsFromLabels();
             chartSpectrum.Invalidate();
 
@@ -998,7 +998,7 @@ namespace AudioHexViewer
         {
             _thdMeasuresEnabled = enabled;
 
-            UpdateOverlayInfo();   // rafraîchit "Coherent Avg:" / "Avg:" dans la ligne d'info
+            UpdateOverlayInfo();   // refreshes "Coherent Avg:" / "Avg:" in the info linefo
             RebuildStatsRowsFromLabels();
             chartSpectrum.Invalidate();
         }
@@ -1919,7 +1919,7 @@ namespace AudioHexViewer
                 //yMinAuto = -160.0;
                 //yMaxAuto = 40.0;
                 useDbvAxis = false; // pas de dBV sur un ratio
-                area.AxisY.Title = "";  // dessiné en PostPaint
+                area.AxisY.Title = "";  // drawn in PostPaint
             }
 
             // --- Axe Y2 : Phase (uniquement en mode Bode Plot ET phase activée) ---
@@ -1930,7 +1930,7 @@ namespace AudioHexViewer
 
             if (showY2)
             {
-                area.AxisY2.Title = "";  // dessiné en PostPaint avec décalage contrôlé
+                area.AxisY2.Title = "";  // drawn in PostPaint avec décalage contrôlé
                 double pmin = customPhaseMin ?? -180.0;
                 double pmax = customPhaseMax ?? 180.0;
 
@@ -1996,11 +1996,11 @@ namespace AudioHexViewer
                     yMaxAuto += shifts.Max();
                 }
 
-                area.AxisY.Title = "";  // dessiné en PostPaint
+                area.AxisY.Title = "";  // drawn in PostPaint
             }
             else
             {
-                area.AxisY.Title = "";  // dessiné en PostPaint
+                area.AxisY.Title = "";  // drawn in PostPaint
             }
 
             // Cap sur le range auto pour éviter un axe Y qui parte trop haut
@@ -3032,7 +3032,7 @@ namespace AudioHexViewer
         public OverlayEntry OverlayLibraryCaptureActiveView()
         {
             if (_plotFreqAxis == null || _plotFreqAxis.Length == 0)
-                throw new InvalidOperationException("Pas de données plot (FreqHz) à capturer.");
+                throw new InvalidOperationException("No plot data (FreqHz) available to capture.");
 
             int slot = OverlayLibraryGetNextFreeSlotNumber();
             string defaultName = $"Overlay_{slot}";
@@ -3051,9 +3051,9 @@ namespace AudioHexViewer
             {
                 // Bode: gain + phase requis
                 if (_plotLeftSpectrum == null || _plotLeftSpectrum.Length == 0)
-                    throw new InvalidOperationException("Pas de Gain (plot) à capturer.");
+                    throw new InvalidOperationException("No Gain data (plot) available to capture.");
                 if (_plotFrfPhaseDeg == null || _plotFrfPhaseDeg.Length == 0)
-                    throw new InvalidOperationException("Pas de Phase (plot) à capturer.");
+                    throw new InvalidOperationException("No Phase data (plot) available to capture.");
 
                 // Longueur cohérente
                 int n = Math.Min(_plotFreqAxis.Length, Math.Min(_plotLeftSpectrum.Length, _plotFrfPhaseDeg.Length));
@@ -3098,7 +3098,7 @@ namespace AudioHexViewer
                 bool captureRight = (mode == "Right" || mode == "L+R") && _plotRightSpectrum != null;
 
                 if (!captureLeft && !captureRight)
-                    throw new InvalidOperationException("Pas de spectre plot à capturer (Left/Right).");
+                    throw new InvalidOperationException("No spectrum plot data to capture (Left/Right).");
 
                 int n = _plotFreqAxis.Length;
                 if (captureLeft) n = Math.Min(n, _plotLeftSpectrum!.Length);

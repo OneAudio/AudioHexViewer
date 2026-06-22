@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
@@ -98,7 +98,7 @@ namespace AudioHexViewer
                 if (binLsb > numBinPow.Maximum) binLsb = (int)numBinPow.Maximum;
 
                 // On force à des puissances de 2
-                rangeLsb = NextPowerOfTwo(PrevPowerOfTwo(rangeLsb)); // "snap" à la puissance la plus proche > ou =
+                rangeLsb = NextPowerOfTwo(PrevPowerOfTwo(rangeLsb)); // "snap" to nearest power of two plus proche > ou =
                 binLsb = NextPowerOfTwo(PrevPowerOfTwo(binLsb));
 
                 _updatingRange = true;
@@ -307,7 +307,7 @@ namespace AudioHexViewer
         private void InitChart()
         {
             var area = new ChartArea("HistogramArea");
-            area.AxisX.Title = "Code (LSB, centré)";
+            area.AxisX.Title = "Code (LSB, centered)";
             area.AxisY.Title = "Count";
             area.AxisX.MajorGrid.LineColor = Color.LightGray;
             area.AxisY.MajorGrid.LineColor = Color.LightGray;

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -56,7 +56,7 @@ namespace AudioHexViewer
         {
             if (string.IsNullOrWhiteSpace(filePath)) throw new ArgumentException("filePath vide");
             if (freqHz == null || freqHz.Length == 0) throw new ArgumentException("freqHz vide");
-            if (leftDbFs == null && rightDbFs == null) throw new ArgumentException("pas de données spectre");
+            if (leftDbFs == null && rightDbFs == null) throw new ArgumentException("no spectrum data");
 
             if (leftDbFs != null && leftDbFs.Length != freqHz.Length)
                 throw new ArgumentException("leftDbFs length != freqHz length");
@@ -97,7 +97,7 @@ namespace AudioHexViewer
 
             // Overlay V3 uniquement (pas de rétrocompatibilité)
             if (dto.Version != OverlayFile.CurrentVersion)
-                throw new InvalidDataException("Overlay invalide: version non supportée (V3 uniquement).");
+                throw new InvalidDataException("Invalid overlay: unsupported version (V3 only).");
 
             if (dto.SampleRate <= 0 || dto.FftSize <= 0)
                 throw new InvalidDataException("Overlay invalide: SampleRate/FftSize");
@@ -115,7 +115,7 @@ namespace AudioHexViewer
             {
                 case OverlayKind.Spectrum:
                     if (dto.LeftDbFs == null && dto.RightDbFs == null)
-                        throw new InvalidDataException("Overlay invalide (Spectrum): pas de données LeftDbFs/RightDbFs.");
+                        throw new InvalidDataException("Invalid overlay (Spectrum): missing LeftDbFs/RightDbFs data.");
 
                     if (dto.LeftDbFs != null && dto.LeftDbFs.Length != dto.FreqHz.Length)
                         throw new InvalidDataException("Overlay invalide (Spectrum): LeftDbFs length != FreqHz length.");
@@ -141,7 +141,7 @@ namespace AudioHexViewer
                         throw new InvalidDataException("Overlay invalide (Oscilloscope): TimeMs manquant.");
 
                     if (dto.LeftV == null && dto.RightV == null)
-                        throw new InvalidDataException("Overlay invalide (Oscilloscope): pas de données LeftV/RightV.");
+                        throw new InvalidDataException("Invalid overlay (Oscilloscope): missing LeftV/RightV data.");
 
                     if (dto.LeftV != null && dto.LeftV.Length != dto.TimeMs.Length)
                         throw new InvalidDataException("Overlay invalide (Oscilloscope): LeftV length != TimeMs length.");

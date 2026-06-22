@@ -1070,7 +1070,48 @@ namespace AudioHexViewer
             // ── Labels Y custom dans la marge grise à gauche ─────────────────
             DrawCustomYLabels(g, area, cr, sExport, chart.Font);
 
-            // ── AHV watermark — inner plot area (always drawn) ──
+            // ── Info line above the plot (SR / N / Range / Bin / Avg / Couple) ──
+            {
+                string srText  = _sampleRate > 0 ? $"{_sampleRate / 1000.0:G4} kHz" : "—";
+                int    n       = GetWindowSamples();
+                string rangeText = comboRangeLsb.SelectedItem?.ToString() ?? "—";
+                string binText   = comboBinLsb.SelectedItem?.ToString()   ?? "—";
+                string avgText   = comboAveraging.SelectedItem?.ToString() ?? "None";
+                string coupleText = _dcMode ? "DC" : "AC";
+                string chanText   = comboChannel.SelectedItem as string ?? "Both";
+
+                string infoLine =
+                    $"Channel:{chanText}    " +
+                    $"SR:{srText}    " +
+                    $"N={n:N0}    " +
+                    $"Range LSB:{rangeText}    " +
+                    $"Bin LSB:{binText}    " +
+                    $"Avg:{avgText}    " +
+                    $"Couple:{coupleText}";
+
+                // Position: just above the inner plot area (same logic as Spectrum PostPaint)
+                var apos   = area.Position;
+                var ip     = area.InnerPlotPosition;
+                float aX   = cr.Width  * apos.X       / 100f;
+                float aY   = cr.Height * apos.Y       / 100f;
+                float aW   = cr.Width  * apos.Width   / 100f;
+                float aH   = cr.Height * apos.Height  / 100f;
+                float plotLeft = aX + aW * ip.X / 100f;
+                float plotTop  = aY + aH * ip.Y / 100f;
+
+                // Use same font as Spectrum PostPaint (chart's own font, already at correct scale)
+                Font fontInfo = area.AxisX.TitleFont ?? chart.Font;
+                Color infoColor = NegApply(_colors.InfoTextArgb, _colors.NegativeChart);
+                // TextRenderer (GDI) with explicit background color — required for crisp ClearType
+                // on gray surfaces (same technique as DrawCustomYLabels).
+                // g.DrawString() without background color renders sub-pixels for white → blurry on gray.
+                float yInfo = plotTop - TextRenderer.MeasureText("W", fontInfo).Height - 2f * sExport;
+                if (yInfo < 1f) yInfo = 1f;
+                TextRenderer.DrawText(g, infoLine, fontInfo,
+                    new Point((int)plotLeft, (int)yInfo),
+                    infoColor, SystemColors.Control,
+                    TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.PreserveGraphicsClipping);
+            }
             {
                 // Use InnerPlotPosition (same logic as GetPlotRectPixels in SpectrumControl)
                 var apos = area.Position;

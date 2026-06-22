@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -235,7 +235,7 @@ namespace AudioHexViewer
                         {
                             var r = MessageBox.Show(
                                 this,
-                                $"Un overlay nommé \"{baseName}\" existe déjà dans la bibliothèque.\r\nVoulez-vous l'écraser ?",
+                                $"An overlay named \"{baseName}\" already exists in the library.\r\nDo you want to overwrite it?",
                                 "Import overlay",
                                 MessageBoxButtons.YesNo,
                                 MessageBoxIcon.Question);
@@ -345,8 +345,8 @@ namespace AudioHexViewer
             if (selection.Count == 0) return;
 
             string msg = selection.Count == 1
-                ? $"Supprimer définitivement l'overlay \"{selection[0].Name}\" ?\r\n(Ceci efface le fichier de la bibliothèque.)"
-                : $"Supprimer définitivement {selection.Count} overlays sélectionnés ?\r\n(Ceci efface les fichiers de la bibliothèque.)";
+                ? $"Permanently delete the overlay \"{selection[0].Name}\"?\r\n(This removes the file from the library.)"
+                : $"Permanently delete {selection.Count} selected overlays?\r\n(This removes the files from the library.)";
 
             var res = MessageBox.Show(this, msg, "Supprimer overlay(s)", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
             if (res != DialogResult.Yes)

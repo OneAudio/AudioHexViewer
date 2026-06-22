@@ -236,7 +236,7 @@ namespace AudioHexViewer
             for (int s = 1; s <= OverlayManager.MaxOverlays; s++)
                 if (!used[s]) return s;
 
-            throw new InvalidOperationException($"Tous les slots overlays (1..{OverlayManager.MaxOverlays}) sont déjà utilisés.");
+            throw new InvalidOperationException($"All overlay slots (1..{OverlayManager.MaxOverlays}) are already in use.");
         }
 
         private OverlayFile ReadOverlayFromDisk(string filePath)

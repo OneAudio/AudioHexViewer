@@ -1703,7 +1703,7 @@ namespace AudioHexViewer
             string path = GetCalibrationFilePath();
             if (!File.Exists(path))
             {
-                MessageBox.Show("Aucun fichier de calibration trouv.",
+                MessageBox.Show("No calibration file found.",
                                 "Open calibration file",
                                 MessageBoxButtons.OK,
                                 MessageBoxIcon.Information);
@@ -1720,7 +1720,7 @@ namespace AudioHexViewer
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Impossible d'ouvrir le fichier de calibration : " + ex.Message,
+                MessageBox.Show("Cannot open calibration file: " + ex.Message,
                                 "Open calibration file",
                                 MessageBoxButtons.OK,
                                 MessageBoxIcon.Error);
@@ -1789,7 +1789,7 @@ namespace AudioHexViewer
             // que la calibration Spectrum (niveau AC), afin de servir à la fois au mode dBV et aux mesures en volts.
             if (spectrumControl == null)
             {
-                MessageBox.Show("Le contrôle Spectrum n'est pas initialisé.",
+                MessageBox.Show("The Spectrum control is not initialized.",
                                 "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
@@ -1875,7 +1875,7 @@ namespace AudioHexViewer
 
             if (!double.TryParse(input.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out calibVPos))
             {
-                MessageBox.Show("Valeur non valide, calibration annule.",
+                MessageBox.Show("Invalid value, calibration cancelled.",
                                 "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 calibStage = CalStage.None;
                 calibChannel = CalChannel.None;
@@ -1921,7 +1921,7 @@ namespace AudioHexViewer
 
             if (Math.Abs(calibCodePos - calibCodeNeg) < 1.0)
             {
-                MessageBox.Show("Codes de calibration trop proches, impossible de calculer gain/offset.",
+                MessageBox.Show("Calibration codes too close together — cannot compute gain/offset.",
                                 "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 calibStage = CalStage.None;
                 calibChannel = CalChannel.None;
@@ -1945,7 +1945,7 @@ namespace AudioHexViewer
             }
 
             MessageBox.Show(
-                $"Voie {chanName} : calibration termine.\r\n\r\n" +
+                $"Channel {chanName}: calibration done.\r\n\r\n" +
                 $"Gain   = {gain:F8} V/code\r\n" +
                 $"Offset = {offset:F8} V",
                 "Calibration",
@@ -2102,7 +2102,7 @@ namespace AudioHexViewer
             {
                 calibValidLeft = false;
                 calibValidRight = false;
-                MessageBox.Show("Erreur lors de la lecture de la calibration : " + ex.Message,
+                MessageBox.Show("Error reading calibration: " + ex.Message,
                                 "Calibration",
                                 MessageBoxButtons.OK,
                                 MessageBoxIcon.Error);
@@ -2669,7 +2669,7 @@ namespace AudioHexViewer
         // behind it (known WinForms / Win32 issue with WS_EX_TOPMOST windows).
         // These helpers temporarily disable TopMost around ShowDialog calls.
 
-        private DialogResult ShowDialogSafe(Form dialog)
+        internal DialogResult ShowDialogSafe(Form dialog)
         {
             bool wasTopMost = TopMost;
             if (wasTopMost) TopMost = false;
@@ -2677,7 +2677,7 @@ namespace AudioHexViewer
             finally { if (wasTopMost) TopMost = true; }
         }
 
-        private DialogResult ShowCommonDialogSafe(CommonDialog dialog)
+        internal DialogResult ShowCommonDialogSafe(CommonDialog dialog)
         {
             bool wasTopMost = TopMost;
             if (wasTopMost) TopMost = false;
@@ -2716,7 +2716,7 @@ namespace AudioHexViewer
             // Indicateur fichier audio (mode Post-Process)
             if (_isFilePlayback && _audioFileName != null)
             {
-                string chanStr = _fileInfoChannels > 1 ? "Stéréo" : "Mono";
+                string chanStr = _fileInfoChannels > 1 ? "Stereo" : "Mono";
                 string srStr   = _fileInfoSR >= 1000
                     ? $"{_fileInfoSR / 1000.0:0.###} kHz" : $"{_fileInfoSR} Hz";
                 int tmins = (int)_fileInfoDuration.TotalMinutes;
@@ -3052,7 +3052,7 @@ namespace AudioHexViewer
             var tab = GetActiveTab();
             if (!CheckExportReady(tab))
             {
-                MessageBox.Show($"L'onglet {TabKindName(tab)} n'est pas initialisé.", "Export PNG",
+                MessageBox.Show($"The {TabKindName(tab)} tab is not initialized.", "Export PNG",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -3077,7 +3077,7 @@ namespace AudioHexViewer
             var tab = GetActiveTab();
             if (!CheckExportReady(tab))
             {
-                MessageBox.Show($"L'onglet {TabKindName(tab)} n'est pas initialisé.", "Copy",
+                MessageBox.Show($"The {TabKindName(tab)} tab is not initialized.", "Copy",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }

@@ -86,7 +86,7 @@ namespace AudioHexViewer
             for (int s = 1; s <= OverlayManager.MaxOverlays; s++)
                 if (!used[s]) return s;
 
-            throw new InvalidOperationException($"Tous les slots overlays (1..{OverlayManager.MaxOverlays}) sont déjà utilisés.");
+            throw new InvalidOperationException($"All overlay slots (1..{OverlayManager.MaxOverlays}) are already in use.");
         }
 
         private OverlayFile ReadOverlayFromDisk(string filePath)
@@ -211,13 +211,13 @@ namespace AudioHexViewer
         public OverlayEntry OverlayLibraryCaptureActiveView()
         {
             if (_capL == null && _capR == null)
-                throw new InvalidOperationException("Pas de capture disponible (lancez puis arrêtez l'acquisition).");
+                throw new InvalidOperationException("No capture available (start then stop an acquisition first).");
             if (_capSR <= 0)
                 throw new InvalidOperationException("Sample rate de capture inconnu.");
 
             int ch = GetCh();
             if (ch < 0)
-                throw new InvalidOperationException("Aucun canal actif (Left/Right) à capturer.");
+                throw new InvalidOperationException("No active channel (Left/Right) to capture.");
 
             int n = (_capL?.Length ?? _capR!.Length);
             if (_capL != null) n = Math.Min(n, _capL.Length);

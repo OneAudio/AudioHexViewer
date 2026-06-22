@@ -345,7 +345,7 @@ namespace AudioHexViewer
                 double decade = Math.Pow(10.0, pr);
                 if (Math.Abs(v - decade) > decade * 1e-6)
                 {
-                    e.LocalizedValue = ""; // cache les labels intermédiaires (2,3,4,... ou 19.99)
+                    e.LocalizedValue = ""; // hides intermediate labels (2,3,4,... or 19.99)
                     return;
                 }
 
@@ -511,8 +511,8 @@ namespace AudioHexViewer
 
             var area0 = chartSpectrum.ChartAreas[0];
             area0.Name = "SpectrumArea";
-            area0.AxisX.Title = "";  // titre dessiné en PostPaint pour contrôle précis du Y
-            area0.AxisY.Title = "";  // dessiné en PostPaint
+            area0.AxisX.Title = "";  // title drawn in PostPaint for precise Y control
+            area0.AxisY.Title = "";  // drawn in PostPaint
             area0.AxisY.Minimum = -200;
             area0.AxisY.Maximum = 0;
 
@@ -822,12 +822,12 @@ namespace AudioHexViewer
         private (bool ok, string message) CalibrateLevel(bool isRight, double knownVrms)
         {
             if (knownVrms <= 0.0 || double.IsNaN(knownVrms) || double.IsInfinity(knownVrms))
-                return (false, "Valeur Vrms invalide (doit être > 0).");
+                return (false, "Invalid Vrms value (must be > 0).");
 
             // On calibre à partir du RMS AC en FS (DC retiré) — pas depuis le dBFS.
             double? measuredRmsFs = isRight ? _lastRmsFsRight : _lastRmsFsLeft;
             if (measuredRmsFs == null || measuredRmsFs.Value <= 0.0)
-                return (false, "Pas de mesure RMS (FS) disponible. Lancez d'abord une acquisition (RUN), puis réessayez.");
+                return (false, "No RMS (FS) measurement available. Start an acquisition (RUN) first, then retry.");
 
             // Gain linéaire : Vrms / FS_rms (AC)
             double gain = knownVrms / measuredRmsFs.Value;
@@ -882,9 +882,14 @@ namespace AudioHexViewer
                     _lastRmsDbfsLeft, _lastRmsDbfsRight);
             };
 
-            dlg.ShowDialog(this);
-
-
+            // Use the parent Form's ShowDialogSafe so that Always-on-Top
+            // is temporarily disabled while the dialog is open (prevents it
+            // from being hidden behind the main window).
+            var parentForm = FindForm();
+            if (parentForm is Form1 f1)
+                f1.ShowDialogSafe(dlg);
+            else
+                dlg.ShowDialog(owner ?? FindForm());
         }
 
         //
@@ -1204,7 +1209,7 @@ namespace AudioHexViewer
                 // Sous 1 Hz : affiche en mHz si < 1 Hz, ou directement si >= 0.1
                 if (hz >= 0.1) return hz.ToString("0.##");
                 if (hz >= 0.01) return hz.ToString("0.###");
-                return hz.ToString("G3"); // ex. 1E-4 pour de très basses fréquences
+                return hz.ToString("G3"); // e.g. 1E-4 for very low frequencies
             }
             if (hz >= 1000.0)
                 return (hz / 1000.0).ToString("0.#") + "k";

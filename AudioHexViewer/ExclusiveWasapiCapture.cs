@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 using NAudio.CoreAudioApi;
@@ -51,7 +51,7 @@ namespace AudioHexViewer
 
         public void StartRecording()
         {
-            if (_running) throw new InvalidOperationException("Capture déjà démarrée.");
+            if (_running) throw new InvalidOperationException("Capture already started.");
 
             // ── CORRECTIF PRINCIPAL ─────────────────────────────────────────
             // Sans timeBeginPeriod(1), le scheduler Windows a une résolution de

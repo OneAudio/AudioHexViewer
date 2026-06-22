@@ -5,7 +5,8 @@ Le 30/05/2026
 
 Liste des petites corrections à faire :
 
-A faire aussi Aprés :
-1) Mettre des icônes dans la bande grise libérée.
+1- Traduire les boites de dialogues encore en francais 
+2- Ajouter une ligne d'informations au dessus de l'histogramme (comme les autres graphs)
+3- 
 
  
