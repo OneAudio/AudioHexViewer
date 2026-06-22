@@ -47,8 +47,10 @@ internal sealed class ToolbarButton : Control
     }
 
     // ── Public properties ────────────────────────────────────────────────────
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public bool IsToggle { get; set; }
 
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public bool IsActive
     {
         get => _isActive;

@@ -270,7 +270,7 @@ namespace AudioHexViewer.Tests
         // ════════════════════════════════════════════════════════════════════
 
         [Fact]
-        public void ConcurrentPushAndRead_NoException()
+        public async Task ConcurrentPushAndRead_NoException()
         {
             // Test de robustesse : un thread écrit, un autre lit en parallèle.
             // On vérifie l'absence d'exception et la cohérence de AbsWrite.
@@ -307,7 +307,7 @@ namespace AudioHexViewer.Tests
                 }
             });
 
-            Task.WaitAll(writer, reader);
+            await Task.WhenAll(writer, reader);
 
             Assert.Empty(errors);
             Assert.Equal((long)Pushes * BlockSz, ring.AbsWrite);

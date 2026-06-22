@@ -43,7 +43,7 @@ namespace AudioHexViewer.Tests
         public void Get_SizeOne_ReturnsSingleCoefficientOne(WindowType type)
         {
             var entry = WindowFactory.Get(type, 1);
-            Assert.Equal(1, entry.Coeffs.Length);
+            Assert.Single(entry.Coeffs);
             Assert.Equal(1.0, entry.Coeffs[0], Tol);
             Assert.Equal(1.0, entry.Sum, Tol);
         }

@@ -184,7 +184,6 @@ namespace AudioHexViewer.Tests
 
             Assert.True(result.Valid);
             var h2 = result.Harmonics.FirstOrDefault(h => h.Order == 2);
-            Assert.NotNull(h2);
 
             // LevelDbc = harmonique - fondamentale ≈ -40 - (-3) = -37 dBc
             // Tolérance large car intégration sur plusieurs bins

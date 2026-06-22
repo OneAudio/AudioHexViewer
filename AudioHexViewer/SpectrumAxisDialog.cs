@@ -179,6 +179,7 @@ namespace AudioHexViewer
 
         // Mode phase : true=Unwrapped (±1800°/3600°), false=Wrapped (±180°/360°)
         private bool _isUnwrappedPhase = false;
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool IsUnwrappedPhase
         {
             get => _isUnwrappedPhase;
@@ -227,6 +228,7 @@ namespace AudioHexViewer
                 cmbY2Range.SelectedIndex = cmbY2Range.Items.Count - 1;
         }
 
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public Func<(double yMin, double yMax)>? FitYProvider { get; set; }
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -256,6 +258,7 @@ namespace AudioHexViewer
         }
 
         // Persistance de l'onglet X sélectionné (0=Mini/Maxi, 1=Center/Span)
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public int XTabSelectedIndex
         {
             get => tabX?.SelectedIndex ?? 0;

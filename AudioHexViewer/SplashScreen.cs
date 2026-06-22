@@ -69,8 +69,7 @@ namespace AudioHexViewer
             try
             {
                 string path = System.IO.Path.Combine(
-                    System.IO.Path.GetDirectoryName(
-                        System.Reflection.Assembly.GetExecutingAssembly().Location) ?? "",
+                    AppContext.BaseDirectory,
                     "splash_bg.png");
                 if (System.IO.File.Exists(path))
                     return System.Drawing.Image.FromFile(path);
@@ -369,12 +368,12 @@ namespace AudioHexViewer
                         aligned, aligned, fmt, Guid.Empty);
                     return true;
                 }
-                catch (Exception ex)
+                catch
                 {
                     return false;
                 }
             }
-            catch (Exception ex)
+            catch
             {
                 return false;
             }

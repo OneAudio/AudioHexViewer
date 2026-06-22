@@ -199,12 +199,9 @@ namespace AudioHexViewer.Tests
             // -1.0f * 0x800000 = -8388608 (Min24Neg)
             const float fullScale    = 1.0f;
             const float halfScale    = 0.5f;
-            const float negFullScale = -1.0f;
 
-            int expectedFull = (int)(fullScale    * (1 << 23));   // 8388608 → clampé à 8388607
             int expectedHalf = (int)(halfScale    * (1 << 23));   // 4194304
-            int expectedNeg  = (int)(negFullScale * (1 << 23));   // -8388608
-
+            
             var srcL = Enumerable.Repeat(fullScale, N).ToArray();
             var srcR = Enumerable.Repeat(halfScale, N).ToArray();
             _ctrl.PushAudio(srcL, srcR);

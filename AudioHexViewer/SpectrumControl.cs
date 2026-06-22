@@ -209,6 +209,7 @@ namespace AudioHexViewer
         public string SelectedChannelMode => comboChannel.SelectedItem as string ?? "L+R";
 
         /// <summary>Vrai quand un fichier audio est en lecture (désactive Bode Plot).</summary>
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool FilePlaybackActive { get; set; } = false;
 
         /// <summary>Change le mode voie depuis le code (sans déclencher les gardes UI).</summary>

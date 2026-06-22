@@ -290,7 +290,7 @@ namespace AudioHexViewer
         private OscilloscopeControl? oscilloscopeControl;
         private bool _oscilloscopeRunning;
         private ToolStripMenuItem? menuColors;
-        private ToolStripMenuItem? menuBuffer = null; // removed from menustrip — kept for null-safe FftPipeline stubs
+        // menuBuffer: removed from menustrip (kept stub removed — no longer needed)
 
         // Fenêtres non-modales persistantes
         private GeneratorWindow? _generatorWindow;
@@ -450,7 +450,6 @@ namespace AudioHexViewer
         // Options REW-style (en samples)
         private readonly int[] _bufferOptions = new[] { 16 * 1024, 32 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024 };
 
-        private bool _updatingBufferMenuUi = false;
 
         // Valeur courante (on l’utilisera à l’étape suivante pour le ring-buffer)
         private int analysisBufferSize = 128 * 1024;

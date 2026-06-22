@@ -973,7 +973,7 @@ namespace AudioHexViewer
         }
 
         private void ChkVdiv_Changed(object? s, EventArgs e)
-        { _vdivMode = _vdivMode; ChkVdivLogic(); }  // kept for compat
+        { ChkVdivLogic(); }  // kept for compat
 
         private void ChkVdivLogic()
         {
