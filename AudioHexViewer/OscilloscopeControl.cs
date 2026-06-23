@@ -2080,7 +2080,7 @@ namespace AudioHexViewer
             if (_capL == null || _capL.Length < 2 || _lastSR <= 0) return;
 
             int td    = Math.Clamp(cmbTimediv.SelectedIndex, 0, TimeDivMs.Length-1);
-            int win   = Math.Max(8, (int)(TimeDivMs[td]*H_DIVS/1000.0*_lastSR));
+            int win   = Math.Max(8, (int)(TimeDivMs[td]*H_DIVS/1000.0*_lastSR/_stoppedZoomX));
             int pre   = (int)(win * PreTrig);
             int tref  = _capTrigIdx>=0 ? _capTrigIdx : pre;
             int ds    = Math.Clamp(tref-pre+_panOffset, 0, Math.Max(0, _capL.Length-win));
@@ -2146,7 +2146,7 @@ namespace AudioHexViewer
 
             // Calcul du ds courant pour mémoriser l'offset du clic dans la barre
             int td =Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
-            int win=Math.Max(8,(int)(TimeDivMs[td]*H_DIVS/1000.0*_capSR));
+            int win=Math.Max(8,(int)(TimeDivMs[td]*H_DIVS/1000.0*_capSR/_stoppedZoomX));
             int pre=(int)(win*PreTrig);
             int tref=_capTrigIdx>=0?_capTrigIdx:pre;
             int ds =Math.Clamp(tref-pre+_panOffset,0,Math.Max(0,_capL.Length-win));
@@ -2169,7 +2169,7 @@ namespace AudioHexViewer
         {
             if(_capL==null||_capSR<=0) return;
             int td  =Math.Clamp(cmbTimediv.SelectedIndex,0,TimeDivMs.Length-1);
-            int win =Math.Max(8,(int)(TimeDivMs[td]*H_DIVS/1000.0*_capSR));
+            int win =Math.Max(8,(int)(TimeDivMs[td]*H_DIVS/1000.0*_capSR/_stoppedZoomX));
             int pre =(int)(win*PreTrig);
             int tref=_capTrigIdx>=0?_capTrigIdx:pre;
             int total=_capL.Length;
