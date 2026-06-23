@@ -52,36 +52,40 @@ namespace AudioHexViewer
             Color bdrCol   = Color.FromArgb(100, 100, 100);
 
             // ── SHARED column geometry ────────────────────────────────────────
-            // Both left and right columns use the same proportions so sub-column
-            // spacing is visually identical in all sections.
+            // Both left and right columns share the same sub-column proportions.
             //
             // Sub-col layout per row:  [LabelL(LW)][SwL(SW)][GAP][LabelR(LW)][SwR(SW)]
             //
-            const int LW  = 68;   // label width
+            // LW = 80 so "Background" / "Label Major" / "Label Minor" are fully visible.
+            // WC includes +2 so the right swatch border (at WC-2) never touches the
+            // panel edge (at WC). This margin also applies to the Invert checkbox.
+            //
+            const int LW  = 80;   // label width
             const int SW  = 22;   // swatch size
             const int GAP = 10;   // gap between the two sub-columns
-            const int S1  = LW + 2;               // left swatch x  = 70
-            const int LCR = S1 + SW;              // left col right  = 92
-            const int MID = LCR + GAP;            // right label x   = 102
-            const int S2  = MID + LW + 2;         // right swatch x  = 172
-            const int WC  = S2 + SW;              // column width    = 194
+            const int S1  = LW + 2;               // left swatch x    = 82
+            const int LCR = S1 + SW;              // left col right   = 104
+            const int MID = LCR + GAP;            // right label x    = 114
+            const int S2  = MID + LW + 2;         // right swatch x   = 196
+            const int WC  = S2 + SW + 2;          // column width     = 220
+                                                   // (+2: right border safety margin)
 
-            // Invert checkbox in section header
-            const int CHKX = WC - 16;             // 178
-            const int INVX = CHKX - 54;           // 124
+            // Invert checkbox in section header  (2 px clear of panel right edge)
+            const int CHKX = WC - 18;             // 202
+            const int INVX = CHKX - 78;           // 124  (wider: "Invert colors")
 
-            // Thick NUD: right-aligned under each sub-column
-            // "T:" label (22px) + NUD (40px) = 62px, right = LCR/WC
+            // Thick NUDs – right-aligned under each sub-column
+            // "T:" label (22px) + NUD (40px) right edge lands on LCR / WC-2
             const int NUD_W  = 40;
-            const int TLBL_W = 22;
-            const int NUD1X  = LCR - NUD_W;       // 52
-            const int TH1X   = NUD1X - TLBL_W;    // 30  ← always positive ✓
-            const int NUD2X  = WC  - NUD_W;       // 154
-            const int TH2X   = NUD2X - TLBL_W;    // 132
+            const int TLBL_W = 38;                 // wide enough for "Thick:" at 8pt
+            const int NUD1X  = LCR - NUD_W;       // 64
+            const int TH1X   = NUD1X - TLBL_W;    // 26
+            const int NUD2X  = WC - 2 - NUD_W;    // 178
+            const int TH2X   = NUD2X - TLBL_W;    // 140
 
-            // Overlay style combo
+            // Overlay style combo (right-aligned, 2 px from panel right edge)
             const int CMB_W   = 88;
-            const int OV_CMBX = WC - CMB_W;       // 106
+            const int OV_CMBX = WC - 2 - CMB_W;   // 130
 
             // ── Helpers ───────────────────────────────────────────────────────
             Panel MakeSection(string title, CheckBox? chk, int w = WC)
@@ -97,9 +101,9 @@ namespace AudioHexViewer
                 });
                 if (chk != null) {
                     p.Controls.Add(new Label {
-                        Text = "Invert", Font = smallGray, ForeColor = Color.Gray,
+                        Text = "Invert colors", Font = smallGray, ForeColor = Color.Gray,
                         AutoSize = false, Location = new Point(INVX, 3),
-                        Size = new Size(52, 14), TextAlign = ContentAlignment.MiddleRight
+                        Size = new Size(74, 14), TextAlign = ContentAlignment.MiddleRight
                     });
                     chk.Text = ""; chk.AutoSize = false;
                     chk.Location = new Point(CHKX, 2); chk.Size = new Size(16, 16);
@@ -134,7 +138,7 @@ namespace AudioHexViewer
             };
 
             Label MakeTLbl(int x) => new Label {
-                Text = "T:", Location = new Point(x, 6), AutoSize = false,
+                Text = "Thick:", Location = new Point(x, 6), AutoSize = false,
                 Size = new Size(TLBL_W, 14), TextAlign = ContentAlignment.MiddleRight,
                 Font = smallGray, ForeColor = Color.Gray
             };
@@ -146,8 +150,8 @@ namespace AudioHexViewer
             };
 
             // ── ROOT: TableLayoutPanel [left | sep | right] ───────────────────
-            const int SEP_W = 14;   // separator + margins
-            int TW = WC + SEP_W + WC + 24;  // total client width
+            const int SEP_W = 14;
+            int TW = WC + SEP_W + WC + 24;        // total client width = 478
 
             var tbl = new TableLayoutPanel {
                 Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1,
@@ -157,7 +161,6 @@ namespace AudioHexViewer
             tbl.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, SEP_W));
             tbl.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, WC));
             tbl.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            Controls.Add(tbl);
 
             // Vertical separator
             var sepPanel = new Panel { Dock = DockStyle.Fill, Margin = new Padding(6, 0, 6, 0) };
@@ -167,11 +170,21 @@ namespace AudioHexViewer
             tbl.Controls.Add(sepPanel, 1, 0);
 
             // ════════════════════════════════════════════════════════════════
-            // LEFT COLUMN — TRACES / TRACE HOLD / OVERLAYS
+            // LEFT COLUMN — TRACES / OVERLAYS
             // ════════════════════════════════════════════════════════════════
+            //
+            // IMPORTANT: Margin = new Padding(0) is mandatory.
+            // WinForms Panel default Margin is (3,3,3,3). With DockStyle.Fill
+            // inside a TableLayoutPanel cell that margin is respected, making
+            // the FlowLayoutPanel 6 px narrower than the column (214 instead of
+            // 220). Child panels (Width=WC=220) then overflow and their right
+            // content is clipped, producing the missing-right-border artefact.
+            // Setting Margin=0 makes the FlowLayoutPanel fill the full 220 px.
+            //
             var leftFlow = new FlowLayoutPanel {
                 Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown,
-                WrapContents = false, AutoScroll = false, Padding = new Padding(0)
+                WrapContents = false, AutoScroll = false,
+                Padding = new Padding(0), Margin = new Padding(0)
             };
             tbl.Controls.Add(leftFlow, 0, 0);
 
@@ -191,34 +204,6 @@ namespace AudioHexViewer
             var rTThick = MakeRow(h: 26);
             rTThick.Controls.AddRange(new Control[] { MakeTLbl(TH1X), nudFftWidth });
             leftFlow.Controls.Add(rTThick);
-
-            // ═══ TRACE HOLD ══════════════════════════════════════════════════
-            chkNegHold = new CheckBox();
-            leftFlow.Controls.Add(MakeSection("TRACE HOLD", chkNegHold));
-
-            btnHoldMinL = MakeSwatch(S1); btnPkL = MakeSwatch(S2);
-            var rH0 = MakeRow();
-            rH0.Controls.AddRange(new Control[] {
-                MakeLbl("Min Left",  0),   btnHoldMinL,
-                MakeLbl("Max Left",  MID), btnPkL
-            });
-            leftFlow.Controls.Add(rH0);
-
-            btnHoldMinR = MakeSwatch(S1); btnPkR = MakeSwatch(S2);
-            var rH1 = MakeRow();
-            rH1.Controls.AddRange(new Control[] {
-                MakeLbl("Min Right", 0),   btnHoldMinR,
-                MakeLbl("Max Right", MID), btnPkR
-            });
-            leftFlow.Controls.Add(rH1);
-
-            nudHoldMinWidth = MakeNud(NUD1X); nudPkWidth = MakeNud(NUD2X);
-            var rHThick = MakeRow(h: 26);
-            rHThick.Controls.AddRange(new Control[] {
-                MakeTLbl(TH1X), nudHoldMinWidth,
-                MakeTLbl(TH2X), nudPkWidth
-            });
-            leftFlow.Controls.Add(rHThick);
 
             // ═══ OVERLAYS ════════════════════════════════════════════════════
             chkNegOverlays = new CheckBox();
@@ -249,18 +234,50 @@ namespace AudioHexViewer
             var rOvCommon = MakeRow(h: 26);
             rOvCommon.Controls.AddRange(new Control[] {
                 MakeTLbl(TH1X), nudOvWidth,
-                MakeOvLbl("Style", OV_CMBX - 54), cmbOvStyle
+                cmbOvStyle
             });
             leftFlow.Controls.Add(rOvCommon);
 
             // ════════════════════════════════════════════════════════════════
-            // RIGHT COLUMN — CHART + BUTTONS
+            // RIGHT COLUMN — TRACE HOLD / CHART
+            // TRACE HOLD moved here from the left column for visual balance:
+            //   Left  (TRACES + OVERLAYS)  ≈ 250 px
+            //   Right (TRACE HOLD + CHART) ≈ 222 px
             // ════════════════════════════════════════════════════════════════
             var rightFlow = new FlowLayoutPanel {
                 Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown,
-                WrapContents = false, AutoScroll = false, Padding = new Padding(0)
+                WrapContents = false, AutoScroll = false,
+                Padding = new Padding(0), Margin = new Padding(0)  // same fix as leftFlow
             };
             tbl.Controls.Add(rightFlow, 2, 0);
+
+            // ═══ TRACE HOLD ══════════════════════════════════════════════════
+            chkNegHold = new CheckBox();
+            rightFlow.Controls.Add(MakeSection("TRACES HOLD", chkNegHold));
+
+            btnHoldMinL = MakeSwatch(S1); btnPkL = MakeSwatch(S2);
+            var rH0 = MakeRow();
+            rH0.Controls.AddRange(new Control[] {
+                MakeLbl("Min Left",  0),   btnHoldMinL,
+                MakeLbl("Max Left",  MID), btnPkL
+            });
+            rightFlow.Controls.Add(rH0);
+
+            btnHoldMinR = MakeSwatch(S1); btnPkR = MakeSwatch(S2);
+            var rH1 = MakeRow();
+            rH1.Controls.AddRange(new Control[] {
+                MakeLbl("Min Right", 0),   btnHoldMinR,
+                MakeLbl("Max Right", MID), btnPkR
+            });
+            rightFlow.Controls.Add(rH1);
+
+            nudHoldMinWidth = MakeNud(NUD1X); nudPkWidth = MakeNud(NUD2X);
+            var rHThick = MakeRow(h: 26);
+            rHThick.Controls.AddRange(new Control[] {
+                MakeTLbl(TH1X), nudHoldMinWidth,
+                MakeTLbl(TH2X), nudPkWidth
+            });
+            rightFlow.Controls.Add(rHThick);
 
             // ═══ CHART ═══════════════════════════════════════════════════════
             chkNegChart = new CheckBox();
@@ -268,7 +285,7 @@ namespace AudioHexViewer
 
             (string lL, string lR, Button bL, Button bR)[] chartRows = {
                 ("Grid Major",  "Background", btnGridMaj = MakeSwatch(S1), btnBack     = MakeSwatch(S2)),
-                ("Grid Minor",  "Info Text",  btnGridMin = MakeSwatch(S1), btnInfoText = MakeSwatch(S2)),
+                ("Grid Minor",  "Top info Text",  btnGridMin = MakeSwatch(S1), btnInfoText = MakeSwatch(S2)),
                 ("Label Major", "Label Minor",btnLabMaj  = MakeSwatch(S1), btnLabMin   = MakeSwatch(S2)),
             };
             foreach (var (lL, lR, bL, bR) in chartRows) {
@@ -279,41 +296,43 @@ namespace AudioHexViewer
                 rightFlow.Controls.Add(r);
             }
 
-            // ═══ BUTTONS — directly below CHART, no filler ═══════════════════
+            // ════════════════════════════════════════════════════════════════
+            // BOTTOM PANEL — Save / Restore / OK (full dialog width)
+            // ════════════════════════════════════════════════════════════════
             const int SB_W = 62;
             const int OK_W = 60;
-            var rBot = new Panel { Width = WC, Height = 30, Margin = new Padding(0, 14, 0, 0) };
+            var pBot = new Panel { Dock = DockStyle.Bottom, Height = 44 };
+            pBot.Controls.Add(new Panel {
+                Dock = DockStyle.Top, Height = 1,
+                BackColor = Color.FromArgb(200, 200, 200)
+            });
+            int bY = 8;
             btnSaveDefault = new Button {
-                Text = "Save", Location = new Point(0, 1),
+                Text = "Save", Location = new Point(12, bY),
                 Size = new Size(SB_W, 28), UseVisualStyleBackColor = true
             };
             btnRestoreDefault = new Button {
-                Text = "Restore", Location = new Point(SB_W + 4, 1),
+                Text = "Restore", Location = new Point(12 + SB_W + 4, bY),
                 Size = new Size(SB_W, 28), UseVisualStyleBackColor = true
             };
             btnOk = new Button {
-                Text = "OK", Location = new Point(WC - OK_W, 1), Size = new Size(OK_W, 28),
+                Text = "OK", Location = new Point(TW - 12 - OK_W, bY),
+                Size = new Size(OK_W, 28),
                 DialogResult = DialogResult.OK, UseVisualStyleBackColor = false,
                 BackColor = Color.FromArgb(0, 90, 160), ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat
             };
             btnOk.FlatAppearance.BorderSize = 0;
-            rBot.Controls.AddRange(new Control[] { btnSaveDefault, btnRestoreDefault, btnOk });
-            rightFlow.Controls.Add(rBot);
+            pBot.Controls.AddRange(new Control[] { btnSaveDefault, btnRestoreDefault, btnOk });
 
             // ── Form dimensions ───────────────────────────────────────────────
-            // Left content height (approx):
-            //   TRACES:    30+24+28    = 82
-            //   TRACEH:    30+24+24+28 = 106
-            //   OVERLAYS:  30+4×24+28  = 154
-            //   Total left ≈ 342
-            // Right content:
-            //   CHART:     30+3×24     = 102
-            //   Buttons:   14+30       = 44
-            //   Total right ≈ 146
-            // Form = max(342, 146) + top/bottom padding(16) = 358 → round to 370
+            // Left  (TRACES + OVERLAYS)  : 86 + 164 = 250 px  ← dominant
+            // Right (TRACE HOLD + CHART) : 112 + 110 = 222 px
+            // Table: 250 + 16 (tbl.Padding v) = 266 px
+            // pBot:  44 px
+            // Total: 266 + 44 = 310 px  →  320 (10 px breathing room)
             AutoScaleMode   = AutoScaleMode.Font;
-            ClientSize      = new Size(TW, 370);
+            ClientSize      = new Size(TW, 320);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox     = false; MinimizeBox = false;
             ShowInTaskbar   = false;
@@ -322,6 +341,10 @@ namespace AudioHexViewer
             Font            = stdFont;
             BackColor       = SystemColors.Window;
             AcceptButton    = btnOk;
+
+            Controls.Add(tbl);    // DockStyle.Fill  – processed last by WinForms
+            Controls.Add(pBot);   // DockStyle.Bottom – processed first (higher index)
+
             ResumeLayout(false);
         }
     }

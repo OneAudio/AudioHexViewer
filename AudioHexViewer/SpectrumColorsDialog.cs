@@ -97,10 +97,10 @@ namespace AudioHexViewer
 
             btnFftL.BackColor     = ShowColor(_colors.FftLeftArgb,         _colors.NegativeTraces);
             btnFftR.BackColor     = ShowColor(_colors.FftRightArgb,        _colors.NegativeTraces);
-            btnPkL.BackColor      = ShowColor(_colors.PeakHoldLeftArgb,    _colors.NegativeTraces);
-            btnPkR.BackColor      = ShowColor(_colors.PeakHoldRightArgb,   _colors.NegativeTraces);
-            btnHoldMinL.BackColor = ShowColor(_colors.HoldMinLeftArgb,     _colors.NegativeTraces);
-            btnHoldMinR.BackColor = ShowColor(_colors.HoldMinRightArgb,    _colors.NegativeTraces);
+            btnPkL.BackColor      = ShowColor(_colors.PeakHoldLeftArgb,    _colors.NegativeHold);
+            btnPkR.BackColor      = ShowColor(_colors.PeakHoldRightArgb,   _colors.NegativeHold);
+            btnHoldMinL.BackColor = ShowColor(_colors.HoldMinLeftArgb,     _colors.NegativeHold);
+            btnHoldMinR.BackColor = ShowColor(_colors.HoldMinRightArgb,    _colors.NegativeHold);
 
             btnGridMaj.BackColor  = ShowColor(_colors.GridArgb,       _colors.NegativeChart);
             btnGridMin.BackColor  = ShowColor(_colors.GridMinorArgb,  _colors.NegativeChart);
