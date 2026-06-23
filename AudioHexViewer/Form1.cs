@@ -1351,11 +1351,13 @@ namespace AudioHexViewer
                     if (capture != null) StopCapture();
                     if (ppChanged && _isFilePlayback) StopFilePlayback();
                     UpdateTitleBar();
+                    UpdateFileProgressWidget();   // show widget immediately in OFFLINE mode
                 }
                 else
                 {
                     // Normal device mode
                     if (_isFilePlayback) StopFilePlayback();
+                    UpdateFileProgressWidget();   // hide widget when switching back to LIVE
 
                     bool deviceChanged = dlg.SelectedInputDevice?.ID != _selectedInputDevice?.ID;
                     bool srChanged     = (dlg.SelectedInputFormat?.SampleRate ?? 0) != (_requestedCaptureFormat?.SampleRate ?? 0);
@@ -2748,6 +2750,9 @@ namespace AudioHexViewer
             Text = parts.Count > 0
                 ? $"AudioHexViewer  —  {string.Join("   |   ", parts)}"
                 : "AudioHexViewer";
+
+            // Refresh the file playback progress widget in panelTop
+            UpdateFileProgressWidget();
         }
 
         private void UpdateVuInTimer()

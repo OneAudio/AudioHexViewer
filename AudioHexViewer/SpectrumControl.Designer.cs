@@ -30,7 +30,7 @@
             lblAvgCount         = new Label();
             btnOverlay          = new Button();
             chkPeakHold         = new CheckBox();
-            btnResetPeakHold    = new Button();
+            chkHoldMin          = new CheckBox();
             chkEnableThd        = new CheckBox();
             btnThdSettings      = new Button();
             btnResetAvg         = new Button();
@@ -169,7 +169,7 @@
                 lblPhaseGroup, tlpPhi,
                 lblNormGroup, tlpNorm,
                 lblUnits, lblAxisSet, comboLevelUnit, btnLevelUnit, btnAxisOpen, chkLogX,
-                btnThdSettings, btnResetPeakHold,
+                btnThdSettings, chkHoldMin,
                 btnResetAvg, lblAvgProgress,
                 btnOverlay,
                 chkDcMode, btnDcAc, lblCoupling, lblAvgCount,
@@ -269,17 +269,19 @@
 
             Sep(sep3, 335);
 
-            // ── 5. PEAK HOLD (x=396, w=62) ───────────────────────────────────
-            SecLbl(lblPeakHold, 345, "PEAK HOLD");
+            // ── 5. TRACE HOLD (x=396, w=62) ───────────────────────────────────
+            SecLbl(lblPeakHold, 345, "TRACE HOLD");
             chkPeakHold.Appearance = Appearance.Button; chkPeakHold.Font = std9;
             chkPeakHold.Location = new Point(345, 34); chkPeakHold.Name = "chkPeakHold";
             chkPeakHold.Size = new Size(62, 24); chkPeakHold.TabIndex = 17;
-            chkPeakHold.Text = "PEAK H"; chkPeakHold.TextAlign = ContentAlignment.MiddleCenter;
+            chkPeakHold.Text = "MAXI"; chkPeakHold.TextAlign = ContentAlignment.MiddleCenter;
             chkPeakHold.UseVisualStyleBackColor = true; chkPeakHold.CheckedChanged += chkPeakHold_CheckedChanged;
-            btnResetPeakHold.Location = new Point(345, 60); btnResetPeakHold.Name = "btnResetPeakHold";
-            btnResetPeakHold.Size = new Size(62, 24); btnResetPeakHold.TabIndex = 18; btnResetPeakHold.TabStop = false;
-            btnResetPeakHold.Text = "Reset"; btnResetPeakHold.UseVisualStyleBackColor = true;
-            btnResetPeakHold.Click += BtnResetPeakHold_Click;
+            // HOLD Min — same style as HOLD Max (CheckBox with button appearance)
+            chkHoldMin.Appearance = Appearance.Button; chkHoldMin.Font = std9;
+            chkHoldMin.Location = new Point(345, 60); chkHoldMin.Name = "chkHoldMin";
+            chkHoldMin.Size = new Size(62, 24); chkHoldMin.TabIndex = 18; chkHoldMin.TabStop = false;
+            chkHoldMin.Text = "MINI"; chkHoldMin.TextAlign = ContentAlignment.MiddleCenter;
+            chkHoldMin.UseVisualStyleBackColor = true; chkHoldMin.CheckedChanged += chkHoldMin_CheckedChanged;
 
             Sep(sep4, 416);
 
@@ -598,7 +600,7 @@
         private Button   btnResetAvg;
         private Label    lblAvgProgress;
         private CheckBox chkPeakHold;
-        private Button   btnResetPeakHold;
+        private CheckBox chkHoldMin;
         private CheckBox chkCursorR;
         private CheckBox chkCursorL;
         private GroupBox grpLeftStats;

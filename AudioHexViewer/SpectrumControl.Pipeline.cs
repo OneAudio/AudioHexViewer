@@ -297,8 +297,7 @@ namespace AudioHexViewer
             else
                 UpdateAvgProgressUi(avgFill, avgTargetCount);
 
-            // Peak-hold : on le calculera sur la version PLOT (décimée) pour éviter un coût O(Nbins) inutile.
-            bool peakEnabled = (chkPeakHold != null && chkPeakHold.Checked);
+            // Peak-hold (Max + Min) calculated on PLOT (decimated) arrays.
 
             // Axe fréquence FULL (servira aux métriques)
             freqAxis = frame.FreqAxisHz;
@@ -308,11 +307,18 @@ namespace AudioHexViewer
 
             // Peak-hold : calcul uniquement sur les tableaux PLOT (décimés).
             // => même nombre de points que la courbe affichée, coût CPU maîtrisé.
-            _post.UpdatePeakHold(_plotLeftSpectrum, _plotRightSpectrum, peakEnabled);
+            bool holdMaxEnabled = chkPeakHold?.Checked ?? false;
+            bool holdMinEnabled = chkHoldMin?.Checked  ?? false;
 
-            // Peak PLOT = directement l'état du post-processor (mêmes longueurs que _plot*Spectrum)
-            _plotPeakLeft = peakEnabled ? _post.GetPeakLeft() : null;
-            _plotPeakRight = peakEnabled ? _post.GetPeakRight() : null;
+            _post.UpdatePeakHold(_plotLeftSpectrum, _plotRightSpectrum, holdMaxEnabled);
+            _post.UpdateHoldMin (_plotLeftSpectrum, _plotRightSpectrum, holdMinEnabled);
+
+            // Always read back the data — trace stays visible even when button is OFF
+            // (trace disappears only on right-click reset which nulls the arrays)
+            _plotPeakLeft    = _post.GetPeakLeft();
+            _plotPeakRight   = _post.GetPeakRight();
+            _plotHoldMinLeft  = _post.GetHoldMinLeft();
+            _plotHoldMinRight = _post.GetHoldMinRight();
 
             // Puis UI update (stats + chart)
             UpdateSpectrumChartAndStats(lastTimeLeft, lastTimeRight);
@@ -326,8 +332,10 @@ namespace AudioHexViewer
             _plotRightSpectrum = null;
             _plotFrfPhaseDeg   = null;
             _plotFrfCoherence  = null;
-            _plotPeakLeft  = null;
-            _plotPeakRight = null;
+            _plotPeakLeft     = null;
+            _plotPeakRight    = null;
+            _plotHoldMinLeft  = null;
+            _plotHoldMinRight = null;
 
             if (freqAxis == null) return;
 
@@ -382,8 +390,10 @@ namespace AudioHexViewer
                 _plotRightSpectrum = DecimateWithBuckets(
                     freqAxis, currentRightSpectrum, bucketLo, bucketHi);
 
-            _plotPeakLeft  = null;
-            _plotPeakRight = null;
+            _plotPeakLeft     = null;
+            _plotPeakRight    = null;
+            _plotHoldMinLeft  = null;
+            _plotHoldMinRight = null;
         }
 
         /// <summary>

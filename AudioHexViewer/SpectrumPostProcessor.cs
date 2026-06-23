@@ -36,6 +36,10 @@ namespace AudioHexViewer
         private double[]? _peakHoldLeftDb;
         private double[]? _peakHoldRightDb;
 
+        // ── Hold Min ─────────────────────────────────────────────────────────
+        private double[]? _holdMinLeftDb;
+        private double[]? _holdMinRightDb;
+
         // ------------------------------------------------------------------
         // --- FRF / Bode (Welch cross-spectrum) state ---
         // Right = entrée X, Left = sortie Y
@@ -402,8 +406,18 @@ namespace AudioHexViewer
             _peakHoldRightDb = null;
         }
 
-        public double[]? GetPeakLeft() => _peakHoldLeftDb;
+        public double[]? GetPeakLeft()  => _peakHoldLeftDb;
         public double[]? GetPeakRight() => _peakHoldRightDb;
+
+        // ── Hold Min ─────────────────────────────────────────────────────────
+        public void ResetHoldMinState()
+        {
+            _holdMinLeftDb  = null;
+            _holdMinRightDb = null;
+        }
+
+        public double[]? GetHoldMinLeft()  => _holdMinLeftDb;
+        public double[]? GetHoldMinRight() => _holdMinRightDb;
 
         /// <summary>
         /// Averaging supportant Left-only / Right-only / Both.
@@ -714,20 +728,15 @@ namespace AudioHexViewer
         //
         public void UpdatePeakHold(double[]? currentLeftDb, double[]? currentRightDb, bool enabled)
         {
-            if (!enabled)
-                return;
+            if (!enabled) return;
 
             if (currentLeftDb != null)
             {
                 int bins = currentLeftDb.Length;
                 if (_peakHoldLeftDb == null || _peakHoldLeftDb.Length != bins)
                 { _peakHoldLeftDb = new double[bins]; Array.Fill(_peakHoldLeftDb, -200.0); }
-
                 for (int i = 0; i < bins; i++)
-                {
-                    double v = currentLeftDb[i];
-                    if (v > _peakHoldLeftDb[i]) _peakHoldLeftDb[i] = v;
-                }
+                { double v = currentLeftDb[i]; if (v > _peakHoldLeftDb[i]) _peakHoldLeftDb[i] = v; }
             }
 
             if (currentRightDb != null)
@@ -735,12 +744,32 @@ namespace AudioHexViewer
                 int bins = currentRightDb.Length;
                 if (_peakHoldRightDb == null || _peakHoldRightDb.Length != bins)
                 { _peakHoldRightDb = new double[bins]; Array.Fill(_peakHoldRightDb, -200.0); }
-
                 for (int i = 0; i < bins; i++)
-                {
-                    double v = currentRightDb[i];
-                    if (v > _peakHoldRightDb[i]) _peakHoldRightDb[i] = v;
-                }
+                { double v = currentRightDb[i]; if (v > _peakHoldRightDb[i]) _peakHoldRightDb[i] = v; }
+            }
+        }
+
+        /// <summary>Same as UpdatePeakHold but tracks MINIMUM values per bin.</summary>
+        public void UpdateHoldMin(double[]? currentLeftDb, double[]? currentRightDb, bool enabled)
+        {
+            if (!enabled) return;
+
+            if (currentLeftDb != null)
+            {
+                int bins = currentLeftDb.Length;
+                if (_holdMinLeftDb == null || _holdMinLeftDb.Length != bins)
+                { _holdMinLeftDb = new double[bins]; Array.Fill(_holdMinLeftDb, 200.0); }
+                for (int i = 0; i < bins; i++)
+                { double v = currentLeftDb[i]; if (v < _holdMinLeftDb[i]) _holdMinLeftDb[i] = v; }
+            }
+
+            if (currentRightDb != null)
+            {
+                int bins = currentRightDb.Length;
+                if (_holdMinRightDb == null || _holdMinRightDb.Length != bins)
+                { _holdMinRightDb = new double[bins]; Array.Fill(_holdMinRightDb, 200.0); }
+                for (int i = 0; i < bins; i++)
+                { double v = currentRightDb[i]; if (v < _holdMinRightDb[i]) _holdMinRightDb[i] = v; }
             }
         }
         /// <summary>

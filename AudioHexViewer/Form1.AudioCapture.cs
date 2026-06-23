@@ -738,12 +738,14 @@ namespace AudioHexViewer
         //
         private void EnsureReadRunning()
         {
-            if (capture != null || _isFilePlayback) return; // déjà démarré
+            if (capture != null || _isFilePlayback) return; // already running
 
-            // Post-Process mode : lire le fichier au lieu de la carte son
             if (_postProcessMode && !string.IsNullOrEmpty(_postProcessFilePath))
             {
-                StartFilePlayback(_postProcessFilePath!);
+                if (_fileIsPaused)
+                    ResumeFilePlayback();   // resume from current position
+                else
+                    StartFilePlayback(_postProcessFilePath!);
                 return;
             }
 
@@ -753,9 +755,15 @@ namespace AudioHexViewer
 
         private void EnsureReadStoppedIfNoTabRunning()
         {
-            if (capture == null) return; // déjà arrêté
             if (_spectrumRunning || _histogramRunning || _oscilloscopeRunning) return;
 
+            if (_isFilePlayback)
+            {
+                PauseFilePlayback();   // pause at current position
+                return;
+            }
+
+            if (capture == null) return;
             StopCapture();
         }
 

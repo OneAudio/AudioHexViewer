@@ -14,9 +14,14 @@ public sealed class SpectrumColorSettings
     public int FftWidth { get; set; } = 2;                 // 1..3
 
     // --- PeakHold ---
-    public int PeakHoldLeftArgb { get; set; } = Color.DodgerBlue.ToArgb();
+    public int PeakHoldLeftArgb  { get; set; } = Color.DodgerBlue.ToArgb();
     public int PeakHoldRightArgb { get; set; } = Color.OrangeRed.ToArgb();
-    public int PeakHoldWidth { get; set; } = 1;             // 1..3
+    public int PeakHoldWidth     { get; set; } = 1;             // Hold Max width 1..3
+
+    // ── Hold Min (new) ───────────────────────────────────────────────────────
+    public int HoldMinLeftArgb  { get; set; } = Color.MediumSeaGreen.ToArgb();
+    public int HoldMinRightArgb { get; set; } = Color.Gold.ToArgb();
+    public int HoldMinWidth     { get; set; } = 1;             // 1..3
 
     // --- Overlays ---
     // Ancien réglage (compat): couleur unique pour tous les overlays
@@ -45,6 +50,7 @@ public sealed class SpectrumColorSettings
 
     // --- Négatif par groupe ---
     public bool NegativeTraces   { get; set; } = false;
+    public bool NegativeHold     { get; set; } = false;
     public bool NegativeOverlays { get; set; } = false;
     public bool NegativeChart    { get; set; } = false;
 
@@ -68,6 +74,7 @@ public sealed class SpectrumColorSettings
         // Clamp widths
         FftWidth = Clamp(FftWidth, 1, 3);
         PeakHoldWidth = Clamp(PeakHoldWidth, 1, 3);
+        HoldMinWidth  = Clamp(HoldMinWidth,  1, 3);
         OverlayWidth = Clamp(OverlayWidth, 1, 3);
 
         // If someone is upgrading from older settings and explicitly set OverlayArgb,

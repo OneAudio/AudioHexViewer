@@ -146,8 +146,10 @@ namespace AudioHexViewer
 
         private Color FftLeftColor => Neg(_colors.FftLeftArgb);
         private Color FftRightColor => Neg(_colors.FftRightArgb);
-        private Color PeakHoldLeftColor => Neg(_colors.PeakHoldLeftArgb);
-        private Color PeakHoldRightColor => Neg(_colors.PeakHoldRightArgb);
+        private Color PeakHoldLeftColor  => NegApply(_colors.PeakHoldLeftArgb,  _colors.NegativeHold);
+        private Color PeakHoldRightColor => NegApply(_colors.PeakHoldRightArgb, _colors.NegativeHold);
+        private Color HoldMinLeftColor   => NegApply(_colors.HoldMinLeftArgb,   _colors.NegativeHold);
+        private Color HoldMinRightColor  => NegApply(_colors.HoldMinRightArgb,  _colors.NegativeHold);
 
         private Color GridMajorColor => NegC(_colors.GridArgb);
         private Color GridMinorColor => NegC(_colors.GridMinorArgb);
@@ -401,6 +403,10 @@ namespace AudioHexViewer
         private double[]? _plotPeakLeft;
         private double[]? _plotPeakRight;
 
+        // ── Hold Min ─────────────────────────────────────────────────────────
+        private double[]? _plotHoldMinLeft;
+        private double[]? _plotHoldMinRight;
+
 
         // --- Calibration niveau FFT (dBFS -> dBV) ---
         // Convention utilisée dans le projet :
@@ -524,6 +530,8 @@ namespace AudioHexViewer
         private Series? _serRight;
         private Series? _serPeakLeft;
         private Series? _serPeakRight;
+        private Series? _serHoldMinLeft;
+        private Series? _serHoldMinRight;
         private Series? _serPhase;
         // Overlay "FastLine" pour le code couleur γ² du gain (mode Bode Plot) — voir
         // FillSeriesCoherenceFade(). Évite le ChartType "Line" + couleurs par point
@@ -2617,8 +2625,10 @@ namespace AudioHexViewer
                           BorderDashStyle = dash,
                       };
 
-            _serPeakLeft = Mk("LeftPeakHold", PeakHoldLeftColor, _colors.PeakHoldWidth, ChartDashStyle.Dash);
+            _serPeakLeft  = Mk("LeftPeakHold",  PeakHoldLeftColor,  _colors.PeakHoldWidth, ChartDashStyle.Dash);
             _serPeakRight = Mk("RightPeakHold", PeakHoldRightColor, _colors.PeakHoldWidth, ChartDashStyle.Dash);
+            _serHoldMinLeft  = Mk("LeftHoldMin",  HoldMinLeftColor,  _colors.HoldMinWidth, ChartDashStyle.Dash);
+            _serHoldMinRight = Mk("RightHoldMin", HoldMinRightColor, _colors.HoldMinWidth, ChartDashStyle.Dash);
             _serPhase = Mk("Phase", FftRightColor, _colors.FftWidth);
             _serPhase.YAxisType = AxisType.Secondary;
             _serLeft = Mk("Left", FftLeftColor, _colors.FftWidth);
@@ -2629,6 +2639,8 @@ namespace AudioHexViewer
 
             chartSpectrum.Series.Add(_serPeakLeft);
             chartSpectrum.Series.Add(_serPeakRight);
+            chartSpectrum.Series.Add(_serHoldMinLeft);
+            chartSpectrum.Series.Add(_serHoldMinRight);
             chartSpectrum.Series.Add(_serPhase);
             chartSpectrum.Series.Add(_serLeft);
             chartSpectrum.Series.Add(_serFrfCohFade);
@@ -2653,8 +2665,10 @@ namespace AudioHexViewer
         {
             // Retirer les séries fixes du chart et réinitialiser le flag.
             // EnsureSeriesInited() les recrée proprement à la prochaine frame.
-            if (_serPeakLeft != null) { chartSpectrum.Series.Remove(_serPeakLeft); _serPeakLeft = null; }
-            if (_serPeakRight != null) { chartSpectrum.Series.Remove(_serPeakRight); _serPeakRight = null; }
+            if (_serPeakLeft   != null) { chartSpectrum.Series.Remove(_serPeakLeft);    _serPeakLeft    = null; }
+            if (_serPeakRight  != null) { chartSpectrum.Series.Remove(_serPeakRight);   _serPeakRight   = null; }
+            if (_serHoldMinLeft  != null) { chartSpectrum.Series.Remove(_serHoldMinLeft);  _serHoldMinLeft  = null; }
+            if (_serHoldMinRight != null) { chartSpectrum.Series.Remove(_serHoldMinRight); _serHoldMinRight = null; }
             if (_serPhase != null) { chartSpectrum.Series.Remove(_serPhase); _serPhase = null; }
             if (_serLeft != null) { chartSpectrum.Series.Remove(_serLeft); _serLeft = null; }
             if (_serFrfCohFade != null) { chartSpectrum.Series.Remove(_serFrfCohFade); _serFrfCohFade = null; }
@@ -2814,7 +2828,7 @@ namespace AudioHexViewer
             string mode = comboChannel.SelectedItem as string ?? "L+R";
             bool showLeft = (mode == "Left" || mode == "L+R" || mode == "Bode Plot") && currentLeftSpectrum != null;
             bool showRight = (mode == "Right" || mode == "L+R") && currentRightSpectrum != null;
-            bool peakHoldOn = chkPeakHold?.Checked ?? false;
+            // Hold Max/Min: visible whenever data exists (stays visible after button turned OFF)
             bool useDbvPlot = UseDbvForMode(mode);
             bool doThd = _thdMeasuresEnabled;
             double nyquist = ax.Nyquist;
@@ -2842,8 +2856,10 @@ namespace AudioHexViewer
                 double[]? plotFx = _plotFreqAxis;
                 double[]? plotL = _plotLeftSpectrum;
                 double[]? plotR = _plotRightSpectrum;
-                double[]? peakL = peakHoldOn ? _plotPeakLeft : null;
-                double[]? peakR = peakHoldOn ? _plotPeakRight : null;
+                double[]? peakL    = _plotPeakLeft;
+                double[]? peakR    = _plotPeakRight;
+                double[]? holdMinL = _plotHoldMinLeft;
+                double[]? holdMinR = _plotHoldMinRight;
 
                 RemoveOverlaySeries();
 
@@ -2961,8 +2977,10 @@ namespace AudioHexViewer
 
                 FillSeries(_serLeft!, plotFx, plotL, startIndex, showLeft, leftOff);
                 FillSeries(_serRight!, plotFx, plotR, startIndex, showRight, rightOff);
-                FillSeries(_serPeakLeft!, plotFx, peakHoldOn ? peakL : null, startIndex, showLeft && peakHoldOn, leftOff);
-                FillSeries(_serPeakRight!, plotFx, peakHoldOn ? peakR : null, startIndex, showRight && peakHoldOn, rightOff);
+                FillSeries(_serPeakLeft!,    plotFx, peakL,    startIndex, showLeft  && peakL    != null, leftOff);
+                FillSeries(_serPeakRight!,   plotFx, peakR,    startIndex, showRight && peakR    != null, rightOff);
+                FillSeries(_serHoldMinLeft!,  plotFx, holdMinL, startIndex, showLeft  && holdMinL != null, leftOff);
+                FillSeries(_serHoldMinRight!, plotFx, holdMinR, startIndex, showRight && holdMinR != null, rightOff);
 
                 // ── Courbe de Gain (mode Bode Plot) : surbrillance des zones γ² faible ──
                 bool bodeCoherence = (mode == "Bode Plot") && showLeft && _plotFrfCoherence != null;

@@ -1,9 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// Form1.AudioFile.cs  —  Mode Post-Process : lecture de fichiers audio
+// Form1.AudioFile.cs  —  Post-Process mode: audio file playback
 //
-// Démarré par EnsureReadRunning() quand _postProcessMode=true.
-// Injecte les samples dans _pipeline.PushAudio() — identique aux test signals.
-// Supporte le loop (rechargement en début de fichier sur EOF si _postProcessLoop).
+// States:
+//   _isFilePlayback = true  → file task is running (reading samples)
+//   _fileIsPaused   = true  → file loaded, task stopped (reader keeps position)
+//   _audioFileReader != null → file is open (playing or paused)
+//
+// EnsureReadRunning  → StartFilePlayback (first time) or ResumeFilePlayback
+// EnsureReadStopped  → PauseFilePlayback  (keeps position)
+// StopFilePlayback   → full cleanup (disposes reader, resets all flags)
+// SeekFileToStart    → _audioFileReader.Position = 0  (T0 button)
 // ═══════════════════════════════════════════════════════════════════════════
 using NAudio.Wave;
 using System;
@@ -17,29 +23,29 @@ namespace AudioHexViewer
 {
     partial class Form1
     {
-        // ── État public (lu par UpdateTitleBar) ──────────────────────────────
-        private bool      _isFilePlayback  = false;
+        // ── State ────────────────────────────────────────────────────────────
+        private bool      _isFilePlayback  = false;   // task is running
+        private bool      _fileIsPaused    = false;   // file open, task stopped
         private string?   _audioFileName;
 
-        // Métadonnées affichées dans la barre de titre
+        // Metadata shown in title bar
         private int      _fileInfoSR;
         private int      _fileInfoBits;
         private int      _fileInfoChannels;
         private TimeSpan _fileInfoDuration;
 
-        // ── Privé ────────────────────────────────────────────────────────────
+        // ── Internal ─────────────────────────────────────────────────────────
         private AudioFileReader?         _audioFileReader;
         private Task?                    _fileTask;
         private CancellationTokenSource? _fileCts;
 
         // ─────────────────────────────────────────────────────────────────────
-        // StartFilePlayback — ouverture + pipeline + task temps-réel
+        // StartFilePlayback — open file and start reading task from scratch
         // ─────────────────────────────────────────────────────────────────────
         private void StartFilePlayback(string path)
         {
-            StopFilePlayback();   // arrêt propre si déjà actif
+            StopFilePlayback();   // full cleanup if already active
 
-            // 1. Ouvrir le fichier
             AudioFileReader reader;
             try { reader = new AudioFileReader(path); }
             catch (Exception ex)
@@ -50,7 +56,6 @@ namespace AudioHexViewer
                 return;
             }
 
-            // 2. Collecter les métadonnées pour la barre de titre
             _audioFileName    = Path.GetFileName(path);
             _fileInfoSR       = reader.WaveFormat.SampleRate;
             _fileInfoChannels = reader.WaveFormat.Channels;
@@ -58,16 +63,12 @@ namespace AudioHexViewer
             _fileInfoBits     = GetOriginalBitDepth(path, reader);
             _audioFileReader  = reader;
 
-            // 3. Initialiser le pipeline avec le SR du fichier
             currentFormat = WaveFormat.CreateIeeeFloatWaveFormat(_fileInfoSR, 2);
             _pipeline ??= new Core.FftPipelineController();
             RestartSfftFromUi();
-
-            // 4. Démarrer le timer d'analyse (normalement conditionné à capture != null)
             RecomputeHopAndTimer();
             analysisTimer?.Start();
 
-            // 5. Désactiver Bode Plot
             if (spectrumControl != null)
             {
                 spectrumControl.FilePlaybackActive = true;
@@ -75,15 +76,136 @@ namespace AudioHexViewer
                     spectrumControl.SetChannelModeFromCode("L+R");
             }
 
-            // 6. Marquer et mettre à jour le titre
             _isFilePlayback = true;
+            _fileIsPaused   = false;
             UpdateTitleBar();
+            UpdateFileProgressWidget();
 
-            // 7. Lancer la task
+            LaunchReadingTask(reader, _fileInfoSR, _fileInfoChannels);
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // ResumeFilePlayback — restart task from current reader position
+        // ─────────────────────────────────────────────────────────────────────
+        internal void ResumeFilePlayback()
+        {
+            if (!_fileIsPaused || _audioFileReader == null) return;
+
+            _pipeline ??= new Core.FftPipelineController();
+            RestartSfftFromUi();
+            RecomputeHopAndTimer();
+            analysisTimer?.Start();
+
+            _isFilePlayback = true;
+            _fileIsPaused   = false;
+            UpdateTitleBar();
+            UpdateFileProgressWidget();
+
+            LaunchReadingTask(_audioFileReader, _fileInfoSR, _fileInfoChannels);
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // PauseFilePlayback — stop task but keep reader at current position
+        // ─────────────────────────────────────────────────────────────────────
+        internal void PauseFilePlayback()
+        {
+            if (!_isFilePlayback && _fileTask == null) return;
+
+            try
+            {
+                _fileCts?.Cancel();
+                _fileTask?.Wait(500);
+            }
+            catch { }
+            finally
+            {
+                _fileTask = null;
+                _fileCts?.Dispose();
+                _fileCts = null;
+            }
+
+            _isFilePlayback = false;
+            _fileIsPaused   = true;
+
+            analysisTimer?.Stop();
+            _pipeline?.Stop();
+
+            if (InvokeRequired) Invoke(UpdateTitleBar);
+            else UpdateTitleBar();
+            UpdateFileProgressWidget();
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // StopFilePlayback — full cleanup (disposes reader, resets all flags)
+        // ─────────────────────────────────────────────────────────────────────
+        internal void StopFilePlayback()
+        {
+            if (!_isFilePlayback && !_fileIsPaused && _fileTask == null)
+                return;
+
+            try
+            {
+                _fileCts?.Cancel();
+                _fileTask?.Wait(500);
+            }
+            catch { }
+            finally
+            {
+                _fileTask = null;
+                _fileCts?.Dispose();
+                _fileCts = null;
+            }
+
+            _audioFileReader?.Dispose();
+            _audioFileReader = null;
+
+            _isFilePlayback = false;
+            _fileIsPaused   = false;
+            _audioFileName  = null;
+            currentFormat   = null;
+
+            if (spectrumControl != null)
+                spectrumControl.FilePlaybackActive = false;
+
+            analysisTimer?.Stop();
+            _pipeline?.Stop();
+
+            // Explicitly hide the progress widget
+            HideProgressWidget();
+
+            if (InvokeRequired) Invoke(UpdateTitleBar);
+            else UpdateTitleBar();
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // SeekFileToStart — T0 button: seek to beginning
+        // ─────────────────────────────────────────────────────────────────────
+        internal void SeekFileToStart()
+        {
+            if (_audioFileReader == null) return;
+
+            if (_isFilePlayback)
+            {
+                // Pause → seek → resume
+                PauseFilePlayback();
+                _audioFileReader.Position = 0;
+                ResumeFilePlayback();
+            }
+            else
+            {
+                // Just seek (stays paused)
+                _audioFileReader.Position = 0;
+                UpdateFileProgressWidget();
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // LaunchReadingTask — shared task for Start and Resume
+        // ─────────────────────────────────────────────────────────────────────
+        private void LaunchReadingTask(AudioFileReader reader, int fileSR, int fileChannels)
+        {
             _fileCts  = new CancellationTokenSource();
             var ct    = _fileCts.Token;
-            int fileSR       = _fileInfoSR;
-            int fileChannels = _fileInfoChannels;
 
             _fileTask = Task.Run(() =>
             {
@@ -105,15 +227,16 @@ namespace AudioHexViewer
                         // EOF
                         if (_postProcessLoop && !ct.IsCancellationRequested)
                         {
-                            reader.Position = 0;   // retour au début
+                            reader.Position = 0;
+                            totalSamples    = 0;
+                            sw.Restart();
                             continue;
                         }
-                        break;   // fin sans loop → auto-arrêt
+                        break;   // EOF without loop → pause at end
                     }
 
                     int frames = samplesRead / Math.Max(1, fileChannels);
 
-                    // Dé-interleaving  (mono → dupliqué L et R)
                     for (int i = 0; i < frames; i++)
                     {
                         left[i] = raw[i * fileChannels];
@@ -126,7 +249,7 @@ namespace AudioHexViewer
                         new ReadOnlySpan<float>(left, 0, frames),
                         new ReadOnlySpan<float>(rght, 0, frames));
 
-                    // Throttle temps-réel
+                    // Real-time throttle
                     totalSamples += frames;
                     double targetSec = totalSamples / (double)fileSR;
                     double sleepSec  = targetSec - sw.Elapsed.TotalSeconds;
@@ -136,62 +259,17 @@ namespace AudioHexViewer
                         Thread.Yield();
                 }
 
-                // EOF sans loop → mise à jour UI depuis le thread principal
+                // EOF without loop → pause at end position (not full stop)
                 if (!ct.IsCancellationRequested)
-                    Invoke(() => StopFilePlayback());
+                    Invoke(() => PauseFilePlayback());
             });
-        }
-
-        // ─────────────────────────────────────────────────────────────────────
-        // StopFilePlayback
-        // ─────────────────────────────────────────────────────────────────────
-        internal void StopFilePlayback()
-        {
-            if (!_isFilePlayback && _fileTask == null)
-                return;
-
-            try
-            {
-                _fileCts?.Cancel();
-                _fileTask?.Wait(500);
-            }
-            catch { }
-            finally
-            {
-                _fileTask = null;
-                _fileCts?.Dispose();
-                _fileCts = null;
-            }
-
-            _audioFileReader?.Dispose();
-            _audioFileReader = null;
-
-            _isFilePlayback = false;
-            _audioFileName  = null;
-            currentFormat   = null;
-
-            if (spectrumControl != null)
-                spectrumControl.FilePlaybackActive = false;
-
-            analysisTimer?.Stop();
-            _pipeline?.Stop();
-
-            if (InvokeRequired) Invoke(UpdateTitleBar);
-            else UpdateTitleBar();
         }
 
         // ─────────────────────────────────────────────────────────────────────
         // Helpers
         // ─────────────────────────────────────────────────────────────────────
-
-        /// <summary>
-        /// Tente de lire la résolution d'origine du fichier.
-        /// AudioFileReader convertit tout en float 32 bits — on re-lit l'en-tête
-        /// WAV séparément pour obtenir le vrai BitsPerSample du fichier source.
-        /// </summary>
         private static int GetOriginalBitDepth(string path, AudioFileReader decoded)
         {
-            // WAV : relire directement l'en-tête
             try
             {
                 using var wfr = new WaveFileReader(path);
@@ -200,11 +278,9 @@ namespace AudioHexViewer
             }
             catch { }
 
-            // MP3 : 16 bits par convention (MPEG Layer 3)
             string ext = Path.GetExtension(path).ToLowerInvariant();
             if (ext == ".mp3") return 16;
 
-            // Autres formats (WMA, AIFF…) : format décodé par NAudio = float 32
             return decoded.WaveFormat.BitsPerSample > 0
                 ? decoded.WaveFormat.BitsPerSample
                 : 32;

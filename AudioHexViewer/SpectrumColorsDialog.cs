@@ -29,11 +29,15 @@ namespace AudioHexViewer
             _defaults.Normalize();
             DefaultsChanged = false;
 
-            // ── Traces swatches ───────────────────────────────────────────────
-            btnFftL.Click += (_, _) => Pick(() => _colors.FftLeftArgb,       v => _colors.FftLeftArgb = v,       btnFftL);
-            btnFftR.Click += (_, _) => Pick(() => _colors.FftRightArgb,      v => _colors.FftRightArgb = v,      btnFftR);
-            btnPkL.Click  += (_, _) => Pick(() => _colors.PeakHoldLeftArgb,  v => _colors.PeakHoldLeftArgb = v,  btnPkL);
-            btnPkR.Click  += (_, _) => Pick(() => _colors.PeakHoldRightArgb, v => _colors.PeakHoldRightArgb = v, btnPkR);
+            // ── Traces swatches — Data Left + Right side by side ─────────────
+            btnFftL.Click += (_, _) => Pick(() => _colors.FftLeftArgb,  v => _colors.FftLeftArgb = v,  btnFftL);
+            btnFftR.Click += (_, _) => Pick(() => _colors.FftRightArgb, v => _colors.FftRightArgb = v, btnFftR);
+
+            // ── Trace Hold swatches — Hold Max (= former PkHold) + Hold Min ──
+            btnPkL.Click += (_, _) => Pick(() => _colors.PeakHoldLeftArgb,  v => _colors.PeakHoldLeftArgb = v,  btnPkL);
+            btnPkR.Click += (_, _) => Pick(() => _colors.PeakHoldRightArgb, v => _colors.PeakHoldRightArgb = v, btnPkR);
+            btnHoldMinL.Click += (_, _) => Pick(() => _colors.HoldMinLeftArgb,  v => _colors.HoldMinLeftArgb = v,  btnHoldMinL);
+            btnHoldMinR.Click += (_, _) => Pick(() => _colors.HoldMinRightArgb, v => _colors.HoldMinRightArgb = v, btnHoldMinR);
 
             // ── Overlay swatches ──────────────────────────────────────────────
             btnOv1.Click += (_, _) => PickOverlay(0, btnOv1); btnOv2.Click += (_, _) => PickOverlay(1, btnOv2);
@@ -52,10 +56,12 @@ namespace AudioHexViewer
             // ── Thickness NUDs ────────────────────────────────────────────────
             nudFftWidth.Value = Clamp3(_colors.FftWidth);
             nudPkWidth.Value  = Clamp3(_colors.PeakHoldWidth);
+            nudHoldMinWidth.Value = Clamp3(_colors.HoldMinWidth);
             nudOvWidth.Value  = Clamp3(_colors.OverlayWidth);
-            nudFftWidth.ValueChanged += (_, _) => _colors.FftWidth      = (int)nudFftWidth.Value;
-            nudPkWidth.ValueChanged  += (_, _) => _colors.PeakHoldWidth = (int)nudPkWidth.Value;
-            nudOvWidth.ValueChanged  += (_, _) => _colors.OverlayWidth  = (int)nudOvWidth.Value;
+            nudFftWidth.ValueChanged     += (_, _) => _colors.FftWidth      = (int)nudFftWidth.Value;
+            nudPkWidth.ValueChanged      += (_, _) => _colors.PeakHoldWidth = (int)nudPkWidth.Value;
+            nudHoldMinWidth.ValueChanged += (_, _) => _colors.HoldMinWidth  = (int)nudHoldMinWidth.Value;
+            nudOvWidth.ValueChanged      += (_, _) => _colors.OverlayWidth  = (int)nudOvWidth.Value;
 
             // ── Overlay line style ────────────────────────────────────────────
             cmbOvStyle.Items.AddRange(new object[] {
@@ -71,6 +77,8 @@ namespace AudioHexViewer
             // ── Negative per group — live preview ────────────────────────────
             chkNegTraces.CheckedChanged += (_, _) =>
             { _colors.NegativeTraces   = chkNegTraces.Checked;   UpdateSwatchDisplay(); };
+            chkNegHold.CheckedChanged += (_, _) =>
+            { _colors.NegativeHold     = chkNegHold.Checked;     UpdateSwatchDisplay(); };
             chkNegOverlays.CheckedChanged += (_, _) =>
             { _colors.NegativeOverlays = chkNegOverlays.Checked; UpdateSwatchDisplay(); };
             chkNegChart.CheckedChanged += (_, _) =>
@@ -87,10 +95,12 @@ namespace AudioHexViewer
         {
             _colors.Normalize();
 
-            btnFftL.BackColor = ShowColor(_colors.FftLeftArgb,   _colors.NegativeTraces);
-            btnFftR.BackColor = ShowColor(_colors.FftRightArgb,  _colors.NegativeTraces);
-            btnPkL.BackColor  = ShowColor(_colors.PeakHoldLeftArgb,  _colors.NegativeTraces);
-            btnPkR.BackColor  = ShowColor(_colors.PeakHoldRightArgb, _colors.NegativeTraces);
+            btnFftL.BackColor     = ShowColor(_colors.FftLeftArgb,         _colors.NegativeTraces);
+            btnFftR.BackColor     = ShowColor(_colors.FftRightArgb,        _colors.NegativeTraces);
+            btnPkL.BackColor      = ShowColor(_colors.PeakHoldLeftArgb,    _colors.NegativeTraces);
+            btnPkR.BackColor      = ShowColor(_colors.PeakHoldRightArgb,   _colors.NegativeTraces);
+            btnHoldMinL.BackColor = ShowColor(_colors.HoldMinLeftArgb,     _colors.NegativeTraces);
+            btnHoldMinR.BackColor = ShowColor(_colors.HoldMinRightArgb,    _colors.NegativeTraces);
 
             btnGridMaj.BackColor  = ShowColor(_colors.GridArgb,       _colors.NegativeChart);
             btnGridMin.BackColor  = ShowColor(_colors.GridMinorArgb,  _colors.NegativeChart);
@@ -115,6 +125,7 @@ namespace AudioHexViewer
             cmbOvStyle.SelectedItem = style;
 
             chkNegTraces.Checked   = _colors.NegativeTraces;
+            chkNegHold.Checked     = _colors.NegativeHold;
             chkNegOverlays.Checked = _colors.NegativeOverlays;
             chkNegChart.Checked    = _colors.NegativeChart;
         }
@@ -152,12 +163,15 @@ namespace AudioHexViewer
                 FftLeftArgb      = src.FftLeftArgb,   FftRightArgb      = src.FftRightArgb,
                 FftWidth         = src.FftWidth,       PeakHoldLeftArgb  = src.PeakHoldLeftArgb,
                 PeakHoldRightArgb= src.PeakHoldRightArgb, PeakHoldWidth = src.PeakHoldWidth,
+                HoldMinLeftArgb  = src.HoldMinLeftArgb,  HoldMinRightArgb = src.HoldMinRightArgb,
+                HoldMinWidth     = src.HoldMinWidth,
                 OverlayArgb      = src.OverlayArgb,   OverlayWidth      = src.OverlayWidth,
                 GridArgb         = src.GridArgb,       GridMinorArgb     = src.GridMinorArgb,
                 BackgroundArgb   = src.BackgroundArgb, LabelMajorArgb    = src.LabelMajorArgb,
                 LabelMinorArgb   = src.LabelMinorArgb, InfoTextArgb      = src.InfoTextArgb,
                 OverlayDashStyle = src.OverlayDashStyle,
                 NegativeTraces   = src.NegativeTraces,
+                NegativeHold     = src.NegativeHold,
                 NegativeOverlays = src.NegativeOverlays,
                 NegativeChart    = src.NegativeChart,
             };

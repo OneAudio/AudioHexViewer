@@ -669,22 +669,41 @@ namespace AudioHexViewer
             }
 
 
-            // Peak-hold
+            // HOLD Max (chkPeakHold)
             if (chkPeakHold != null)
             {
                 chkPeakHold.Checked = false;
-                // Initial update visuelle
                 UpdateToggleButtonVisual(chkPeakHold);
-
+                // Left-click: toggle — reset data when newly activated
                 chkPeakHold.CheckedChanged += (s, e) =>
                 {
-                    // Quand on active : repartir de zéro pour que le peak-hold soit cohérent
-                    if (chkPeakHold.Checked)
-                        _post.ResetPeakHoldState();
-
-                    // Update visuelle
+                    if (chkPeakHold.Checked) { _post.ResetPeakHoldState(); _plotPeakLeft = null; _plotPeakRight = null; }
                     UpdateToggleButtonVisual(chkPeakHold);
                     UpdateSpectrumChartAndStats();
+                };
+                // Right-click: reset trace (keep button state)
+                // Use MouseUp — MouseClick is unreliable for right-click on CheckBox
+                chkPeakHold.MouseUp += (s, e) =>
+                {
+                    if (e.Button == MouseButtons.Right)
+                    { _post.ResetPeakHoldState(); _plotPeakLeft = null; _plotPeakRight = null; UpdateSpectrumChartAndStats(); }
+                };
+            }
+            // HOLD Min (chkHoldMin)
+            if (chkHoldMin != null)
+            {
+                chkHoldMin.Checked = false;
+                UpdateToggleButtonVisual(chkHoldMin);
+                chkHoldMin.CheckedChanged += (s, e) =>
+                {
+                    if (chkHoldMin.Checked) { _post.ResetHoldMinState(); _plotHoldMinLeft = null; _plotHoldMinRight = null; }
+                    UpdateToggleButtonVisual(chkHoldMin);
+                    UpdateSpectrumChartAndStats();
+                };
+                chkHoldMin.MouseUp += (s, e) =>
+                {
+                    if (e.Button == MouseButtons.Right)
+                    { _post.ResetHoldMinState(); _plotHoldMinLeft = null; _plotHoldMinRight = null; UpdateSpectrumChartAndStats(); }
                 };
             }
 
@@ -939,11 +958,9 @@ namespace AudioHexViewer
                 UpdateAvgProgressUi(0, avgTargetCount);
         }
 
-        private void BtnResetPeakHold_Click(object? sender, EventArgs e)
-        {
-            _post.ResetPeakHoldState();
-            UpdateSpectrumChartAndStats();
-        }
+        // BtnResetPeakHold_Click kept for Designer compatibility (handler now in init)
+        private void BtnResetPeakHold_Click(object? sender, EventArgs e) { }
+        private void chkHoldMin_CheckedChanged(object sender, EventArgs e) { } // wired in init
 
         // Mémorise le dernier onglet X sélectionné dans le dialog Axis (Mini/Maxi=0 ou Center/Span=1)
         private int _axisDialogTabX = 0;
@@ -1491,6 +1508,8 @@ namespace AudioHexViewer
             _plotRightSpectrum   = null;
             _plotPeakLeft        = null;
             _plotPeakRight       = null;
+            _plotHoldMinLeft     = null;
+            _plotHoldMinRight    = null;
             _plotFrfPhaseDeg     = null;
             _plotFrfCoherence    = null;
             currentFrfPhaseDeg   = null;
