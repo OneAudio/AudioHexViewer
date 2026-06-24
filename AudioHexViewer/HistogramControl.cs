@@ -1492,7 +1492,7 @@ namespace AudioHexViewer
         }
 
         // ── Export PNG / PDF ─────────────────────────────────────────────────
-        public void ExportPng(string filePath, int scale = 2, string? headerTitle = null, string? footerText = null)
+        public void ExportPng(string filePath, int scale = 2, string? headerTitle = null, string? footerText = null, bool padToA4 = false)
         {
             int headerPx = ChartExport.HeaderPixels(headerTitle, scale);
 
@@ -1501,7 +1501,12 @@ namespace AudioHexViewer
             chartHistogram.Refresh();
 
             using var clone = ChartExport.CloneChart(chartHistogram);
-            clone.Size      = new Size(chartHistogram.Width * scale, chartHistogram.Height * scale);
+            int _srcW = chartHistogram.Width * scale;
+            int footerStripH = padToA4 && !string.IsNullOrWhiteSpace(footerText) ? (28 * scale) : 0;
+            int _srcH = padToA4
+                ? Math.Max((int)Math.Round(_srcW / Math.Sqrt(2)) - headerPx - footerStripH, 50)
+                : chartHistogram.Height * scale;
+            clone.Size = new Size(_srcW, _srcH);
             clone.BackColor = Color.White;
             foreach (var a in clone.ChartAreas) a.BackColor = Color.White;
 
@@ -1510,14 +1515,26 @@ namespace AudioHexViewer
 
             ChartExport.ApplyExportScaling(clone, scale);
             // Réserve la même largeur proportionnelle pour le panneau stats
-            ApplyChartStatsMarginToChart(clone, clone.Width, scale);
-            if (headerPx > 0)
+            // Pass scale=0 when the side panel is hidden so the chart fills the full width
+            ApplyChartStatsMarginToChart(clone, clone.Width, _measPanelVisible ? scale : 0);
+            if (headerPx > 0 && !padToA4)
                 ChartExport.ApplyChartHeaderMargin(clone, "HistogramArea", headerPx);
 
             clone.PostPaint += ChartHistogram_PostPaint;
 
             var pngBytes = ChartExport.RenderChartToPngBytes(clone);
-            ChartExport.SaveChartPng(pngBytes, filePath, headerPx, headerTitle, scale, dpi: 300, footerText: footerText);
+            if (padToA4) {
+                using var _ms2 = new System.IO.MemoryStream(pngBytes);
+                using var _src2 = new System.Drawing.Bitmap(_ms2);
+                using var _final = new System.Drawing.Bitmap(_srcW, headerPx + _srcH + footerStripH,
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                using (var _g2 = System.Drawing.Graphics.FromImage(_final)) { _g2.Clear(System.Drawing.Color.White); _g2.DrawImage(_src2, 0, headerPx); }
+                if (headerPx > 0 && !string.IsNullOrWhiteSpace(headerTitle)) ChartExport.DrawHeaderOnBitmap(_final, headerPx, headerTitle!, scale);
+                if (footerStripH > 0) ChartExport.DrawFooterOnBitmap(_final, footerText!, scale);
+                ChartExport.SaveBitmap(_final, filePath, dpi: 300);
+            } else {
+                ChartExport.SaveChartPng(pngBytes, filePath, headerPx, headerTitle, scale, dpi: 300, footerText: footerText);
+            }
         }
 
         /// <summary>Retourne le Chart live pour copie presse-papier (résolution écran).</summary>

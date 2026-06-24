@@ -1134,9 +1134,8 @@ namespace AudioHexViewer
                 // sécurité : ne jamais laisser un crash UI tuer l'application
             }
 
-            // ── AHV watermark — top-right of plot area (live view only) ──
-            if (!isExport)
-                GraphWatermark.Draw(e.ChartGraphics.Graphics, plotForText);
+            // ── AHV watermark — top-right of plot area ──
+            GraphWatermark.Draw(e.ChartGraphics.Graphics, plotForText);
         }
 
         private void RebuildStatsRowsFromLabels()
@@ -1523,14 +1522,26 @@ namespace AudioHexViewer
             return db[lo-1] + t * (db[lo] - db[lo-1]);
         }
 
-        public void ExportPng(string filePath, int scale = 2, string? headerTitle = null, string? footerText = null)
+        public void ExportPng(string filePath, int scale = 2, string? headerTitle = null, string? footerText = null, bool padToA4 = false)
         {
             RebuildStatsRowsFromLabels();
 
             int headerPx = ChartExport.HeaderPixels(headerTitle, scale);
 
             using var clone = ChartExport.CloneChart(chartSpectrum);
-            clone.Size      = new Size(chartSpectrum.Width * scale, chartSpectrum.Height * scale);
+            // Quand padToA4 : on rend le clone à la hauteur A4 (largeur/√2), en déduisant
+            // headerPx déjà réservé — SaveChartPng ajoutera ce strip par-dessus.
+            // Le chart WinForms se re-rend proprement à cette nouvelle taille (zéro étirement).
+            int _srcW = chartSpectrum.Width * scale;
+            // footerStripH: when padToA4, the footer is placed in a DEDICATED strip
+            // below the chart instead of being drawn over it.  This prevents the
+            // footer from covering the "Frequency (Hz)" title that PostPaint draws
+            // at chart.ClientSize.Height - fontSize - 4*sExport.
+            int footerStripH = padToA4 && !string.IsNullOrWhiteSpace(footerText) ? (28 * scale) : 0;
+            int _srcH = padToA4
+                ? Math.Max((int)Math.Round(_srcW / Math.Sqrt(2)) - headerPx - footerStripH, 50)
+                : chartSpectrum.Height * scale;
+            clone.Size = new Size(_srcW, _srcH);
             clone.BackColor = Color.White;
             foreach (var a in clone.ChartAreas) a.BackColor = Color.White;
 
@@ -1541,10 +1552,14 @@ namespace AudioHexViewer
             clone.Tag           = new ExportRenderContext { HeaderTitle = null };  // titre géré en GDI+ pur ci-dessous
 
             // Marge panneau stats (droite)
-            ApplyChartStatsMargin(clone, invalidate: false, reservedScale: scale);
+            // Pass reservedScale=0 when the side panel is hidden so the chart fills the full width
+            ApplyChartStatsMargin(clone, invalidate: false, reservedScale: _measPanelVisible ? (float)scale : 0f);
 
-            // Marge haute si titre
-            if (headerPx > 0)
+            // Marge haute si titre.
+            // Skipped when padToA4: _srcH already reserves the header height, so
+            // calling ApplyChartHeaderMargin would add a second blank strip inside
+            // the clone and push the X-axis title off the bottom of the page.
+            if (headerPx > 0 && !padToA4)
                 ChartExport.ApplyChartHeaderMargin(clone, "SpectrumArea", headerPx);
 
             clone.PostPaint += ChartSpectrum_PostPaint;
@@ -1552,8 +1567,30 @@ namespace AudioHexViewer
             // Rendu clone → bytes PNG
             var pngBytes = ChartExport.RenderChartToPngBytes(clone);
 
-            // Composition finale : header + footer GDI+ pur par-dessus
-            ChartExport.SaveChartPng(pngBytes, filePath, headerPx, headerTitle, scale, dpi: 300, footerText: footerText);
+            // Save: when padToA4, compose manually with a dedicated footer strip
+            // so it never overlaps the PostPaint-drawn "Frequency (Hz)" title.
+            if (padToA4)
+            {
+                using var _ms2  = new System.IO.MemoryStream(pngBytes);
+                using var _src2 = new System.Drawing.Bitmap(_ms2);
+                int _totalH = headerPx + _srcH + footerStripH;  // = A4 height
+                using var _final = new System.Drawing.Bitmap(_srcW, _totalH,
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                using (var _g2 = System.Drawing.Graphics.FromImage(_final))
+                {
+                    _g2.Clear(System.Drawing.Color.White);
+                    _g2.DrawImage(_src2, 0, headerPx);
+                }
+                if (headerPx > 0 && !string.IsNullOrWhiteSpace(headerTitle))
+                    ChartExport.DrawHeaderOnBitmap(_final, headerPx, headerTitle!, scale);
+                if (footerStripH > 0)
+                    ChartExport.DrawFooterOnBitmap(_final, footerText!, scale);
+                ChartExport.SaveBitmap(_final, filePath, dpi: 300);
+            }
+            else
+            {
+                ChartExport.SaveChartPng(pngBytes, filePath, headerPx, headerTitle, scale, dpi: 300, footerText: footerText);
+            }
         }
 
     }

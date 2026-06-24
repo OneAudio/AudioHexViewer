@@ -3042,14 +3042,14 @@ namespace AudioHexViewer
             };
         }
 
-        private void DoExportPng(string filePath, int scale, string? title = null, string? footer = null)
+        private void DoExportPng(string filePath, int scale, string? title = null, string? footer = null, bool padToA4 = false)
         {
             var tab = GetActiveTab();
             switch (tab)
             {
-                case ActiveTab.Spectrum:     spectrumControl!    .ExportPng(filePath, scale, title, footer); break;
-                case ActiveTab.Oscilloscope: oscilloscopeControl!.ExportPng(filePath, scale, title, footer); break;
-                default:                     histogramControl!   .ExportPng(filePath, scale, title, footer); break;
+                case ActiveTab.Spectrum:     spectrumControl!    .ExportPng(filePath, scale, title, footer, padToA4); break;
+                case ActiveTab.Oscilloscope: oscilloscopeControl!.ExportPng(filePath, scale, title, footer, padToA4); break;
+                default:                     histogramControl!   .ExportPng(filePath, scale, title, footer, padToA4); break;
             }
         }
 
@@ -3081,7 +3081,7 @@ namespace AudioHexViewer
 
             if (ShowCommonDialogSafe(sfd) != DialogResult.OK) return;
 
-            try   { DoExportPng(sfd.FileName, scale: 2); }
+            try   { DoExportPng(sfd.FileName, scale: 2, padToA4: true); }
             catch (Exception ex) { MessageBox.Show(ex.Message, "Export PNG", MessageBoxButtons.OK, MessageBoxIcon.Error); }
         }
 
@@ -3210,11 +3210,11 @@ namespace AudioHexViewer
             var pages = new System.Collections.Generic.List<(string name, System.Action<string> export)>();
             string footer = GetDeviceFooterText();
             if (dlg.IncludeSpectrum  && spectrumControl     != null)
-                pages.Add(("Spectrum",     p => spectrumControl!    .ExportPng(p, scale, fullTitle, footer)));
+                pages.Add(("Spectrum",     p => spectrumControl!    .ExportPng(p, scale, fullTitle, footer, padToA4: true)));
             if (dlg.IncludeHistogram && histogramControl    != null)
-                pages.Add(("Histogram",    p => histogramControl!   .ExportPng(p, scale, fullTitle, footer)));
+                pages.Add(("Histogram",    p => histogramControl!   .ExportPng(p, scale, fullTitle, footer, padToA4: true)));
             if (dlg.IncludeOscillo   && oscilloscopeControl != null)
-                pages.Add(("Oscilloscope", p => oscilloscopeControl!.ExportPng(p, scale, fullTitle, footer)));
+                pages.Add(("Oscilloscope", p => oscilloscopeControl!.ExportPng(p, scale, fullTitle, footer, padToA4: true)));
 
             if (pages.Count == 0)
             {

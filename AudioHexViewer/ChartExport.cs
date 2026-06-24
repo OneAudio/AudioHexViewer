@@ -24,6 +24,12 @@ namespace AudioHexViewer
     //    1. CaptureControlBitmap()    — DrawToBitmap sur le panel de rendu
     //    2. ComposeWithHeader()       — ajoute le bandeau titre
     //    3. SaveBitmap()
+    //
+    //  Padding A4 (optionnel, padToA4 = true dans SaveChartPng) :
+    //    Après composition du bitmap final (header + graphique + footer), un
+    //    canvas blanc aux proportions A4 (ratio √2) est créé et le graphique
+    //    est centré dessus par DrawImageUnscaled — zéro resampling, zéro
+    //    étirement.  Utile pour les exports PDF / impression.
     // ══════════════════════════════════════════════════════════════════════════
     internal static class ChartExport
     {
@@ -152,25 +158,42 @@ namespace AudioHexViewer
             string? headerTitle,
             int     scale      = 2,
             int     dpi        = 300,
-            string? footerText = null)
+            string? footerText = null,
+            bool    padToA4    = false)
         {
+            // Step 1 — compose header + graphique dans un seul bitmap
+            Bitmap composed;
             if (headerPx > 0 && !string.IsNullOrWhiteSpace(headerTitle))
             {
-                using var full = new Bitmap(capture.Width, capture.Height + headerPx);
-                using (var g = Graphics.FromImage(full))
+                composed = new Bitmap(capture.Width, capture.Height + headerPx);
+                using (var g = Graphics.FromImage(composed))
                     g.DrawImage(capture, 0, headerPx);
-                DrawHeaderOnBitmap(full, headerPx, headerTitle!, scale);
-                if (!string.IsNullOrWhiteSpace(footerText)) DrawFooterOnBitmap(full, footerText!, scale);
-                SaveBitmap(full, filePath, dpi);
+                DrawHeaderOnBitmap(composed, headerPx, headerTitle!, scale);
             }
             else
             {
-                if (!string.IsNullOrWhiteSpace(footerText)) DrawFooterOnBitmap(capture, footerText!, scale);
-                SaveBitmap(capture, filePath, dpi);
+                composed = new Bitmap(capture);   // copie défensive; capture appartient à l'appelant
+            }
+
+            using (composed)
+            {
+                if (!string.IsNullOrWhiteSpace(footerText))
+                    DrawFooterOnBitmap(composed, footerText!, scale);
+
+                // Step 2 — padding A4 facultatif (pas d'étirement, fond blanc)
+                if (padToA4)
+                {
+                    using var padded = PadToA4Ratio(composed);
+                    SaveBitmap(padded, filePath, dpi);
+                }
+                else
+                {
+                    SaveBitmap(composed, filePath, dpi);
+                }
             }
         }
 
-        // ── 7. Full pipeline : PNG bytes + header → file ─────────────────────
+        // ── 7b. Full pipeline : PNG bytes + header → file ─────────────────────
         //  Utilisé par SpectrumControl et HistogramControl
         public static void SaveChartPng(
             byte[]  pngBytes,
@@ -179,26 +202,41 @@ namespace AudioHexViewer
             string? headerTitle,
             int     scale      = 2,
             int     dpi        = 300,
-            string? footerText = null)
+            string? footerText = null,
+            bool    padToA4    = false)
         {
             using var ms  = new MemoryStream(pngBytes);
             using var src = new Bitmap(ms);
 
+            // Step 1 — compose header + graphique dans un seul bitmap
+            Bitmap composed;
             if (headerPx > 0 && !string.IsNullOrWhiteSpace(headerTitle))
             {
-                using var full = new Bitmap(src.Width, src.Height + headerPx);
-                using (var g = Graphics.FromImage(full))
+                composed = new Bitmap(src.Width, src.Height + headerPx);
+                using (var g = Graphics.FromImage(composed))
                     g.DrawImage(src, 0, headerPx);
-
-                DrawHeaderOnBitmap(full, headerPx, headerTitle!, scale);
-                if (!string.IsNullOrWhiteSpace(footerText)) DrawFooterOnBitmap(full, footerText!, scale);
-                SaveBitmap(full, filePath, dpi);
+                DrawHeaderOnBitmap(composed, headerPx, headerTitle!, scale);
             }
             else
             {
-                using var bmp = new Bitmap(src);
-                if (!string.IsNullOrWhiteSpace(footerText)) DrawFooterOnBitmap(bmp, footerText!, scale);
-                SaveBitmap(bmp, filePath, dpi);
+                composed = new Bitmap(src);
+            }
+
+            using (composed)
+            {
+                if (!string.IsNullOrWhiteSpace(footerText))
+                    DrawFooterOnBitmap(composed, footerText!, scale);
+
+                // Step 2 — padding A4 facultatif (pas d'étirement, fond blanc)
+                if (padToA4)
+                {
+                    using var padded = PadToA4Ratio(composed);
+                    SaveBitmap(padded, filePath, dpi);
+                }
+                else
+                {
+                    SaveBitmap(composed, filePath, dpi);
+                }
             }
         }
 
@@ -286,6 +324,100 @@ namespace AudioHexViewer
 
             var rect = new RectangleF(margin, textY, bmp.Width * 0.75f - margin, h + 4f);
             g.DrawString(footerText, font, brush, rect, fmt);
+        }
+
+        // ── A4 padding — cœur du redimensionnement propre ────────────────────
+        //
+        //  Place le bitmap source centré sur un canvas blanc aux proportions A4
+        //  (ratio √2 ≈ 1.4142).  Le mode est choisi automatiquement :
+        //    • source landscape (W≥H) → canvas A4 paysage  (W_canvas/H_canvas = √2)
+        //    • source portrait  (H>W) → canvas A4 portrait (H_canvas/W_canvas = √2)
+        //
+        //  DrawImageUnscaled garantit zéro resampling / zéro étirement :
+        //  chaque pixel source est copié au pixel exact correspondant du canvas.
+        //  Retourne TOUJOURS un nouveau Bitmap (ownership transféré à l'appelant).
+        //
+        public static Bitmap PadToA4Ratio(Bitmap src)
+        {
+            // A4 = 210 × 297 mm  →  ratio = √2 ≈ 1.41421356
+            const double SqrtTwo = 1.41421356237;
+
+            double srcRatio    = (double)src.Width / src.Height;  // ≥1 = paysage, <1 = portrait
+            double targetRatio = srcRatio >= 1.0 ? SqrtTwo : 1.0 / SqrtTwo;
+
+            int canvasW, canvasH;
+
+            if (Math.Abs(srcRatio / targetRatio - 1.0) < 0.005)
+            {
+                // Déjà proche de A4 (±0.5%) : canvas identique (mais nouveau bitmap quand même)
+                canvasW = src.Width;
+                canvasH = src.Height;
+            }
+            else if (srcRatio >= targetRatio)
+            {
+                // Source plus large que A4 : fixer W, agrandir H
+                //   Ex. 16:9 (1.78) en paysage A4 (1.41) → ajoute des bandes en haut/bas
+                canvasW = src.Width;
+                canvasH = (int)Math.Round(src.Width / targetRatio);
+            }
+            else
+            {
+                // Source plus étroite que A4 : fixer H, agrandir W
+                //   Ex. chart quasi-carré (1.2) en paysage A4 (1.41) → bandes latérales
+                canvasH = src.Height;
+                canvasW = (int)Math.Round(src.Height * targetRatio);
+            }
+
+            var canvas = new Bitmap(canvasW, canvasH, PixelFormat.Format32bppArgb);
+            canvas.SetResolution(src.HorizontalResolution, src.VerticalResolution);
+
+            using var g = Graphics.FromImage(canvas);
+            g.Clear(Color.White);
+            // DrawImageUnscaled : copie pixel-à-pixel, aucune interpolation
+            g.DrawImageUnscaled(src, (canvasW - src.Width) / 2, (canvasH - src.Height) / 2);
+
+            return canvas;
+        }
+
+        // ── Fit+scale source into a fixed canvas (oscilloscope A4 export) ────────
+        //
+        //  Scales src proportionally to fill as much of (targetW × targetH) as
+        //  possible while maintaining its aspect ratio (CSS "contain" semantics).
+        //  Any remaining area is filled with white.
+        //  Uses HighQualityBicubic for upscaling, NearestNeighbor for 1:1 copies.
+        //  Always returns a new Bitmap with the caller taking ownership.
+        //
+        public static Bitmap FitScaleIntoCanvas(Bitmap src, int targetW, int targetH)
+        {
+            double scaleX = (double)targetW / src.Width;
+            double scaleY = (double)targetH / src.Height;
+            double s      = Math.Min(scaleX, scaleY);   // maintain aspect ratio
+
+            int drawW = (int)Math.Round(src.Width  * s);
+            int drawH = (int)Math.Round(src.Height * s);
+
+            var canvas = new Bitmap(targetW, targetH, PixelFormat.Format32bppArgb);
+            canvas.SetResolution(src.HorizontalResolution, src.VerticalResolution);
+            using var g = Graphics.FromImage(canvas);
+            g.Clear(Color.White);
+
+            if (Math.Abs(s - 1.0) < 0.001)
+            {
+                // Exact 1:1 copy — pixel-perfect, no interpolation
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+                g.PixelOffsetMode   = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+                g.DrawImageUnscaled(src, (targetW - drawW) / 2, (targetH - drawH) / 2);
+            }
+            else
+            {
+                // Scale (up or down) with highest quality bicubic
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                g.SmoothingMode     = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+                g.PixelOffsetMode   = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+                g.DrawImage(src, (targetW - drawW) / 2, (targetH - drawH) / 2, drawW, drawH);
+            }
+
+            return canvas;
         }
 
         // ── Helper ────────────────────────────────────────────────────────────

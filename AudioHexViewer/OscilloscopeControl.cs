@@ -2625,35 +2625,97 @@ namespace AudioHexViewer
             return sb;
         }
 
-        public void ExportPng(string filePath, int scale = 2, string? headerTitle = null, string? footerText = null)
+        public void ExportPng(string filePath, int scale = 2, string? headerTitle = null, string? footerText = null, bool padToA4 = false)
         {
-            _isExporting = true;
-            using var capture = ChartExport.CaptureControl(pnlScope, scale);
-            _isExporting = false;
-            int headerPx  = ChartExport.HeaderPixels(headerTitle, scale);
+            int headerPx = ChartExport.HeaderPixels(headerTitle, scale);
 
-            // Le graphique oscillo n'a pas de marge blanche en bas.
-            // On en ajoute une pour que le footer soit visible hors du graphique.
-            int footerMargin = string.IsNullOrWhiteSpace(footerText) ? 0 : (int)(28 * scale);
-
-            if (footerMargin > 0)
+            if (padToA4)
             {
-                using var expanded = new System.Drawing.Bitmap(
-                    capture.Width, capture.Height + footerMargin);
-                using (var g = System.Drawing.Graphics.FromImage(expanded))
+                // ── A4 export : capture native + scale to fill page ─────────────────────
+                // The oscilloscope GDI+ panel cannot be re-rendered at an arbitrary size
+                // (unlike WinForms Charts).  Instead we:
+                //   1. Capture at native resolution
+                //   2. Scale to fill the A4 chart area with FitScaleIntoCanvas
+                //      (proportional fit — no distortion, white letterboxing if needed)
+                //   3. Compose the final A4 bitmap: header at top, chart, footer at bottom
+                int targetW    = pnlScope.Width * scale;
+                int totalA4H   = (int)Math.Round(targetW / Math.Sqrt(2));
+                int footerH    = string.IsNullOrWhiteSpace(footerText) ? 0 : 28 * scale;
+                int chartAreaH = Math.Max(totalA4H - headerPx - footerH, 50);
+
+                // Temporarily resize pnlScope to A4-proportioned dimensions, then restore.
+                // This is the exact equivalent of clone.Size = A4 for WinForms MSChart:
+                // the GDI+ paint handler re-layouts at the target aspect ratio, so the
+                // export canvas is fully occupied with no letterboxing and no distortion.
+                int _renderW = pnlScope.Width;
+                int _renderH = Math.Max(chartAreaH / scale, 50);
+                var _origSize = pnlScope.Size;
+                pnlScope.Size = new System.Drawing.Size(_renderW, _renderH);
+                _isExporting = true;
+                using var native = new System.Drawing.Bitmap(_renderW, _renderH,
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                pnlScope.DrawToBitmap(native,
+                    new System.Drawing.Rectangle(0, 0, _renderW, _renderH));
+                _isExporting = false;
+                pnlScope.Size = _origSize;   // restore immediately
+
+                // Upscale to full export resolution (uniform ×scale in both axes)
+                using var scaled = new System.Drawing.Bitmap(targetW, chartAreaH,
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                using (var _gs = System.Drawing.Graphics.FromImage(scaled))
+                {
+                    _gs.Clear(System.Drawing.Color.White);
+                    _gs.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    _gs.SmoothingMode     = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+                    _gs.PixelOffsetMode   = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+                    _gs.DrawImage(native, 0, 0, targetW, chartAreaH);
+                }
+
+                // Compose A4 canvas: header · chart · (footer drawn in-place)
+                // Do NOT call SetResolution here: GDI+ would auto-scale the
+                // 96-DPI `scaled` bitmap to 32% of its size when drawn onto a
+                // 300-DPI canvas.  SaveBitmap sets the DPI metadata at the end.
+                using var a4 = new System.Drawing.Bitmap(targetW, totalA4H,
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                using (var g = System.Drawing.Graphics.FromImage(a4))
                 {
                     g.Clear(System.Drawing.Color.White);
-                    g.DrawImage(capture, 0, 0);
+                    g.DrawImage(scaled, 0, headerPx);
                 }
-                ChartExport.SaveChartPng(
-                    expanded, filePath, headerPx, headerTitle,
-                    scale, dpi: 300, footerText: footerText);
+                if (headerPx > 0 && !string.IsNullOrWhiteSpace(headerTitle))
+                    ChartExport.DrawHeaderOnBitmap(a4, headerPx, headerTitle!, scale);
+                if (!string.IsNullOrWhiteSpace(footerText))
+                    ChartExport.DrawFooterOnBitmap(a4, footerText!, scale);
+
+                ChartExport.SaveBitmap(a4, filePath, dpi: 300);
             }
             else
             {
-                ChartExport.SaveChartPng(
-                    capture, filePath, headerPx, headerTitle,
-                    scale, dpi: 300, footerText: footerText);
+                // ── Standard export (screen size × scale) ─────────────────────────────────
+                _isExporting = true;
+                using var capture = ChartExport.CaptureControl(pnlScope, scale);
+                _isExporting = false;
+
+                int footerMargin = string.IsNullOrWhiteSpace(footerText) ? 0 : (int)(28 * scale);
+                if (footerMargin > 0)
+                {
+                    using var expanded = new System.Drawing.Bitmap(
+                        capture.Width, capture.Height + footerMargin);
+                    using (var g = System.Drawing.Graphics.FromImage(expanded))
+                    {
+                        g.Clear(System.Drawing.Color.White);
+                        g.DrawImage(capture, 0, 0);
+                    }
+                    ChartExport.SaveChartPng(
+                        expanded, filePath, headerPx, headerTitle,
+                        scale, dpi: 300, footerText: footerText);
+                }
+                else
+                {
+                    ChartExport.SaveChartPng(
+                        capture, filePath, headerPx, headerTitle,
+                        scale, dpi: 300, footerText: footerText);
+                }
             }
         }
 
