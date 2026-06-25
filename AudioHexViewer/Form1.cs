@@ -1695,6 +1695,28 @@ namespace AudioHexViewer
 
         //
         //
+        private void menuDocumentation_Click(object? sender, EventArgs e)
+        {
+            string docPath = System.IO.Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory,
+                "doc",
+                "documentation.html");
+
+            if (!System.IO.File.Exists(docPath))
+            {
+                MessageBox.Show(
+                    $"Documentation file not found:\n{docPath}",
+                    "Documentation",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo(docPath)
+                { UseShellExecute = true });
+        }
+
         private void menuAbout_Click(object? sender, EventArgs e)
         {
             using var about = new SplashScreen(aboutMode: true);
@@ -3042,14 +3064,14 @@ namespace AudioHexViewer
             };
         }
 
-        private void DoExportPng(string filePath, int scale, string? title = null, string? footer = null, bool padToA4 = false)
+        private void DoExportPng(string filePath, int scale, string? title = null, string? footer = null)
         {
             var tab = GetActiveTab();
             switch (tab)
             {
-                case ActiveTab.Spectrum:     spectrumControl!    .ExportPng(filePath, scale, title, footer, padToA4); break;
-                case ActiveTab.Oscilloscope: oscilloscopeControl!.ExportPng(filePath, scale, title, footer, padToA4); break;
-                default:                     histogramControl!   .ExportPng(filePath, scale, title, footer, padToA4); break;
+                case ActiveTab.Spectrum:     spectrumControl!    .ExportPng(filePath, scale, title, footer); break;
+                case ActiveTab.Oscilloscope: oscilloscopeControl!.ExportPng(filePath, scale, title, footer); break;
+                default:                     histogramControl!   .ExportPng(filePath, scale, title, footer); break;
             }
         }
 
@@ -3081,7 +3103,7 @@ namespace AudioHexViewer
 
             if (ShowCommonDialogSafe(sfd) != DialogResult.OK) return;
 
-            try   { DoExportPng(sfd.FileName, scale: 2, padToA4: true); }
+            try   { DoExportPng(sfd.FileName, scale: 2); }
             catch (Exception ex) { MessageBox.Show(ex.Message, "Export PNG", MessageBoxButtons.OK, MessageBoxIcon.Error); }
         }
 
@@ -3210,11 +3232,11 @@ namespace AudioHexViewer
             var pages = new System.Collections.Generic.List<(string name, System.Action<string> export)>();
             string footer = GetDeviceFooterText();
             if (dlg.IncludeSpectrum  && spectrumControl     != null)
-                pages.Add(("Spectrum",     p => spectrumControl!    .ExportPng(p, scale, fullTitle, footer, padToA4: true)));
+                pages.Add(("Spectrum",     p => spectrumControl!    .ExportPng(p, scale, fullTitle, footer)));
             if (dlg.IncludeHistogram && histogramControl    != null)
-                pages.Add(("Histogram",    p => histogramControl!   .ExportPng(p, scale, fullTitle, footer, padToA4: true)));
+                pages.Add(("Histogram",    p => histogramControl!   .ExportPng(p, scale, fullTitle, footer)));
             if (dlg.IncludeOscillo   && oscilloscopeControl != null)
-                pages.Add(("Oscilloscope", p => oscilloscopeControl!.ExportPng(p, scale, fullTitle, footer, padToA4: true)));
+                pages.Add(("Oscilloscope", p => oscilloscopeControl!.ExportPng(p, scale, fullTitle, footer)));
 
             if (pages.Count == 0)
             {

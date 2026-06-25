@@ -213,5 +213,12 @@
     </Compile>
   </ItemGroup>
 
+  <ItemGroup>
+  <Content Include="doc\**\*">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+  </Content>
+</ItemGroup>
+
 </Project>
   <!-- PATCHED: GeneratorCalibrationDialog Designer dependency -->

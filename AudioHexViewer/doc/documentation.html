@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AudioHexViewer — Documentation</title>
+<style>
+/* ── Reset & base ───────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 15px;
+       line-height: 1.65; color: #1a202c; background: #f0f4f8; display: flex; }
+
+/* ── Sidebar ────────────────────────────────────────────────────── */
+#sidebar {
+  position: fixed; top: 0; left: 0; width: 270px; height: 100vh;
+  background: #0f1e30; color: #c8d8ec; overflow-y: auto; z-index: 100;
+  display: flex; flex-direction: column;
+}
+#sidebar-header {
+  padding: 22px 20px 16px;
+  background: #0a1520;
+  border-bottom: 1px solid #1e3a5f;
+}
+#sidebar-header h1 { font-size: 16px; font-weight: 700; color: #5ab4ff; letter-spacing: 0.5px; }
+#sidebar-header p  { font-size: 11px; color: #6b8aaa; margin-top: 3px; }
+#sidebar nav { padding: 10px 0 30px; flex: 1; }
+#sidebar nav a {
+  display: block; padding: 5px 20px 5px 24px;
+  color: #9bb8d8; text-decoration: none; font-size: 13px; border-left: 3px solid transparent;
+  transition: all .15s;
+}
+#sidebar nav a:hover { color: #e2eeff; background: rgba(90,180,255,.07); }
+#sidebar nav a.active { color: #5ab4ff; border-left-color: #5ab4ff; background: rgba(90,180,255,.1); }
+#sidebar nav .nav-section {
+  padding: 14px 20px 4px; font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
+  color: #3e5c7a; text-transform: uppercase;
+}
+#sidebar nav a.sub { padding-left: 38px; font-size: 12.5px; }
+
+/* ── Main content ───────────────────────────────────────────────── */
+#content { margin-left: 270px; min-height: 100vh; width: calc(100% - 270px); }
+.content-inner { max-width: 960px; padding: 40px 50px 80px; margin: 0 auto; }
+
+/* ── Section headings ───────────────────────────────────────────── */
+h1.page-title {
+  font-size: 28px; font-weight: 700; color: #0f3a6e;
+  border-bottom: 3px solid #1a6fc4; padding-bottom: 10px; margin-bottom: 28px;
+}
+h2 { font-size: 20px; font-weight: 700; color: #0f3a6e; margin: 42px 0 14px;
+     padding-left: 12px; border-left: 4px solid #1a6fc4; }
+h3 { font-size: 16px; font-weight: 600; color: #1a3a5c; margin: 28px 0 10px; }
+h4 { font-size: 14px; font-weight: 600; color: #2a4a6c; margin: 18px 0 8px; }
+p  { margin-bottom: 12px; }
+
+/* ── Images ─────────────────────────────────────────────────────── */
+.screenshot {
+  display: block; max-width: 100%; border: 1px solid #cdd8e8;
+  border-radius: 6px; box-shadow: 0 3px 12px rgba(0,40,80,.12);
+  margin: 16px auto 8px;
+}
+.screenshot.small  { max-width: 420px; }
+.screenshot.medium { max-width: 620px; }
+.caption { text-align: center; font-size: 12.5px; color: #5a7090; margin-bottom: 20px; font-style: italic; }
+
+/* ── Parameter tables ───────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; margin: 14px 0 20px; font-size: 13.5px; }
+th { background: #1a4f82; color: #fff; padding: 9px 14px; text-align: left; font-weight: 600; }
+td { padding: 8px 14px; border-bottom: 1px solid #dde6f0; vertical-align: top; }
+tr:nth-child(even) td { background: #f5f8fd; }
+td code { background: #e6edf8; border-radius: 3px; padding: 1px 5px; font-size: 12.5px; }
+td:first-child { font-weight: 600; white-space: nowrap; color: #1a3a5c; }
+
+/* ── Notes/tips ─────────────────────────────────────────────────── */
+.note, .tip, .warning {
+  border-radius: 6px; padding: 12px 16px; margin: 16px 0; font-size: 13.5px;
+}
+.note    { background: #e8f0fe; border-left: 4px solid #1a6fc4; }
+.tip     { background: #e6f6ec; border-left: 4px solid #28a745; }
+.warning { background: #fff3cd; border-left: 4px solid #f0a500; }
+.note strong, .tip strong, .warning strong { font-weight: 700; }
+
+/* ── Inline code & values ───────────────────────────────────────── */
+code { background: #e8edf6; border-radius: 3px; padding: 1px 5px;
+       font-size: 13px; font-family: 'Consolas', monospace; color: #1a3a5c; }
+.key { display: inline-block; background: #2a4a6c; color: #fff; border-radius: 4px;
+       padding: 1px 8px; font-size: 12px; font-weight: 600; }
+.val { font-weight: 600; color: #1a5fa8; }
+
+/* ── Signal type grid ───────────────────────────────────────────── */
+.sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 16px 0; }
+.sig-card { background: #fff; border: 1px solid #cdd8e8; border-radius: 8px;
+            padding: 16px; box-shadow: 0 2px 6px rgba(0,40,80,.07); }
+.sig-card h4 { margin-top: 0; color: #1a5fa8; }
+.sig-card img { max-width: 100%; border-radius: 4px; margin: 8px 0; border: 1px solid #cdd8e8; }
+
+/* ── Two-column layout ──────────────────────────────────────────── */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+
+/* ── Divider ─────────────────────────────────────────────────────── */
+hr { border: none; border-top: 1px solid #d0dae8; margin: 36px 0; }
+
+/* ── Top anchor offset (fixed sidebar) ─────────────────────────── */
+:target::before { content: ''; display: block; height: 20px; margin-top: -20px; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════════
+     SIDEBAR
+     ════════════════════════════════════════════════════════════════ -->
+<nav id="sidebar">
+  <div id="sidebar-header">
+    <h1>AudioHexViewer</h1>
+    <p>User Documentation</p>
+  </div>
+  <nav>
+    <div class="nav-section">Getting Started</div>
+    <a href="#overview">Overview</a>
+    <a href="#main-window">Main Window</a>
+    <a href="#audio-devices">Audio Devices</a>
+    <a href="#calibration">Level Calibration</a>
+
+    <div class="nav-section">Spectrum Analyser</div>
+    <a href="#spectrum-overview">Interface</a>
+    <a href="#trace-mode">Trace Mode</a>
+    <a href="#windowing">Windowing</a>
+    <a href="#averaging">Averaging</a>
+    <a href="#trace-hold">Trace Hold</a>
+    <a href="#thd">THD / Distortion</a>
+    <a href="#spectrum-cursors">Cursors</a>
+    <a href="#bode-plot">Bode Plot</a>
+    <a href="#axis-parameters">Axis Parameters</a>
+    <a href="#spectrum-overlays">Overlays</a>
+    <a href="#spectrum-panel">Measurement Panel</a>
+
+    <div class="nav-section">Histogram</div>
+    <a href="#histo-overview">Interface</a>
+    <a href="#histo-controls">Controls</a>
+    <a href="#histo-display">Display Modes</a>
+    <a href="#histo-panel">Statistics Panel</a>
+
+    <div class="nav-section">Oscilloscope</div>
+    <a href="#scope-overview">Interface</a>
+    <a href="#scope-vertical">Vertical Scale</a>
+    <a href="#scope-timebase">Timebase</a>
+    <a href="#scope-trigger">Trigger</a>
+    <a href="#scope-cursors">Cursors</a>
+    <a href="#scope-display">Display Options</a>
+    <a href="#scope-overlays">Overlays</a>
+    <a href="#scope-panel">Measurement Panel</a>
+
+    <div class="nav-section">Generator</div>
+    <a href="#gen-overview">Interface &amp; Output</a>
+    <a href="#gen-sine">Sine</a>
+    <a href="#gen-square">Square / Triangle / Sawtooth</a>
+    <a href="#gen-noise">White &amp; Pink Noise</a>
+    <a href="#gen-sweep">Sweep</a>
+    <a href="#gen-burst">Tone Burst</a>
+    <a href="#gen-imd">Two-Tone (IMD)</a>
+
+    <div class="nav-section">Tools &amp; Utilities</div>
+    <a href="#dataview">DataView</a>
+    <a href="#allformats">All Data Formats</a>
+    <a href="#device-info">Device Info</a>
+
+    <div class="nav-section">Export</div>
+    <a href="#export-png">Export to PNG</a>
+    <a href="#export-pdf">Export to PDF</a>
+    <a href="#export-csv">Export to CSV</a>
+
+    <div class="nav-section">Settings</div>
+    <a href="#display-setup">Display Setup (Colours)</a>
+    <a href="#menus">Menu Reference</a>
+  </nav>
+</nav>
+
+<!-- ════════════════════════════════════════════════════════════════
+     MAIN CONTENT
+     ════════════════════════════════════════════════════════════════ -->
+<main id="content">
+<div class="content-inner">
+
+<!-- ══════════════ OVERVIEW ══════════════ -->
+<section id="overview">
+<h1 class="page-title">AudioHexViewer — User Documentation</h1>
+<p>AudioHexViewer is a professional audio analysis application for Windows. It captures audio in real time via WASAPI (including Exclusive Mode up to 768 kHz) and provides three complementary analysis views: a high-resolution <strong>FFT Spectrum Analyser</strong>, a <strong>Sample Histogram</strong> with ENOB measurement, and a <strong>Digital Oscilloscope</strong>. An integrated configurable <strong>Signal Generator</strong> allows testing without external hardware.</p>
+<p>All session parameters are saved automatically on exit and restored on next launch.</p>
+
+<h3>System Requirements</h3>
+<table>
+<tr><td>Operating System</td><td>Windows 10 / 11 (64-bit)</td></tr>
+<tr><td>Runtime</td><td>.NET 10</td></tr>
+<tr><td>Audio Interface</td><td>Any WASAPI-compatible device</td></tr>
+<tr><td>Display</td><td>1280 × 800 minimum, 1920 × 1080 recommended</td></tr>
+</table>
+</section>
+
+<hr>
+
+<!-- ══════════════ MAIN WINDOW ══════════════ -->
+<section id="main-window">
+<h1 class="page-title">Main Window</h1>
+<img src="img/MainWindow.png" class="screenshot" alt="AudioHexViewer main window">
+<p class="caption">Main window — Spectrum tab, stopped, measurement panel visible</p>
+
+<p>The main window is divided into four areas:</p>
+<table>
+<tr><td>Title bar</td><td>Displays the application name and, when running, the active input device name and sample rate.</td></tr>
+<tr><td>Menu bar</td><td><code>Devices · Generator · Overlap · Sample size · Colors · View · Export · Tools · Help</code></td></tr>
+<tr><td>Toolbar</td><td>11 quick-access buttons (see below).</td></tr>
+<tr><td>Tab bar</td><td>Three analysis tabs: <strong>Spectrum</strong>, <strong>Oscilloscope</strong>, <strong>Histogram</strong>. The active tab is highlighted in green when acquisition is running.</td></tr>
+</table>
+
+<h2>Toolbar Buttons</h2>
+<table>
+<tr><th>Button</th><th>Action</th></tr>
+<tr><td>Audio Devices</td><td>Open the Audio Devices configuration dialog.</td></tr>
+<tr><td>Generator</td><td>Open the Signal Generator window. Right-click for additional options.</td></tr>
+<tr><td>Display Setup</td><td>Open the colour and style configuration dialog.</td></tr>
+<tr><td>DataView</td><td>Open the DataView floating window (VU-meter + live sample value).</td></tr>
+<tr><td>All Data Formats</td><td>Open the All Data Formats snapshot window.</td></tr>
+<tr><td>Side Panel</td><td>Toggle the measurement panel on the right side of the graph (toggle button).</td></tr>
+<tr><td>Always on Top</td><td>Keep the main window on top of all other windows (toggle button).</td></tr>
+<tr><td>Copy to Clipboard</td><td>Copy the current graph to the system clipboard as an image.</td></tr>
+<tr><td>Export PNG</td><td>Export the current graph as a PNG image file.</td></tr>
+<tr><td>Export CSV</td><td>Export analysis data to a CSV file.</td></tr>
+<tr><td>Export PDF</td><td>Export all analysis tabs to a multi-page PDF document.</td></tr>
+</table>
+
+<h2>Offline Mode — Title Bar</h2>
+<img src="img/OfflineMode.png" class="screenshot" alt="Offline mode">
+<p class="caption">In offline mode, the title bar shows the source file name, sample rate, bit depth and playback progress</p>
+<p>In OFFLINE mode, the top-right area of the window shows a progress bar and the elapsed / total playback time. The file name and format are displayed in the title bar.</p>
+</section>
+
+<hr>
+
+<!-- ══════════════ AUDIO DEVICES ══════════════ -->
+<section id="audio-devices">
+<h1 class="page-title">Audio Devices</h1>
+<p>Open the Audio Devices dialog from the toolbar or the <strong>Devices</strong> menu.</p>
+
+<div class="two-col">
+  <div>
+    <img src="img/AudioDevices_online.png" class="screenshot" alt="Audio Devices — LIVE">
+    <p class="caption">LIVE mode</p>
+  </div>
+  <div>
+    <img src="img/AudioDevices_offline.png" class="screenshot" alt="Audio Devices — OFFLINE">
+    <p class="caption">OFFLINE mode</p>
+  </div>
+</div>
+
+<h2>Analyzer Input</h2>
+<p>Select <strong>LIVE</strong> or <strong>OFFLINE</strong> at the top of the section.</p>
+<table>
+<tr><th>Parameter</th><th>Description</th></tr>
+<tr><td>DEVICE</td><td>Select the WASAPI input device (capture device).</td></tr>
+<tr><td>SAMPLE RATE</td><td>Choose from: 44.1 · 48 · 88.2 · 96 · 176.4 · 192 · 352.8 · 384 · 705.6 · 768 kHz. The available rates depend on the device and whether Exclusive Mode is supported.</td></tr>
+<tr><td>FORMAT</td><td>Displays the negotiated format: encoding, sample rate, bit depth, number of channels (read-only).</td></tr>
+<tr><td>BUFFER</td><td>Ring buffer size in samples (16k · 32k · 64k · 128k · 256k · 512k). Larger buffers allow bigger FFT sizes but introduce more latency.</td></tr>
+</table>
+
+<h3>OFFLINE mode</h3>
+<p>Click <strong>Open</strong> to select a WAV or FLAC file. The selected file name is displayed next to the button. Enable <strong>Loop</strong> to repeat playback continuously.</p>
+
+<div class="note"><strong>Note:</strong> In OFFLINE mode, the device input selection is greyed out. The sample rate is read from the audio file.</div>
+
+<h2>Generator Output</h2>
+<table>
+<tr><th>Parameter</th><th>Description</th></tr>
+<tr><td>DEVICE</td><td>Select the WASAPI output device used by the Signal Generator.</td></tr>
+<tr><td>SAMPLE RATE</td><td>Output sample rate for the generator (independent from the analyser input rate).</td></tr>
+<tr><td>FORMAT</td><td>Negotiated output format (read-only).</td></tr>
+</table>
+
+<p>Click <strong>Device info…</strong> to open the Device Info window showing detailed WASAPI capabilities.</p>
+
+<h2 id="device-info">Device Info</h2>
+<img src="img/DeviceInfos.png" class="screenshot medium" alt="Device Info">
+<p class="caption">Device Info — showing supported Exclusive Mode sample rates</p>
+<p>The Device Info window (accessed from the Audio Devices dialog) shows:</p>
+<table>
+<tr><td>IDENTIFICATION</td><td>Device name, system ID, type (Input/Output), state.</td></tr>
+<tr><td>WINDOWS SHARED FORMAT</td><td>The format used in WASAPI Shared Mode: encoding, sample rate, bit depth, channels, block align, byte rate.</td></tr>
+<tr><td>EXCLUSIVE MODE — SUPPORTED SAMPLE RATES</td><td>All sample rates the device supports in WASAPI Exclusive Mode (checked = supported).</td></tr>
+<tr><td>CAPTURE STATUS</td><td>Current acquisition state (Idle / Running).</td></tr>
+</table>
+<p>Use the <strong>Input</strong> and <strong>Output</strong> tabs to switch between the two devices.</p>
+</section>
+
+<hr>
+
+<!-- ══════════════ CALIBRATION ══════════════ -->
+<section id="calibration">
+<h1 class="page-title">Level Calibration</h1>
+<img src="img/CalibrateLevel.png" class="screenshot small" alt="Calibrate Level">
+<p class="caption">Calibrate Input Level dialog (dBFS → dBV)</p>
+<p>The calibration dialog lets you establish a correspondence between the digital full-scale level (0 dBFS) and a real voltage in Vrms. This allows measurements in dBV, Vrms, Vpeak and Vdc throughout the application.</p>
+
+<h3>Procedure</h3>
+<ol style="margin: 10px 0 14px 24px; line-height: 2;">
+  <li>Apply a stable, known AC signal to the input (e.g. a 1 kHz sine from a calibrated source).</li>
+  <li>Measure the actual RMS voltage at the input with a calibrated voltmeter.</li>
+  <li>Enter the measured Vrms value for the Left channel (and Right if different).</li>
+  <li>Click <strong>Apply</strong>. The calculated 0 dBFS equivalent is shown below each field.</li>
+</ol>
+<p>Click <strong>CLEAR</strong> to remove the calibration and revert to uncalibrated mode.</p>
+<div class="note"><strong>Note:</strong> The calibration is stored in the session and applied to all voltage readouts across the Spectrum, Histogram, Oscilloscope and DataView.</div>
+</section>
+
+<hr>
+
+<!-- ════════════════════════════════════════
+     SPECTRUM ANALYSER
+     ════════════════════════════════════════ -->
+<section id="spectrum-overview">
+<h1 class="page-title">Spectrum Analyser</h1>
+<img src="img/SpectrumPanelON.png" class="screenshot" alt="Spectrum tab — measurement panel visible">
+<p class="caption">Spectrum tab running at 768 kHz with 1 048 576-point FFT, averaging 8</p>
+<img src="img/SpectrumPanelOFF.png" class="screenshot" alt="Spectrum tab — panel hidden">
+<p class="caption">Spectrum tab with the side measurement panel hidden — maximum graph width</p>
+
+<p>The Spectrum Analyser displays the FFT magnitude spectrum of the audio input. The X axis is frequency (Hz, logarithmic by default), the Y axis is level in dBFS (or dBV / dBGain when calibrated).</p>
+<p>The status bar below the control panel shows the current analysis parameters:<br>
+<code>Channel · SR · N · ΔF · Overlap% · Window · Avg</code></p>
+</section>
+
+<!-- ─── Trace Mode ─── -->
+<section id="trace-mode">
+<h2>Trace Mode</h2>
+<img src="img/Menu_FFT_TraceModes.png" class="screenshot small" alt="Trace mode menu">
+<p class="caption">Trace mode selector</p>
+<table>
+<tr><th>Mode</th><th>Description</th></tr>
+<tr><td>Left</td><td>Display the FFT of the left channel only.</td></tr>
+<tr><td>Right</td><td>Display the FFT of the right channel only.</td></tr>
+<tr><td>L+R</td><td>Overlay both channels on the same graph.</td></tr>
+<tr><td>Bode Plot</td><td>Display the transfer function between Right (stimulus) and Left (response). See <a href="#bode-plot">Bode Plot</a> section.</td></tr>
+</table>
+</section>
+
+<!-- ─── Windowing ─── -->
+<section id="windowing">
+<h2>Windowing</h2>
+<img src="img/Menu_FFTWindows.png" class="screenshot small" alt="Window function menu">
+<p class="caption">Window function selector</p>
+<table>
+<tr><th>Window</th><th>Main-lobe width</th><th>Side-lobe level</th><th>Best for</th></tr>
+<tr><td>Rectangular</td><td>Narrowest</td><td>High (−13 dB)</td><td>Transient analysis, coherent capture</td></tr>
+<tr><td>Hann</td><td>Medium</td><td>−31 dB</td><td>General-purpose, good frequency resolution</td></tr>
+<tr><td>Hamming</td><td>Medium</td><td>−41 dB</td><td>Similar to Hann, slightly better side-lobe rejection</td></tr>
+<tr><td>Blackman-Harris 4</td><td>Wide</td><td>−92 dB</td><td>High dynamic range measurements</td></tr>
+<tr><td>Blackman-Harris 7</td><td>Widest</td><td>−180 dB</td><td>Ultra-high dynamic range, THD, SFDR</td></tr>
+</table>
+<div class="tip"><strong>Tip:</strong> For THD and SFDR measurements, use <strong>Blackman-Harris 7</strong>. It provides the lowest spectral leakage, allowing accurate measurement of harmonics many dB below the fundamental.</div>
+
+<h3>Sample Size</h3>
+<img src="img/FFT_SempleSizeMenu.png" class="screenshot medium" alt="Sample Size menu">
+<p class="caption">Sample size selection via the <strong>Sample size</strong> menu</p>
+<p>The FFT size (number of samples per analysis frame) is set from the <strong>Sample size</strong> menu in the menu bar. Available values:</p>
+<p style="font-family:monospace; background:#e8edf6; padding:8px 14px; border-radius:4px; font-size:13px;">
+8 192 &nbsp;·&nbsp; 16 384 &nbsp;·&nbsp; 32 768 &nbsp;·&nbsp; 65 536 &nbsp;·&nbsp; 131 072 &nbsp;·&nbsp; 262 144 &nbsp;·&nbsp; 524 288 &nbsp;·&nbsp; 1 048 576 &nbsp;·&nbsp; 2 097 152 &nbsp;·&nbsp; 4 194 304
+</p>
+<p>The frequency resolution ΔF = SR / N. For example, at 768 kHz with N = 1 048 576: ΔF = 0.73 Hz.</p>
+<div class="note"><strong>Note:</strong> Large FFT sizes require proportionally more RAM and CPU. The <strong>BUFFER</strong> size in the Audio Devices dialog must be at least equal to N.</div>
+
+<h3>Overlap</h3>
+<img src="img/FFT_OverlapMenu.png" class="screenshot medium" alt="Overlap menu">
+<p class="caption">Overlap menu (accessible via the <strong>Overlap</strong> menu in the menu bar)</p>
+<p>Overlap determines how much consecutive FFT frames share. Higher overlap gives a smoother spectrum update and better time resolution. Available values: <val>0% · 50% · 75% · 87.5% · 93.75%</val></p>
+</section>
+
+<!-- ─── Averaging ─── -->
+<section id="averaging">
+<h2>Averaging</h2>
+<img src="img/Menu_FFTAevraging.png" class="screenshot small" alt="Averaging menu">
+<p class="caption">Averaging options</p>
+<table>
+<tr><th>Mode</th><th>Description</th></tr>
+<tr><td>None</td><td>No averaging. Each FFT frame is displayed immediately.</td></tr>
+<tr><td>2 … 128</td><td><strong>Linear averaging</strong>: the spectrum is the arithmetic mean of the last N frames. The <em>N AVG</em> counter in the control bar shows how many frames have been accumulated. Click <strong>CLR</strong> to reset.</td></tr>
+<tr><td>Exp 0.5 … Exp 0.97</td><td><strong>Exponential (leaky) averaging</strong>: each new frame is blended with the previous result using the given α coefficient. Higher α = slower decay, more smoothing. Reacts continuously to signal changes.</td></tr>
+</table>
+<div class="tip"><strong>Tip:</strong> Exponential averaging is ideal for real-time monitoring. Linear averaging is better for stable measurements where you want to accumulate exactly N frames then read the result.</div>
+</section>
+
+<!-- ─── Trace Hold ─── -->
+<section id="trace-hold">
+<h2>Trace Hold</h2>
+<p>The TRACE HOLD section has two independent hold traces, each with its own colour (configured in <a href="#display-setup">Display Setup</a>).</p>
+<table>
+<tr><th>Button</th><th>Description</th></tr>
+<tr><td>MAXI</td><td><strong>Maximum hold</strong>: retains the highest level ever seen at each frequency bin. Useful for finding peak emissions or characterising worst-case noise.</td></tr>
+<tr><td>MINI</td><td><strong>Minimum hold</strong>: retains the lowest level ever seen at each frequency bin. Useful for noise floor characterisation.</td></tr>
+</table>
+<p>Click a hold button to activate it (button lights up). Click again to deactivate. <strong>Right-clicking</strong> on a hold button resets the hold trace.</p>
+<p>Hold trace colours and thickness are configured in <a href="#display-setup">Display Setup</a> under the <strong>TRACES HOLD</strong> section (Min Left, Max Left, Min Right, Max Right).</p>
+</section>
+
+<!-- ─── THD ─── -->
+<section id="thd">
+<h2>THD / Distortion</h2>
+<p>The DISTORTION section provides harmonic distortion (THD) and spurious-free dynamic range (SFDR) measurements.</p>
+<table>
+<tr><th>Control</th><th>Description</th></tr>
+<tr><td>THD button</td><td>Toggle the THD / SFDR readout overlay on the graph. The fundamental and harmonics are marked with vertical lines; THD and SFDR values appear on the graph.</td></tr>
+<tr><td>Setting</td><td>Open the THD Settings dialog.</td></tr>
+</table>
+
+<h3>THD Settings Dialog</h3>
+<img src="img/Menu-THD_Settings.png" class="screenshot small" alt="THD Settings">
+<p class="caption">THD Settings dialog</p>
+<table>
+<tr><th>Parameter</th><th>Description</th></tr>
+<tr><td>THD FREQUENCY LIMITS — Flow / Fhigh</td><td>Frequency window for THD harmonic search. HPF / LPF checkboxes enable high-pass and low-pass filtering of the search range.</td></tr>
+<tr><td>SFDR FREQUENCY LIMITS — Flow / Fhigh</td><td>Frequency window for SFDR spur search. HPF / LPF checkboxes filter the range.</td></tr>
+<tr><td>HARMONICS — Number</td><td>Number of harmonics to include in the THD calculation (up to the configured limit).</td></tr>
+<tr><td>Show</td><td>Display harmonic markers on the graph.</td></tr>
+<tr><td>Phase</td><td>Display harmonic phase information.</td></tr>
+<tr><td>THD unit</td><td>Express THD result in <strong>dB</strong> or <strong>%</strong>.</td></tr>
+<tr><td>Coherent averaging</td><td>Enable coherent averaging mode for THD. The analyser locks the FFT frame to the fundamental period and averages with phase correction, greatly improving harmonic measurement accuracy.</td></tr>
+</table>
+</section>
+
+<!-- ─── Cursors ─── -->
+<section id="spectrum-cursors">
+<h2>Cursors</h2>
+<p>The Spectrum tab has two independent frequency cursors: <strong>X1</strong> and <strong>X2</strong>. Each cursor is a vertical line on the graph.</p>
+<table>
+<tr><th>Control</th><th>Description</th></tr>
+<tr><td>X1 / X2 buttons</td><td>Activate the corresponding cursor. Click and drag the vertical line on the graph to position it. Cursor is highlighted when active.</td></tr>
+<tr><td>TRACE dropdown</td><td>Select which trace the cursor snaps to (Left, Right, or Auto).</td></tr>
+<tr><td>SET VAL (X1= ? / X2= ?)</td><td>Open a dialog to enter the cursor frequency numerically.<br>
+<img src="img/Menu_Set_frequency_cursors.png" class="screenshot small" alt="Set frequency dialog">
+Fine-adjustment buttons (÷10, ÷2, ×2, ×10) are available.</td></tr>
+<tr><td>PEAK buttons</td><td>Snap the cursor to the nearest spectral peak. <strong>Right-clicking</strong> opens the peak navigation menu (see below).</td></tr>
+</table>
+
+<h4>Peak Navigation Menu</h4>
+<img src="img/MenuPeak.png" class="screenshot small" alt="Peak menu">
+<div class="two-col">
+  <table>
+  <tr><td>Prev Peak</td><td>Move cursor to the previous peak to the left.</td></tr>
+  <tr><td>Next Peak</td><td>Move cursor to the next peak to the right.</td></tr>
+  <tr><td>Negative Peak</td><td>Snap to the deepest trough.</td></tr>
+  <tr><td>Prev / Next Negative Peak</td><td>Navigate between troughs.</td></tr>
+  <tr><td>Threshold Settings…</td><td>Set the noise-to-peak threshold (dB) for peak detection.</td></tr>
+  </table>
+  <div>
+    <img src="img/MenuPeak_ThresholdSetting.png" class="screenshot" alt="Peak threshold">
+    <p class="caption">Peak detection threshold</p>
+  </div>
+</div>
+
+<h3>Cursor Display Modes</h3>
+<p>The <strong>DISPLAY</strong> button cycles through four cursor display states:</p>
+<table>
+<tr><th>State</th><th>Description</th></tr>
+<tr><td>All</td><td>Cursor values are shown <em>both</em> in the side measurement panel and in a moveable floating box on the graph.</td></tr>
+<tr><td>Panel</td><td>Cursor values are shown in the side measurement panel only.</td></tr>
+<tr><td>Graph</td><td>Cursor values are shown in the floating box on the graph only.</td></tr>
+<tr><td>Off</td><td>Cursor values are hidden.</td></tr>
+</table>
+<p>The <strong>Label</strong> button (below DISPLAY) toggles ΔFrequency and ΔLevel arrows between the two cursors, displayed directly on the graph. These annotation elements are draggable.</p>
+</section>
+
+<!-- ─── Bode Plot ─── -->
+<section id="bode-plot">
+<h2>Bode Plot</h2>
+<img src="img/BodePlotCursorPanelON_Fullscreen.png" class="screenshot" alt="Bode Plot">
+<p class="caption">Bode Plot mode — transfer function with dual Y axis (Gain dB / Phase °)</p>
+
+<p>Bode Plot mode measures the transfer function between a stimulus and a response. Typical use: play a sweep or multi-harmonic reference signal through the <strong>Generator Output</strong> device, connect the <strong>DUT</strong> (Device Under Test) between output and input, then enable Bode Plot mode.</p>
+<ul style="margin: 10px 0 14px 28px; line-height: 2;">
+  <li><strong>Left axis (red trace)</strong>: Gain in dB</li>
+  <li><strong>Right axis (blue trace)</strong>: Phase in degrees</li>
+</ul>
+
+<h3>Bode Plot Controls</h3>
+<table>
+<tr><th>Control</th><th>Description</th></tr>
+<tr><td>φ (Phase button)</td><td>Toggle the phase trace on/off.</td></tr>
+<tr><td>Uw (Phase Unwrap)</td><td>Display the unwrapped phase — removes the ±180° discontinuities and shows the true continuous phase curve when phase rotation exceeds 180°.</td></tr>
+<tr><td>Capture</td><td>Record the current spectrum as the normalisation reference (the "baseline without DUT"). Once captured, all subsequent measurements are normalised to this reference curve.</td></tr>
+<tr><td>Norm</td><td>Toggle normalisation on/off. When ON, the display shows the ratio (DUT − reference), giving a true gain/phase plot of the DUT alone.</td></tr>
+</table>
+
+<h4>Reference Management (right-click on Capture)</h4>
+<img src="img/MenuCapture_BodePlot.png" class="screenshot small" alt="Bode reference menu">
+<table>
+<tr><td>Save reference…</td><td>Save the current normalisation curve to a <code>.spec.json</code> file in <code>Documents\AudioHexViewer\BodeRef\</code>.</td></tr>
+<tr><td>Load reference…</td><td>Load a previously saved reference curve from file.</td></tr>
+<tr><td>Clear reference</td><td>Remove the normalisation reference.</td></tr>
+</table>
+
+<h3>Bode Plot Measurement Panel</h3>
+<table>
+<tr><td>Normalisation</td><td>ON / OFF indicator</td></tr>
+<tr><td>Gain min / max</td><td>Minimum and maximum gain values found across the frequency range, with their frequency.</td></tr>
+<tr><td>φ min / max</td><td>Minimum and maximum phase values, with their frequency.</td></tr>
+<tr><td>COHERENCE γ²</td><td>Coherence function — a value of 100% indicates perfect linear correlation between stimulus and response (no noise or nonlinearities). Lower values indicate measurement uncertainty.</td></tr>
+</table>
+</section>
+
+<!-- ─── Axis Parameters ─── -->
+<section id="axis-parameters">
+<h2>Axis Parameters</h2>
+<div class="two-col">
+  <div>
+    <img src="img/Axis_FminFmax.png" class="screenshot" alt="Axis — Fmin/Fmax">
+    <p class="caption">Fmin / Fmax mode</p>
+  </div>
+  <div>
+    <img src="img/Axis_FcenterSpan.png" class="screenshot" alt="Axis — Center/Span">
+    <p class="caption">Center / Span mode</p>
+  </div>
+</div>
+<p>The Axis Parameters dialog is opened with the <strong>AXIS</strong> button in the control bar.</p>
+
+<h3>LEVEL</h3>
+<table>
+<tr><td>Level Top (dBFS)</td><td>The Y axis maximum (top of scale). Default: 0.</td></tr>
+<tr><td>Range (dBFS)</td><td>Total vertical span. Default: 160 dB (giving a scale of 0 to −160 dBFS).</td></tr>
+<tr><td>Fit button</td><td>Automatically sets Top and Range to fit the current spectrum data.</td></tr>
+<tr><td>De(fault) button</td><td>Reset to default values (0 dBFS top, 160 dB range).</td></tr>
+<tr><td>Vertical Unit</td><td>Select the Y axis unit: <strong>dBFS</strong> (relative to digital full scale) · <strong>dBV</strong> (absolute, requires level calibration) · <strong>dB Gain</strong> (for Bode Plot mode).</td></tr>
+</table>
+
+<h3>PHASE (Bode Plot mode only)</h3>
+<table>
+<tr><td>Phase max (°)</td><td>Top of the phase axis. Default: 180°.</td></tr>
+<tr><td>Phase range (°)</td><td>Total phase span. Default: 360°.</td></tr>
+</table>
+
+<h3>FREQUENCY RANGE</h3>
+<p>Toggle between <strong>Mini/Maxi</strong> (set Fmin and Fmax directly) and <strong>Center/Span</strong> modes using the tab buttons.</p>
+<table>
+<tr><td>F min / F max</td><td>Absolute lower and upper frequency bounds for the X axis.</td></tr>
+<tr><td>Center / Span</td><td>Center frequency and total span (alternative entry method).</td></tr>
+<tr><td>Default button</td><td>Reset all axis parameters to their default values.</td></tr>
+</table>
+
+<h3>LOG / LIN Button</h3>
+<p>Located in the AXIS SET section of the control bar. Switches the X axis between <strong>logarithmic</strong> (default, best for audio) and <strong>linear</strong> frequency scale.</p>
+</section>
+
+<!-- ─── Overlays (Spectrum) ─── -->
+<section id="spectrum-overlays">
+<h2>Overlays</h2>
+<img src="img/Overlays.png" class="screenshot small" alt="Overlays dialog">
+<p class="caption">Overlays management dialog</p>
+<p>Overlays allow up to <strong>8 stored reference curves</strong> to be displayed simultaneously on the Spectrum or Oscilloscope graph. They are stored as <code>.spec.json</code> (Spectrum) or <code>.scop.json</code> (Oscilloscope) files.</p>
+<table>
+<tr><th>Control</th><th>Description</th></tr>
+<tr><td>Record</td><td>Capture the current live trace and add it as a new overlay.</td></tr>
+<tr><td>Import</td><td>Load an overlay from a <code>.spec.json</code> or <code>.scop.json</code> file.</td></tr>
+<tr><td>Export</td><td>Save the selected overlay(s) to file.</td></tr>
+<tr><td>Remove</td><td>Remove the selected overlay from the list (does not delete the file).</td></tr>
+<tr><td>Overlay list</td><td>Each row shows: enable checkbox · colour indicator · Name · Type · SR · Range. Click a row to select it.</td></tr>
+<tr><td>Delete</td><td>Permanently delete the selected overlay file.</td></tr>
+<tr><td>Overlay folder</td><td>Open the overlay storage folder in Windows Explorer.</td></tr>
+</table>
+<p>Overlay colours are configured in <a href="#display-setup">Display Setup</a>. The <strong>Overlay</strong> button in the main control bar opens this dialog.</p>
+</section>
+
+<!-- ─── Spectrum Measurement Panel ─── -->
+<section id="spectrum-panel">
+<h2>Measurement Panel (Spectrum)</h2>
+<p>The side panel (toggle with the <strong>Side Panel</strong> toolbar button) shows real-time measurements for each channel.</p>
+<table>
+<tr><th>Value</th><th>Description</th></tr>
+<tr><td>Vrms</td><td>RMS voltage (Vrms or µV). Requires level calibration for absolute values.</td></tr>
+<tr><td>Vpeak</td><td>Peak voltage.</td></tr>
+<tr><td>Vdc</td><td>DC offset voltage.</td></tr>
+<tr><td>F0</td><td>Fundamental frequency (frequency of the highest spectral peak).</td></tr>
+<tr><td>dBFS peak</td><td>Level of the highest spectral peak in dBFS.</td></tr>
+<tr><td>dBFS rms</td><td>Total RMS level of the signal in dBFS.</td></tr>
+<tr><td>dBV peak</td><td>Peak level in dBV (requires calibration).</td></tr>
+<tr><td>dBV rms</td><td>RMS level in dBV (requires calibration).</td></tr>
+<tr><td>Cursor 1 / Cursor 2</td><td>Frequency and level at each cursor position.</td></tr>
+<tr><td>ΔDelta</td><td>Difference between Cursor 1 and Cursor 2: ΔFrequency and ΔLevel.</td></tr>
+</table>
+</section>
+
+<hr>
+
+<!-- ════════════════════════════════════════
+     HISTOGRAM
+     ════════════════════════════════════════ -->
+<section id="histo-overview">
+<h1 class="page-title">Histogram</h1>
+<img src="img/HistoPanelON.png" class="screenshot" alt="Histogram tab">
+<p class="caption">Histogram tab — Left channel, 256 LSB range, Bin 4 LSB, Averaging 128, GaussFIT + V BARS active</p>
+<img src="img/HistoPanelOFF.png" class="screenshot" alt="Histogram panel off">
+<p class="caption">Histogram with the side panel hidden</p>
+<p>The Histogram displays the statistical distribution of audio sample values. It is particularly useful for evaluating ADC quality: a purely random (noise) signal produces a Gaussian distribution, and deviations from this ideal shape reveal non-linearities.</p>
+</section>
+
+<section id="histo-controls">
+<h2>Controls</h2>
+<table>
+<tr><th>Control</th><th>Options</th><th>Description</th></tr>
+<tr><td>CHANNEL</td><td>Left · Right · Both</td><td>Select which channel(s) to analyse. "Both" overlays Left (red) and Right (blue).</td></tr>
+<tr><td>RANGE LSB</td><td>1 → 8 388 608</td><td>The total amplitude range displayed on the X axis, in LSB units. Set to match the expected signal amplitude.<br><img src="img/Menu_Histo_RangeLSB.png" class="screenshot small" alt="Range LSB menu"></td></tr>
+<tr><td>BIN LSB</td><td>1 → 65 536</td><td>The width of each histogram bin in LSB. Smaller bins give finer resolution but require more samples for statistical significance.<br><img src="img/Menu_Histo_BINLSB.png" class="screenshot small" alt="Bin LSB menu"></td></tr>
+<tr><td>AVERAGING</td><td>None · 2 · 4 · 8 · 16 · 32 · 64 · 128</td><td>Number of frames to average. Higher averaging smooths the histogram bars and improves the Gaussian fit accuracy.</td></tr>
+<tr><td>CLR</td><td>—</td><td>Clear the averaging accumulator and restart.</td></tr>
+<tr><td>COUPLE</td><td>DC · AC</td><td>DC: include the DC offset in the histogram range. AC: subtract the mean (centre the distribution at zero).</td></tr>
+</table>
+</section>
+
+<section id="histo-display">
+<h2>Display Modes</h2>
+<table>
+<tr><th>Button</th><th>Description</th></tr>
+<tr><td>GaussFIT</td><td>Overlay a fitted Gaussian curve on the histogram. The curve is drawn in a contrasting colour with a soft halo for visibility. Parameters (µ, σ) are fitted to the actual distribution.</td></tr>
+<tr><td>V BARS</td><td>Display σ marker lines at ±1σ, ±2σ or ±3σ (selected with the adjacent dropdown). These vertical bars show the standard deviation boundaries.</td></tr>
+<tr><td>Delta FIT</td><td>Display the difference between the actual histogram and the fitted Gaussian, revealing systematic deviations (DNL, missing codes, etc.).</td></tr>
+<tr><td>NORMA</td><td>Normalise the Y axis to probability density (PDF). Converts raw counts to a probability scale, making comparison between different acquisition lengths meaningful.</td></tr>
+<tr><td>Y SCALE — AUTO</td><td>Automatically adjust the Y axis scale to fit the data.</td></tr>
+</table>
+<p>The ±σ dropdown (adjacent to V BARS) selects: <code>±1σ · ±2σ · ±3σ</code></p>
+</section>
+
+<section id="histo-panel">
+<h2>Statistics Panel (Histogram)</h2>
+<table>
+<tr><th>Value</th><th>Description</th></tr>
+<tr><td>Samples</td><td>Total number of samples accumulated in the current histogram.</td></tr>
+<tr><td>Moy. (Mean)</td><td>Mean value of the distribution in LSB.</td></tr>
+<tr><td>RMS</td><td>RMS value in LSB.</td></tr>
+<tr><td>Min / Max</td><td>Minimum and maximum sample values observed.</td></tr>
+<tr><td>P-P</td><td>Peak-to-peak range (Max − Min) in LSB.</td></tr>
+<tr><td>DNL max</td><td><strong>Differential Non-Linearity</strong> — maximum deviation of any bin from the ideal 1 LSB width. Ideal = 0; values &gt; 0.5 indicate missing codes.</td></tr>
+<tr><td>ENOB</td><td><strong>Effective Number Of Bits</strong> — derived from the RMS noise level relative to full scale. Provides a single figure of merit for the ADC quality.</td></tr>
+</table>
+<div class="note"><strong>Note:</strong> DNL and ENOB values are shown separately for Left and Right channels. The Right channel row is blank when CHANNEL is set to "Left".</div>
+</section>
+
+<hr>
+
+<!-- ════════════════════════════════════════
+     OSCILLOSCOPE
+     ════════════════════════════════════════ -->
+<section id="scope-overview">
+<h1 class="page-title">Oscilloscope</h1>
+<img src="img/scope_cursors_PanelON.png" class="screenshot" alt="Oscilloscope">
+<p class="caption">Oscilloscope tab — Single trigger, cursors X and Y active, measurement panel visible</p>
+<p>The Oscilloscope displays the time-domain waveform of the audio signal. The display grid has <strong>10 horizontal divisions × 8 vertical divisions</strong>. Both channels (Left in red, Right in blue) are shown simultaneously.</p>
+<p>The status bar shows: <code>Channel · SR · Time/div · L gain · R gain · N · Trigger mode · Slope · Level · Source · PreTrig%</code></p>
+
+<h3>Screen Markers</h3>
+<table>
+<tr><td><strong>D</strong></td><td>Trigger position indicator — the point in time where the trigger event is located. Displayed at the top of the graph. Draggable to adjust the pre-trigger position.</td></tr>
+<tr><td><strong>B</strong></td><td>Baseline reference — the zero-amplitude line for the active channel. Displayed on the left Y axis. Draggable to adjust the vertical offset.</td></tr>
+<tr><td><strong>T</strong></td><td>Trigger level — the amplitude threshold for trigger detection. Displayed on the right side. Draggable to adjust the trigger level.</td></tr>
+</table>
+</section>
+
+<section id="scope-vertical">
+<h2>Vertical Scale</h2>
+<p>The oscilloscope has two vertical scale modes, selected with the <strong>V/div</strong> button:</p>
+
+<h3>V/div Mode (calibrated — V/div button active, lit green)</h3>
+<img src="img/Menu_scope_GainVolts.png" class="screenshot small" alt="V/div menu">
+<p class="caption">V/div options (calibrated mode)</p>
+<p>Each division represents a fixed voltage. Available settings:</p>
+<p style="font-family:monospace; background:#e8edf6; padding:8px 14px; border-radius:4px; font-size:13px;">
+1 mV/div · 2 mV/div · 5 mV/div · 10 mV/div · 20 mV/div · 50 mV/div · 100 mV/div · 200 mV/div · 500 mV/div · 1 V/div · 2 V/div · 5 V/div · 10 V/div
+</p>
+<div class="note"><strong>Note:</strong> V/div mode requires level calibration to display meaningful voltage values. Without calibration, values are relative to digital full scale.</div>
+
+<h3>Gain Mode (uncalibrated — V/div button inactive)</h3>
+<img src="img/Menu_scope_GainUncalibrated.png" class="screenshot small" alt="Zoom gain menu">
+<p class="caption">Gain multiplier options (uncalibrated mode)</p>
+<p>The vertical scale is a digital gain multiplier applied to the signal. Available multipliers: <code>×1 · ×2 · ×5 · ×10 · ×20 · ×50 · ×100 · ×200 · ×500 · ×1000</code></p>
+
+<h3>Coupling</h3>
+<img src="img/Menu_scope_coupling.png" class="screenshot small" alt="Coupling menu">
+<table>
+<tr><td>DC</td><td>Full signal including DC component.</td></tr>
+<tr><td>AC</td><td>High-pass filtered — DC component removed.</td></tr>
+<tr><td>OFF</td><td>Channel disabled — trace hidden.</td></tr>
+</table>
+<p>L and R coupling are set independently via the <strong>L COUPLING</strong> and <strong>R COUPLING</strong> dropdowns.</p>
+</section>
+
+<section id="scope-timebase">
+<h2>Timebase</h2>
+<img src="img/Menu_scope_Timebase.png" class="screenshot small" alt="Timebase menu">
+<p class="caption">TIME/DIV options (19 steps)</p>
+<p>The timebase sets the time per horizontal division. Available values (19 steps):</p>
+<p style="font-family:monospace; background:#e8edf6; padding:8px 14px; border-radius:4px; font-size:13px;">
+1 µs · 2 µs · 5 µs · 10 µs · 20 µs · 50 µs · 100 µs · 200 µs · 500 µs<br>
+1 ms · 2 ms · 5 ms · 10 ms · 20 ms · 50 ms · 100 ms · 200 ms · 500 ms · 1 s
+</p>
+
+<h3>Horizontal Zoom (Stopped Mode)</h3>
+<p>When acquisition is stopped, hold <span class="key">Ctrl</span> and scroll the mouse wheel to zoom in/out on the time axis. This refines the view without changing the capture parameters.</p>
+
+<h3>Pre-Trigger Position (T POS %)</h3>
+<p>Sets what fraction of the acquisition window is displayed before the trigger point. At 20%, 20% of the screen shows the signal before the trigger event. Drag the <strong>D</strong> marker on the graph to adjust visually.</p>
+
+<h3>Roll Mode</h3>
+<p>The <strong>ROLL</strong> button activates continuous scrolling mode, available from 10 ms/div. In Roll mode there is no trigger; the waveform scrolls continuously from right to left, like a chart recorder. Useful for slow signals.</p>
+
+<h3>Hold-Off</h3>
+<p>The <strong>HOLD-OFF (ms)</strong> NUD sets the minimum time between two consecutive triggers, preventing re-triggering on noise or complex waveforms.</p>
+</section>
+
+<section id="scope-trigger">
+<h2>Trigger</h2>
+<table>
+<tr><th>Control</th><th>Options</th><th>Description</th></tr>
+<tr><td>TRIGGER mode</td><td>Auto · Normal · Single</td><td>
+  <strong>Auto</strong>: triggers continuously; if no trigger event occurs, the display updates anyway.<br>
+  <strong>Normal</strong>: waits for a trigger event; display freezes if none occurs (status shows WAIT).<br>
+  <strong>Single</strong>: captures one frame on the next trigger event, then stops.
+</td></tr>
+<tr><td>SOURCE</td><td>L · R</td><td>Channel used for trigger detection.</td></tr>
+<tr><td>SLOPE</td><td>↑ · ↓</td><td>Rising edge or falling edge trigger.</td></tr>
+<tr><td>LEVEL</td><td>Numeric NUD</td><td>Trigger threshold in the current unit (normalised or Volts). Drag the <strong>T</strong> marker on the graph to adjust visually. Use ↑/↓ arrow keys when the NUD is focused.</td></tr>
+<tr><td>50%</td><td>Button</td><td>Automatically set the trigger level to 50% of the measured peak-to-peak amplitude.</td></tr>
+</table>
+
+<p>The acquisition status indicator (top right) shows:</p>
+<table>
+<tr><td><span style="color:#28a745; font-weight:700;">TRIG'D</span></td><td>Trigger event detected, display updated.</td></tr>
+<tr><td><span style="color:#f0a500; font-weight:700;">WAIT</span></td><td>Waiting for trigger event (Normal or Single mode).</td></tr>
+<tr><td><span style="color:#888; font-weight:700;">STOPPED</span></td><td>Acquisition stopped.</td></tr>
+</table>
+</section>
+
+<section id="scope-cursors">
+<h2>Cursors</h2>
+<p>The Oscilloscope has independent X (time) and Y (amplitude) cursor pairs.</p>
+<h3>X Cursors</h3>
+<table>
+<tr><th>Control</th><th>Description</th></tr>
+<tr><td>X button</td><td>Toggle X cursors on/off. When active, two vertical dashed lines appear on the graph.</td></tr>
+<tr><td>LINKED 1-2</td><td>Move both X cursors simultaneously, maintaining their relative spacing.</td></tr>
+<tr><td>SET VAL (X=?)</td><td>Enter the cursor time position numerically.</td></tr>
+<tr><td>GLUE X</td><td>When active: the cursors are "glued" to a specific sample index and follow the waveform as it scrolls. When inactive: the cursors remain at a fixed pixel position on screen.</td></tr>
+</table>
+
+<h3>Y Cursors</h3>
+<table>
+<tr><td>Y button</td><td>Toggle Y cursors on/off. Two horizontal dashed lines appear.</td></tr>
+<tr><td>LINKED 1-2</td><td>Move both Y cursors simultaneously.</td></tr>
+<tr><td>SET VAL (Y=?)</td><td>Enter the cursor amplitude numerically.</td></tr>
+<tr><td>GLUE Y</td><td>When active: each Y cursor automatically tracks the amplitude of the waveform at the corresponding X cursor position. When inactive: Y cursors float freely.</td></tr>
+</table>
+
+<h3>Cursor Display Modes</h3>
+<p>The <strong>DISPLAY</strong> button (labelled Grap / Label) cycles through the same 4 states as in the Spectrum tab:</p>
+<table>
+<tr><td>All</td><td>Values shown in side panel + floating box on graph.</td></tr>
+<tr><td>Panel</td><td>Values shown in side panel only.</td></tr>
+<tr><td>Graph (Grap)</td><td>Values shown in floating box on graph only.</td></tr>
+<tr><td>Off</td><td>Values hidden.</td></tr>
+</table>
+<p>The <strong>Label</strong> button toggles the ΔX / ΔY annotation arrows between the cursors (draggable).</p>
+
+<h3>Cursor Readout</h3>
+<p>The cursor readout box (bottom right of graph, or in the side panel) shows:</p>
+<table>
+<tr><td>X1 / X2</td><td>Time position of each X cursor.</td></tr>
+<tr><td>ΔX</td><td>Time difference between X1 and X2.</td></tr>
+<tr><td>1/ΔX</td><td>Frequency corresponding to ΔX (= 1 / ΔX).</td></tr>
+<tr><td>Phase</td><td>Phase difference between the two X cursor positions (degrees).</td></tr>
+<tr><td>Y1 / Y2</td><td>Amplitude at each Y cursor position.</td></tr>
+<tr><td>ΔY</td><td>Amplitude difference between Y1 and Y2.</td></tr>
+</table>
+</section>
+
+<section id="scope-display">
+<h2>Display Options</h2>
+<h3>Grid Mode</h3>
+<img src="img/Menu_scope_GridMode.png" class="screenshot small" alt="Grid mode menu">
+<table>
+<tr><td>Full</td><td>Complete grid with all horizontal and vertical lines.</td></tr>
+<tr><td>Axis</td><td>Centre lines only (X and Y axes).</td></tr>
+<tr><td>None</td><td>No grid.</td></tr>
+</table>
+
+<h3>Trace Mode</h3>
+<img src="img/Menu_scope_traceMode.png" class="screenshot small" alt="Trace mode menu">
+<table>
+<tr><td>Segment</td><td>Connect samples with line segments (default). Smooth, continuous appearance.</td></tr>
+<tr><td>Mixed</td><td>Segments for connected regions, dots otherwise.</td></tr>
+<tr><td>Dot</td><td>Display each sample as an individual dot.</td></tr>
+</table>
+</section>
+
+<section id="scope-overlays">
+<h2>Overlays (Oscilloscope)</h2>
+<p>The Oscilloscope Overlays system works identically to the Spectrum Overlays (see <a href="#spectrum-overlays">Spectrum — Overlays</a>), using <code>.scop.json</code> files. Click the <strong>Overlay</strong> button in the control bar to open the Overlays dialog.</p>
+</section>
+
+<section id="scope-panel">
+<h2>Measurement Panel (Oscilloscope)</h2>
+<table>
+<tr><th>Value</th><th>Description</th></tr>
+<tr><td>Vrms</td><td>RMS amplitude of the displayed waveform.</td></tr>
+<tr><td>Vpp</td><td>Peak-to-peak amplitude.</td></tr>
+<tr><td>Vdc</td><td>DC offset.</td></tr>
+<tr><td>Freq</td><td>Estimated fundamental frequency (from zero-crossing detection).</td></tr>
+<tr><td>Per</td><td>Estimated period.</td></tr>
+</table>
+<p>Values are shown separately for Left and Right channels. A channel set to <strong>OFF</strong> shows no values.</p>
+</section>
+
+<hr>
+
+<!-- ════════════════════════════════════════
+     GENERATOR
+     ════════════════════════════════════════ -->
+<section id="gen-overview">
+<h1 class="page-title">Signal Generator</h1>
+<p>The Signal Generator produces digital test signals that are sent to the <strong>Generator Output</strong> device configured in the Audio Devices dialog. Open it from the toolbar Generator button or the <strong>Generator</strong> menu.</p>
+<img src="img/GeneratorSineON.png" class="screenshot small" alt="Generator — Sine running">
+<p class="caption">Generator running — Sine signal, −12 dBFS, 10 Hz</p>
+
+<h3>Common Controls (all signal types)</h3>
+<table>
+<tr><th>Control</th><th>Description</th></tr>
+<tr><td>VU meter (top)</td><td>LED-bar level meter showing the generator output level for L and R channels, with dBFS readout.</td></tr>
+<tr><td>Signal type</td><td>Dropdown to select the waveform type (see sections below).</td></tr>
+<tr><td>Channel</td><td>Select which output channel(s): <strong>L</strong> · <strong>R</strong> · <strong>L+R</strong>. <strong>Invert R</strong> inverts the right channel (useful for balanced connections).</td></tr>
+<tr><td>Loopback Test</td><td>When enabled, the generator output is routed directly to the analyser input in software — no physical connection needed. Useful for checking generator waveforms.</td></tr>
+<tr><td>Calibrate Level</td><td>Opens the Level Calibration dialog (see <a href="#calibration">Level Calibration</a>).</td></tr>
+<tr><td>SR display</td><td>Shows the current output sample rate. "(Exclusive)" indicates WASAPI Exclusive Mode.</td></tr>
+<tr><td>FS calibration values</td><td>Shows the current full-scale equivalent in Vrms for L and R, based on the calibration.</td></tr>
+<tr><td>RUN / STOP</td><td>Start or stop the generator.</td></tr>
+</table>
+</section>
+
+<!-- ─── Sine ─── -->
+<section id="gen-sine">
+<h2>Sine</h2>
+<img src="img/GeneratorSineOFF.png" class="screenshot small" alt="Generator — Sine">
+<table>
+<tr><th>Parameter</th><th>Description</th></tr>
+<tr><td>FREQUENCY (Hz)</td><td>Output frequency. Quick-select buttons: <code>1 Hz · 10 Hz · 100 Hz · 1 kHz · 10 kHz · 100 kHz</code></td></tr>
+<tr><td>AMPLITUDE</td><td>Output level in <strong>dBFS</strong> or <strong>Vrms</strong> (toggle the radio button). Quick-select: <code>0 · −3 · −6 · −12 · −20 · −60 dBFS</code></td></tr>
+<tr><td>Synch (coherent)</td><td>Locks the sine frequency to an integer number of FFT bins, ensuring the signal falls exactly on a bin (eliminates spectral leakage). Recommended for THD measurements.</td></tr>
+<tr><td>Dithering (TPDF)</td><td>Adds triangular probability density function (TPDF) dither noise before quantisation. The bit depth of the dither can be set with the adjacent NUD. Improves the statistical properties of the ADC output at low signal levels.</td></tr>
+</table>
+</section>
+
+<!-- ─── Square / Triangle / Sawtooth ─── -->
+<section id="gen-square">
+<h2>Square / Triangle / Sawtooth</h2>
+<div class="sig-grid">
+  <div class="sig-card">
+    <h4>Square</h4>
+    <img src="img/GeneratorSquareOFF.png" alt="Square generator">
+    <p>Ideal 50 % duty-cycle square wave. Rich in odd harmonics — useful for loudspeaker and amplifier testing.</p>
+  </div>
+  <div class="sig-card">
+    <h4>Triangle</h4>
+    <img src="img/GeneratorTriangleOFF.png" alt="Triangle generator">
+    <p>Triangle wave. Contains only odd harmonics with −12 dB/octave slope.</p>
+  </div>
+  <div class="sig-card">
+    <h4>Sawtooth</h4>
+    <img src="img/GeneratorSawtoothOFF.png" alt="Sawtooth generator">
+    <p>Sawtooth wave. Contains all harmonics (odd and even) with −6 dB/octave slope.</p>
+  </div>
+</div>
+<p>These three waveforms share the same parameters: <strong>FREQUENCY</strong> and <strong>AMPLITUDE</strong> (with the same quick-select buttons as Sine).</p>
+</section>
+
+<!-- ─── Noise ─── -->
+<section id="gen-noise">
+<h2>White Noise &amp; Pink Noise</h2>
+<div class="sig-grid">
+  <div class="sig-card">
+    <h4>White Noise (Gaussian)</h4>
+    <img src="img/GeneratorWhitenoiseOFF.png" alt="White noise generator">
+    <p>Gaussian white noise with flat spectral density. Parameters: AMPLITUDE only.</p>
+  </div>
+  <div class="sig-card">
+    <h4>Pink Noise</h4>
+    <img src="img/GeneratorPinknoiseOFF.png" alt="Pink noise generator">
+    <p>Pink noise (1/f spectrum, −3 dB/octave slope). Perceptually more natural for audio testing. Parameters: AMPLITUDE only.</p>
+  </div>
+</div>
+</section>
+
+<!-- ─── Sweep ─── -->
+<section id="gen-sweep">
+<h2>Sweep</h2>
+<img src="img/GeneratorSweepOFF.png" class="screenshot small" alt="Generator — Sweep">
+<table>
+<tr><th>Parameter</th><th>Description</th></tr>
+<tr><td>START (Hz)</td><td>Starting frequency of the sweep.</td></tr>
+<tr><td>END (Hz)</td><td>Ending frequency of the sweep.</td></tr>
+<tr><td>AMPLITUDE</td><td>Output level (dBFS or Vrms).</td></tr>
+<tr><td>DURATION (s)</td><td>Total sweep duration in seconds.</td></tr>
+<tr><td>Logarithmic</td><td>When checked, the frequency changes logarithmically (equal time per octave). When unchecked, linear sweep. Logarithmic is recommended for audio measurements.</td></tr>
+<tr><td>Loop</td><td>Repeat the sweep continuously after it completes.</td></tr>
+</table>
+<div class="tip"><strong>Tip:</strong> Use a logarithmic sweep with Bode Plot mode and Normalisation to quickly measure the frequency response of a device.</div>
+</section>
+
+<!-- ─── Tone Burst ─── -->
+<section id="gen-burst">
+<h2>Tone Burst</h2>
+<img src="img/GeneratorToneBurstOFF.png" class="screenshot small" alt="Generator — Tone Burst">
+<p>Generates a repeating pattern of sine bursts followed by silence. Useful for evaluating transient response and ringing.</p>
+<table>
+<tr><th>Parameter</th><th>Description</th></tr>
+<tr><td>FREQ (BURST) (Hz)</td><td>Frequency of the sine burst.</td></tr>
+<tr><td>AMPLITUDE</td><td>Output level.</td></tr>
+<tr><td>TON — Periods / ms</td><td>Duration of the ON phase (active burst), expressed either in cycles of the burst frequency or in milliseconds.</td></tr>
+<tr><td>TOFF — Periods / ms</td><td>Duration of the OFF phase (silence), in cycles or milliseconds.</td></tr>
+<tr><td>Window</td><td>Windowing applied to the burst edges to reduce the transient click: <strong>Rectangular</strong> (hard on/off) or a smooth window.</td></tr>
+<tr><td>Loop</td><td>Repeat the burst pattern continuously.</td></tr>
+</table>
+</section>
+
+<!-- ─── Two-Tone IMD ─── -->
+<section id="gen-imd">
+<h2>Two-Tone (IMD)</h2>
+<img src="img/GeneratorTwo-tone(IMD)OFF.png" class="screenshot small" alt="Generator — Two-tone IMD">
+<p>Generates the sum of two sine waves for Intermodulation Distortion (IMD) measurements.</p>
+<table>
+<tr><th>Parameter</th><th>Description</th></tr>
+<tr><td>FREQUENCY F1</td><td>Frequency of the first tone.</td></tr>
+<tr><td>AMPLITUDE F1</td><td>Level of the first tone (dBFS or Vrms).</td></tr>
+<tr><td>Synch (coherent)</td><td>Lock both frequencies to FFT bins for leakage-free measurement.</td></tr>
+<tr><td>IMD preset</td><td>Quick-select standard IMD test pairs (e.g. SMPTE 60 Hz + 7 kHz, IEC 19 kHz + 20 kHz, etc.). <strong>Manual</strong> allows free entry of both frequencies.</td></tr>
+<tr><td>FREQUENCY F2</td><td>Frequency of the second tone.</td></tr>
+<tr><td>AMPLITUDE F2</td><td>Level of the second tone.</td></tr>
+</table>
+</section>
+
+<hr>
+
+<!-- ════════════════════════════════════════
+     DATAVIEW & ALL FORMATS
+     ════════════════════════════════════════ -->
+<section id="dataview">
+<h1 class="page-title">DataView</h1>
+<img src="img/Dataview_HEXA.png" class="screenshot small" alt="DataView">
+<p class="caption">DataView window — Hex format</p>
+<p>DataView is a floating window (opened from the toolbar) that shows the current live sample values in real time.</p>
+<table>
+<tr><td>VU meter (top)</td><td>LED-bar level meter for L and R with dBFS readout.</td></tr>
+<tr><td>dBFS level</td><td>Current level in dBFS for each channel, large display.</td></tr>
+<tr><td>Sample value display</td><td>The current sample value shown in the selected format, large and easy to read.</td></tr>
+<tr><td>Format selector</td><td>Dropdown to choose the display format:</td></tr>
+</table>
+<img src="img/Dataview_Formats.png" class="screenshot small" alt="DataView format options">
+<table>
+<tr><td>Decimal (24b)</td><td>Signed decimal integer, 24-bit range (−8 388 608 to +8 388 607).</td></tr>
+<tr><td>Hex (24 bits)</td><td>Hexadecimal representation (e.g. <code>0x171E01</code>).</td></tr>
+<tr><td>Binary (24b)</td><td>Binary MSB or LSB representation.</td></tr>
+<tr><td>Float</td><td>Normalised floating-point value (−1.0 to +1.0).</td></tr>
+<tr><td>Voltage (Vrms)</td><td>RMS voltage (requires level calibration).</td></tr>
+<tr><td>Voltage (Vpeak)</td><td>Peak voltage.</td></tr>
+<tr><td>Voltage (Vdc)</td><td>DC component voltage.</td></tr>
+</table>
+</section>
+
+<section id="allformats">
+<h2>All Data Formats</h2>
+<img src="img/AllDataFormats.png" class="screenshot medium" alt="All Data Formats">
+<p class="caption">All Data Formats — simultaneous snapshot of all representations for both channels</p>
+<p>The All Data Formats window (opened from the toolbar) displays a complete snapshot of the current sample in all available representations simultaneously for both Left and Right channels.</p>
+<table>
+<tr><th>Section</th><th>Values</th></tr>
+<tr><td>DIGITAL</td><td>Float · Decimal (24b) · Hex (24 bits) · Bin MSB · Bin LSB</td></tr>
+<tr><td>VOLTAGE</td><td>Vrms · Vpeak · Vdc</td></tr>
+</table>
+<div class="note"><strong>Note:</strong> Voltage values require level calibration. Uncalibrated bins show relative values only.</div>
+</section>
+
+<hr>
+
+<!-- ════════════════════════════════════════
+     EXPORT
+     ════════════════════════════════════════ -->
+<section id="export-png">
+<h1 class="page-title">Export to PNG</h1>
+<p>Click the <strong>PNG</strong> toolbar button or use <strong>Export → Export PNG</strong>. A Save File dialog opens; choose the destination file.</p>
+<p>The export renders the <strong>active tab</strong> only, at a fixed scale factor of ×2 (producing a 300 DPI image). The chart is re-rendered at <strong>A4 landscape proportions</strong> (ratio 1:√2), so the output is print-ready without letterboxing or distortion.</p>
+<p>If a title / subtitle is configured (see PDF export), it appears as a banner at the top of the PNG. A footer with the device name and timestamp appears at the bottom.</p>
+</section>
+
+<section id="export-pdf">
+<h2>Export to PDF</h2>
+<img src="img/PDF_export.png" class="screenshot small" alt="Export to PDF">
+<p class="caption">Export to PDF dialog</p>
+<table>
+<tr><th>Parameter</th><th>Description</th></tr>
+<tr><td>File</td><td>Output file path. Click <strong>Browse…</strong> to select the destination.</td></tr>
+<tr><td>Pages</td><td>Check the tabs to include: <strong>Histogram · Spectrum · Oscilloscope</strong> (each becomes one A4 landscape page).</td></tr>
+<tr><td>Scale</td><td>Render scale factor. ×2 is recommended (good balance of quality and file size). ×1 to ×4 available.</td></tr>
+<tr><td>Open</td><td>Automatically open the PDF in the default viewer after export.</td></tr>
+<tr><td>Title</td><td>Document title — printed as a bold header on each page.</td></tr>
+<tr><td>Notes</td><td>Sub-title / notes — printed below the title in smaller text.</td></tr>
+</table>
+<p>Each page is a full A4 landscape rendering of the corresponding analysis tab, including the measurement panel (if visible) and any active overlays.</p>
+<div class="tip"><strong>Tip:</strong> Hide the side measurement panel before exporting if you want a wider graph on the page.</div>
+</section>
+
+<section id="export-csv">
+<h2>Export to CSV</h2>
+<img src="img/CSV_export.png" class="screenshot small" alt="Export to CSV">
+<p class="caption">Export data to CSV dialog</p>
+<table>
+<tr><th>Parameter</th><th>Description</th></tr>
+<tr><td>Source</td><td>Select which data to export: <strong>Histogram</strong> (bin counts) · <strong>Spectrum</strong> (frequency bins + amplitude) · <strong>Oscilloscope</strong> (time samples).</td></tr>
+<tr><td>File</td><td>Output file path.</td></tr>
+<tr><td>Separator</td><td>Column separator: <strong>Semicolon ;</strong> · Comma , · Tab. Choose based on your locale and target application.</td></tr>
+<tr><td>Decimal</td><td>Decimal separator: <strong>Point .</strong> or Comma ,</td></tr>
+<tr><td>Include header</td><td>Add a header row with column names.</td></tr>
+</table>
+</section>
+
+<hr>
+
+<!-- ════════════════════════════════════════
+     DISPLAY SETUP
+     ════════════════════════════════════════ -->
+<section id="display-setup">
+<h1 class="page-title">Display Setup</h1>
+<img src="img/DisplaySetup.png" class="screenshot small" alt="Display Setup">
+<p class="caption">Display Setup — colour configuration for all visual elements</p>
+<p>Open from the toolbar <strong>Display Setup</strong> button or the <strong>Colors</strong> menu. Click any coloured swatch to change that element's colour. All changes are previewed live.</p>
+
+<table>
+<tr><th>Section</th><th>Element</th><th>Description</th></tr>
+<tr><td rowspan="3">TRACES</td><td>Data Left</td><td>Left channel spectrum / oscilloscope trace colour.</td></tr>
+<tr><td>Data Right</td><td>Right channel trace colour.</td></tr>
+<tr><td>Thick · Invert colours</td><td>Line thickness (1–3 px). Invert: swap the luminance of all trace colours for dark-background themes.</td></tr>
+
+<tr><td rowspan="5">TRACES HOLD</td><td>Min Left</td><td>MINI hold trace colour for left channel.</td></tr>
+<tr><td>Max Left</td><td>MAXI hold trace colour for left channel.</td></tr>
+<tr><td>Min Right</td><td>MINI hold trace colour for right channel.</td></tr>
+<tr><td>Max Right</td><td>MAXI hold trace colour for right channel.</td></tr>
+<tr><td>Thick · Invert colours</td><td>Hold trace thickness (two separate NUDs for Min/Max). Invert option.</td></tr>
+
+<tr><td rowspan="4">OVERLAYS</td><td>Overlay 1 … 8</td><td>Individual colour for each of the 8 overlay slots.</td></tr>
+<tr><td>Thick</td><td>Overlay line thickness.</td></tr>
+<tr><td>Style</td><td>Line style: Solid · Dash · Dot · etc.</td></tr>
+<tr><td>Invert colours</td><td>Invert overlay colours.</td></tr>
+
+<tr><td rowspan="5">CHART</td><td>Grid Major</td><td>Major grid lines colour.</td></tr>
+<tr><td>Grid Minor</td><td>Minor grid lines colour.</td></tr>
+<tr><td>Background</td><td>Chart background colour.</td></tr>
+<tr><td>Top info Text</td><td>Colour of the info bar text at the top of the chart.</td></tr>
+<tr><td>Label Major / Minor</td><td>Axis label and tick colours.</td></tr>
+</table>
+
+<table style="margin-top:14px;">
+<tr><th>Button</th><th>Description</th></tr>
+<tr><td>Save</td><td>Save the current colour scheme as the new default (replaces the stored defaults).</td></tr>
+<tr><td>Restore</td><td>Restore the last saved defaults, discarding unsaved changes.</td></tr>
+<tr><td>OK</td><td>Apply changes and close the dialog.</td></tr>
+</table>
+</section>
+
+<hr>
+
+<!-- ════════════════════════════════════════
+     MENUS REFERENCE
+     ════════════════════════════════════════ -->
+<section id="menus">
+<h1 class="page-title">Menu Reference</h1>
+
+<h2>Devices</h2>
+<p>Opens the Audio Devices configuration dialog.</p>
+
+<h2>Generator</h2>
+<p>Opens the Signal Generator window. Also accessible via the toolbar Generator button.</p>
+
+<h2>Overlap</h2>
+<p>Sets the FFT overlap ratio: <code>0% · 50% · 75% · 87.5% · 93.75%</code>. A checkmark shows the current setting.</p>
+
+<h2>Sample size</h2>
+<p>Sets the FFT size N: <code>8 192 · 16 384 · 32 768 · 65 536 · 131 072 · 262 144 · 524 288 · 1 048 576 · 2 097 152 · 4 194 304</code> samples.</p>
+
+<h2>Colors</h2>
+<p>Opens the Display Setup colour configuration dialog.</p>
+
+<h2>View</h2>
+<p>View-related options (measurement panel visibility, full-screen mode, etc.).</p>
+
+<h2>Export</h2>
+<p>Sub-menu for all export functions: Export PNG · Export PDF · Export CSV.</p>
+
+<h2>Tools</h2>
+<p>Utility tools including DataView, All Data Formats, Device Info, and Calibrate Level.</p>
+
+<h2>Help</h2>
+<p>Access to this documentation and application information (About).</p>
+
+<hr>
+<h2>Keyboard Shortcuts</h2>
+<table>
+<tr><th>Key</th><th>Action</th></tr>
+<tr><td><span class="key">Ctrl</span> + Mouse wheel</td><td>Horizontal zoom on a stopped oscilloscope trace.</td></tr>
+<tr><td><span class="key">↑</span> / <span class="key">↓</span></td><td>Adjust oscilloscope trigger level when the level NUD is focused.</td></tr>
+<tr><td><span class="key">Escape</span></td><td>Close the active dialog.</td></tr>
+</table>
+</section>
+
+<div style="margin-top:60px; text-align:center; color:#8a9bb0; font-size:12.5px; border-top:1px solid #d0dae8; padding-top:24px;">
+  AudioHexViewer — User Documentation &nbsp;·&nbsp; OnE Audio Projects &nbsp;·&nbsp; Lyon, France
+</div>
+
+</div><!-- content-inner -->
+</main><!-- content -->
+
+<script>
+// Highlight the current section in the sidebar as the user scrolls
+const links = document.querySelectorAll('#sidebar nav a');
+const sections = [...links].map(l => {
+  const id = l.getAttribute('href').slice(1);
+  return document.getElementById(id);
+}).filter(Boolean);
+
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      links.forEach(l => l.classList.remove('active'));
+      const active = [...links].find(l => l.getAttribute('href') === '#' + e.target.id);
+      if (active) active.classList.add('active');
+    }
+  });
+}, { rootMargin: '-20% 0px -75% 0px' });
+
+sections.forEach(s => obs.observe(s));
+</script>
+</body>
+</html>

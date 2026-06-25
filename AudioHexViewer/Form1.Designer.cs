@@ -35,6 +35,7 @@ namespace AudioHexViewer
             menuStrip1 = new MenuStrip();
             menuDevices = new ToolStripMenuItem();
             menuHelp = new ToolStripMenuItem();
+            menuDocumentation = new ToolStripMenuItem();
             menuAbout = new ToolStripMenuItem();
             menuOpenCal = new ToolStripMenuItem();
             menuOpenRecordsFolder = new ToolStripMenuItem();
@@ -104,11 +105,18 @@ namespace AudioHexViewer
             // 
             // menuHelp
             // 
-            menuHelp.DropDownItems.AddRange(new ToolStripItem[] { menuAbout, menuOpenCal, menuOpenRecordsFolder, alwaysOnTopToolStripMenuItem });
+            menuHelp.DropDownItems.AddRange(new ToolStripItem[] { menuDocumentation, new ToolStripSeparator(), menuAbout, menuOpenCal, menuOpenRecordsFolder, alwaysOnTopToolStripMenuItem });
             menuHelp.Name = "menuHelp";
             menuHelp.Size = new Size(44, 21);
             menuHelp.Text = "Help";
             // 
+            //
+            // menuDocumentation
+            //
+            menuDocumentation.Name = "menuDocumentation";
+            menuDocumentation.Size = new Size(181, 22);
+            menuDocumentation.Text = "Documentation";
+            menuDocumentation.Click += menuDocumentation_Click;
             // menuAbout
             // 
             menuAbout.Name = "menuAbout";
@@ -466,6 +474,7 @@ namespace AudioHexViewer
         private MenuStrip menuStrip1;
         private ToolStripMenuItem menuDevices;
         private ToolStripMenuItem menuHelp;
+        private ToolStripMenuItem menuDocumentation;
         private ToolStripMenuItem menuAbout;
         private ToolStripMenuItem menuOpenCal;
         private ToolStripMenuItem menuOpenRecordsFolder;
