@@ -129,7 +129,7 @@ namespace AudioHexViewer
                 b.FlatAppearance.BorderSize = 1;
                 b.FlatAppearance.BorderColor = bdrCol;
                 return b;
-            }
+            }   
                 
             NumericUpDown MakeNud(int x, int w = NUD_W) => new NumericUpDown {
                 Location = new Point(x, 2), Size = new Size(w, 22),

@@ -665,8 +665,15 @@ namespace AudioHexViewer
             if (_dataViewForm == null)
                 InitDataView();
 
+            // Toggle: second click hides
+            if (_dataViewForm!.Visible)
+            {
+                _dataViewForm.Hide();
+                return;
+            }
+
             // Positionner à gauche de Form1, sous "All data formats"
-            if (!_dataViewForm!.Visible)
+            if (!_dataViewForm.Visible)
             {
                 if (_lastDataViewX.HasValue && _lastDataViewY.HasValue)
                 {
@@ -1419,7 +1426,14 @@ namespace AudioHexViewer
         {
             EnsureGeneratorWindowCreated();
 
-            if (_generatorWindow!.WindowState == FormWindowState.Minimized)
+            // Toggle: second click closes (stops generator + hides, via FormClosing)
+            if (_generatorWindow!.Visible)
+            {
+                _generatorWindow.Close();
+                return;
+            }
+
+            if (_generatorWindow.WindowState == FormWindowState.Minimized)
                 _generatorWindow.WindowState = FormWindowState.Normal;
 
             _generatorWindow.Show(this);
@@ -1460,6 +1474,12 @@ namespace AudioHexViewer
         {
             if (dataFormatsWindow != null && !dataFormatsWindow.IsDisposed)
             {
+                // Toggle: second click hides
+                if (dataFormatsWindow.Visible)
+                {
+                    dataFormatsWindow.Hide();
+                    return;
+                }
                 dataFormatsWindow.Show();
                 dataFormatsWindow.BringToFront();
                 RefreshAllFormatsWindow();

@@ -481,7 +481,7 @@ namespace AudioHexViewer
             if (_isAboutMode)
             {
                 g.DrawString(AppVersion, fVn, bVn, rc.Width - vw - 6f, rc.Height - 18f);
-                string copy = $"© {DateTime.Now.Year} OnE Audio Projects";
+                string copy = $"© {DateTime.Now.Year} Frex - OnE Audio Projects";
                 using var bC = new SolidBrush(SubCol);
                 g.DrawString(copy, fVn, bC, 6f, rc.Height - 18f);
             }
