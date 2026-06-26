@@ -963,7 +963,11 @@ namespace AudioHexViewer
         private void chkHoldMin_CheckedChanged(object sender, EventArgs e) { } // wired in init
 
         // Mémorise le dernier onglet X sélectionné dans le dialog Axis (Mini/Maxi=0 ou Center/Span=1)
-        private int _axisDialogTabX = 0;
+        private int  _axisDialogTabX  = 0;
+        private int? _savedAxisDlgX   = null;  // persisted dialog positions
+        private int? _savedAxisDlgY   = null;
+        private int? _savedThreshDlgX = null;
+        private int? _savedThreshDlgY = null;
 
         // InitAxisButtonUi et PositionAxisButton supprimés — remplacés par btnAxisOpen dans panelTop
 
@@ -1066,7 +1070,19 @@ namespace AudioHexViewer
                     else        chartSpectrum.Invalidate();
                 };
 
-                if (dlg.ShowDialog(FindForm()) != DialogResult.OK)
+                // Restore last position if available
+                if (_savedAxisDlgX.HasValue && _savedAxisDlgY.HasValue)
+                {
+                    dlg.StartPosition = System.Windows.Forms.FormStartPosition.Manual;
+                    dlg.Location = new System.Drawing.Point(_savedAxisDlgX.Value, _savedAxisDlgY.Value);
+                }
+                var _axParent = FindForm();
+                var _axResult = (_axParent is Form1 _axF1)
+                    ? _axF1.ShowDialogSafe(dlg)
+                    : dlg.ShowDialog(_axParent);
+                _savedAxisDlgX = dlg.Location.X;  // save position on close
+                _savedAxisDlgY = dlg.Location.Y;
+                if (_axResult != DialogResult.OK)
                 {
                     // Cancel : restaurer toutes les valeurs d'avant le preview
                     _axisDialogTabX = dlg.XTabSelectedIndex;
@@ -1166,7 +1182,18 @@ namespace AudioHexViewer
                 minDb: NoiseToPeakThresholdMinDb,
                 maxDb: NoiseToPeakThresholdMaxDb);
 
-            if (dlg.ShowDialog(this.FindForm()) == DialogResult.OK)
+            if (_savedThreshDlgX.HasValue && _savedThreshDlgY.HasValue)
+            {
+                dlg.StartPosition = System.Windows.Forms.FormStartPosition.Manual;
+                dlg.Location = new System.Drawing.Point(_savedThreshDlgX.Value, _savedThreshDlgY.Value);
+            }
+            var _pkParent = FindForm();
+            var _pkResult = (_pkParent is Form1 _pkF1)
+                ? _pkF1.ShowDialogSafe(dlg)
+                : dlg.ShowDialog(_pkParent);
+            _savedThreshDlgX = dlg.Location.X;
+            _savedThreshDlgY = dlg.Location.Y;
+            if (_pkResult == DialogResult.OK)
             {
                 NoiseToPeakThresholdDb = dlg.ValueDb;
                 // Pas besoin de recalcul automatique : la valeur sera prise en compte au prochain < / >

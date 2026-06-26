@@ -28,6 +28,14 @@ namespace AudioHexViewer
 
         // Global UI state — shared across all tabs
         public bool ShowMeasPanel { get; set; } = true;
+
+        // Window positions persisted across sessions (int pairs, JSON-safe)
+        public int? DataViewX    { get; set; }
+        public int? DataViewY    { get; set; }
+        public int? AllFormatsX  { get; set; }
+        public int? AllFormatsY  { get; set; }
+        public int? GeneratorX   { get; set; }
+        public int? GeneratorY   { get; set; }
     }
 
     public sealed class UiSettings
@@ -76,6 +84,12 @@ namespace AudioHexViewer
         public string Window { get; set; } = "Rectangular"; // Rectangular/Hann/Hamming/Blackman-Harris-4/Blackman-Harris-7
         public bool LogFreq { get; set; } = false;       // log freq
         public int Averaging { get; set; } = 0;          // 0 = None, sinon 2/4/8/...
+
+        // Dialog positions persisted across sessions
+        public int? AxisDialogX   { get; set; }
+        public int? AxisDialogY   { get; set; }
+        public int? ThresholdDlgX { get; set; }
+        public int? ThresholdDlgY { get; set; }
 
         // Seuil (dB) utilisé par la navigation Previous/Next Peak (< >)
         // Interprétation : Peak si niveau >= NoiseFloorVisible + NoiseToPeakThresholdDb

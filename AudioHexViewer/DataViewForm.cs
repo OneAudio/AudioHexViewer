@@ -44,7 +44,12 @@ namespace AudioHexViewer
 
             btnRunStop.Click += BtnRunStop_Click;
 
-            FormClosing += (_, e) => { e.Cancel = true; Hide(); };
+            FormClosing += (_, e) =>
+            {
+                if (e.CloseReason == CloseReason.UserClosing)
+                { e.Cancel = true; Hide(); }
+                // FormOwnerClosing (Form1 closing) → no cancel → Form1 can close normally
+            };
         }
 
         // ── API publique : mise à jour du VU depuis Form1 ─────────────────────

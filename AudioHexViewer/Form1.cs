@@ -87,6 +87,11 @@ namespace AudioHexViewer
         private readonly TimeSpan bitStabilityThreshold = TimeSpan.FromSeconds(0.4);
 
         private string _lastAllFormatsLeft = "";
+        // Last known positions of floating windows (updated live via LocationChanged)
+        private int? _lastDataViewX    = null;
+        private int? _lastDataViewY    = null;
+        private int? _lastAllFormatsX  = null;
+        private int? _lastAllFormatsY  = null;
         private string _lastAllFormatsRight = "";
 
         // Saturation par voie
@@ -294,6 +299,8 @@ namespace AudioHexViewer
 
         // Fenêtres non-modales persistantes
         private GeneratorWindow? _generatorWindow;
+        private int? _lastGeneratorX = null;  // persisted generator position
+        private int? _lastGeneratorY = null;
 
         private bool _spectrumRunning;
         private bool _generatorAutoStarted;  // true if generator was auto-started by Bode Plot RUN
@@ -606,6 +613,10 @@ namespace AudioHexViewer
         //
         private void InitDataView()
         {
+            // Init generator position from saved session
+            if (_session.GeneratorX.HasValue)
+            { _lastGeneratorX = _session.GeneratorX; _lastGeneratorY = _session.GeneratorY; }
+
             _dataViewForm = new DataViewForm();
 
             _dataViewForm.StartPosition = FormStartPosition.Manual;
@@ -640,6 +651,12 @@ namespace AudioHexViewer
                 }
                 UpdateTitleBar();
             };
+            // Track position in real time
+            if (_session.DataViewX.HasValue)
+            { _lastDataViewX = _session.DataViewX; _lastDataViewY = _session.DataViewY; }
+            _dataViewForm.LocationChanged += (_, _) =>
+            { _lastDataViewX = _dataViewForm.Left; _lastDataViewY = _dataViewForm.Top; };
+
             _dataViewForm.Hide();
         }
         //
@@ -651,16 +668,27 @@ namespace AudioHexViewer
             // Positionner à gauche de Form1, sous "All data formats"
             if (!_dataViewForm!.Visible)
             {
-                var sc = System.Windows.Forms.Screen.FromControl(this).WorkingArea;
-                int allFmtH = (dataFormatsWindow != null && !dataFormatsWindow.IsDisposed && dataFormatsWindow.Visible)
-                    ? dataFormatsWindow.Height : 0;
-                int allFmtX = (dataFormatsWindow != null && !dataFormatsWindow.IsDisposed && dataFormatsWindow.Visible)
-                    ? dataFormatsWindow.Left : Math.Max(sc.X, this.Left - _dataViewForm.Width);
-                int dvX = Math.Max(sc.X, this.Left - _dataViewForm.Width);
-                int dvY = Math.Max(sc.Y, Math.Min(this.Top + allFmtH, sc.Bottom - _dataViewForm.Height));
-                _dataViewForm.Location = new System.Drawing.Point(dvX, dvY);
+                if (_lastDataViewX.HasValue && _lastDataViewY.HasValue)
+                {
+                    _dataViewForm.StartPosition = System.Windows.Forms.FormStartPosition.Manual;
+                    _dataViewForm.Location = new System.Drawing.Point(_lastDataViewX.Value, _lastDataViewY.Value);
+                }
+                else
+                {
+                    var sc = System.Windows.Forms.Screen.FromControl(this).WorkingArea;
+                    int allFmtH = (dataFormatsWindow != null && !dataFormatsWindow.IsDisposed && dataFormatsWindow.Visible)
+                        ? dataFormatsWindow.Height : 0;
+                    int dvX = Math.Max(sc.X, this.Left - _dataViewForm.Width);
+                    int dvY = Math.Max(sc.Y, Math.Min(this.Top + allFmtH, sc.Bottom - _dataViewForm.Height));
+                    _dataViewForm.Location = new System.Drawing.Point(dvX, dvY);
+                }
+                // Capture position immediately (LocationChanged may not fire before Show on a hidden form)
+                _lastDataViewX = _dataViewForm.Left;
+                _lastDataViewY = _dataViewForm.Top;
             }
-            _dataViewForm.Show();
+            _dataViewForm.TopMost = this.TopMost;  // inherit Always-on-Top
+            if (!_dataViewForm.Visible)
+                _dataViewForm.Show(this);  // Owned window: stays above Form1 automatically
             _dataViewForm.BringToFront();
         }
 
@@ -1135,6 +1163,14 @@ namespace AudioHexViewer
             // Global UI state
             s.ShowMeasPanel = _measPanelVisible;
 
+            // Floating window positions (tracked live; null if never opened)
+            s.DataViewX   = _lastDataViewX;
+            s.DataViewY   = _lastDataViewY;
+            s.GeneratorX  = _lastGeneratorX;
+            s.GeneratorY  = _lastGeneratorY;
+            s.AllFormatsX = _lastAllFormatsX;
+            s.AllFormatsY = _lastAllFormatsY;
+
             return s;
         }
 
@@ -1431,11 +1467,27 @@ namespace AudioHexViewer
             }
 
             dataFormatsWindow = BuildAllFormatsWindow();
-            // À gauche de Form1, aligné sur le haut de Form1
-            var sc1 = System.Windows.Forms.Screen.FromControl(this).WorkingArea;
-            int fmtX = Math.Max(sc1.X, this.Left - dataFormatsWindow.Width);
-            int fmtY = Math.Max(sc1.Y, Math.Min(this.Top, sc1.Bottom - dataFormatsWindow.Height));
-            dataFormatsWindow.Location = new System.Drawing.Point(fmtX, fmtY);
+            // Init position tracking from session (first create only)
+            if (_lastAllFormatsX == null && _session.AllFormatsX.HasValue)
+            { _lastAllFormatsX = _session.AllFormatsX; _lastAllFormatsY = _session.AllFormatsY; }
+            dataFormatsWindow.LocationChanged += (_, _) =>
+            { _lastAllFormatsX = dataFormatsWindow.Left; _lastAllFormatsY = dataFormatsWindow.Top; };
+            dataFormatsWindow.TopMost = this.TopMost;  // inherit Always-on-Top
+            if (_lastAllFormatsX.HasValue && _lastAllFormatsY.HasValue)
+            {
+                dataFormatsWindow.StartPosition = System.Windows.Forms.FormStartPosition.Manual;
+                dataFormatsWindow.Location = new System.Drawing.Point(_lastAllFormatsX.Value, _lastAllFormatsY.Value);
+            }
+            else
+            {
+                var sc1 = System.Windows.Forms.Screen.FromControl(this).WorkingArea;
+                int fmtX = Math.Max(sc1.X, this.Left - dataFormatsWindow.Width);
+                int fmtY = Math.Max(sc1.Y, Math.Min(this.Top, sc1.Bottom - dataFormatsWindow.Height));
+                dataFormatsWindow.Location = new System.Drawing.Point(fmtX, fmtY);
+            }
+            // Capture position immediately
+            _lastAllFormatsX = dataFormatsWindow.Left;
+            _lastAllFormatsY = dataFormatsWindow.Top;
             dataFormatsWindow.Show(this);
         }
 
@@ -3008,6 +3060,8 @@ namespace AudioHexViewer
         {
             // Le ToolStripMenuItem appelle ce handler après avoir changé son état Checked
             this.TopMost = alwaysOnTopToolStripMenuItem.Checked;
+            if (_dataViewForm != null && !_dataViewForm.IsDisposed)
+                _dataViewForm.TopMost = alwaysOnTopToolStripMenuItem.Checked;
             SyncToolbarAlwaysOnTop();
         }
 

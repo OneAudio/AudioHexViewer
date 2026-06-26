@@ -58,7 +58,7 @@ partial class Form1
         _tbAlwaysOnTop = new ToolbarButton(
             LoadIcon("AudioHexViewer_AlwaysontopOFF"),
             LoadIcon("AudioHexViewer_AlwaysontopON"),
-            isToggle: true);
+            isToggle: false); // SyncToolbarAlwaysOnTop() owns IsActive
         _toolbarTip.SetToolTip(_tbAlwaysOnTop, "Always on top");
         _tbAlwaysOnTop.Click += TbAlwaysOnTop_Click;
 
@@ -178,7 +178,21 @@ partial class Form1
             saveSettings:      SaveSessionSettingsSilently,
             onRunStateChanged: UpdateTitleBar);
 
-        _generatorWindow.Location = new Point(Location.X + Width + 4, Location.Y);
+        // Restore last position; fall back to right of Form1
+        if (_lastGeneratorX.HasValue && _lastGeneratorY.HasValue)
+        {
+            _generatorWindow.StartPosition = FormStartPosition.Manual;
+            _generatorWindow.Location = new Point(_lastGeneratorX.Value, _lastGeneratorY.Value);
+        }
+        else
+        {
+            _generatorWindow.StartPosition = FormStartPosition.Manual;
+            _generatorWindow.Location = new Point(Location.X + Width + 4, Location.Y);
+        }
+        _lastGeneratorX = _generatorWindow.Left;
+        _lastGeneratorY = _generatorWindow.Top;
+        _generatorWindow.LocationChanged += (_, _) =>
+        { _lastGeneratorX = _generatorWindow.Left; _lastGeneratorY = _generatorWindow.Top; };
         SubscribeGeneratorStateChange();
     }
 
@@ -233,6 +247,8 @@ partial class Form1
     {
         alwaysOnTopToolStripMenuItem.Checked = !alwaysOnTopToolStripMenuItem.Checked;
         this.TopMost = alwaysOnTopToolStripMenuItem.Checked;
+        if (_dataViewForm != null && !_dataViewForm.IsDisposed)
+            _dataViewForm.TopMost = alwaysOnTopToolStripMenuItem.Checked;
         SyncToolbarAlwaysOnTop();
     }
 

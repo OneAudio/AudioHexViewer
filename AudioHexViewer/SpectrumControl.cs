@@ -1339,6 +1339,12 @@ namespace AudioHexViewer
             s.EnableThdMeasures = _thdMeasuresEnabled;
             s.Thd = _thdUi;
 
+            // Dialog positions (fields declared in SpectrumControl.Rendering.cs)
+            s.AxisDialogX   = _savedAxisDlgX;
+            s.AxisDialogY   = _savedAxisDlgY;
+            s.ThresholdDlgX = _savedThreshDlgX;
+            s.ThresholdDlgY = _savedThreshDlgY;
+
             return s;
         }
 
@@ -1422,6 +1428,12 @@ namespace AudioHexViewer
                     ResetAveragingState();
                     // --- Peak navigation threshold (Previous/Next Peak) ---
                     _noiseToPeakThresholdDb = Clamp(s.NoiseToPeakThresholdDb, 4.0, 100.0);
+
+            // Restore dialog positions
+            if (s.AxisDialogX.HasValue && s.AxisDialogY.HasValue)
+            { _savedAxisDlgX = s.AxisDialogX; _savedAxisDlgY = s.AxisDialogY; }
+            if (s.ThresholdDlgX.HasValue && s.ThresholdDlgY.HasValue)
+            { _savedThreshDlgX = s.ThresholdDlgX; _savedThreshDlgY = s.ThresholdDlgY; }
 
 
                 }
