@@ -46,13 +46,13 @@ namespace AudioHexViewer
         // Pour tester : commente le bloc ci-dessus (de AhvTop à DimCol) et
         // décommente UNE des palettes ci-dessous, puis recompile.
         //
-        // -- Palette "Bleu nuit" --
-        private static readonly Color AhvTop    = Color.FromArgb(40, 70, 130);
-        private static readonly Color AhvBottom = Color.FromArgb(10, 25, 60);
-        private static readonly Color AhvShadow = Color.FromArgb(40, 255, 255, 255);
-        private static readonly Color AccentCol = Color.FromArgb(0, 120, 200);
-        private static readonly Color SubCol    = Color.FromArgb(70, 90, 130);
-        private static readonly Color DimCol    = Color.FromArgb(130, 145, 170);
+        // -- Palette "Nuit orange" --
+        private static readonly Color AhvTop    = Color.FromArgb(245, 248, 255);  // blanc légèrement bleuté
+        private static readonly Color AhvBottom = Color.FromArgb(185, 195, 210);  // gris-blanc pour effet 3D
+        private static readonly Color AhvShadow = Color.FromArgb(160, 0, 0, 0);   // ombre sombre (fond noir)
+        private static readonly Color AccentCol = Color.FromArgb(255, 251, 112,   1); // R=251 V=112 B=1 A=100%
+        private static readonly Color SubCol    = Color.White;                         // RVBA ffffffff
+        private static readonly Color DimCol    = Color.FromArgb(155, 160, 170);       // gris clair (copyright/version)
         //
         // -- Palette "Gris ardoise" --
         // private static readonly Color AhvTop    = Color.FromArgb(60, 65, 75);
@@ -102,7 +102,7 @@ namespace AudioHexViewer
             FormBorderStyle = FormBorderStyle.None;
             StartPosition   = FormStartPosition.CenterScreen;
             ClientSize      = new Size(340, 230);
-            BackColor       = Color.FromArgb(0, 0, 64);
+            BackColor       = Color.FromArgb(8, 10, 20);
             ShowInTaskbar   = false;
             TopMost         = true;
             DoubleBuffered  = true;
@@ -410,24 +410,37 @@ namespace AudioHexViewer
             borderPath.AddArc(0, rc.Height-rr2*2, rr2*2, rr2*2, 90, 90);
             borderPath.CloseFigure();
             // using var borderPen = new Pen(Color.FromArgb(180, 140, 200, 255), 4f);
-            using var borderPen = new Pen(Color.FromArgb(255, 255, 255, 255), 4f);
+            using var borderPen = new Pen(Color.FromArgb(55, 255, 255, 255), 2f);
             g.DrawPath(borderPen, borderPath);
 
-            // "AHV" — Calibri Gras +30%
-            float ahvY = 5f;
+            // "AH" blanc dégradé  +  "V" orange — Calibri Gras +30%
+            float ahvY = 2f;
             using var fAhv = new Font("Calibri", 75f, FontStyle.Bold, GraphicsUnit.Point);
-            string ahv = "AHV";
-            // MeasureString surestime la hauteur — on utilise GetHeight pour la hauteur réelle
-            float ahvW    = g.MeasureString(ahv, fAhv).Width;
-            float ahvH    = fAhv.GetHeight(g);   // hauteur de ligne réelle, sans padding GDI+
-            // Ombre
+
+            // Largeur totale "AHV" pour le centrage (y compris padding GDI+)
+            float ahvW = g.MeasureString("AHV", fAhv).Width;
+            float ahvH = fAhv.GetHeight(g);
+            float startX = rc.Width / 2f - ahvW / 2f;
+
+            // Position de "V" : largeur typographique serrée de "AH" (sans padding)
+            float ahTight = g.MeasureString("AH", fAhv, Point.Empty,
+                                            StringFormat.GenericTypographic).Width;
+            float vStartX = startX + ahTight;
+
+            // Ombres
             using (var sh = new SolidBrush(AhvShadow))
-                g.DrawString(ahv, fAhv, sh, rc.Width/2f - ahvW/2f + 2, ahvY + 2);
-            // Texte dégradé
+            {
+                g.DrawString("AH", fAhv, sh, startX  + 2, ahvY + 2);
+                g.DrawString("V",  fAhv, sh, vStartX + 2, ahvY + 2);
+            }
+            // "AH" avec dégradé blanc → gris-blanc (effet légèrement 3D)
             using (var tBr = new LinearGradientBrush(
                 new PointF(0, ahvY), new PointF(0, ahvY + ahvH),
                 AhvTop, AhvBottom))
-                g.DrawString(ahv, fAhv, tBr, rc.Width/2f - ahvW/2f, ahvY);
+                g.DrawString("AH", fAhv, tBr, startX, ahvY);
+            // "V" plein orange
+            using (var oBr = new SolidBrush(AccentCol))
+                g.DrawString("V", fAhv, oBr, vStartX, ahvY);
 
             // "AudioHexViewer" — Century Gothic 17pt, collé juste sous AHV
             using var fSub = new Font("Century Gothic", 17f, FontStyle.Regular, GraphicsUnit.Point);
@@ -438,7 +451,7 @@ namespace AudioHexViewer
             g.DrawString(AppTitle, fSub, bSub, rc.Width/2f - titleW/2f, titleY);
 
             // Ligne — entre AudioHexViewer et OnE Audio Projects
-            float sepY = titleY + titleH + 4f;
+            float sepY = titleY + titleH + 2f;
             using (var lBr = new LinearGradientBrush(
                 new PointF(20, sepY), new PointF(rc.Width - 20, sepY),
                 Color.Transparent, Color.Transparent))
@@ -456,7 +469,7 @@ namespace AudioHexViewer
             using var fVer = new Font("Calibri", 13f, FontStyle.Regular, GraphicsUnit.Point);
             using var bVer = new SolidBrush(SubCol);
             float authorH = fVer.GetHeight(g);
-            float authorY = sepY + 5f;
+            float authorY = sepY + 2f;
             float wAuthor = g.MeasureString(AppAuthor, fVer).Width;
             g.DrawString(AppAuthor, fVer, bVer, rc.Width/2f - wAuthor/2f, authorY);
 
@@ -469,63 +482,42 @@ namespace AudioHexViewer
                 g.DrawString(AppSubLine, fVer, bVer, rc.Width/2f - wSubLine/2f, subLineY);
             }
 
-            // Barre de progression
-            float barY = authorY + authorH + 8f;
+            // Barre de progression / décorative
+            float barY = _isAboutMode
+                ? authorY + authorH + 48f   // About : espace pour AppSubLine + marge avant les pics
+                : authorY + authorH + 32f;  // Splash : remonté pour laisser de la place en bas
 
             // Version — sous Loading, alignée à droite
             using var fVn = new Font("Calibri", 9f, FontStyle.Regular, GraphicsUnit.Point);
-            using var bVn = new SolidBrush(SubCol);
+            using var bVn = new SolidBrush(DimCol);
             float vw = g.MeasureString(AppVersion, fVn).Width;
             // Version dessinée dans le bloc if (!_isAboutMode) sous Loading
             // (en mode About, affichée séparément ci-dessous)
             if (_isAboutMode)
             {
+                DrawSpectrumBar(g, rc.Width, barY, 1.0f);   // barre entièrement orange en mode About
                 g.DrawString(AppVersion, fVn, bVn, rc.Width - vw - 6f, rc.Height - 18f);
-                string copy = $"© {DateTime.Now.Year} Frex - OnE Audio Projects";
-                using var bC = new SolidBrush(SubCol);
+                string copy = $"© {DateTime.Now.Year} OnE Audio Projects";
+                using var bC = new SolidBrush(DimCol);
                 g.DrawString(copy, fVn, bC, 6f, rc.Height - 18f);
             }
 
             if (!_isAboutMode)
             {
-                float bx = 40f, by = barY, bw = rc.Width - 80f, bh = 4f;
-                // Fond
-                using var bgP = RoundRect(bx, by, bw, bh, 2f);
-                using var bgBr = new SolidBrush(Color.FromArgb(45, 100, 130, 180));
-                g.FillPath(bgBr, bgP);
-                // Remplissage
-                float filled = bw * _progress;
-                if (filled > bh)
-                {
-                    using var fP = RoundRect(bx, by, filled, bh, 2f);
-                    using var fBr = new LinearGradientBrush(
-                        new PointF(bx, by), new PointF(bx + filled, by),
-                        Color.FromArgb(0, 100, 200), AccentCol);
-                    g.FillPath(fBr, fP);
-                    // Glow
-                    float gx2 = bx + _glowPos * filled;
-                    if (gx2 > bx && gx2 < bx + filled)
-                    {
-                        using var gP = MakeCircle((int)gx2, (int)(by + bh/2), 12);
-                        using var gBr = new PathGradientBrush(gP)
-                        {
-                            CenterColor    = Color.FromArgb(100, 180, 230, 255),
-                            SurroundColors = new[] { Color.Transparent }
-                        };
-                        g.FillPath(gBr, gP);
-                    }
-                }
-                // Message de statut — centré sous la barre
+                DrawSpectrumBar(g, rc.Width, barY, _progress);
+
+                // Position bas de la barre → texte de statut
+                const float svgH2 = 129.89961f, svgB2 = 109.29961f, svgW2 = 1210.1934f;
+                float barBottom = barY + (svgH2 - svgB2) * ((rc.Width - 40f) / svgW2);
                 using var fL = new Font("Calibri", 9f, FontStyle.Regular, GraphicsUnit.Point);
                 using var bL = new SolidBrush(SubCol);
                 float lw2 = g.MeasureString(_statusMessage, fL).Width;
-                float loadingY = by + bh + 5f;
-                g.DrawString(_statusMessage, fL, bL, rc.Width/2f - lw2/2f, loadingY);
-                // Version sous le message, alignée à droite
-                // Version et copyright calés en bas comme en mode About
+                g.DrawString(_statusMessage, fL, bL, rc.Width / 2f - lw2 / 2f, barBottom + 5f);
+
+                // Version et copyright en bas
                 g.DrawString(AppVersion, fVn, bVn, rc.Width - vw - 6f, rc.Height - 18f);
                 string copy = $"© {DateTime.Now.Year} OnE Audio Projects";
-                using var bC = new SolidBrush(SubCol);
+                using var bC = new SolidBrush(DimCol);
                 g.DrawString(copy, fVn, bC, 6f, rc.Height - 18f);
             }
         }
@@ -541,6 +533,103 @@ namespace AudioHexViewer
             p.AddArc(x+w-r*2,y,      r*2, r*2, 270,  90);
             p.AddArc(x+w-r*2,y+h-r*2,r*2,r*2,   0,  90);
             p.AddArc(x,      y+h-r*2,r*2,r*2,  90,  90);
+            p.CloseFigure();
+            return p;
+        }
+
+        /// <summary>Dessine la barre spectre (silhouette SVG scalée).
+        /// progress = 0..1  (0 = tout gris, 1 = tout orange).</summary>
+        private static void DrawSpectrumBar(Graphics g, int rcWidth, float barY, float progress)
+        {
+            const float svgW = 1210.1934f;
+            const float svgH = 129.89961f;
+            const float svgB = 109.29961f;
+            float bx = 20f, bw = rcWidth - 40f;
+            float scale  = bw / svgW;
+            float filled = bw * progress;
+            float tx = bx, ty = barY - svgB * scale;
+
+            using var barPath = BuildBarShape();
+            using var mx = new System.Drawing.Drawing2D.Matrix(scale, 0f, 0f, scale, tx, ty);
+            barPath.Transform(mx);
+
+            using (var grayBr = new SolidBrush(Color.FromArgb(112, 122, 133)))
+                g.FillPath(grayBr, barPath);
+
+            if (filled > 0f)
+            {
+                using var orangeBr = new SolidBrush(AccentCol);
+                var savedClip = g.Clip;
+                using var clipRgn = new System.Drawing.Region(
+                    new RectangleF(tx - 1f, ty - 2f, filled + 1f, svgH * scale + 4f));
+                g.IntersectClip(clipRgn);
+                g.FillPath(orangeBr, barPath);
+                g.Clip = savedClip;
+                savedClip.Dispose();
+            }
+        }
+
+        /// <summary>Silhouette de la barre de progression (5 pics + base arrondie)
+        /// dans le repère SVG 1210×129.9 — appliquer une Matrix pour redimensionner.</summary>
+        private static GraphicsPath BuildBarShape()
+        {
+            var p = new GraphicsPath();
+            const float B = 109.29961f;   // y de la ligne de base SVG
+
+            // Ligne de base gauche
+            p.AddLine(11f, B, 321f, B);
+
+            // ── Pic 1 (le plus haut, ~109 u) ─────────────────────────────────
+            p.AddBezier(321f, B,       325f, B,       328f, B-3f,    329f, B-10f);
+            p.AddLine  (329f, B-10f,   331f, 12f);
+            p.AddBezier(331f,  12f,    331f,  4f,     338f,  0f,     344f,  0f);
+            p.AddBezier(344f,   0f,    350f,  0f,     357f,  4f,     357f, 12f);
+            p.AddLine  (357f,  12f,    359f, B-10f);
+            p.AddBezier(359f, B-10f,   360f, B-3f,   363f,  B,      367f,  B);
+            p.AddLine  (367f, B, 443f, B);      // espace 1 → 2
+
+            // ── Pic 2 (~72 u) ────────────────────────────────────────────────
+            p.AddBezier(443f,  B,      447f,  B,      450f, B-3f,    451f, B-10f);
+            p.AddLine  (451f, B-10f,   453f, 48.9f);
+            p.AddBezier(453f, 48.9f,   453f, 40.9f,   460f, 36.9f,   466f, 36.9f);
+            p.AddBezier(466f, 36.9f,   472f, 36.9f,   479f, 40.9f,   479f, 48.9f);
+            p.AddLine  (479f, 48.9f,   481f, B-10f);
+            p.AddBezier(481f, B-10f,   482f, B-3f,   485f,  B,      489f,  B);
+            p.AddLine  (489f, B, 543f, B);      // espace 2 → 3
+
+            // ── Pic 3 (~56 u) ────────────────────────────────────────────────
+            p.AddBezier(543f,  B,      547f,  B,      550.6f, B-3f,   551f, B-10f);
+            p.AddLine  (551f, B-10f,   553f, 64.28f);
+            p.AddBezier(553f, 64.28f,  553.4f,57.22f, 560f,  53.28f, 566f, 53.28f);
+            p.AddBezier(566f, 53.28f,  572f,  53.28f, 579.6f,57.22f, 580f, 64.28f);
+            p.AddLine  (580f, 64.28f,  582f, B-10f);
+            p.AddBezier(582f, B-10f,   582.4f,B-3f,  586f,  B,      590f,  B);
+            p.AddLine  (590f, B, 641f, B);      // espace 3 → 4
+
+            // ── Pic 4 (~40 u) ────────────────────────────────────────────────
+            p.AddBezier(641f,  B,      645f,  B,      648f,  B-3f,   649f, B-8f);
+            p.AddLine  (649f, B-8f,    651f, 79.09f);
+            p.AddBezier(651f, 79.09f,  652f, 73.09f,  658f,  69.09f, 664f, 69.09f);
+            p.AddBezier(664f, 69.09f,  670f, 69.09f,  676f,  73.09f, 677f, 79.09f);
+            p.AddLine  (677f, 79.09f,  679f, B-8f);
+            p.AddBezier(679f, B-8f,    680f, B-3f,   683f,  B,      687f,  B);
+            p.AddLine  (687f, B, 721f, B);      // espace 4 → 5
+
+            // ── Pic 5 (petit, ~14 u) ─────────────────────────────────────────
+            p.AddBezier(721f,  B,      725f,  B,      728f,  B-2f,   729f, B-5f);
+            p.AddLine  (729f, B-5f,    730f, 102.3f);
+            p.AddBezier(730f, 102.3f,  732f, 97.3f,   737f,  95.3f,  742f, 95.3f);
+            p.AddBezier(742f,  95.3f,  747f, 95.3f,   752f,  97.3f,  754f, 102.3f);
+            p.AddLine  (754f, 102.3f,  755f, B-5f);
+            p.AddBezier(755f, B-5f,    756f, B-2f,   759f,  B,      763f,  B);
+
+            // ── Queue droite + rectangle bas arrondi ──────────────────────────
+            p.AddLine  (763f,       B,          1200.41f, 108.85f);
+            p.AddBezier(1200.41f, 108.85f,   1206.41f, 108.84f, 1210.19f, 114.3f, 1210.19f, 119.3f);
+            p.AddBezier(1210.19f, 119.3f,    1210.19f, 124.3f,  1206.06f, 129.9f, 1200.06f, 129.9f);
+            p.AddLine  (1200.06f, 129.9f,    11f,       129.3f);
+            p.AddBezier(11f,       129.3f,   5f,        129.3f,  0f,       124.3f, 0f,       119.3f);
+            p.AddBezier(0f,        119.3f,   0f,        114.3f,  5f,       109.3f, 11f,      109.3f);
             p.CloseFigure();
             return p;
         }
