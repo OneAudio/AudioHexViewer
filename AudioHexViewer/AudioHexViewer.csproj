@@ -10,10 +10,7 @@
   <PropertyGroup>
     <BuildTimestamp>$([System.DateTime]::Now.ToString("yyMMdd-HHmm"))</BuildTimestamp>
   </PropertyGroup>
-  <WriteLinesToFile
-    File="$(ProjectDir)BuildInfo.cs"
-    Lines="namespace AudioHexViewer { internal static class BuildInfo { public const string Timestamp = &quot;$(BuildTimestamp)&quot;%3B } }"
-    Overwrite="true" />
+  <WriteLinesToFile File="$(ProjectDir)BuildInfo.cs" Lines="namespace AudioHexViewer { internal static class BuildInfo { public const string Timestamp = &quot;$(BuildTimestamp)&quot;%3B } }" Overwrite="true" />
 </Target>
 
   <PropertyGroup>
@@ -32,7 +29,7 @@
 	  <PublishSingleFile>true</PublishSingleFile>
 	  <PublishTrimmed>false</PublishTrimmed>
 	  <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-	  <ApplicationIcon>AudioHexViewer_big.ico</ApplicationIcon>
+	  <ApplicationIcon>Resources\AudioHexViewer.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -53,7 +50,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="AudioHexViewer_big.ico" />
+    <Content Include="Resources\AudioHexViewer.ico" />
   </ItemGroup>
 
   <ItemGroup>

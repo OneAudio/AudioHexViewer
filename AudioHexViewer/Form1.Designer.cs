@@ -31,29 +31,30 @@ namespace AudioHexViewer
         /// </summary>
         private void InitializeComponent()
         {
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             label5 = new Label();
             menuStrip1 = new MenuStrip();
             menuDevices = new ToolStripMenuItem();
+            menuOverlap = new ToolStripMenuItem();
+            menuSampleSize = new ToolStripMenuItem();
+            menuData = new ToolStripMenuItem();
+            menuShowAllFormats = new ToolStripMenuItem();
+            menuDataView = new ToolStripMenuItem();
+            menuDebugInfo = new ToolStripMenuItem();
+            menuSidePanel = new ToolStripMenuItem();
+            menuSidePanelShow = new ToolStripMenuItem();
+            menuSidePanelHide = new ToolStripMenuItem();
+            exportToolStripMenuItem = new ToolStripMenuItem();
+            menuCopyClipboard = new ToolStripMenuItem();
+            menuExportPdf = new ToolStripMenuItem();
             menuHelp = new ToolStripMenuItem();
             menuDocumentation = new ToolStripMenuItem();
             menuAbout = new ToolStripMenuItem();
             menuOpenCal = new ToolStripMenuItem();
             menuOpenRecordsFolder = new ToolStripMenuItem();
             alwaysOnTopToolStripMenuItem = new ToolStripMenuItem();
-            menuData = new ToolStripMenuItem();
-            menuShowAllFormats = new ToolStripMenuItem();
-            menuDataView = new ToolStripMenuItem();
-            menuDebugInfo = new ToolStripMenuItem();
-            menuSidePanel      = new ToolStripMenuItem();
-            menuSidePanelShow  = new ToolStripMenuItem();
-            menuSidePanelHide  = new ToolStripMenuItem();
             panelDebugInfo = new Panel();
             lblDebugInfo = new Label();
-            menuSampleSize = new ToolStripMenuItem();
-            menuOverlap = new ToolStripMenuItem();
-            exportToolStripMenuItem = new ToolStripMenuItem();
-            menuCopyClipboard = new ToolStripMenuItem();
-            menuExportPdf = new ToolStripMenuItem();
             panelTop = new Panel();
             lblRightLevelMain = new Label();
             lblLeftLevelMain = new Label();
@@ -65,14 +66,14 @@ namespace AudioHexViewer
             btnRecord = new Button();
             btnCalV = new Button();
             tabAnalysis = new TabControl();
-            tabHistogram = new TabPage();
-            panelHistogram = new Panel();
             tabSpectrum = new TabPage();
             tabOscilloscope = new TabPage();
+            tabHistogram = new TabPage();
+            panelHistogram = new Panel();
             txtLeft = new RichTextBox();
             txtRight = new RichTextBox();
             menuStrip1.SuspendLayout();
-            panelTop.SuspendLayout();
+            panelDebugInfo.SuspendLayout();
             tabAnalysis.SuspendLayout();
             tabHistogram.SuspendLayout();
             SuspendLayout();
@@ -98,25 +99,110 @@ namespace AudioHexViewer
             menuStrip1.Text = "menuStrip1";
             // 
             // menuDevices
-            menuDevices.Name      = "menuDevices";
-            menuDevices.Size      = new Size(59, 21);
-            menuDevices.Text      = "Devices";
-            menuDevices.Click    += menuDevices_Click;
+            // 
+            menuDevices.Name = "menuDevices";
+            menuDevices.Size = new Size(59, 21);
+            menuDevices.Text = "Devices";
+            menuDevices.Click += menuDevices_Click;
+            // 
+            // menuOverlap
+            // 
+            menuOverlap.Name = "menuOverlap";
+            menuOverlap.Size = new Size(60, 21);
+            menuOverlap.Text = "Overlap";
+            // 
+            // menuSampleSize
+            // 
+            menuSampleSize.Name = "menuSampleSize";
+            menuSampleSize.Size = new Size(80, 21);
+            menuSampleSize.Text = "Sample size";
+            // 
+            // menuData
+            // 
+            menuData.DropDownItems.AddRange(new ToolStripItem[] { menuShowAllFormats, menuDataView, menuDebugInfo, menuSidePanel });
+            menuData.Name = "menuData";
+            menuData.Size = new Size(44, 21);
+            menuData.Text = "View";
+            // 
+            // menuShowAllFormats
+            // 
+            menuShowAllFormats.Name = "menuShowAllFormats";
+            menuShowAllFormats.Size = new Size(188, 22);
+            menuShowAllFormats.Text = "Show all data formats";
+            menuShowAllFormats.Click += menuShowAllFormats_Click;
+            // 
+            // menuDataView
+            // 
+            menuDataView.Name = "menuDataView";
+            menuDataView.Size = new Size(188, 22);
+            menuDataView.Text = "DataView";
+            menuDataView.Click += menuDataView_Click;
+            // 
+            // menuDebugInfo
+            // 
+            menuDebugInfo.CheckOnClick = true;
+            menuDebugInfo.Name = "menuDebugInfo";
+            menuDebugInfo.Size = new Size(188, 22);
+            menuDebugInfo.Text = "Debug info";
+            menuDebugInfo.Click += menuDebugInfo_Click;
+            // 
+            // menuSidePanel
+            // 
+            menuSidePanel.DropDownItems.AddRange(new ToolStripItem[] { menuSidePanelShow, menuSidePanelHide });
+            menuSidePanel.Name = "menuSidePanel";
+            menuSidePanel.Size = new Size(188, 22);
+            menuSidePanel.Text = "Side Panel";
+            // 
+            // menuSidePanelShow
+            // 
+            menuSidePanelShow.Checked = true;
+            menuSidePanelShow.CheckState = CheckState.Checked;
+            menuSidePanelShow.Name = "menuSidePanelShow";
+            menuSidePanelShow.Size = new Size(103, 22);
+            menuSidePanelShow.Text = "Show";
+            // 
+            // menuSidePanelHide
+            // 
+            menuSidePanelHide.Name = "menuSidePanelHide";
+            menuSidePanelHide.Size = new Size(103, 22);
+            menuSidePanelHide.Text = "Hide";
+            // 
+            // exportToolStripMenuItem
+            // 
+            exportToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { menuCopyClipboard, menuExportPdf });
+            exportToolStripMenuItem.Name = "exportToolStripMenuItem";
+            exportToolStripMenuItem.Size = new Size(53, 21);
+            exportToolStripMenuItem.Text = "Export";
+            // 
+            // menuCopyClipboard
+            // 
+            menuCopyClipboard.Name = "menuCopyClipboard";
+            menuCopyClipboard.ShortcutKeys = Keys.Control | Keys.C;
+            menuCopyClipboard.Size = new Size(245, 22);
+            menuCopyClipboard.Text = "Copy graph to clipboard";
+            menuCopyClipboard.Click += menuCopyClipboard_Click;
+            // 
+            // menuExportPdf
+            // 
+            menuExportPdf.Name = "menuExportPdf";
+            menuExportPdf.Size = new Size(245, 22);
+            menuExportPdf.Text = "Export to PDF…";
+            menuExportPdf.Click += menuExportPdf_Click;
             // 
             // menuHelp
             // 
-            menuHelp.DropDownItems.AddRange(new ToolStripItem[] { menuDocumentation, new ToolStripSeparator(), menuAbout, menuOpenCal, menuOpenRecordsFolder, alwaysOnTopToolStripMenuItem });
+            menuHelp.DropDownItems.AddRange(new ToolStripItem[] { menuDocumentation, menuAbout, menuOpenCal, menuOpenRecordsFolder, alwaysOnTopToolStripMenuItem });
             menuHelp.Name = "menuHelp";
             menuHelp.Size = new Size(44, 21);
             menuHelp.Text = "Help";
             // 
-            //
             // menuDocumentation
-            //
+            // 
             menuDocumentation.Name = "menuDocumentation";
             menuDocumentation.Size = new Size(181, 22);
             menuDocumentation.Text = "Documentation";
             menuDocumentation.Click += menuDocumentation_Click;
+            // 
             // menuAbout
             // 
             menuAbout.Name = "menuAbout";
@@ -146,91 +232,28 @@ namespace AudioHexViewer
             alwaysOnTopToolStripMenuItem.Text = "Always on top";
             alwaysOnTopToolStripMenuItem.Click += alwaysOnTopToolStripMenuItem_Click;
             // 
-            // menuData
+            // panelDebugInfo
             // 
-            menuData.DropDownItems.AddRange(new ToolStripItem[] { menuShowAllFormats, menuDataView, menuDebugInfo, new ToolStripSeparator(), menuSidePanel });
-            menuData.Name = "menuData";
-            menuData.Size = new Size(44, 21);
-            menuData.Text = "View";
+            panelDebugInfo.BackColor = Color.FromArgb(25, 25, 25);
+            panelDebugInfo.Controls.Add(lblDebugInfo);
+            panelDebugInfo.Dock = DockStyle.Top;
+            panelDebugInfo.Location = new Point(0, 77);
+            panelDebugInfo.Name = "panelDebugInfo";
+            panelDebugInfo.Size = new Size(1138, 18);
+            panelDebugInfo.TabIndex = 39;
+            panelDebugInfo.Visible = false;
             // 
-            // menuSidePanel
+            // lblDebugInfo
             // 
-            menuSidePanel.Name = "menuSidePanel";
-            menuSidePanel.Text = "Side Panel";
-            menuSidePanel.DropDownItems.AddRange(new ToolStripItem[] { menuSidePanelShow, menuSidePanelHide });
-            // 
-            // menuSidePanelShow
-            // 
-            menuSidePanelShow.Name        = "menuSidePanelShow";
-            menuSidePanelShow.Text        = "Show";
-            menuSidePanelShow.Checked     = true;
-            menuSidePanelShow.CheckOnClick = false;
-            // 
-            // menuSidePanelHide
-            // 
-            menuSidePanelHide.Name        = "menuSidePanelHide";
-            menuSidePanelHide.Text        = "Hide";
-            menuSidePanelHide.Checked     = false;
-            menuSidePanelHide.CheckOnClick = false;
-            // 
-            // menuShowAllFormats
-            // 
-            menuShowAllFormats.Name = "menuShowAllFormats";
-            menuShowAllFormats.Size = new Size(188, 22);
-            menuShowAllFormats.Text = "Show all data formats";
-            menuShowAllFormats.Click += menuShowAllFormats_Click;
-            // 
-            // menuDataView
-            // 
-            menuDataView.Name = "menuDataView";
-            menuDataView.Size = new Size(188, 22);
-            menuDataView.Text = "DataView";
-            menuDataView.Click += menuDataView_Click;
-            // 
-            // menuDebugInfo
-            // 
-            menuDebugInfo.CheckOnClick = true;
-            menuDebugInfo.Name = "menuDebugInfo";
-            menuDebugInfo.Size = new Size(188, 22);
-            menuDebugInfo.Text = "Debug info";
-            menuDebugInfo.Click += menuDebugInfo_Click;
-            // 
-            // menuSampleSize
-            // 
-            menuSampleSize.Name = "menuSampleSize";
-            menuSampleSize.Size = new Size(80, 21);
-            menuSampleSize.Text = "Sample size";
-            // 
-            // menuOverlap
-            // 
-            menuOverlap.Name = "menuOverlap";
-            menuOverlap.Size = new Size(60, 21);
-            menuOverlap.Text = "Overlap";
-            // 
-            // 
-            // 
-            // exportToolStripMenuItem
-            // 
-            exportToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { menuCopyClipboard, menuExportPdf });
-            exportToolStripMenuItem.Name = "exportToolStripMenuItem";
-            exportToolStripMenuItem.Size = new Size(53, 21);
-            exportToolStripMenuItem.Text = "Export";
-            //
-            // menuCopyClipboard
-            //
-            menuCopyClipboard.Name = "menuCopyClipboard";
-            menuCopyClipboard.Size = new Size(230, 22);
-            menuCopyClipboard.Text = "Copy graph to clipboard";
-            menuCopyClipboard.ShortcutKeys = Keys.Control | Keys.C;
-            menuCopyClipboard.ShowShortcutKeys = true;
-            menuCopyClipboard.Click += menuCopyClipboard_Click;
-            //
-            // menuExportPdf
-            //
-            menuExportPdf.Name = "menuExportPdf";
-            menuExportPdf.Size = new Size(209, 22);
-            menuExportPdf.Text = "Export to PDF…";
-            menuExportPdf.Click += menuExportPdf_Click;
+            lblDebugInfo.BackColor = Color.Transparent;
+            lblDebugInfo.Dock = DockStyle.Fill;
+            lblDebugInfo.Font = new Font("Consolas", 8.25F);
+            lblDebugInfo.ForeColor = Color.FromArgb(144, 238, 144);
+            lblDebugInfo.Location = new Point(0, 0);
+            lblDebugInfo.Name = "lblDebugInfo";
+            lblDebugInfo.Size = new Size(1138, 18);
+            lblDebugInfo.TabIndex = 0;
+            lblDebugInfo.TextAlign = ContentAlignment.MiddleLeft;
             // 
             // panelTop
             // 
@@ -239,28 +262,6 @@ namespace AudioHexViewer
             panelTop.Name = "panelTop";
             panelTop.Size = new Size(1138, 52);
             panelTop.TabIndex = 38;
-            // 
-            // panelDebugInfo  (barre de debug sous panelTop, cachée par défaut)
-            // 
-            panelDebugInfo.Controls.Add(lblDebugInfo);
-            panelDebugInfo.Dock = DockStyle.Top;
-            panelDebugInfo.Name = "panelDebugInfo";
-            panelDebugInfo.Size = new Size(1138, 18);
-            panelDebugInfo.BackColor = Color.FromArgb(25, 25, 25);
-            panelDebugInfo.Visible = false;
-            panelDebugInfo.TabIndex = 39;
-            // 
-            // lblDebugInfo
-            // 
-            lblDebugInfo.Dock = DockStyle.Fill;
-            lblDebugInfo.Font = new Font("Consolas", 8.25F);
-            lblDebugInfo.ForeColor = Color.FromArgb(144, 238, 144);  // LightGreen
-            lblDebugInfo.BackColor = Color.Transparent;
-            lblDebugInfo.Name = "lblDebugInfo";
-            lblDebugInfo.Text = "";
-            lblDebugInfo.AutoEllipsis = false;
-            lblDebugInfo.AutoSize = false;
-            lblDebugInfo.TextAlign = ContentAlignment.MiddleLeft;
             // 
             // lblRightLevelMain
             // 
@@ -337,14 +338,6 @@ namespace AudioHexViewer
             label7.TabIndex = 55;
             label7.Text = "dBFS Level Right Channel";
             // 
-
-            // 
-
-            // 
-
-            // 
-
-            // 
             // btnRecord
             // 
             btnRecord.BackColor = Color.Firebrick;
@@ -379,18 +372,36 @@ namespace AudioHexViewer
             tabAnalysis.Controls.Add(tabOscilloscope);
             tabAnalysis.Controls.Add(tabHistogram);
             tabAnalysis.Dock = DockStyle.Fill;
-            tabAnalysis.Location = new Point(0, 98);
+            tabAnalysis.Location = new Point(0, 95);
             tabAnalysis.Name = "tabAnalysis";
             tabAnalysis.SelectedIndex = 0;
-            tabAnalysis.Size = new Size(1138, 651);
+            tabAnalysis.Size = new Size(1138, 654);
             tabAnalysis.TabIndex = 0;
+            // 
+            // tabSpectrum
+            // 
+            tabSpectrum.Location = new Point(4, 24);
+            tabSpectrum.Name = "tabSpectrum";
+            tabSpectrum.Size = new Size(1130, 626);
+            tabSpectrum.TabIndex = 0;
+            tabSpectrum.Text = "Spectrum";
+            tabSpectrum.UseVisualStyleBackColor = true;
+            // 
+            // tabOscilloscope
+            // 
+            tabOscilloscope.Location = new Point(4, 24);
+            tabOscilloscope.Name = "tabOscilloscope";
+            tabOscilloscope.Size = new Size(1130, 626);
+            tabOscilloscope.TabIndex = 1;
+            tabOscilloscope.Text = "Oscilloscope";
+            tabOscilloscope.UseVisualStyleBackColor = true;
             // 
             // tabHistogram
             // 
             tabHistogram.Controls.Add(panelHistogram);
             tabHistogram.Location = new Point(4, 24);
             tabHistogram.Name = "tabHistogram";
-            tabHistogram.Size = new Size(1130, 623);
+            tabHistogram.Size = new Size(1130, 626);
             tabHistogram.TabIndex = 2;
             tabHistogram.Text = "Histogram";
             tabHistogram.UseVisualStyleBackColor = true;
@@ -401,24 +412,8 @@ namespace AudioHexViewer
             panelHistogram.Dock = DockStyle.Fill;
             panelHistogram.Location = new Point(0, 0);
             panelHistogram.Name = "panelHistogram";
-            panelHistogram.Size = new Size(1130, 623);
+            panelHistogram.Size = new Size(1130, 626);
             panelHistogram.TabIndex = 0;
-            // 
-            // tabSpectrum
-            // 
-            tabSpectrum.Location = new Point(4, 24);
-            tabSpectrum.Name = "tabSpectrum";
-            tabSpectrum.Size = new Size(1130, 623);
-            tabSpectrum.TabIndex = 0;
-            tabSpectrum.Text = "Spectrum";
-            tabSpectrum.UseVisualStyleBackColor = true;
-            // tabOscilloscope
-            tabOscilloscope.Location = new Point(4, 24);
-            tabOscilloscope.Name = "tabOscilloscope";
-            tabOscilloscope.Size = new Size(1130, 623);
-            tabOscilloscope.TabIndex = 1;
-            tabOscilloscope.Text = "Oscilloscope";
-            tabOscilloscope.UseVisualStyleBackColor = true;
             // 
             // txtLeft
             // 
@@ -455,14 +450,14 @@ namespace AudioHexViewer
             Controls.Add(menuStrip1);
             Controls.Add(label5);
             HelpButton = true;
+            Icon = (Icon)resources.GetObject("$this.Icon");
             MainMenuStrip = menuStrip1;
             Name = "Form1";
             Text = "AudioHexViewer";
             Load += Form1_Load;
             menuStrip1.ResumeLayout(false);
             menuStrip1.PerformLayout();
-            panelTop.ResumeLayout(false);
-            panelTop.PerformLayout();
+            panelDebugInfo.ResumeLayout(false);
             tabAnalysis.ResumeLayout(false);
             tabHistogram.ResumeLayout(false);
             ResumeLayout(false);

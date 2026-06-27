@@ -1,1 +1,1 @@
-namespace AudioHexViewer { internal static class BuildInfo { public const string Timestamp = "260626-1811"; } }
+namespace AudioHexViewer { internal static class BuildInfo { public const string Timestamp = "260627-1051"; } }
