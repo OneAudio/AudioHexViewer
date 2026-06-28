@@ -7,6 +7,8 @@ namespace AudioHexViewer
 {
     internal sealed partial class LevelCalibrationDialog : Form
     {
+    private ToolTip? _contextTip;   // context-sensitive tooltip for this form
+
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Func<double, (bool ok, string message)>? CalibrateLeft { get; set; }
 
@@ -23,6 +25,8 @@ namespace AudioHexViewer
         public LevelCalibrationDialog()
         {
             InitializeComponent();
+            _contextTip = ContextHelpManager.CreateFormToolTip();
+            Load += (_, _) => ContextHelpManager.ApplyTooltips(this.Controls, _contextTip);
 
             btnApply .Click += BtnApply_Click;
             btnClear .Click += BtnClear_Click;

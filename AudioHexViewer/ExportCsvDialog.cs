@@ -7,6 +7,8 @@ namespace AudioHexViewer
 {
     internal sealed class ExportCsvDialog : Form
     {
+        private ToolTip? _contextTip;
+
         private readonly RadioButton _rbHisto = new() { Text = "Histogram",    AutoSize = true };
         private readonly RadioButton _rbSpec  = new() { Text = "Spectrum",     AutoSize = true };
         private readonly RadioButton _rbScope = new() { Text = "Oscilloscope", AutoSize = true };
@@ -94,6 +96,20 @@ namespace AudioHexViewer
             _btnCancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
             Controls.Add(_btnOk); Controls.Add(_btnCancel);
 
+
+            // ── Names for context-sensitive tooltips ──────────────────────────
+            _rbHisto.Name    = "rbExportHisto";
+            _rbSpec.Name     = "rbExportSpec";
+            _rbScope.Name    = "rbExportScope";
+            _tbPath.Name     = "tbPath";
+            _btnBrowse.Name  = "btnBrowse";
+            _cboSep.Name     = "cboSep";
+            _cboDecimal.Name = "cboDecimal";
+            _chkHeader.Name  = "chkHeader";
+            _btnOk.Name      = "btnExportCsv";
+            _btnCancel.Name  = "btnCancel";
+            _contextTip = ContextHelpManager.CreateFormToolTip();
+            Load += (_, _) => ContextHelpManager.ApplyTooltips(this.Controls, _contextTip);
             AcceptButton = _btnOk; CancelButton = _btnCancel;
 
             // Restore + wire source change

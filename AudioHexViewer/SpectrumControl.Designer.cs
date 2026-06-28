@@ -1,4 +1,4 @@
-﻿namespace AudioHexViewer
+namespace AudioHexViewer
 {
     partial class SpectrumControl
     {
@@ -571,6 +571,32 @@
             tlpPhi.ResumeLayout(false);
             tlpNorm.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)chartSpectrum).EndInit();
+
+            // ── Context help: cursor button Names ─────────────────────────────
+            btnC1.Name       = "btnC1";
+            btnC1Track.Name  = "btnC1Track";
+            btnC1PrevPk.Name = "btnC1PrevPk";
+            btnC1Pk.Name     = "btnC1Pk";
+            btnC1NextPk.Name = "btnC1NextPk";
+            btnC1Set.Name    = "btnC1Set";
+            btnC2.Name       = "btnC2";
+            btnC2Track.Name  = "btnC2Track";
+            btnC2PrevPk.Name = "btnC2PrevPk";
+            btnC2Pk.Name     = "btnC2Pk";
+            btnC2NextPk.Name = "btnC2NextPk";
+            btnC2Set.Name    = "btnC2Set";
+
+            // ── Context help: real cursor button Names (X1/X2 bar) ────────────
+            btnX1.Name        = "btnX1";
+            btnX1Chan.Name    = "btnX1Chan";
+            btnX1Set.Name     = "btnX1Set";
+            btnX1Peak.Name    = "btnX1Peak";
+            btnDispGraph.Name = "btnDispGraph";
+            btnX2.Name        = "btnX2";
+            btnX2Chan.Name    = "btnX2Chan";
+            btnX2Set.Name     = "btnX2Set";
+            btnX2Peak.Name    = "btnX2Peak";
+            btnDispLabel.Name = "btnDispLabel";
             ResumeLayout(false);
         }
 

@@ -345,6 +345,39 @@ namespace AudioHexViewer
             Controls.Add(tbl);    // DockStyle.Fill  – processed last by WinForms
             Controls.Add(pBot);   // DockStyle.Bottom – processed first (higher index)
 
+            // ── Context help Name assignments ─────────────────────────────
+            btnFftL.Name = "btnFftL";
+            btnFftR.Name = "btnFftR";
+            nudFftWidth.Name = "nudFftWidth";
+            chkNegTraces.Name = "chkNegTraces";
+            btnHoldMinL.Name = "btnHoldMinL";
+            btnHoldMinR.Name = "btnHoldMinR";
+            btnPkL.Name = "btnPkL";
+            btnPkR.Name = "btnPkR";
+            nudHoldMinWidth.Name = "nudHoldMinWidth";
+            nudPkWidth.Name = "nudPkWidth";
+            chkNegHold.Name = "chkNegHold";
+            btnOv1.Name = "btnOv1";
+            btnOv2.Name = "btnOv2";
+            btnOv3.Name = "btnOv3";
+            btnOv4.Name = "btnOv4";
+            btnOv5.Name = "btnOv5";
+            btnOv6.Name = "btnOv6";
+            btnOv7.Name = "btnOv7";
+            btnOv8.Name = "btnOv8";
+            nudOvWidth.Name = "nudOvWidth";
+            cmbOvStyle.Name = "cmbOvStyle";
+            chkNegOverlays.Name = "chkNegOverlays";
+            btnGridMaj.Name = "btnGridMaj";
+            btnGridMin.Name = "btnGridMin";
+            btnBack.Name = "btnBack";
+            btnInfoText.Name = "btnInfoText";
+            btnLabMaj.Name = "btnLabMaj";
+            btnLabMin.Name = "btnLabMin";
+            chkNegChart.Name = "chkNegChart";
+            btnSaveDefault.Name = "btnSaveDefault";
+            btnRestoreDefault.Name = "btnRestoreDefault";
+            btnOk.Name = "btnOk";
             ResumeLayout(false);
         }
     }

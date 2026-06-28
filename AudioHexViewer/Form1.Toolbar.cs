@@ -11,13 +11,17 @@ partial class Form1
     private ToolbarButton? _tbGenerator;
     private ToolbarButton? _tbSidePanel;
     private ToolbarButton? _tbAlwaysOnTop;
+    private ToolbarButton? _tbContextHelp;
+
+    // ── Context help menu item (kept in sync with _tbContextHelp) ─────────────
+    private ToolStripMenuItem? _menuContextHelp;
 
     // ── Side panel images (2 states) ─────────────────────────────────────────
     private Image? _imgShowPanel;
     private Image? _imgHidePanel;
 
-    // ── Shared tooltip component ──────────────────────────────────────────────
-    private readonly ToolTip _toolbarTip = new ToolTip { InitialDelay = 400, ReshowDelay = 200 };
+    // ── Always-active tooltip for the ? button (independent of context help toggle) ──
+    private static readonly ToolTip _alwaysOnTip = new ToolTip { Active = true, InitialDelay = 400, ReshowDelay = 200 };
 
     // ── Initialization ────────────────────────────────────────────────────────
     /// <summary>
@@ -31,49 +35,59 @@ partial class Form1
         _imgHidePanel = LoadIcon("AudioHexViewer_HidePanel");
 
         // ── Group 1: Input / Output configuration ────────────────────────────
-        var tbDevices = MakeButton("AudioHexViewer_Devices", "Audio devices");
+        var tbDevices = MakeButton("AudioHexViewer_Devices", "tbDevices");
         tbDevices.Click += (_, _) => menuDevices_Click(tbDevices, EventArgs.Empty);
 
-        _tbGenerator = MakeButton("AudioHexViewer_Generator",
-            "Generator\nLeft-click: open dialog  |  Right-click: start / stop");
+        _tbGenerator = MakeButton("AudioHexViewer_Generator", "tbGenerator");
         _tbGenerator.Click        += (_, _) => menuGenerator_Click(_tbGenerator, EventArgs.Empty);
         _tbGenerator.RightClicked += TbGenerator_RightClicked;
 
         // ── Group 2: Display ─────────────────────────────────────────────────
-        var tbColors = MakeButton("AudioHexViewer_Colors", "Spectrum colors");
+        var tbColors = MakeButton("AudioHexViewer_Colors", "tbColors");
         tbColors.Click += (_, _) => ShowColorsDialog();
 
-        var tbDataView = MakeButton("AudioHexViewer_DataView", "DataView — numeric values");
+        var tbDataView = MakeButton("AudioHexViewer_DataView", "tbDataView");
         tbDataView.Click += (_, _) => menuDataView_Click(tbDataView, EventArgs.Empty);
 
-        var tbAllFormats = MakeButton("AudioHexViewer_AllDataFormats", "Show all data formats");
+        var tbAllFormats = MakeButton("AudioHexViewer_AllDataFormats", "tbAllFormats");
         tbAllFormats.Click += (_, _) => menuShowAllFormats_Click(tbAllFormats, EventArgs.Empty);
 
         // Side panel — 2-image toggle
-        _tbSidePanel = new ToolbarButton(_imgShowPanel);
-        _toolbarTip.SetToolTip(_tbSidePanel, "Show / hide measurement panel");
+        _tbSidePanel      = new ToolbarButton(_imgShowPanel) { Name = "tbSidePanel" };
         _tbSidePanel.Click += TbSidePanel_Click;
 
         // Always on top — 2-image toggle
         _tbAlwaysOnTop = new ToolbarButton(
             LoadIcon("AudioHexViewer_AlwaysontopOFF"),
             LoadIcon("AudioHexViewer_AlwaysontopON"),
-            isToggle: false); // SyncToolbarAlwaysOnTop() owns IsActive
-        _toolbarTip.SetToolTip(_tbAlwaysOnTop, "Always on top");
+            isToggle: false) // SyncToolbarAlwaysOnTop() owns IsActive
+        {
+            Name = "tbAlwaysOnTop"
+        };
         _tbAlwaysOnTop.Click += TbAlwaysOnTop_Click;
 
         // ── Group 3: Export ───────────────────────────────────────────────────
-        var tbCopy = MakeButton("AudioHexViewer_Copy", "Copy graph to clipboard");
+        var tbCopy = MakeButton("AudioHexViewer_Copy", "tbCopy");
         tbCopy.Click += (_, _) => menuCopyClipboard_Click(tbCopy, EventArgs.Empty);
 
-        var tbPng = MakeButton("AudioHexViewer_ExportPNG", "Export as PNG…");
+        var tbPng = MakeButton("AudioHexViewer_ExportPNG", "tbPng");
         tbPng.Click += (_, _) => ExportActiveGraphToPng();
 
-        var tbCsv = MakeButton("AudioHexViewer_ExportCSV", "Export data to CSV…");
+        var tbCsv = MakeButton("AudioHexViewer_ExportCSV", "tbCsv");
         tbCsv.Click += (_, _) => menuExportCsv_Click(tbCsv, EventArgs.Empty);
 
-        var tbPdf = MakeButton("AudioHexViewer_ExportPDF", "Export to PDF…");
+        var tbPdf = MakeButton("AudioHexViewer_ExportPDF", "tbPdf");
         tbPdf.Click += (_, _) => menuExportPdf_Click(tbPdf, EventArgs.Empty);
+
+        // ── Group 4: Help ─────────────────────────────────────────────────────
+        _tbContextHelp = new ToolbarButton(
+            LoadIcon("AudioHexViewer_ContextHelp"),
+            null,
+            isToggle: false)
+        {
+            Name = "tbContextHelp"
+        };
+        _tbContextHelp.Click += TbContextHelp_Click;
 
         // ── Layout in panelTop ───────────────────────────────────────────────
         panelTop.SuspendLayout();
@@ -105,7 +119,11 @@ partial class Form1
         PlaceButton(tbCopy, x, BtnTop, BtnSize); x += BtnSize + BtnGap;
         PlaceButton(tbPng,  x, BtnTop, BtnSize); x += BtnSize + BtnGap;
         PlaceButton(tbCsv,  x, BtnTop, BtnSize); x += BtnSize + BtnGap;
-        PlaceButton(tbPdf,  x, BtnTop, BtnSize);
+        PlaceButton(tbPdf,  x, BtnTop, BtnSize); x += BtnSize + GrpGap;
+
+        PlaceSeparator(x, (52 - SepH) / 2, SepH); x += SepW + GrpGap;
+
+        PlaceButton(_tbContextHelp, x, BtnTop, BtnSize);
 
         panelTop.ResumeLayout(true);
 
@@ -114,6 +132,77 @@ partial class Form1
 
         // ── Progression fichier (droite de panelTop) ──────────────────────
         InitProgressWidget();
+    }
+
+    // ── Context help: initialization(call from Form1_Load) ──────────────────
+    /// <summary>
+    /// Loads ContextHelp.json, applies tooltips to all controls, sets the
+    /// toolbar button and Help menu item to the saved preference.
+    /// <para>
+    /// Call from <c>Form1_Load</c>:
+    /// <code>InitContextHelp(helpToolStripMenuItem);</code>
+    /// </para>
+    /// </summary>
+    internal void InitContextHelp(ToolStripMenuItem helpMenu)
+    {
+        // 1 — Load JSON (tolerates missing file silently)
+        ContextHelpManager.Load(
+            Path.Combine(AppContext.BaseDirectory, "ContextHelp.json"));
+
+        // 3 — Apply tooltips to every named control in the form
+        ContextHelpManager.ApplyTooltips(this.Controls);
+
+        // 3b — ? button uses its own always-active tooltip (independent of toggle)
+        ContextHelpManager.ToolTip.SetToolTip(_tbContextHelp, null);   // exclude from context tooltip
+        if (ContextHelpManager.TryGetText("tbContextHelp", out var tipText))
+            _alwaysOnTip.SetToolTip(_tbContextHelp, tipText);
+
+        // 2 — Restore saved preference
+        bool enabled = Properties.Settings.Default.ContextHelpEnabled;
+        ContextHelpManager.IsEnabled = enabled;
+
+      
+
+        // 4 — Sync toolbar button visual state
+        if (_tbContextHelp != null)
+            _tbContextHelp.IsActive = enabled;
+
+        // 5 — Add "Enable context help" item at top of Help menu
+        _menuContextHelp = new ToolStripMenuItem("Enable context help")
+        {
+            CheckOnClick = true,
+            Checked      = enabled
+        };
+        _menuContextHelp.Click += (_, _) =>
+        {
+            bool on = _menuContextHelp.Checked;
+            ContextHelpManager.IsEnabled = on;
+            if (_tbContextHelp != null) _tbContextHelp.IsActive = on;
+            Properties.Settings.Default.ContextHelpEnabled = on;
+            Properties.Settings.Default.Save();
+            SyncMenuTooltips(on);
+        };
+        helpMenu.DropDownItems.Insert(0, _menuContextHelp);
+
+        // 6 — Apply menu item tooltips (Overlap, Sample size…)
+        SyncMenuTooltips(enabled);
+
+#if DEBUG
+        ContextHelpManager.ReportMissing(this.Controls);
+#endif
+    }
+
+    // ── Context help: toolbar button click ───────────────────────────────────
+    private void TbContextHelp_Click(object? sender, EventArgs e)
+    {
+        bool enabled = !ContextHelpManager.IsEnabled;   // calcule le nouvel état
+        ContextHelpManager.IsEnabled = enabled;
+        _tbContextHelp!.IsActive = enabled;  // pilotage visuel manuel
+        if (_menuContextHelp != null)
+            _menuContextHelp.Checked = enabled;
+        Properties.Settings.Default.ContextHelpEnabled = enabled;
+        Properties.Settings.Default.Save();
+        SyncMenuTooltips(enabled);
     }
 
     // ── Layout helpers ────────────────────────────────────────────────────────
@@ -135,11 +224,13 @@ partial class Form1
     }
 
     // ── Simple button factory ─────────────────────────────────────────────────
-    private ToolbarButton MakeButton(string iconName, string tooltipText)
+    /// <summary>
+    /// Creates a <see cref="ToolbarButton"/> with the given icon and control Name.
+    /// Tooltips are applied later by <see cref="ContextHelpManager.ApplyTooltips"/>.
+    /// </summary>
+    private static ToolbarButton MakeButton(string iconName, string name)
     {
-        var btn = new ToolbarButton(LoadIcon(iconName));
-        _toolbarTip.SetToolTip(btn, tooltipText);
-        return btn;
+        return new ToolbarButton(LoadIcon(iconName)) { Name = name };
     }
 
     // ── Icon loading from embedded resources ──────────────────────────────────
@@ -275,6 +366,14 @@ partial class Form1
         if (_tbAlwaysOnTop == null) return;
         _tbAlwaysOnTop.IsActive = alwaysOnTopToolStripMenuItem.Checked;
     }
+
+    // ── Menu item tooltips (Overlap, Sample size…) ────────────────────────────
+    private void SyncMenuTooltips(bool enabled)
+    {
+        menuStrip1.ShowItemToolTips = enabled;
+        ContextHelpManager.ApplyMenuItemTooltips(menuStrip1.Items, enabled);
+    }
+
     // -- File playback progress widget + T0 button
     // Shown whenever offline/post-process mode is active (playing OR paused).
 
@@ -478,4 +577,3 @@ internal sealed class FileProgressWidget : Control
             Color.FromArgb(130, 130, 130), bgc, flags);
     }
 }
-

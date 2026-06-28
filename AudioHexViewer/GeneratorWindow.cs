@@ -9,6 +9,8 @@ namespace AudioHexViewer
 {
     internal partial class GeneratorWindow : Form
     {
+    private ToolTip? _contextTip;   // context-sensitive tooltip for this form
+
         private static readonly Color ColorRunOff = Color.SeaGreen;
         private static readonly Color ColorRunOn  = Color.Firebrick;
 
@@ -75,6 +77,8 @@ namespace AudioHexViewer
             _onRunStateChanged     = onRunStateChanged;
 
             InitializeComponent();
+            _contextTip = ContextHelpManager.CreateFormToolTip();
+            Load += (_, _) => ContextHelpManager.ApplyTooltips(this.Controls, _contextTip);
             InitVuBars();   // ← WAS MISSING: wire pnlVuMeter.Paint event
 
             // Close (= hide) on Escape

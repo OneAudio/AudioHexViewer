@@ -6,6 +6,8 @@ namespace AudioHexViewer
 {
     public partial class DataViewForm : Form
     {
+    private ToolTip? _contextTip;   // context-sensitive tooltip for this form
+
         // ── État RUN/STOP ─────────────────────────────────────────────────────
         private bool _isRunning = false;
 
@@ -26,6 +28,8 @@ namespace AudioHexViewer
         public DataViewForm()
         {
             InitializeComponent();
+            _contextTip = ContextHelpManager.CreateFormToolTip();
+            Load += (_, _) => ContextHelpManager.ApplyTooltips(this.Controls, _contextTip);
 
             // Close (= hide) on Escape
             KeyPreview = true;

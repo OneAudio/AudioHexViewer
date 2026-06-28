@@ -156,6 +156,12 @@ namespace AudioHexViewer
                 btnApply, _btnClose, btnClear
             });
 
+            // ── Context help Name assignments ─────────────────────────────
+            _txtLeft.Name = "_txtLeft";
+            _txtRight.Name = "_txtRight";
+            btnApply.Name = "btnApply";
+            btnClear.Name = "btnClear";
+            _btnClose.Name = "btnClose";
             ResumeLayout(false);
             PerformLayout();
         }

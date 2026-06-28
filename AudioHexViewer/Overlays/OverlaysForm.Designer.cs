@@ -105,6 +105,14 @@ namespace AudioHexViewer
                 listOverlays,
                 btnDelete, btnOpenFolder, btnClose
             });
+            // ── Context help Name assignments ─────────────────────────────
+            btnCapture.Name = "btnCapture";
+            btnImport.Name = "btnImport";
+            btnExport.Name = "btnExport";
+            btnRemove.Name = "btnRemove";
+            btnDelete.Name = "btnDelete";
+            btnOpenFolder.Name = "btnOpenFolder";
+            btnClose.Name = "btnClose";
             ResumeLayout(false);
         }
     }

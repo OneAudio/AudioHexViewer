@@ -3102,6 +3102,8 @@ namespace AudioHexViewer
                 ApplyAnalysisSettings(_loadedSessionSettings);
 
             ApplyLoadedSessionSettingsToExistingControls();
+
+            InitContextHelp(menuHelp); // ← ajouter ici
         }
 
         private void splitContainer1_Panel2_Paint(object sender, PaintEventArgs e)

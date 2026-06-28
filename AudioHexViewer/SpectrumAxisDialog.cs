@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.Linq;
 using System.Windows.Forms;
@@ -9,6 +9,8 @@ namespace AudioHexViewer
 {
     public partial class SpectrumAxisDialog : Form
     {
+    private ToolTip? _contextTip;   // context-sensitive tooltip for this form
+
         private bool _updating = false;
 
         private const double PHASE_ABS_MAX_DEG = 1800.0; // max absolu (unwrapped); wrapped limité par NUD bounds
@@ -29,6 +31,8 @@ namespace AudioHexViewer
         public SpectrumAxisDialog()
         {
             InitializeComponent();
+            _contextTip = ContextHelpManager.CreateFormToolTip();
+            Load += (_, _) => ContextHelpManager.ApplyTooltips(this.Controls, _contextTip);
 
             // Close dialog on Escape (same behavior as Cancel)
             KeyPreview = true;

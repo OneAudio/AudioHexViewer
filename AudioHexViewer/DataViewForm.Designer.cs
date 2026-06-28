@@ -222,6 +222,10 @@ namespace AudioHexViewer
                 label4, comboDisplayMode, btnRunStop
             });
 
+
+            // ── Context help Name assignments ─────────────────────────────────
+            comboDisplayMode.Name = "comboDisplayMode";
+            btnRunStop.Name       = "btnRunStop";
             ResumeLayout(false);
         }
     }

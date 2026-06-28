@@ -10,6 +10,8 @@ namespace AudioHexViewer
 {
     internal partial class DevicesDialog : Form
     {
+    private ToolTip? _contextTip;   // context-sensitive tooltip for this form
+
         // ── Cache SR ──────────────────────────────────────────────────────────
         internal static readonly Dictionary<(string id, int sr), bool> SrCache
             = new Dictionary<(string id, int sr), bool>();
@@ -49,6 +51,8 @@ namespace AudioHexViewer
             _srOptions = sampleRateOptions;
             _onInfos   = onInfosClick;
             InitializeComponent();
+            _contextTip = ContextHelpManager.CreateFormToolTip();
+            Load += (_, _) => ContextHelpManager.ApplyTooltips(this.Controls, _contextTip);
 
             // ── Buffer combo ─────────────────────────────────────────────
             foreach (int n in BufferOptions)

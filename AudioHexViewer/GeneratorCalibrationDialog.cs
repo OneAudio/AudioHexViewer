@@ -19,6 +19,8 @@ namespace AudioHexViewer
     /// </summary>
     internal sealed partial class GeneratorCalibrationDialog : Form
     {
+    private ToolTip? _contextTip;   // context-sensitive tooltip for this form
+
         // ── Callbacks fournis par GeneratorWindow ─────────────────────────────
         /// <summary>Retourne l'amplitude courante du générateur en dBFS, ou null si arrêté.</summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -34,6 +36,8 @@ namespace AudioHexViewer
         public GeneratorCalibrationDialog()
         {
             InitializeComponent();
+            _contextTip = ContextHelpManager.CreateFormToolTip();
+            Load += (_, _) => ContextHelpManager.ApplyTooltips(this.Controls, _contextTip);
 
             _refreshTimer = new System.Windows.Forms.Timer { Interval = 200 };
             _refreshTimer.Tick += (_, _) => RefreshAmplitudeLabel();

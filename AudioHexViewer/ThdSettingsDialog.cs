@@ -5,6 +5,8 @@ namespace AudioHexViewer
 {
     internal partial class ThdSettingsDialog : Form
     {
+    private ToolTip? _contextTip;   // context-sensitive tooltip for this form
+
         public SpectrumSettings.ThdSettings Result { get; private set; }
 
         private readonly double _nyq;   // Nyquist du SR courant, pour les clamps
@@ -14,6 +16,8 @@ namespace AudioHexViewer
             Result = initial ?? new SpectrumSettings.ThdSettings();
 
             InitializeComponent();
+            _contextTip = ContextHelpManager.CreateFormToolTip();
+            Load += (_, _) => ContextHelpManager.ApplyTooltips(this.Controls, _contextTip);
 
             _nyq = (sampleRate > 0) ? (sampleRate / 2.0) : 384000.0;
 

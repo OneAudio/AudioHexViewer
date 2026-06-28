@@ -7,6 +7,8 @@ namespace AudioHexViewer
 {
     public partial class SpectrumColorsDialog : Form
     {
+    private ToolTip? _contextTip;   // context-sensitive tooltip for this form
+
         private SpectrumColorSettings _colors;
         private SpectrumColorSettings _defaults;
 
@@ -18,6 +20,8 @@ namespace AudioHexViewer
                                     SpectrumColorSettings? defaults = null)
         {
             InitializeComponent();
+            _contextTip = ContextHelpManager.CreateFormToolTip();
+            Load += (_, _) => ContextHelpManager.ApplyTooltips(this.Controls, _contextTip);
 
             // Allow closing the dialog with the Escape key
             KeyPreview = true;

@@ -7,6 +7,8 @@ namespace AudioHexViewer
 {
     internal sealed class ExportPdfDialog : Form
     {
+        private ToolTip? _contextTip;
+
         private readonly TextBox       _tbPath      = new();
         private readonly Button        _btnBrowse   = new() { Text = "Browse…", Width = 72, Height = 23 };
         private readonly CheckBox      _chkHisto    = new() { Text = "Histogram",    AutoSize = true };
@@ -104,6 +106,21 @@ namespace AudioHexViewer
             _btnCancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
             Controls.Add(_btnOk); Controls.Add(_btnCancel);
 
+
+            // ── Names for context-sensitive tooltips ──────────────────────────
+            _tbPath.Name      = "tbPath";
+            _btnBrowse.Name   = "btnBrowse";
+            _chkHisto.Name    = "chkExportHisto";
+            _chkSpec.Name     = "chkExportSpec";
+            _chkScope.Name    = "chkExportScope";
+            _nudScale.Name    = "nudScale";
+            _chkOpen.Name     = "chkOpen";
+            _tbTitle.Name     = "tbTitle";
+            _tbNotes.Name     = "tbNotes";
+            _btnOk.Name       = "btnExportPdf";
+            _btnCancel.Name   = "btnCancel";
+            _contextTip = ContextHelpManager.CreateFormToolTip();
+            Load += (_, _) => ContextHelpManager.ApplyTooltips(this.Controls, _contextTip);
             AcceptButton = _btnOk; CancelButton = _btnCancel;
 
             // Init all 3 checked by default

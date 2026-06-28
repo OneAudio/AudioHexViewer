@@ -10,6 +10,8 @@ namespace AudioHexViewer
 {
     internal sealed partial class OverlaysForm : Form
     {
+        private ToolTip? _contextTip;
+
         private readonly IOverlayHost _owner;
         // File extension for this host's overlay library (".spec.json" or ".scop.json")
         private string Ext       => _owner.OverlayLibraryGetFileExtension();
@@ -22,6 +24,8 @@ namespace AudioHexViewer
         {
             _owner = owner ?? throw new ArgumentNullException(nameof(owner));
             InitializeComponent();
+            _contextTip = ContextHelpManager.CreateFormToolTip();
+            Load += (_, _) => ContextHelpManager.ApplyTooltips(this.Controls, _contextTip);
             InitColorIcons();
             RefreshList();
 

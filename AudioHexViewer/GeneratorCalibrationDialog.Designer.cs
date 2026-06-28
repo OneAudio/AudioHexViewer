@@ -159,6 +159,12 @@ namespace AudioHexViewer
                 btnClearCal, btnApply, btnClose
             });
 
+            // ── Context help Name assignments ─────────────────────────────
+            txtVrmsL.Name = "txtVrmsL";
+            txtVrmsR.Name = "txtVrmsR";
+            btnClearCal.Name = "btnClearCal";
+            btnApply.Name = "btnApply";
+            btnClose.Name = "btnClose";
             ResumeLayout(false);
             PerformLayout();
         }

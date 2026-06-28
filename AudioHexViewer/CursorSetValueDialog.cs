@@ -1,10 +1,12 @@
-﻿using System;
+using System;
 using System.Windows.Forms;
 
 namespace AudioHexViewer
 {
     public partial class CursorSetValueDialog : Form
     {
+    private ToolTip? _contextTip;   // context-sensitive tooltip for this form
+
         private readonly Func<double?> _getPeakC1Hz;
         private readonly Func<double?> _getPeakC2Hz;
         private readonly bool _c1Enabled;
@@ -20,6 +22,8 @@ namespace AudioHexViewer
             Func<double?> getPeakC2Hz)
         {
             InitializeComponent();
+            _contextTip = ContextHelpManager.CreateFormToolTip();
+            Load += (_, _) => ContextHelpManager.ApplyTooltips(this.Controls, _contextTip);
 
             _c1Enabled = c1Enabled;
             _c2Enabled = c2Enabled;

@@ -313,6 +313,39 @@ namespace AudioHexViewer
 
             nudTrigPos.EndInit();
             nudHoldoff.EndInit();
+
+            // ── Context help Name assignments
+            nudTrigLevel.Name  = "nudTrigLevel";    
+            btnRun.Name        = "btnRun";
+            cmbChannel.Name    = "cmbChannel";
+            cmbTimediv.Name    = "cmbTimediv";
+            cmbTrigMode.Name   = "cmbTrigMode";
+            cmbTrigEdge.Name   = "cmbTrigEdge";
+            cmbTrigSrc.Name    = "cmbTrigSrc";
+            btnTrigAuto50.Name = "btnTrigAuto50";
+            nudHoldoff.Name    = "nudHoldoff";
+            nudTrigPos.Name    = "nudTrigPos";
+            cmbGrid.Name       = "cmbGrid";
+            btnScaleL.Name     = "btnScaleL";
+            btnScaleR.Name     = "btnScaleR";
+            cmbVdivL.Name      = "cmbVdivL";
+            cmbCouplingL.Name  = "cmbCouplingL";
+            cmbVdivR.Name      = "cmbVdivR";
+            cmbCouplingR.Name  = "cmbCouplingR";
+            btnRoll.Name       = "btnRoll";
+            cmbTraceMode.Name  = "cmbTraceMode";
+            btnVdiv.Name       = "btnVdiv";
+            btnOverlay.Name    = "btnOverlay";
+            btnCurX.Name       = "btnCurX";
+            btnCurY.Name       = "btnCurY";
+            btnLinkedX.Name    = "btnLinkedX";
+            btnLinkedY.Name    = "btnLinkedY";
+            btnSetX.Name       = "btnSetX";
+            btnSetY.Name       = "btnSetY";
+            btnLblX.Name       = "btnLblX";
+            btnLblY.Name       = "btnLblY";
+            btnDisp.Name       = "btnDisp";
+            btnGlueX.Name      = "btnGlueX";
             panelTop.ResumeLayout(false); panelTop.PerformLayout();
             ResumeLayout(false);
         }

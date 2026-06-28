@@ -282,6 +282,19 @@ namespace AudioHexViewer
             grpInput.PerformLayout();
             grpOutput.ResumeLayout(false);
             grpOutput.PerformLayout();
+            // ── Context help Name assignments ─────────────────────────────
+            cmbInputDevice.Name = "cmbInputDevice";
+            cmbInputRate.Name = "cmbInputRate";
+            cmbOutputDevice.Name = "cmbOutputDevice";
+            cmbOutputRate.Name = "cmbOutputRate";
+            cmbBuffer.Name = "cmbBuffer";
+            btnLive.Name = "btnLive";
+            btnOffline.Name = "btnOffline";
+            chkLoop.Name = "chkLoop";
+            btnOpenFile.Name = "btnOpenFile";
+            btnInfos.Name = "btnInfos";
+            btnCancel.Name = "btnCancel";
+            btnOk.Name = "btnOk";
             ResumeLayout(false);
         }
     }

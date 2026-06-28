@@ -224,6 +224,22 @@ namespace AudioHexViewer
             ((ISupportInitialize)numFMax).EndInit();
             ((ISupportInitialize)numCenter).EndInit();
             ((ISupportInitialize)numSpan).EndInit();
+            // ── Context help Name assignments ─────────────────────────────
+            numYMax.Name = "numYMax";
+            numYRange.Name = "numYRange";
+            btnDefRange.Name = "btnDefRange";
+            btnDefPhaseRange.Name = "btnDefPhaseRange";
+            cmbVertUnit.Name = "cmbVertUnit";
+            numY2Max.Name = "numY2Max";
+            cmbY2Range.Name = "cmbY2Range";
+            numFMin.Name = "numFMin";
+            numFMax.Name = "numFMax";
+            numCenter.Name = "numCenter";
+            numSpan.Name = "numSpan";
+            btnFitY.Name = "btnFitY";
+            btnFitY2.Name = "btnFitY2";
+            btnDefault.Name = "btnDefault";
+            btnOk.Name = "btnOk";
             ResumeLayout(false);
             PerformLayout();
         }

@@ -199,6 +199,23 @@ namespace AudioHexViewer
             ((ISupportInitialize)nudSfdrFlow).EndInit();
             ((ISupportInitialize)nudSfdrFhigh).EndInit();
             ((ISupportInitialize)nudHarms).EndInit();
+            // ── Context help Name assignments ─────────────────────────────
+            nudFlow.Name = "nudFlow";
+            nudFhigh.Name = "nudFhigh";
+            chkHPF.Name = "chkHPF";
+            chkLPF.Name = "chkLPF";
+            nudSfdrFlow.Name = "nudSfdrFlow";
+            nudSfdrFhigh.Name = "nudSfdrFhigh";
+            chkSfdrHPF.Name = "chkSfdrHPF";
+            chkSfdrLPF.Name = "chkSfdrLPF";
+            nudHarms.Name = "nudHarms";
+            chkShowHarms.Name = "chkShowHarms";
+            chkShowPhase.Name = "chkShowPhase";
+            rbDb.Name = "rbDb";
+            rbPct.Name = "rbPct";
+            chkCohAvg.Name = "chkCohAvg";
+            btnOk.Name = "btnOk";
+            btnCancel.Name = "btnCancel";
             ResumeLayout(false);
             PerformLayout();
         }

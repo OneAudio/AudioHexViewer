@@ -11,6 +11,8 @@ namespace AudioHexViewer
 {
     public partial class HistogramWindow : Form
     {
+    private ToolTip? _contextTip;   // context-sensitive tooltip for this form
+
         private int lastRangeLsb = 1024;
         private int lastBinLsb = 1;
 
@@ -175,6 +177,8 @@ namespace AudioHexViewer
             _sampleRate = sampleRate;
 
             InitializeComponent();
+            _contextTip = ContextHelpManager.CreateFormToolTip();
+            Load += (_, _) => ContextHelpManager.ApplyTooltips(this.Controls, _contextTip);
             InitChart();
             InitDefaults();
             SetupLiveTimer();
