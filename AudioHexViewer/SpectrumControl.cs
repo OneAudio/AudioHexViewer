@@ -848,6 +848,7 @@ namespace AudioHexViewer
 
 
             InitCursors();
+            WireBoxZoom();
             chartSpectrum.MouseMove += ChartSpectrum_MouseMove;
             chartSpectrum.MouseDoubleClick += ChartSpectrum_MouseDoubleClick;
             chartSpectrum.MouseLeave += (s, e) => { /* optionnel : cacher texte */ };
@@ -2144,8 +2145,14 @@ namespace AudioHexViewer
                     if (area.AxisX.Maximum <= area.AxisX.Minimum)
                         area.AxisX.Maximum = area.AxisX.Minimum * 10.0;
 
-                    double minDecade = Math.Pow(10.0, Math.Floor(Math.Log10(area.AxisX.Minimum)));
-                    area.AxisX.Minimum = Math.Max(LogXAbsMinHz, minDecade);
+                    // Ne forcer la décade que pour un min AUTO ; un min custom (zoom / dialogue AXIS)
+                    // est respecté tel quel (la grille log est dessinée par PostPaint, qui gère
+                    // un fMin non-décade).
+                    if (!customFMin.HasValue)
+                    {
+                        double minDecade = Math.Pow(10.0, Math.Floor(Math.Log10(area.AxisX.Minimum)));
+                        area.AxisX.Minimum = Math.Max(LogXAbsMinHz, minDecade);
+                    }
 
                     if (area.AxisX.Maximum <= area.AxisX.Minimum)
                         area.AxisX.Maximum = area.AxisX.Minimum * 10.0;
