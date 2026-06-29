@@ -671,7 +671,7 @@ namespace AudioHexViewer
             catch (Exception ex)
             {
                 liveTimer?.Stop(); isLive = false;
-                MessageBox.Show("Erreur dans le mode LIVE : " + ex.Message, "Histogram",
+                MessageBox.Show("Error in LIVE mode: " + ex.Message, "Histogram",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }

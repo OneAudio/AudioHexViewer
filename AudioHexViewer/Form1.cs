@@ -1849,7 +1849,7 @@ namespace AudioHexViewer
             catch (Exception ex)
             {
                 MessageBox.Show(
-                    "Impossible d'ouvrir le dossier d'enregistrements : " + ex.Message,
+                    "Cannot open the recordings folder: " + ex.Message,
                     "Open records folder",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
@@ -1915,8 +1915,8 @@ namespace AudioHexViewer
 
             MessageBox.Show(
                 $"Voie {chanName} :\r\n" +
-                "Applique une tension POSITIVE (1  5 V),\r\n" +
-                "puis clique sur OK pour dmarrer la mesure sur ~1 s.",
+                "Apply a POSITIVE voltage (1 to 5 V),\r\n" +
+                "then click OK to start the ~1 s measurement.",
                 "Calibration +V",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -1974,8 +1974,8 @@ namespace AudioHexViewer
 
             string? input = Microsoft.VisualBasic.Interaction.InputBox(
                 $"Voie {chanName} :\r\n" +
-                "Mesure termine.\r\n" +
-                "Saisis la valeur de la tension POSITIVE applique (en volts, ex: 2.500) :",
+                "Measurement complete.\r\n" +
+                "Enter the POSITIVE voltage you applied (in volts, e.g. 2.500):",
                 "Calibration +V",
                 "2.500");
 
@@ -1990,8 +1990,8 @@ namespace AudioHexViewer
 
             MessageBox.Show(
                 $"Voie {chanName} :\r\n" +
-                "Maintenant, applique une tension NGATIVE (1  5 V),\r\n" +
-                "puis clique sur OK pour dmarrer la mesure sur ~1 s.",
+                "Now apply a NEGATIVE voltage (1 to 5 V),\r\n" +
+                "then click OK to start the ~1 s measurement.",
                 "Calibration -V",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -2011,14 +2011,14 @@ namespace AudioHexViewer
 
             string? input = Microsoft.VisualBasic.Interaction.InputBox(
                 $"Voie {chanName} :\r\n" +
-                "Mesure termine.\r\n" +
-                "Saisis la valeur de la tension NGATIVE applique (en volts, ex: -2.500) :",
+                "Measurement complete.\r\n" +
+                "Enter the NEGATIVE voltage you applied (in volts, e.g. -2.500):",
                 "Calibration -V",
                 "-2.500");
 
             if (!double.TryParse(input.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out calibVNeg))
             {
-                MessageBox.Show("Valeur non valide, calibration annule.",
+                MessageBox.Show("Invalid value, calibration cancelled.",
                                 "Calibration", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 calibStage = CalStage.None;
                 calibChannel = CalChannel.None;
@@ -2121,7 +2121,7 @@ namespace AudioHexViewer
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Erreur lors de l'criture de la calibration : " + ex.Message,
+                MessageBox.Show("Error while writing the calibration: " + ex.Message,
                                 "Calibration",
                                 MessageBoxButtons.OK,
                                 MessageBoxIcon.Error);

@@ -100,10 +100,10 @@ namespace AudioHexViewer
             var json = File.ReadAllText(filePath);
             var dto = JsonSerializer.Deserialize<OverlayFile>(json, _overlayJsonOptions);
             if (dto == null)
-                throw new InvalidDataException("Overlay invalide: JSON vide ou non conforme.");
+                throw new InvalidDataException("Invalid overlay: empty or malformed JSON.");
 
             if (dto.Version != OverlayFile.CurrentVersion)
-                throw new InvalidDataException($"Overlay invalide: Version={dto.Version}, attendu V{OverlayFile.CurrentVersion}.");
+                throw new InvalidDataException($"Invalid overlay: Version={dto.Version}, expected V{OverlayFile.CurrentVersion}.");
 
             return dto;
         }
@@ -163,7 +163,7 @@ namespace AudioHexViewer
         public void OverlayLibraryExport(string libraryFilePath, string targetPath)
         {
             var c = _overlayCache.FirstOrDefault(x => string.Equals(x.Entry.FilePath, libraryFilePath, StringComparison.OrdinalIgnoreCase));
-            if (c == null) throw new FileNotFoundException("Overlay introuvable dans le cache.", libraryFilePath);
+            if (c == null) throw new FileNotFoundException("Overlay not found in cache.", libraryFilePath);
 
             _overlayLibrary.ExportToFile(c.Entry, targetPath);
         }
@@ -183,7 +183,7 @@ namespace AudioHexViewer
         public OverlayEntry OverlayLibraryRename(string libraryFilePath, string newName)
         {
             var c = _overlayCache.FirstOrDefault(x => string.Equals(x.Entry.FilePath, libraryFilePath, StringComparison.OrdinalIgnoreCase));
-            if (c == null) throw new FileNotFoundException("Overlay introuvable dans le cache.", libraryFilePath);
+            if (c == null) throw new FileNotFoundException("Overlay not found in cache.", libraryFilePath);
 
             var updated = _overlayLibrary.Rename(c.Entry, newName);
 
@@ -219,7 +219,7 @@ namespace AudioHexViewer
             if (_capL == null && _capR == null)
                 throw new InvalidOperationException("No capture available (start then stop an acquisition first).");
             if (_capSR <= 0)
-                throw new InvalidOperationException("Sample rate de capture inconnu.");
+                throw new InvalidOperationException("Unknown capture sample rate.");
 
             int ch = GetCh();
             if (ch < 0)
@@ -229,7 +229,7 @@ namespace AudioHexViewer
             if (_capL != null) n = Math.Min(n, _capL.Length);
             if (_capR != null) n = Math.Min(n, _capR.Length);
             if (n < 2)
-                throw new InvalidOperationException("Capture trop courte.");
+                throw new InvalidOperationException("Capture too short.");
 
             int slot = OverlayLibraryGetNextFreeSlotNumber();
             string defaultName = $"Overlay_{slot}";

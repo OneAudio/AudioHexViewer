@@ -214,7 +214,7 @@ namespace AudioHexViewer
             using (var ofd = new OpenFileDialog())
             {
                 ofd.Filter = ExtFilter;
-                ofd.Title = "Importer un overlay";
+                ofd.Title = "Import an overlay";
                 ofd.Multiselect = true;
 
                 if (ofd.ShowDialog(this) != DialogResult.OK)
@@ -310,7 +310,7 @@ namespace AudioHexViewer
             // Export multiple -> FolderBrowserDialog (choix dossier)
             using (var fbd = new FolderBrowserDialog())
             {
-                fbd.Description = "Choisir le dossier d'export des overlays";
+                fbd.Description = "Choose the overlay export folder";
                 if (fbd.ShowDialog(this) != DialogResult.OK)
                     return;
 
@@ -538,7 +538,7 @@ namespace AudioHexViewer
                     ok.Width = 75;
                     ok.DialogResult = DialogResult.OK;
 
-                    cancel.Text = "Annuler";
+                    cancel.Text = "Cancel";
                     cancel.Left = 317;
                     cancel.Top = 70;
                     cancel.Width = 75;

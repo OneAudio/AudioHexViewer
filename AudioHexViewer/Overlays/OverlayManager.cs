@@ -94,7 +94,7 @@ namespace AudioHexViewer
         public OverlayFile LoadFromFile(string filePath)
         {
             if (string.IsNullOrWhiteSpace(filePath)) throw new ArgumentException("filePath vide");
-            if (!File.Exists(filePath)) throw new FileNotFoundException("Fichier overlay introuvable", filePath);
+            if (!File.Exists(filePath)) throw new FileNotFoundException("Overlay file not found", filePath);
 
             string json = File.ReadAllText(filePath);
             var dto = JsonSerializer.Deserialize<OverlayFile>(json);
@@ -104,14 +104,14 @@ namespace AudioHexViewer
                 throw new InvalidDataException("Invalid overlay: unsupported version (V3 only).");
 
             if (dto.SampleRate <= 0 || dto.FftSize <= 0)
-                throw new InvalidDataException("Overlay invalide: SampleRate/FftSize");
+                throw new InvalidDataException("Invalid overlay: SampleRate/FftSize");
 
             // FreqHz n'est requis que pour Spectrum/Bode (axe fréquentiel).
             // Oscilloscope utilise TimeMs comme axe explicite (voir plus bas).
             if (dto.Kind != OverlayKind.Oscilloscope)
             {
                 if (dto.FreqHz == null || dto.FreqHz.Length == 0)
-                    throw new InvalidDataException("Overlay invalide: FreqHz manquant");
+                    throw new InvalidDataException("Invalid overlay: FreqHz missing");
             }
 
             // Validation selon le type de vue
@@ -122,40 +122,40 @@ namespace AudioHexViewer
                         throw new InvalidDataException("Invalid overlay (Spectrum): missing LeftDbFs/RightDbFs data.");
 
                     if (dto.LeftDbFs != null && dto.LeftDbFs.Length != dto.FreqHz.Length)
-                        throw new InvalidDataException("Overlay invalide (Spectrum): LeftDbFs length != FreqHz length.");
+                        throw new InvalidDataException("Invalid overlay (Spectrum): LeftDbFs length != FreqHz length.");
 
                     if (dto.RightDbFs != null && dto.RightDbFs.Length != dto.FreqHz.Length)
-                        throw new InvalidDataException("Overlay invalide (Spectrum): RightDbFs length != FreqHz length.");
+                        throw new InvalidDataException("Invalid overlay (Spectrum): RightDbFs length != FreqHz length.");
                     break;
 
                 case OverlayKind.Bode:
                     // Spec: on veut gain + phase.
                     if (dto.GainDb == null || dto.PhaseDeg == null)
-                        throw new InvalidDataException("Overlay invalide (Bode): GainDb et PhaseDeg requis.");
+                        throw new InvalidDataException("Invalid overlay (Bode): GainDb and PhaseDeg required.");
 
                     if (dto.GainDb.Length != dto.FreqHz.Length)
-                        throw new InvalidDataException("Overlay invalide (Bode): GainDb length != FreqHz length.");
+                        throw new InvalidDataException("Invalid overlay (Bode): GainDb length != FreqHz length.");
 
                     if (dto.PhaseDeg.Length != dto.FreqHz.Length)
-                        throw new InvalidDataException("Overlay invalide (Bode): PhaseDeg length != FreqHz length.");
+                        throw new InvalidDataException("Invalid overlay (Bode): PhaseDeg length != FreqHz length.");
                     break;
 
                 case OverlayKind.Oscilloscope:
                     if (dto.TimeMs == null || dto.TimeMs.Length == 0)
-                        throw new InvalidDataException("Overlay invalide (Oscilloscope): TimeMs manquant.");
+                        throw new InvalidDataException("Invalid overlay (Oscilloscope): TimeMs missing.");
 
                     if (dto.LeftV == null && dto.RightV == null)
                         throw new InvalidDataException("Invalid overlay (Oscilloscope): missing LeftV/RightV data.");
 
                     if (dto.LeftV != null && dto.LeftV.Length != dto.TimeMs.Length)
-                        throw new InvalidDataException("Overlay invalide (Oscilloscope): LeftV length != TimeMs length.");
+                        throw new InvalidDataException("Invalid overlay (Oscilloscope): LeftV length != TimeMs length.");
 
                     if (dto.RightV != null && dto.RightV.Length != dto.TimeMs.Length)
-                        throw new InvalidDataException("Overlay invalide (Oscilloscope): RightV length != TimeMs length.");
+                        throw new InvalidDataException("Invalid overlay (Oscilloscope): RightV length != TimeMs length.");
                     break;
 
                 default:
-                    throw new InvalidDataException("Overlay invalide: Kind inconnu.");
+                    throw new InvalidDataException("Invalid overlay: Kind unknown.");
             }
 
 

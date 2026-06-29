@@ -43,7 +43,7 @@ namespace AudioHexViewer
 
             if (_loopbackSource == null && _selectedInputDevice is not MMDevice)
             {
-                MessageBox.Show("Selectionne un priphrique audio.");
+                MessageBox.Show("Please select an audio device.");
                 return;
             }
 
@@ -215,7 +215,7 @@ namespace AudioHexViewer
                         errMsg = $"Error starting capture:\n{ex.Message}\n(HRESULT: 0x{ex.HResult:X8})";
                         break;
                 }
-                MessageBox.Show(errMsg, "Erreur capture", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(errMsg, "Capture error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 capture = null;
                 currentFormat = null;
                 UpdateTitleBar();
@@ -367,11 +367,11 @@ namespace AudioHexViewer
                     }
                 }
 
-                MessageBox.Show($"Fichier enregistr :\n{file}");
+                MessageBox.Show($"File saved:\n{file}");
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Erreur CSV : " + ex.Message);
+                MessageBox.Show("CSV error: " + ex.Message);
             }
         }
 
@@ -735,7 +735,7 @@ namespace AudioHexViewer
         {
             if (e.Exception != null)
             {
-                MessageBox.Show("Erreur pendant la capture : " + e.Exception.Message);
+                MessageBox.Show("Error during capture: " + e.Exception.Message);
             }
         }
 

@@ -140,7 +140,7 @@ namespace AudioHexViewer.Tests
             Assert.True(result.Valid);
             // THD doit être < 0.01% (noise floor très bas)
             Assert.True(result.Thd < 0.0001,
-                $"THD = {result.Thd:E3} devrait être < 0.0001 pour un sinus pur");
+                $"THD = {result.Thd:E3} should be < 0.0001 for a pure sine");
         }
 
         [Fact]
@@ -151,7 +151,7 @@ namespace AudioHexViewer.Tests
             var result  = SpectrumMetrics.ComputeChannel(spec, SR, FftSize, DefaultOpt());
 
             Assert.True(result.ThdDb < -80.0,
-                $"THD_dB = {result.ThdDb:F1} devrait être < -80 dB pour un sinus pur");
+                $"THD_dB = {result.ThdDb:F1} should be < -80 dB for a pure sine");
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -170,7 +170,7 @@ namespace AudioHexViewer.Tests
             Assert.True(result.Valid);
             // THD_dB doit être proche de -40 - (-3) = -37 dBc (légère différence due à intégration)
             Assert.True(result.ThdDb > -45.0 && result.ThdDb < -30.0,
-                $"THD = {result.ThdDb:F1} dB attendu ≈ -37 dBc");
+                $"THD = {result.ThdDb:F1} dB expected ≈ -37 dBc");
 
             // H2 doit apparaître dans la liste des harmoniques
             Assert.NotEmpty(result.Harmonics);
@@ -220,8 +220,8 @@ namespace AudioHexViewer.Tests
             var result  = SpectrumMetrics.ComputeChannel(spec, SR, FftSize, DefaultOpt());
 
             Assert.True(result.Valid);
-            Assert.True(result.SinadDb > 0.0, $"SINAD = {result.SinadDb:F1} dB devrait être > 0");
-            Assert.True(result.SnrDb   > 0.0, $"SNR   = {result.SnrDb:F1} dB devrait être > 0");
+            Assert.True(result.SinadDb > 0.0, $"SINAD = {result.SinadDb:F1} dB should be > 0");
+            Assert.True(result.SnrDb   > 0.0, $"SNR   = {result.SnrDb:F1} dB should be > 0");
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -244,7 +244,7 @@ namespace AudioHexViewer.Tests
             // Le test principal : FundamentalHz ne doit pas indiquer 1 kHz
             if (result.Valid)
                 Assert.True(result.FundamentalHz >= 5_000.0,
-                    $"Fondamentale {result.FundamentalHz} Hz devrait être >= 5000 Hz");
+                    $"Fundamental {result.FundamentalHz} Hz should be >= 5000 Hz");
         }
 
         [Fact]
