@@ -1,4 +1,8 @@
-﻿namespace AudioHexViewer
+﻿// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Frex - OnE Audio Projects
+// Part of AudioHexViewer - see LICENSE for details.
+
+namespace AudioHexViewer
 {
     internal sealed class OverlaySlot
     {

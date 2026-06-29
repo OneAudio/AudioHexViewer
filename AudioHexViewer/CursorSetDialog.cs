@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Frex - OnE Audio Projects
+// Part of AudioHexViewer - see LICENSE for details.
+
 // ═══════════════════════════════════════════════════════════════════════════
 // CursorSetDialog.cs  —  Cursor position entry (Set X / Set Y)
 // Style AHV compact — matches THD Settings / other project dialogs.
