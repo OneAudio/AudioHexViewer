@@ -929,6 +929,12 @@ namespace AudioHexViewer
             menuTools.DropDownItems.AddRange(new ToolStripItem[] { menuDataRecord, menuCalibrateIn });
             menuStrip1.Items.Insert(7, menuTools);
             // Résultat final : [0]Devices [1]Generator [2]Overlap [3]SampleSize [4]Colors [5]View [6]Export [7]Tools [8]Help
+
+            // Help ▸ Exit program  (séparateur + item, en bas du menu Help)
+            menuHelp.DropDownItems.Add(new ToolStripSeparator());
+            var menuExit = new ToolStripMenuItem("Exit program");
+            menuExit.Click += (_, _) => Close();
+            menuHelp.DropDownItems.Add(menuExit);
         }
 
         private void ShowColorsDialog()
