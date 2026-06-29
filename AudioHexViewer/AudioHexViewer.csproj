@@ -76,15 +76,13 @@
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
-    <None Update="splash_bg.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 
 
   <!-- ── Icônes de la toolbar (EmbeddedResource → chargées via GetManifestResourceStream) ── -->
   <ItemGroup>
     <EmbeddedResource Include="Resources\Icons\*.png" />
+    <EmbeddedResource Include="Resources\splash_bg.png" />
   </ItemGroup>
 
   <!-- ── Toolbar : fichiers partiels Form1 ─────────────────────────────────── -->

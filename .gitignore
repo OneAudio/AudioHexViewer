@@ -362,3 +362,17 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# ──────────────────────────────────────────────────────────────
+# AudioHexViewer — project-specific
+# ──────────────────────────────────────────────────────────────
+
+# Generated before each build by the GenerateBuildInfo MSBuild target
+# (written to $(ProjectDir)BuildInfo.cs with Overwrite=true → must not be tracked)
+**/BuildInfo.cs
+
+# Self-contained single-file publish output
+**/publish/
+
+# OS noise
+.DS_Store
+Thumbs.db

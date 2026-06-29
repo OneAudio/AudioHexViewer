@@ -72,12 +72,11 @@ namespace AudioHexViewer
         {
             try
             {
-                string path = System.IO.Path.Combine(
-                    AppContext.BaseDirectory,
-                    "splash_bg.png");
-                if (System.IO.File.Exists(path))
-                    return System.Drawing.Image.FromFile(path);
-                return null;
+                var asm = System.Reflection.Assembly.GetExecutingAssembly();
+                using var stream = asm.GetManifestResourceStream("AudioHexViewer.Resources.splash_bg.png");
+                if (stream == null) return null;
+                using var tmp = System.Drawing.Image.FromStream(stream);
+                return new System.Drawing.Bitmap(tmp);   // copie indépendante du flux
             }
             catch { return null; }
         }
