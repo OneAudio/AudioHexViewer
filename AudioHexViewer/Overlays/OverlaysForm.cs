@@ -93,13 +93,14 @@ namespace AudioHexViewer
 
             try
             {
-                var json = File.ReadAllText(filePath);
+                var json = OverlaySafety.ReadOverlayJson(filePath);  // ← était File.ReadAllText(filePath)
                 var dto = System.Text.Json.JsonSerializer.Deserialize<OverlayFile>(json, new System.Text.Json.JsonSerializerOptions
                 {
                     Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
                 });
 
                 if (dto == null) return false;
+                OverlaySafety.CheckBounds(dto);                      // ← ajouter
 
                 if (kind == OverlayKind.Oscilloscope)
                 {

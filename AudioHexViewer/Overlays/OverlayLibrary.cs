@@ -354,9 +354,10 @@ namespace AudioHexViewer
 
         private OverlayFile ReadOverlayFile(string path)
         {
-            var json = File.ReadAllText(path);
+            var json = OverlaySafety.ReadOverlayJson(path);          // ← était File.ReadAllText(path)
             var dto = JsonSerializer.Deserialize<OverlayFile>(json, _jsonOptions);
             if (dto == null) throw new InvalidDataException("Invalid overlay: empty or malformed JSON.");
+            OverlaySafety.CheckBounds(dto);                          // ← ajouter
             return dto;
         }
 

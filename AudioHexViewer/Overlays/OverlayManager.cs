@@ -96,8 +96,9 @@ namespace AudioHexViewer
             if (string.IsNullOrWhiteSpace(filePath)) throw new ArgumentException("filePath vide");
             if (!File.Exists(filePath)) throw new FileNotFoundException("Overlay file not found", filePath);
 
-            string json = File.ReadAllText(filePath);
+            string json = OverlaySafety.ReadOverlayJson(filePath);   // ← était File.ReadAllText(filePath)
             var dto = JsonSerializer.Deserialize<OverlayFile>(json);
+            OverlaySafety.CheckBounds(dto);                          // ← ajouter
 
             // Overlay V3 uniquement (pas de rétrocompatibilité)
             if (dto.Version != OverlayFile.CurrentVersion)
