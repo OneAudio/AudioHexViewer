@@ -146,13 +146,7 @@ namespace AudioHexViewer
                 Size = new Size(TLBL_W, 14), TextAlign = ContentAlignment.MiddleRight,
                 Font = smallGray, ForeColor = Color.Gray
             };
-
-            Label MakeOvLbl(string t, int x) => new Label {
-                Text = t, Location = new Point(x, 6), AutoSize = false,
-                Size = new Size(50, 14), TextAlign = ContentAlignment.MiddleRight,
-                Font = smallGray, ForeColor = Color.Gray
-            };
-
+                        
             // ── ROOT: TableLayoutPanel [left | sep | right] ───────────────────
             const int SEP_W = 14;
             int TW = WC + SEP_W + WC + 24;        // total client width = 478

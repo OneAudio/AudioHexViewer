@@ -754,9 +754,17 @@ namespace AudioHexViewer
         //
         // Choix du meilleur pas exact (sans ajustement de span)
 
+        // GDI resource cache for the paint hot paths
+        // (pens/brushes/fonts reused across frames instead of per-frame alloc).
+        private readonly GdiCache _gdi = new();
+
         public SpectrumControl()
         {
             InitializeComponent();
+
+            // Release cached GDI resources on disposal. Done via the Disposed event
+            // (not Dispose(bool), which lives in the designer-generated file).
+            Disposed += (_, _) => _gdi.Dispose();
 
             // Owner-draw btnRun : T ACQ + barre progression + RUN/STOP en un seul bloc GDI+
             btnRun.Paint += (s, e) =>

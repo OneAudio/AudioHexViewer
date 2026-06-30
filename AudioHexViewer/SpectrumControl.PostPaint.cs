@@ -56,7 +56,7 @@ namespace AudioHexViewer
             var saved = g.Save();
             g.ResetClip();
 
-            using var font = new Font("Segoe UI", 8.5f * s, FontStyle.Regular);
+            var font = _gdi.Font("Segoe UI", 8.5f * s, FontStyle.Regular);
 
             // Lignes C1/C2
             if (_lblCursorLInfo.Visible && !string.IsNullOrWhiteSpace(_lblCursorLInfo.Text))
@@ -138,11 +138,11 @@ namespace AudioHexViewer
 
             // Polices
             var fontBase = chart.Font;
-            using var fontHeader = new Font(fontBase, FontStyle.Bold);
-            using var fontBold = new Font(fontBase, FontStyle.Bold);
-            using var fontStrong = new Font(fontBase.FontFamily, fontBase.SizeInPoints + 1.5f, FontStyle.Bold);
+            var fontHeader = _gdi.Font(fontBase, FontStyle.Bold);
+            var fontBold = _gdi.Font(fontBase, FontStyle.Bold);
+            var fontStrong = _gdi.Font(fontBase.FontFamily, fontBase.SizeInPoints + 1.5f, FontStyle.Bold);
             using var brushStrong = new SolidBrush(Color.DimGray);
-            using var fontHarm = new Font(fontBase.FontFamily, Math.Max(6f, fontBase.SizeInPoints - 1.0f), FontStyle.Regular);
+            var fontHarm = _gdi.Font(fontBase.FontFamily, Math.Max(6f, fontBase.SizeInPoints - 1.0f), FontStyle.Regular);
 
             using var brushText = new SolidBrush(Color.DimGray);
             using var brushLabel = new SolidBrush(Color.DimGray);
@@ -486,7 +486,7 @@ namespace AudioHexViewer
                         if (lines.Length > 0)
                         {
                             //Dessin du texte centré au dessus du plot, police agrandie et en gras   
-                            using var titleFont = new Font(chart.Font.FontFamily, chart.Font.SizeInPoints * 1.20f, FontStyle.Bold);
+                            var titleFont = _gdi.Font(chart.Font.FontFamily, chart.Font.SizeInPoints * 1.20f, FontStyle.Bold);
                             // Couleur noire pour le texte (plus lisible sur fond blanc exporté)
                             using var b = new SolidBrush(Color.Black);
                             // Format centré
@@ -590,7 +590,7 @@ namespace AudioHexViewer
                     float xLeftPlot = (float)area.AxisX.ValueToPixelPosition(area.AxisX.Minimum);
 
                     Font baseFont = area.AxisY.LabelStyle.Font ?? chart.Font;
-                    using (Font majorFont = new Font(baseFont.FontFamily, baseFont.Size, baseFont.Style))
+                    Font majorFont = _gdi.Font(baseFont.FontFamily, baseFont.Size, baseFont.Style);
                     {
                         float margin = 8f * sExport;
                         float lastLabelBottom = float.NegativeInfinity;
@@ -651,7 +651,7 @@ namespace AudioHexViewer
                 float xTitlePivot = xRightPlot + 45f;
 
                 Font baseFont2 = area.AxisY2.LabelStyle.Font ?? chart.Font;
-                using Font majorFont2 = new Font(baseFont2.FontFamily, baseFont2.Size, baseFont2.Style);
+                Font majorFont2 = _gdi.Font(baseFont2.FontFamily, baseFont2.Size, baseFont2.Style);
                 using var brushMaj2  = new SolidBrush(LabelMajorColor);
 
                 if (yMajor2 > 0)
@@ -792,8 +792,8 @@ namespace AudioHexViewer
                     float bottom = (float)area.AxisY.ValueToPixelPosition(area.AxisY.Minimum);
 
                     Font baseFont = area.AxisX.LabelStyle.Font ?? chart.Font;
-                    using (Font majorFont = new Font(baseFont.FontFamily, baseFont.Size, baseFont.Style))
-                    using (Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style))
+                    Font majorFont = _gdi.Font(baseFont.FontFamily, baseFont.Size, baseFont.Style);
+                    Font minorFont = _gdi.Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style);
                     using (Pen majorGridPen = new Pen(GridMajorColor, 1f))
                     using (Pen minorGridPen = new Pen(GridMinorColor, 1f))
                     using (Pen majorTickPen = new Pen(LabelMajorColor, 1f))
@@ -899,8 +899,8 @@ namespace AudioHexViewer
                     var   g_lin  = e.ChartGraphics.Graphics;
 
                     Font baseFont  = area.AxisX.LabelStyle.Font ?? chart.Font;
-                    Font majorFont = new Font(baseFont.FontFamily, baseFont.Size, baseFont.Style);
-                    Font minorFont = new Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style);
+                    Font majorFont = _gdi.Font(baseFont.FontFamily, baseFont.Size, baseFont.Style);
+                    Font minorFont = _gdi.Font(baseFont.FontFamily, Math.Max(6f, baseFont.Size * MinorLabelScale), baseFont.Style);
                     try
                     {
                         // ── Choix du diviseur mineur optimal ────────────────────────────
@@ -1018,8 +1018,8 @@ namespace AudioHexViewer
                     }
                     finally
                     {
-                        majorFont.Dispose();
-                        minorFont.Dispose();
+                        // Fonts are cache-owned now; nothing to dispose here.
+
                     }
                 }
             }
@@ -1059,7 +1059,7 @@ namespace AudioHexViewer
 
                 var  g    = e.ChartGraphics.Graphics;
                 Font baseFont  = area.AxisY.LabelStyle.Font ?? chart.Font;
-                using (Font titleFont  = new Font(baseFont.FontFamily, baseFont.Size, baseFont.Style))
+                Font titleFont  = _gdi.Font(baseFont.FontFamily, baseFont.Size, baseFont.Style);
                 using (var  titleBrush = new SolidBrush(LabelMajorColor))
                 {
                     var   sz     = g.MeasureString(yTitle, titleFont);
@@ -1096,7 +1096,7 @@ namespace AudioHexViewer
                 const string xTitle = "Frequency (Hz)";
                 var  g    = e.ChartGraphics.Graphics;
                 Font baseFont  = area.AxisX.LabelStyle.Font ?? chart.Font;
-                using (Font titleFont  = new Font(baseFont.FontFamily, baseFont.Size, baseFont.Style))
+                Font titleFont  = _gdi.Font(baseFont.FontFamily, baseFont.Size, baseFont.Style);
                 using (var  titleBrush = new SolidBrush(LabelMajorColor))
                 {
                     var   sz      = g.MeasureString(xTitle, titleFont);
