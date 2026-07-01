@@ -278,8 +278,6 @@ namespace AudioHexViewer
         //
         private void ChartSpectrum_MouseDoubleClick(object? sender, MouseEventArgs e)
         {
-            if (TryZoomUndo()) return;
-
             if (freqAxis == null || freqAxis.Length == 0) return;
 
             var area = chartSpectrum.ChartAreas["SpectrumArea"];
@@ -1618,7 +1616,7 @@ namespace AudioHexViewer
 
             if (e.Button == MouseButtons.Right)
             {
-                ShowAxisDialog();
+                TryZoomUndo(); // Right-click = undo zoom
             }
         }
 
