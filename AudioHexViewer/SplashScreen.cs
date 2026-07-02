@@ -17,8 +17,7 @@ namespace AudioHexViewer
             get
             {
                 var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-                string ver = v != null ? $"V {v.Major}.{v.Minor}.{v.Build}" : "V 0.0.0";
-                return $"{ver}  build {BuildInfo.Timestamp}";
+                return v != null ? $"V {v.Major}.{v.Minor}.{v.Build}" : "V 0.0.0";
             }
         }
         public const string AppDate    = "06/2026";
@@ -28,7 +27,7 @@ namespace AudioHexViewer
 
         // ── Couleurs du texte / accents ──────────────────────────────────────
         // Regroupées ici pour pouvoir essayer rapidement d'autres teintes :
-        // modifier les valeurs ci-dessous puis recompiler (le build se renumérote seul).
+        // modifier les valeurs ci-dessous puis recompiler.
         //
         // Rôles :
         //   AhvTop / AhvBottom : dégradé du "AHV" (titre principal, de haut en bas)
