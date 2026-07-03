@@ -32,7 +32,12 @@
 
 ## Requirements
 
-**To run** (end users): **Windows 10 or 11, 64-bit**. Nothing else to install — the release is a self-contained single-file executable that bundles the .NET runtime.
+**To run** (end users): **Windows 10 or 11, 64-bit**. Two release builds are provided, so you can choose:
+
+- **Standalone** (recommended) — nothing else to install. A self-contained single-file executable that bundles the .NET runtime (~115 MB).
+- **Runtime-required** — a much smaller executable (~a few MB) that requires the **[.NET 10 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/10.0)** to be installed on the machine.
+
+If in doubt, take the **standalone** build — it always works.
 
 **To build** (developers): the **.NET 10 SDK** (Windows). The project targets `net10.0-windows` and uses Windows Forms, so it builds and runs on Windows only.
 
@@ -40,9 +45,11 @@
 
 ## Installation (end users)
 
-1. Go to the [**Releases**](https://github.com/<your-username>/AudioHexViewer/releases) page.
-2. Download `AudioHexViewer.exe` from the latest release.
-3. (Recommended) Verify the download against the published **SHA-256** checksum.
+1. Go to the [**Releases**](https://github.com/OneAudio/AudioHexViewer/releases) page.
+2. Download **one** of the two executables from the latest release:
+   - `AudioHexViewer-vX.Y.Z-win-x64-standalone.exe` — **recommended**, works out of the box.
+   - `AudioHexViewer-vX.Y.Z-win-x64-runtime-required.exe` — smaller, but needs the [.NET 10 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/10.0) installed.
+3. (Recommended) Verify the download against the published **SHA-256** checksum (the matching `.sha256.txt` file is attached to the release).
 4. Run the executable. No installer, no admin rights required.
 
 > **SmartScreen / antivirus note.** The executable is **not code-signed** (this is a free, open-source project). On first launch, Windows SmartScreen may show *"Windows protected your PC"* — click **More info → Run anyway**. Some antivirus engines may also flag self-contained single-file executables; this is a known false positive for unsigned bundled-runtime apps. If in doubt, verify the SHA-256 checksum and/or build from source.
@@ -53,7 +60,7 @@
 
 ```bash
 # Clone
-git clone https://github.com/<your-username>/AudioHexViewer.git
+git clone https://github.com/OneAudio/AudioHexViewer.git
 cd AudioHexViewer
 
 # Restore + build (Debug)
@@ -63,13 +70,17 @@ dotnet build AudioHexViewer/AudioHexViewer.csproj
 dotnet run --project AudioHexViewer/AudioHexViewer.csproj
 ```
 
-To produce the self-contained single-file release executable:
+To produce the release executables:
 
 ```bash
+# Standalone (self-contained, bundles the .NET runtime) — uses the .csproj settings
 dotnet publish AudioHexViewer/AudioHexViewer.csproj -c Release
+
+# Runtime-required (framework-dependent, needs the .NET 10 Desktop Runtime)
+dotnet publish AudioHexViewer/AudioHexViewer.csproj -c Release --self-contained false
 ```
 
-The publish settings (`win-x64`, self-contained, single file) are defined in the `.csproj`. The output executable is in `AudioHexViewer/bin/Release/net10.0-windows/win-x64/publish/`.
+The default publish settings (`win-x64`, self-contained, single file) are defined in the `.csproj`; the runtime-required variant simply overrides `--self-contained false`. The output executable is in `AudioHexViewer/bin/Release/net10.0-windows/win-x64/publish/`. (The release workflow produces both variants automatically on a version tag.)
 
 ---
 
@@ -134,7 +145,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for details (issues, build setup, codin
 AudioHexViewer is free software, licensed under the **GNU General Public License v3.0 or later**. See [`LICENSE`](LICENSE) for the full text.
 
 ```
-Copyright (C) 2026  <Your Name> (OnE Audio Projects)
+Copyright (C) 2026  Frex (OnE Audio Projects)
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

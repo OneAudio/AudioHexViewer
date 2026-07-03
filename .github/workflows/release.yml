@@ -36,30 +36,50 @@ jobs:
       - name: Test
         run: dotnet test AudioHexViewer.slnx -c Release --no-restore
 
-      - name: Publish (self-contained single-file, win-x64)
+      # Variante 1 : autonome (self-contained, runtime .NET embarqué) — réglages du .csproj
+      - name: Publish standalone (self-contained single-file)
         run: >
           dotnet publish AudioHexViewer/AudioHexViewer.csproj
           -c Release --no-restore
           -p:Version=${{ steps.ver.outputs.version }}
-          -o publish
+          -o publish-standalone
 
-      - name: Package artifact + SHA-256
+      # Variante 2 : légère (framework-dependent) — override --self-contained false
+      - name: Publish runtime-required (framework-dependent single-file)
+        run: >
+          dotnet publish AudioHexViewer/AudioHexViewer.csproj
+          -c Release --no-restore --self-contained false
+          -p:Version=${{ steps.ver.outputs.version }}
+          -o publish-light
+
+      - name: Package artifacts + SHA-256
         id: pkg
         shell: pwsh
         run: |
-          $name = "AudioHexViewer-v${{ steps.ver.outputs.version }}-win-x64.exe"
-          Copy-Item publish/AudioHexViewer.exe $name
-          $hash = (Get-FileHash $name -Algorithm SHA256).Hash.ToLower()
-          "$hash  $name" | Out-File "$name.sha256.txt" -Encoding ascii
-          "artifact=$name" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Host "SHA-256: $hash"
+          $ver  = "${{ steps.ver.outputs.version }}"
+          $std  = "AudioHexViewer-v$ver-win-x64-standalone.exe"
+          $lite = "AudioHexViewer-v$ver-win-x64-runtime-required.exe"
+
+          Copy-Item publish-standalone/AudioHexViewer.exe $std
+          Copy-Item publish-light/AudioHexViewer.exe       $lite
+
+          foreach ($f in @($std, $lite)) {
+            $hash = (Get-FileHash $f -Algorithm SHA256).Hash.ToLower()
+            "$hash  $f" | Out-File "$f.sha256.txt" -Encoding ascii
+            Write-Host "SHA-256 $f = $hash"
+          }
+
+          "std=$std"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "lite=$lite" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ steps.pkg.outputs.artifact }}
-            ${{ steps.pkg.outputs.artifact }}.sha256.txt
+            ${{ steps.pkg.outputs.std }}
+            ${{ steps.pkg.outputs.std }}.sha256.txt
+            ${{ steps.pkg.outputs.lite }}
+            ${{ steps.pkg.outputs.lite }}.sha256.txt
           # v0.x ou tag pré-release (ex. v1.0.0-rc1) => marqué "pre-release"
           prerelease: ${{ startsWith(github.ref_name, 'v0.') || contains(github.ref_name, '-') }}
           generate_release_notes: true
