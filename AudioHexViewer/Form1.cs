@@ -915,10 +915,9 @@ namespace AudioHexViewer
             menuStrip1.Items.Insert(4, menuColors);
             // Après insert : [0]Devices [1]Generator [2]Overlap [3]SampleSize [4]Colors [5]View [6]Export [7]Help
 
-            // Export CSV (sous-menu Export)
+            // Export CSV (déplacé dans le menu File, voir plus bas)
             var menuExportCsv = new ToolStripMenuItem("Export data to CSV…");
             menuExportCsv.Click += menuExportCsv_Click;
-            exportToolStripMenuItem.DropDownItems.Add(menuExportCsv);
 
             // Tools → index 7  (entre Export et Help)
             var menuTools       = new ToolStripMenuItem("Tools");
@@ -930,11 +929,39 @@ namespace AudioHexViewer
             menuStrip1.Items.Insert(7, menuTools);
             // Résultat final : [0]Devices [1]Generator [2]Overlap [3]SampleSize [4]Colors [5]View [6]Export [7]Tools [8]Help
 
-            // Help ▸ Exit program  (séparateur + item, en bas du menu Help)
-            menuHelp.DropDownItems.Add(new ToolStripSeparator());
+            // Exit program (déplacé dans le menu File ci-dessous)
             var menuExit = new ToolStripMenuItem("Exit program");
             menuExit.Click += (_, _) => Close();
-            menuHelp.DropDownItems.Add(menuExit);
+
+            // ── Menu File (tout à gauche) : ouverture / export / quitter ─────
+            // On y déplace les items existants, retirés de Help et Export.
+            menuHelp.DropDownItems.Remove(menuOpenRecordsFolder);
+            menuHelp.DropDownItems.Remove(menuOpenCal);
+            exportToolStripMenuItem.DropDownItems.Remove(menuCopyClipboard);
+            exportToolStripMenuItem.DropDownItems.Remove(menuExportPdf);
+
+            menuExportPdf.Text = "Export graph to PDF…";   // cohérence de libellé (optionnel)
+
+            var menuFile = new ToolStripMenuItem("File");
+            menuFile.DropDownItems.AddRange(new ToolStripItem[]
+            {
+                menuOpenRecordsFolder,          // Open records folder
+                menuOpenCal,                    // Open calibration file
+                new ToolStripSeparator(),
+                menuExportPdf,                  // Export graph to PDF
+                menuExportCsv,                  // Export data to CSV
+                menuCopyClipboard,              // Copy graph to clipboard
+                new ToolStripSeparator(),
+                menuExit,                       // Exit program
+            });
+            menuStrip1.Items.Insert(0, menuFile);   // menu le plus à gauche
+
+            // Le menu Export est désormais vide → on le retire de la barre.
+            menuStrip1.Items.Remove(exportToolStripMenuItem);
+
+            // Always on Top → en tête du menu View.
+            menuHelp.DropDownItems.Remove(alwaysOnTopToolStripMenuItem);
+            menuData.DropDownItems.Insert(0, alwaysOnTopToolStripMenuItem);
         }
 
         private void ShowColorsDialog()
