@@ -46,7 +46,7 @@
 
   <ItemGroup>
     <PackageReference Include="MathNet.Numerics" Version="5.0.0" />
-    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="NAudio" Version="2.3.0" />
     <PackageReference Include="WinForms.DataVisualization" Version="1.10.0" />
   </ItemGroup>
 
