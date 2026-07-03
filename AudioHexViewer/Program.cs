@@ -20,6 +20,7 @@ namespace AudioHexViewer
         static void Main()
         {
             ApplicationConfiguration.Initialize();
+            CrashHandler.Install();   // handler global d'exceptions (logs de crash)
 
             // 1. Affiche le splash
             var splash = new SplashScreen();

@@ -1,0 +1,48 @@
+name: CI
+
+# Build + tests à chaque push / pull request sur master.
+on:
+  push:
+    branches: [ master ]
+    paths-ignore:
+      - '**/*.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - 'doc/**'
+  pull_request:
+    branches: [ master ]
+    paths-ignore:
+      - '**/*.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - 'doc/**'
+
+# Annule un run encore en cours sur la même branche/PR quand un nouveau push arrive.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest   # WinForms net10.0-windows => Windows obligatoire
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore AudioHexViewer.slnx
+
+      - name: Build
+        run: dotnet build AudioHexViewer.slnx -c Release --no-restore
+
+      - name: Test
+        run: dotnet test AudioHexViewer.slnx -c Release --no-build --verbosity normal

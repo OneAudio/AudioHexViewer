@@ -1,0 +1,65 @@
+name: Release
+
+# Déclenché par un tag de version, ex. v0.9.1
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write   # nécessaire pour créer la Release et y attacher les fichiers
+
+jobs:
+  release:
+    runs-on: windows-latest   # WinForms self-contained win-x64 => build sous Windows obligatoire
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Resolve version from tag
+        id: ver
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart('v')
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Version: $v"
+
+      - name: Restore
+        run: dotnet restore AudioHexViewer.slnx
+
+      - name: Test
+        run: dotnet test AudioHexViewer.slnx -c Release --no-restore
+
+      - name: Publish (self-contained single-file, win-x64)
+        run: >
+          dotnet publish AudioHexViewer/AudioHexViewer.csproj
+          -c Release --no-restore
+          -p:Version=${{ steps.ver.outputs.version }}
+          -o publish
+
+      - name: Package artifact + SHA-256
+        id: pkg
+        shell: pwsh
+        run: |
+          $name = "AudioHexViewer-v${{ steps.ver.outputs.version }}-win-x64.exe"
+          Copy-Item publish/AudioHexViewer.exe $name
+          $hash = (Get-FileHash $name -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name" | Out-File "$name.sha256.txt" -Encoding ascii
+          "artifact=$name" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "SHA-256: $hash"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.pkg.outputs.artifact }}
+            ${{ steps.pkg.outputs.artifact }}.sha256.txt
+          # v0.x ou tag pré-release (ex. v1.0.0-rc1) => marqué "pre-release"
+          prerelease: ${{ startsWith(github.ref_name, 'v0.') || contains(github.ref_name, '-') }}
+          generate_release_notes: true
