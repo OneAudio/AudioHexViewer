@@ -5,103 +5,136 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AudioHexViewer — Documentation</title>
 <style>
-/* ── Reset & base ───────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; }
-body { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 15px;
-       line-height: 1.65; color: #1a202c; background: #f0f4f8; display: flex; }
-
-/* ── Sidebar ────────────────────────────────────────────────────── */
-#sidebar {
-  position: fixed; top: 0; left: 0; width: 270px; height: 100vh;
-  background: #0f1e30; color: #c8d8ec; overflow-y: auto; z-index: 100;
-  display: flex; flex-direction: column;
+/* ── Theme tokens ─────────────────────────────────────────────────── */
+:root{
+  --bg:#f0f4f8; --text:#1a202c; --muted:#5a7090; --caption:#5a7090;
+  --sidebar:#0f1e30; --sidebar-head:#0a1520; --sidebar-border:#1e3a5f;
+  --sidebar-link:#9bb8d8; --sidebar-link-hover:#e2eeff; --sidebar-sec:#3e5c7a;
+  --heading:#0f3a6e; --heading2:#1a3a5c; --accent:#1a6fc4; --accent-bright:#5ab4ff;
+  --card:#ffffff; --card-alt:#f5f8fd; --border:#cdd8e8; --border-soft:#dde6f0;
+  --table-head:#1a4f82; --code-bg:#e6edf8; --code-text:#1a3a5c;
+  --note:#e8f0fe; --tip:#e6f6ec; --warning:#fff3cd; --hr:#d0dae8;
+  --shadow:0 3px 12px rgba(0,40,80,.12); --hero-grad1:#0f3a6e; --hero-grad2:#1a6fc4;
 }
-#sidebar-header {
-  padding: 22px 20px 16px;
-  background: #0a1520;
-  border-bottom: 1px solid #1e3a5f;
+[data-theme="dark"]{
+  --bg:#0d1621; --text:#c7d3e0; --muted:#8296ac; --caption:#8296ac;
+  --sidebar:#080f18; --sidebar-head:#050a12; --sidebar-border:#1a2c42;
+  --sidebar-link:#8fa8c4; --sidebar-link-hover:#e2eeff; --sidebar-sec:#46617f;
+  --heading:#7ab8ff; --heading2:#9cc4ee; --accent:#3d8fd6; --accent-bright:#5ab4ff;
+  --card:#141f2e; --card-alt:#182636; --border:#26364a; --border-soft:#233246;
+  --table-head:#16324e; --code-bg:#1c2a3d; --code-text:#a9c6e6;
+  --note:#12283f; --tip:#123021; --warning:#33290f; --hr:#233246;
+  --shadow:0 3px 14px rgba(0,0,0,.45); --hero-grad1:#0a2544; --hero-grad2:#124a86;
 }
-#sidebar-header h1 { font-size: 16px; font-weight: 700; color: #5ab4ff; letter-spacing: 0.5px; }
-#sidebar-header p  { font-size: 11px; color: #6b8aaa; margin-top: 3px; }
-#sidebar nav { padding: 10px 0 30px; flex: 1; }
-#sidebar nav a {
-  display: block; padding: 5px 20px 5px 24px;
-  color: #9bb8d8; text-decoration: none; font-size: 13px; border-left: 3px solid transparent;
-  transition: all .15s;
+/* ── Reset & base ─────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;line-height:1.65;
+  color:var(--text);background:var(--bg);display:flex;transition:background .25s,color .25s;}
+/* ── Sidebar ──────────────────────────────────────────────────────── */
+#sidebar{position:fixed;top:0;left:0;width:270px;height:100vh;background:var(--sidebar);
+  color:#c8d8ec;overflow-y:auto;z-index:100;display:flex;flex-direction:column;}
+#sidebar-header{padding:22px 20px 16px;background:var(--sidebar-head);border-bottom:1px solid var(--sidebar-border);
+  display:flex;align-items:center;justify-content:space-between;gap:10px;}
+#sidebar-header h1{font-size:16px;font-weight:700;color:var(--accent-bright);letter-spacing:.5px;}
+#sidebar-header p{font-size:11px;color:#6b8aaa;margin-top:3px;}
+#theme-toggle{background:rgba(90,180,255,.12);color:var(--accent-bright);border:1px solid var(--sidebar-border);
+  border-radius:6px;width:34px;height:30px;cursor:pointer;font-size:15px;flex:0 0 auto;transition:background .15s;}
+#theme-toggle:hover{background:rgba(90,180,255,.25);}
+#sidebar nav{padding:10px 0 30px;flex:1;}
+#sidebar nav a{display:block;padding:5px 20px 5px 24px;color:var(--sidebar-link);text-decoration:none;
+  font-size:13px;border-left:3px solid transparent;transition:all .15s;}
+#sidebar nav a:hover{color:var(--sidebar-link-hover);background:rgba(90,180,255,.07);}
+#sidebar nav a.active{color:var(--accent-bright);border-left-color:var(--accent-bright);background:rgba(90,180,255,.1);}
+#sidebar nav .nav-section{padding:14px 20px 4px;font-size:10px;font-weight:700;letter-spacing:1.2px;
+  color:var(--sidebar-sec);text-transform:uppercase;}
+#sidebar nav a.sub{padding-left:38px;font-size:12.5px;}
+/* ── Main content ─────────────────────────────────────────────────── */
+#content{margin-left:270px;min-height:100vh;width:calc(100% - 270px);}
+.content-inner{max-width:960px;padding:40px 50px 80px;margin:0 auto;}
+/* ── Headings ─────────────────────────────────────────────────────── */
+h1.page-title{font-size:28px;font-weight:700;color:var(--heading);border-bottom:3px solid var(--accent);
+  padding-bottom:10px;margin-bottom:28px;}
+h2{font-size:20px;font-weight:700;color:var(--heading);margin:42px 0 14px;padding-left:12px;border-left:4px solid var(--accent);}
+h3{font-size:16px;font-weight:600;color:var(--heading2);margin:28px 0 10px;}
+h4{font-size:14px;font-weight:600;color:var(--heading2);margin:18px 0 8px;}
+p{margin-bottom:12px;}
+a{color:var(--accent);}
+strong{color:var(--text);}
+/* ── Images ───────────────────────────────────────────────────────── */
+.screenshot{display:block;max-width:100%;border:1px solid var(--border);border-radius:6px;
+  box-shadow:var(--shadow);margin:16px auto 8px;cursor:zoom-in;transition:transform .12s;}
+.screenshot:hover{transform:translateY(-2px);}
+.screenshot.small{max-width:420px;}
+.screenshot.medium{max-width:620px;}
+.caption{text-align:center;font-size:12.5px;color:var(--caption);margin-bottom:20px;font-style:italic;}
+.two-col{display:flex;gap:20px;flex-wrap:wrap;}
+.two-col>div{flex:1;min-width:280px;}
+/* ── Tables ───────────────────────────────────────────────────────── */
+table{width:100%;border-collapse:collapse;margin:14px 0 20px;font-size:13.5px;background:var(--card);
+  border-radius:6px;overflow:hidden;}
+th{background:var(--table-head);color:#fff;padding:9px 14px;text-align:left;font-weight:600;}
+td{padding:8px 14px;border-bottom:1px solid var(--border-soft);vertical-align:top;color:var(--text);}
+tr:nth-child(even) td{background:var(--card-alt);}
+td code,p code,li code{background:var(--code-bg);color:var(--code-text);border-radius:3px;padding:1px 5px;font-size:12.5px;}
+td:first-child{font-weight:600;white-space:nowrap;color:var(--heading2);}
+.key{background:var(--code-bg);color:var(--code-text);border:1px solid var(--border);border-radius:4px;
+  padding:1px 7px;font-size:12px;font-family:'Consolas',monospace;}
+/* ── Callouts ─────────────────────────────────────────────────────── */
+.note,.tip,.warning{border-radius:6px;padding:12px 16px;margin:16px 0;font-size:13.5px;}
+.note{background:var(--note);border-left:4px solid var(--accent);}
+.tip{background:var(--tip);border-left:4px solid #28a745;}
+.warning{background:var(--warning);border-left:4px solid #f0a500;}
+hr{border:none;border-top:1px solid var(--hr);margin:36px 0;}
+:target::before{content:'';display:block;height:20px;margin-top:-20px;}
+/* ── Presentation / hero ──────────────────────────────────────────── */
+.hero{background:linear-gradient(135deg,var(--hero-grad1),var(--hero-grad2));color:#fff;border-radius:12px;
+  padding:38px 40px;margin-bottom:14px;box-shadow:var(--shadow);}
+.hero h1{font-size:34px;font-weight:800;letter-spacing:.5px;color:#fff;border:none;margin:0 0 8px;}
+.hero .tagline{font-size:16px;color:#d4e6fb;max-width:680px;line-height:1.5;}
+.hero .badges{margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;}
+.hero .badges span{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);border-radius:20px;
+  padding:4px 12px;font-size:12px;font-weight:600;}
+.feature-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin:18px 0 8px;}
+.feature-card{background:var(--card);border:1px solid var(--border);border-left:4px solid var(--accent);
+  border-radius:8px;padding:14px 16px;box-shadow:var(--shadow);}
+.feature-card h4{margin:0 0 5px;color:var(--heading);font-size:14px;}
+.feature-card p{margin:0;font-size:13px;color:var(--muted);line-height:1.5;}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin:16px 0;}
+.gallery figure{margin:0;}
+.gallery img{width:100%;border-radius:8px;border:1px solid var(--border);box-shadow:var(--shadow);cursor:zoom-in;transition:transform .12s;}
+.gallery img:hover{transform:translateY(-3px);}
+.gallery figcaption{text-align:center;font-size:12px;color:var(--caption);margin-top:6px;font-style:italic;}
+.link-row{display:flex;gap:12px;flex-wrap:wrap;margin:18px 0 4px;}
+.link-btn{display:inline-block;background:var(--accent);color:#fff;text-decoration:none;font-weight:600;font-size:14px;
+  padding:10px 20px;border-radius:8px;transition:background .15s;box-shadow:var(--shadow);}
+.link-btn:hover{background:var(--accent-bright);color:#06263f;}
+.link-btn.ghost{background:transparent;color:var(--accent);border:2px solid var(--accent);}
+/* ── Steps (quick start) ──────────────────────────────────────────── */
+ol.steps{margin:14px 0 20px 0;padding:0;list-style:none;counter-reset:step;}
+ol.steps li{position:relative;padding:6px 0 14px 44px;counter-increment:step;}
+ol.steps li::before{content:counter(step);position:absolute;left:0;top:2px;width:30px;height:30px;
+  background:var(--accent);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:14px;}
+ol.steps li:not(:last-child)::after{content:'';position:absolute;left:14px;top:34px;bottom:0;width:2px;background:var(--border);}
+/* ── Lightbox ─────────────────────────────────────────────────────── */
+#lightbox{position:fixed;inset:0;background:rgba(4,10,18,.9);display:none;align-items:center;justify-content:center;
+  z-index:1000;cursor:zoom-out;padding:30px;}
+#lightbox.open{display:flex;}
+#lightbox img{max-width:96%;max-height:96%;border-radius:8px;box-shadow:0 10px 50px rgba(0,0,0,.6);}
+/* ── Responsive ───────────────────────────────────────────────────── */
+@media(max-width:820px){
+  #sidebar{position:static;width:100%;height:auto;}
+  #content{margin-left:0;width:100%;}
+  .content-inner{padding:24px 20px 60px;}
 }
-#sidebar nav a:hover { color: #e2eeff; background: rgba(90,180,255,.07); }
-#sidebar nav a.active { color: #5ab4ff; border-left-color: #5ab4ff; background: rgba(90,180,255,.1); }
-#sidebar nav .nav-section {
-  padding: 14px 20px 4px; font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
-  color: #3e5c7a; text-transform: uppercase;
-}
-#sidebar nav a.sub { padding-left: 38px; font-size: 12.5px; }
-
-/* ── Main content ───────────────────────────────────────────────── */
-#content { margin-left: 270px; min-height: 100vh; width: calc(100% - 270px); }
-.content-inner { max-width: 960px; padding: 40px 50px 80px; margin: 0 auto; }
-
-/* ── Section headings ───────────────────────────────────────────── */
-h1.page-title {
-  font-size: 28px; font-weight: 700; color: #0f3a6e;
-  border-bottom: 3px solid #1a6fc4; padding-bottom: 10px; margin-bottom: 28px;
-}
-h2 { font-size: 20px; font-weight: 700; color: #0f3a6e; margin: 42px 0 14px;
-     padding-left: 12px; border-left: 4px solid #1a6fc4; }
-h3 { font-size: 16px; font-weight: 600; color: #1a3a5c; margin: 28px 0 10px; }
-h4 { font-size: 14px; font-weight: 600; color: #2a4a6c; margin: 18px 0 8px; }
-p  { margin-bottom: 12px; }
-
-/* ── Images ─────────────────────────────────────────────────────── */
-.screenshot {
-  display: block; max-width: 100%; border: 1px solid #cdd8e8;
-  border-radius: 6px; box-shadow: 0 3px 12px rgba(0,40,80,.12);
-  margin: 16px auto 8px;
-}
-.screenshot.small  { max-width: 420px; }
-.screenshot.medium { max-width: 620px; }
-.caption { text-align: center; font-size: 12.5px; color: #5a7090; margin-bottom: 20px; font-style: italic; }
-
-/* ── Parameter tables ───────────────────────────────────────────── */
-table { width: 100%; border-collapse: collapse; margin: 14px 0 20px; font-size: 13.5px; }
-th { background: #1a4f82; color: #fff; padding: 9px 14px; text-align: left; font-weight: 600; }
-td { padding: 8px 14px; border-bottom: 1px solid #dde6f0; vertical-align: top; }
-tr:nth-child(even) td { background: #f5f8fd; }
-td code { background: #e6edf8; border-radius: 3px; padding: 1px 5px; font-size: 12.5px; }
-td:first-child { font-weight: 600; white-space: nowrap; color: #1a3a5c; }
-
-/* ── Notes/tips ─────────────────────────────────────────────────── */
-.note, .tip, .warning {
-  border-radius: 6px; padding: 12px 16px; margin: 16px 0; font-size: 13.5px;
-}
-.note    { background: #e8f0fe; border-left: 4px solid #1a6fc4; }
-.tip     { background: #e6f6ec; border-left: 4px solid #28a745; }
-.warning { background: #fff3cd; border-left: 4px solid #f0a500; }
-.note strong, .tip strong, .warning strong { font-weight: 700; }
-
-/* ── Inline code & values ───────────────────────────────────────── */
-code { background: #e8edf6; border-radius: 3px; padding: 1px 5px;
-       font-size: 13px; font-family: 'Consolas', monospace; color: #1a3a5c; }
-.key { display: inline-block; background: #2a4a6c; color: #fff; border-radius: 4px;
-       padding: 1px 8px; font-size: 12px; font-weight: 600; }
-.val { font-weight: 600; color: #1a5fa8; }
-
-/* ── Signal type grid ───────────────────────────────────────────── */
-.sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 16px 0; }
-.sig-card { background: #fff; border: 1px solid #cdd8e8; border-radius: 8px;
-            padding: 16px; box-shadow: 0 2px 6px rgba(0,40,80,.07); }
-.sig-card h4 { margin-top: 0; color: #1a5fa8; }
-.sig-card img { max-width: 100%; border-radius: 4px; margin: 8px 0; border: 1px solid #cdd8e8; }
-
-/* ── Two-column layout ──────────────────────────────────────────── */
-.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
-
-/* ── Divider ─────────────────────────────────────────────────────── */
-hr { border: none; border-top: 1px solid #d0dae8; margin: 36px 0; }
-
-/* ── Top anchor offset (fixed sidebar) ─────────────────────────── */
-:target::before { content: ''; display: block; height: 20px; margin-top: -20px; }
+.hero{display:flex;align-items:center;gap:30px;}
+.hero-text{flex:1;min-width:0;}
+.hero-splash{width:220px;max-width:42%;flex:0 0 auto;border-radius:8px;box-shadow:0 4px 18px rgba(0,0,0,.4);}
+.brand{display:flex;align-items:center;gap:11px;}
+.brand-icon{width:34px;height:34px;border-radius:7px;flex:0 0 auto;}
+.gallery{grid-template-columns:repeat(2,1fr);}
+@media(max-width:820px){.hero{flex-direction:column;align-items:flex-start;}.hero-splash{max-width:70%;width:auto;}.gallery{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
@@ -111,12 +144,20 @@ hr { border: none; border-top: 1px solid #d0dae8; margin: 36px 0; }
      ════════════════════════════════════════════════════════════════ -->
 <nav id="sidebar">
   <div id="sidebar-header">
-    <h1>AudioHexViewer</h1>
-    <p>User Documentation</p>
+    <div class="brand">
+      <img src="img/appicon.png" class="brand-icon" alt="AudioHexViewer">
+      <div>
+        <h1>AudioHexViewer</h1>
+        <p>User Documentation</p>
+      </div>
+    </div>
+    <button id="theme-toggle" title="Toggle dark mode" aria-label="Toggle dark mode">🌙</button>
   </div>
   <nav>
     <div class="nav-section">Getting Started</div>
+    <a href="#presentation">Presentation</a>
     <a href="#overview">Overview</a>
+    <a href="#quickstart">Quick Start</a>
     <a href="#main-window">Main Window</a>
     <a href="#audio-devices">Audio Devices</a>
     <a href="#calibration">Level Calibration</a>
@@ -133,6 +174,7 @@ hr { border: none; border-top: 1px solid #d0dae8; margin: 36px 0; }
     <a href="#axis-parameters">Axis Parameters</a>
     <a href="#spectrum-overlays">Overlays</a>
     <a href="#spectrum-panel">Measurement Panel</a>
+    <a href="#gestures">Mouse Gestures &amp; Zoom</a>
 
     <div class="nav-section">Histogram</div>
     <a href="#histo-overview">Interface</a>
@@ -181,6 +223,62 @@ hr { border: none; border-top: 1px solid #d0dae8; margin: 36px 0; }
 <main id="content">
 <div class="content-inner">
 
+<!-- ══════════════ PRESENTATION (landing) ══════════════ -->
+<section id="presentation">
+<div class="hero">
+  <div class="hero-text">
+  <h1>AudioHexViewer</h1>
+  <p class="tagline">A real-time audio analyzer that turns a sound card or audio interface into a precision measurement bench — spectrum, oscilloscope, amplitude histogram, Bode plot and a built-in signal generator, up to 768&nbsp;kHz.</p>
+  <div class="badges">
+    <span>Windows 10 / 11 · x64</span><span>.NET 10 (WinForms)</span>
+    <span>Free &amp; open source · GPL v3</span><span>Up to 768 kHz</span>
+  </div>
+  </div>
+  <img src="img/AudioHexViewer2.png" class="hero-splash" alt="AudioHexViewer splash screen">
+</div>
+<img src="img/Hero_Spectrum.png" class="screenshot" alt="AudioHexViewer — Spectrum view with THD/SFDR readout">
+<p class="caption">Spectrum view — 768 kHz capture, THD / THD+N / SINAD / SNR / SFDR and harmonic readout with dual cursors</p>
+
+<h2>What is it?</h2>
+<p>AudioHexViewer is a measurement tool for the DIY audio and electronics community. It captures audio in real time through WASAPI (including exclusive, bit-perfect mode) and turns a plain audio interface into a multi-instrument bench for characterizing ADCs, DACs, amplifiers and complete signal chains — with the kind of readouts usually reserved for dedicated lab gear.</p>
+
+<h2>Why it exists</h2>
+<p>The application was originally created to test hardware acquisition platforms under development — as a continuation of the <strong>OSVA</strong> audio project. What began as an instrument to validate converter boards grew into a general-purpose, high-resolution audio analyzer, released free and open source for anyone who wants a serious measurement bench without dedicated hardware. Everything runs locally: <strong>no cloud, no telemetry, no installer</strong> (a self-contained executable).</p>
+
+<h2>Key features &amp; differentiators</h2>
+<div class="feature-grid">
+  <div class="feature-card"><h4>Up to 768 kHz</h4><p>WASAPI exclusive mode for bit-perfect capture at very high sample rates.</p></div>
+  <div class="feature-card"><h4>Professional metrics</h4><p>THD, THD+N, SINAD, SNR, SFDR, IMD (19+20 kHz two-tone) and noise-floor measurement.</p></div>
+  <div class="feature-card"><h4>FFT up to 4 Mpts</h4><p>High-resolution FFT with linear, exponential or coherent averaging.</p></div>
+  <div class="feature-card"><h4>Bode plot with reference</h4><p>Gain and phase vs. frequency, with reference-response compensation — save and reload reference curves.</p></div>
+  <div class="feature-card"><h4>Built-in generator</h4><p>11 signal types, a <strong>loopback</strong> mode to self-test the analyzer, and voltage calibration like the analyzer.</p></div>
+  <div class="feature-card"><h4>Amplitude histogram</h4><p>Sample distribution with Gaussian overlay, σ markers, PDF normalization and DNL measurement.</p></div>
+  <div class="feature-card"><h4>Overlays</h4><p>Record, save and compare reference traces across sessions.</p></div>
+  <div class="feature-card"><h4>Offline analysis</h4><p>Load a WAV file and run the full analysis chain offline.</p></div>
+  <div class="feature-card"><h4>Level calibration</h4><p>Map dBFS to real-world volts — for both the analyzer and the generator.</p></div>
+  <div class="feature-card"><h4>Live numeric readout</h4><p>Sample values in decimal, floating-point, binary and hexadecimal, in real time.</p></div>
+  <div class="feature-card"><h4>Peak &amp; cursors</h4><p>Max-hold / min-hold detection, plus cursors with values shown in the graph and side panel.</p></div>
+  <div class="feature-card"><h4>Export &amp; customize</h4><p>CSV export of each graph's data, PDF export of the graphs, and fully customizable element colours.</p></div>
+</div>
+<p class="tip" style="margin-top:14px">Every control has a <strong>context-sensitive tooltip</strong> — enable context help from the toolbar to see inline guidance on any button, combo or field.</p>
+
+<h2>At a glance</h2>
+<div class="gallery">
+  <figure><img src="img/Gallery_FFT.png" alt="Spectrum FFT"><figcaption>FFT spectrum with MAXI peak-hold and noise floor</figcaption></figure>
+  <figure><img src="img/Gallery_Oscilloscope.png" alt="Oscilloscope"><figcaption>Digital oscilloscope with trigger &amp; cursors</figcaption></figure>
+  <figure><img src="img/Gallery_Histogram.png" alt="Histogram"><figcaption>Amplitude histogram with Gaussian fit &amp; σ markers</figcaption></figure>
+  <figure><img src="img/Gallery_BodePlot.png" alt="Bode plot"><figcaption>Bode plot — gain &amp; phase vs. frequency</figcaption></figure>
+</div>
+
+<div class="link-row">
+  <a class="link-btn" href="https://github.com/OneAudio/AudioHexViewer/releases">Download</a>
+  <a class="link-btn ghost" href="https://github.com/OneAudio/AudioHexViewer">Source code (GitHub)</a>
+  <a class="link-btn ghost" href="https://github.com/OneAudio/AudioHexViewer/blob/master/LICENSE">License — GPL v3</a>
+</div>
+</section>
+
+<hr>
+
 <!-- ══════════════ OVERVIEW ══════════════ -->
 <section id="overview">
 <h1 class="page-title">AudioHexViewer — User Documentation</h1>
@@ -199,15 +297,31 @@ hr { border: none; border-top: 1px solid #d0dae8; margin: 36px 0; }
 <hr>
 
 <!-- ══════════════ MAIN WINDOW ══════════════ -->
+<!-- ══════════════ QUICK START ══════════════ -->
+<section id="quickstart">
+<h1 class="page-title">Quick Start</h1>
+<p>The fastest path from launch to your first measurement:</p>
+<ol class="steps">
+  <li><strong>Select an input device.</strong> Open <em>Audio Devices</em> (toolbar or <code>Devices</code> menu), pick your WASAPI capture device and a sample rate, then confirm. Enable exclusive mode for the highest rates.</li>
+  <li><strong>Start acquisition.</strong> Click <strong>RUN</strong> (top-right). The active tab header turns green and the spectrum begins updating in real time.</li>
+  <li><strong>Feed a signal.</strong> No source handy? Open the <em>Signal Generator</em> and enable a 1&nbsp;kHz sine (or use <em>loopback</em> mode to route the generator into the analyzer for a self-test).</li>
+  <li><strong>Read the measurements.</strong> The side panel shows Vrms/Vpeak, F0, dBFS peak, THD/THD+N/SINAD/SNR/SFDR and the harmonic table. Toggle the panel from the toolbar if hidden.</li>
+  <li><strong>Zoom and inspect.</strong> Drag a rectangle on the spectrum to zoom in; right-click to step back out (see <a href="#gestures">Mouse Gestures &amp; Zoom</a>). Place cursors X1/X2 to read exact frequency and level differences.</li>
+</ol>
+<p class="note">Session parameters (device, windowing, colours, panel state…) are saved automatically on exit and restored on next launch.</p>
+</section>
+
+<hr>
+
 <section id="main-window">
 <h1 class="page-title">Main Window</h1>
-<img src="img/MainWindow.png" class="screenshot" alt="AudioHexViewer main window">
-<p class="caption">Main window — Spectrum tab, stopped, measurement panel visible</p>
+<img src="img/QuickStart_FirstRun.png" class="screenshot" alt="AudioHexViewer main window">
+<p class="caption">Main window — Spectrum tab running, measurement panel visible</p>
 
 <p>The main window is divided into four areas:</p>
 <table>
 <tr><td>Title bar</td><td>Displays the application name and, when running, the active input device name and sample rate.</td></tr>
-<tr><td>Menu bar</td><td><code>Devices · Generator · Overlap · Sample size · Colors · View · Export · Tools · Help</code></td></tr>
+<tr><td>Menu bar</td><td><code>File · Devices · Generator · Overlap · Sample size · Colors · View · Tools · Help</code></td></tr>
 <tr><td>Toolbar</td><td>11 quick-access buttons (see below).</td></tr>
 <tr><td>Tab bar</td><td>Three analysis tabs: <strong>Spectrum</strong>, <strong>Oscilloscope</strong>, <strong>Histogram</strong>. The active tab is highlighted in green when acquisition is running.</td></tr>
 </table>
@@ -227,6 +341,15 @@ hr { border: none; border-top: 1px solid #d0dae8; margin: 36px 0; }
 <tr><td>Export CSV</td><td>Export analysis data to a CSV file.</td></tr>
 <tr><td>Export PDF</td><td>Export all analysis tabs to a multi-page PDF document.</td></tr>
 </table>
+
+<h2>Per-tab Control Toolbar</h2>
+<p>Each analysis tab has its own control toolbar directly under the tab bar:</p>
+<img src="img/MainWindow.png" class="screenshot" alt="Spectrum control toolbar">
+<p class="caption">Spectrum tab — trace mode, windowing, averaging, distortion, trace hold, cursors, Bode plot and axis controls</p>
+<img src="img/MainWindow-Oscilloscope.png" class="screenshot" alt="Oscilloscope control toolbar">
+<p class="caption">Oscilloscope tab — gains, coupling, timebase, trigger, grid and cursor controls</p>
+<img src="img/MainWindow-Histogram.png" class="screenshot" alt="Histogram control toolbar">
+<p class="caption">Histogram tab — channel, range/bin, averaging, display options (Gauss / Norm / N-σ) and Y scale</p>
 
 <h2>Offline Mode — Title Bar</h2>
 <img src="img/OfflineMode.png" class="screenshot" alt="Offline mode">
@@ -589,6 +712,31 @@ Fine-adjustment buttons (÷10, ÷2, ×2, ×10) are available.</td></tr>
 <!-- ════════════════════════════════════════
      HISTOGRAM
      ════════════════════════════════════════ -->
+<!-- ══════════════ MOUSE GESTURES / ZOOM ══════════════ -->
+<section id="gestures">
+<h1 class="page-title">Mouse Gestures &amp; Zoom</h1>
+<p>The spectrum graph supports direct mouse interaction to zoom and place cursors — no menu needed.</p>
+<table>
+<tr><th>Gesture</th><th>Action</th></tr>
+<tr><td>Left-drag</td><td><strong>Box zoom.</strong> Drag a rectangle over a region of interest; both axes zoom to the selection, with the bounds snapped outward to the grid lines.</td></tr>
+<tr><td>Right-click</td><td><strong>Zoom out one step.</strong> Reverts to the previous zoom level (multi-level history). Does nothing when fully zoomed out.</td></tr>
+<tr><td>Double-click (left)</td><td>Cursor action (snap the nearest cursor to the peak under the pointer).</td></tr>
+</table>
+<div class="two-col">
+  <div>
+    <img src="img/SpectrumZoom_Selection.png" class="screenshot" alt="Box-zoom selection">
+    <p class="caption">Left-drag: a selection rectangle is drawn over the region to magnify</p>
+  </div>
+  <div>
+    <img src="img/SpectrumZoom_Result.png" class="screenshot" alt="After zoom">
+    <p class="caption">After release: both axes zoom to the selection, snapped to the grid</p>
+  </div>
+</div>
+<p class="tip">Right-click repeatedly to walk back through the zoom history one level at a time. The axis bounds always land on round grid values, in both linear and logarithmic frequency scales.</p>
+</section>
+
+<hr>
+
 <section id="histo-overview">
 <h1 class="page-title">Histogram</h1>
 <img src="img/HistoPanelON.png" class="screenshot" alt="Histogram tab">
@@ -1073,6 +1221,18 @@ Fine-adjustment buttons (÷10, ÷2, ×2, ×10) are available.</td></tr>
 <section id="menus">
 <h1 class="page-title">Menu Reference</h1>
 
+<h2>File</h2>
+<img src="img/Menu_File.png" class="screenshot small" alt="File menu">
+<p class="caption">The File menu</p>
+<table>
+<tr><td>Open records folder</td><td>Open the folder where recorded WAV files are stored.</td></tr>
+<tr><td>Open calibration file</td><td>Open the level-calibration file location.</td></tr>
+<tr><td>Export graph to PDF…</td><td>Export the current graph as a PDF document.</td></tr>
+<tr><td>Export data to CSV…</td><td>Export the current graph’s data to a CSV file.</td></tr>
+<tr><td>Copy graph to clipboard</td><td>Copy the current graph to the clipboard as an image (<span class="key">Ctrl</span>+<span class="key">C</span>).</td></tr>
+<tr><td>Exit program</td><td>Close AudioHexViewer.</td></tr>
+</table>
+
 <h2>Devices</h2>
 <p>Opens the Audio Devices configuration dialog.</p>
 
@@ -1089,10 +1249,9 @@ Fine-adjustment buttons (÷10, ÷2, ×2, ×10) are available.</td></tr>
 <p>Opens the Display Setup colour configuration dialog.</p>
 
 <h2>View</h2>
-<p>View-related options (measurement panel visibility, full-screen mode, etc.).</p>
-
-<h2>Export</h2>
-<p>Sub-menu for all export functions: Export PNG · Export PDF · Export CSV.</p>
+<img src="img/Menu_View.png" class="screenshot small" alt="View menu">
+<p class="caption">The View menu</p>
+<p><strong>Always on top</strong> (at the top of the menu) keeps the main window above all others. The menu also controls the measurement panel, the DataView and All-Data-Formats windows, debug info and the side panel.</p>
 
 <h2>Tools</h2>
 <p>Utility tools including DataView, All Data Formats, Device Info, and Calibrate Level.</p>
@@ -1136,6 +1295,11 @@ const obs = new IntersectionObserver(entries => {
 }, { rootMargin: '-20% 0px -75% 0px' });
 
 sections.forEach(s => obs.observe(s));
+</script>
+<div id="lightbox"><img src="" alt="enlarged screenshot"></div>
+<script>
+(function(){var root=document.documentElement,btn=document.getElementById("theme-toggle");if(localStorage.getItem("ahv-theme")==="dark"){root.setAttribute("data-theme","dark");if(btn)btn.textContent="☀️";}if(btn)btn.addEventListener("click",function(){var dark=root.getAttribute("data-theme")==="dark";if(dark){root.removeAttribute("data-theme");btn.textContent="🌙";localStorage.setItem("ahv-theme","light");}else{root.setAttribute("data-theme","dark");btn.textContent="☀️";localStorage.setItem("ahv-theme","dark");}});})();
+(function(){var lb=document.getElementById("lightbox"),lbImg=lb.querySelector("img");document.querySelectorAll(".screenshot, .gallery img").forEach(function(img){img.addEventListener("click",function(){lbImg.src=img.src;lb.classList.add("open");});});lb.addEventListener("click",function(){lb.classList.remove("open");});document.addEventListener("keydown",function(e){if(e.key==="Escape")lb.classList.remove("open");});})();
 </script>
 </body>
 </html>
