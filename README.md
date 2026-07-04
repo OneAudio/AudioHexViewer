@@ -1,32 +1,57 @@
-# AudioHexViewer
+   <p align="center">
+  <img src="AudioHexViewer/doc/img/readme_hero.png" alt="AudioHexViewer" width="100%">
+</p>
 
-**A real-time audio analyzer for Windows — spectrum, oscilloscope, amplitude histogram, Bode plot, and a built-in test-signal generator — built for high-resolution audio and converter measurement.**
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey" alt="Platform">
+  <img src="https://img.shields.io/badge/.NET-10%20(WinForms)-512BD4" alt=".NET 10">
+  <img src="https://img.shields.io/badge/status-pre--release%200.9.x-orange" alt="Status">
+</p>
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey)
-![.NET](https://img.shields.io/badge/.NET-10%20(WinForms)-512BD4)
-![Status](https://img.shields.io/badge/status-pre--release%200.9.x-orange)
-
-> AudioHexViewer is a measurement tool for the DIY audio and electronics community: it turns a sound card or audio interface into a multi-instrument bench for analyzing ADCs/DACs, amplifiers, and signal chains — up to **768 kHz** sample rate via WASAPI exclusive mode.
-
-<!-- Add a screenshot here once you have one. A spectrum view with THD/SFDR readout makes a strong first impression.
-![AudioHexViewer — Spectrum view](docs/img/spectrum.png)
--->
+<p align="center">
+  <img src="AudioHexViewer/doc/img/Hero_Spectrum.png" alt="Spectrum view — 768 kHz capture with THD / THD+N / SINAD / SNR / SFDR and harmonic readout" width="92%">
+</p>
 
 ---
 
-## Features
+## What is it?
 
-- **Spectrum analyzer** — high-resolution FFT with selectable windows, dBFS scaling, peak/trace hold (MAXI / MINI), THD, SFDR and IMD readouts, and noise-floor measurement.
-- **Oscilloscope** — time-domain view with configurable timebase and trigger, sharing the overlay system with the spectrum view.
-- **Amplitude histogram** — sample-value distribution with Gaussian overlay, σ markers, PDF normalization and DNL measurement for converter characterization.
-- **Bode plot** — gain and phase vs. frequency from an L = R loopback baseline.
-- **Test-signal generator** — 11 built-in signals (pure/multi-harmonic sine, DC, square, sawtooth, two-tone IMD 19 + 20 kHz, Gaussian noise at several levels, quasi full-scale, loopback, silence) for calibration and self-test.
-- **Overlays** — save and compare reference traces across sessions (per-instrument libraries).
-- **File post-processing** — load a WAV file and run the full analysis chain offline.
-- **Level calibration** — map dBFS to real-world units with a persistent calibration file.
-- **Export** — CSV, PNG and PDF export of graphs and measurements.
-- **High sample rates** — 44.1, 48, 88.2, 96, 176.4, 192, 352.8, 384, 705.6 and 768 kHz, with WASAPI exclusive mode for bit-perfect capture.
+AudioHexViewer is a real-time audio analyzer for Windows and a measurement tool for the DIY audio and electronics community. It captures audio through WASAPI — including exclusive, bit-perfect mode — and turns a plain sound card or audio interface into a multi-instrument bench for characterizing ADCs, DACs, amplifiers and complete signal chains, with the kind of readouts usually reserved for dedicated lab gear: spectrum, oscilloscope, amplitude histogram, Bode plot and a built-in signal generator, up to **768 kHz**.
+
+It was originally created to test hardware acquisition platforms under development — as a continuation of the **OSVA** audio project — and grew into a general-purpose, high-resolution analyzer, released free and open source. Everything runs locally: **no cloud, no telemetry, no installer** (a self-contained executable).
+
+---
+
+## Key features & differentiators
+
+| | |
+|---|---|
+| **Up to 768 kHz** — WASAPI exclusive mode for bit-perfect capture | **Professional metrics** — THD, THD+N, SINAD, SNR, SFDR, IMD, noise floor |
+| **FFT up to 4 Mpts** — linear, exponential or coherent averaging | **Bode plot with reference** — gain & phase, with save/reload of reference responses |
+| **Built-in generator** — 11 signals, a **loopback** self-test mode, voltage-calibratable | **Amplitude histogram** — Gaussian overlay, σ markers, PDF normalization, DNL |
+| **Overlays** — record, save & compare reference traces across sessions | **Offline analysis** — load a WAV file and run the full analysis chain |
+| **Level calibration** — map dBFS to real volts, for analyzer *and* generator | **Live numeric readout** — sample values in decimal, float, binary and hexadecimal |
+| **Peak & cursors** — MAXI / MINI (max-hold / min-hold) and cursors with in-graph values | **Export & customize** — CSV data & PDF graph export, fully customizable colours |
+
+> Every control has a **context-sensitive tooltip** — enable context help from the toolbar for inline guidance on any button, combo or field.
+
+---
+
+## At a glance
+
+<table>
+  <tr>
+    <td width="50%"><img src="AudioHexViewer/doc/img/Gallery_FFT.png" width="100%"><br><sub><b>Spectrum</b> — FFT with MAXI peak-hold and noise floor</sub></td>
+    <td width="50%"><img src="AudioHexViewer/doc/img/Gallery_Oscilloscope.png" width="100%"><br><sub><b>Oscilloscope</b> — trigger &amp; cursors</sub></td>
+  </tr>
+  <tr>
+    <td><img src="AudioHexViewer/doc/img/Gallery_Histogram.png" width="100%"><br><sub><b>Histogram</b> — Gaussian fit &amp; σ markers</sub></td>
+    <td><img src="AudioHexViewer/doc/img/Gallery_BodePlot.png" width="100%"><br><sub><b>Bode plot</b> — gain &amp; phase vs. frequency</sub></td>
+  </tr>
+</table>
+
+> 📖 Full user documentation: [`doc/documentation.html`](AudioHexViewer/doc/documentation.html)
 
 ---
 
