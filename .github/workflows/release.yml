@@ -15,10 +15,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
@@ -36,7 +36,7 @@ jobs:
       - name: Test
         run: dotnet test AudioHexViewer.slnx -c Release --no-restore
 
-      # Variante 1 : autonome (self-contained, runtime .NET embarqué) — réglages du .csproj
+      # Variante 1 : autonome (self-contained, runtime .NET embarqué)
       - name: Publish standalone (self-contained single-file)
         run: >
           dotnet publish AudioHexViewer/AudioHexViewer.csproj
@@ -44,7 +44,7 @@ jobs:
           -p:Version=${{ steps.ver.outputs.version }}
           -o publish-standalone
 
-      # Variante 2 : légère (framework-dependent) — override --self-contained false
+      # Variante 2 : légère (framework-dependent)
       - name: Publish runtime-required (framework-dependent single-file)
         run: >
           dotnet publish AudioHexViewer/AudioHexViewer.csproj
@@ -52,28 +52,37 @@ jobs:
           -p:Version=${{ steps.ver.outputs.version }}
           -o publish-light
 
-      - name: Package artifacts + SHA-256
+      - name: Package folders (exe + ContextHelp.json + doc) + SHA-256
         id: pkg
         shell: pwsh
         run: |
-          $ver  = "${{ steps.ver.outputs.version }}"
-          $std  = "AudioHexViewer-v$ver-win-x64-standalone.exe"
-          $lite = "AudioHexViewer-v$ver-win-x64-runtime-required.exe"
+          $ver = "${{ steps.ver.outputs.version }}"
 
-          Copy-Item publish-standalone/AudioHexViewer.exe $std
-          Copy-Item publish-light/AudioHexViewer.exe       $lite
+          function Package($variant, $publishDir) {
+            $base = "AudioHexViewer-v$ver-win-x64-$variant"
+            $root = "$base/AudioHexViewer"                       # dossier à la racine du zip
+            New-Item -ItemType Directory -Force -Path "$root/doc" | Out-Null
 
-          foreach ($f in @($std, $lite)) {
-            $hash = (Get-FileHash $f -Algorithm SHA256).Hash.ToLower()
-            "$hash  $f" | Out-File "$f.sha256.txt" -Encoding ascii
-            Write-Host "SHA-256 $f = $hash"
+            Copy-Item "$publishDir/AudioHexViewer.exe" "$root/"  # l'exe seul (pas de .pdb ni .config)
+            Copy-Item "AudioHexViewer/ContextHelp.json" "$root/" # les tooltips
+            Copy-Item "AudioHexViewer/doc/*" "$root/doc/" -Recurse # la doc complète (html + img)
+
+            $zip = "$base.zip"
+            Compress-Archive -Force -Path $root -DestinationPath $zip
+            $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+            "$hash  $zip" | Out-File "$zip.sha256.txt" -Encoding ascii
+            Write-Host "SHA-256 $zip = $hash"
+            return $zip
           }
+
+          $std  = Package "standalone"       "publish-standalone"
+          $lite = Package "runtime-required" "publish-light"
 
           "std=$std"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "lite=$lite" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             ${{ steps.pkg.outputs.std }}
