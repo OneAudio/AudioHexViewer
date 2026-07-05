@@ -273,22 +273,46 @@ partial class Form1
             saveSettings:      SaveSessionSettingsSilently,
             onRunStateChanged: UpdateTitleBar);
 
-        // Restore last position; fall back to right of Form1
-        if (_lastGeneratorX.HasValue && _lastGeneratorY.HasValue)
+        // Restore last position - but only if it is actually visible on some screen
+        // (a minimized window reports Left/Top = -32000, which would hide it off-screen).
+        _generatorWindow.StartPosition = FormStartPosition.Manual;
+        if (_lastGeneratorX.HasValue && _lastGeneratorY.HasValue &&
+            IsOnScreen(new Point(_lastGeneratorX.Value, _lastGeneratorY.Value), _generatorWindow.Size))
         {
-            _generatorWindow.StartPosition = FormStartPosition.Manual;
             _generatorWindow.Location = new Point(_lastGeneratorX.Value, _lastGeneratorY.Value);
         }
         else
         {
-            _generatorWindow.StartPosition = FormStartPosition.Manual;
             _generatorWindow.Location = new Point(Location.X + Width + 4, Location.Y);
         }
         _lastGeneratorX = _generatorWindow.Left;
         _lastGeneratorY = _generatorWindow.Top;
+
+        // Save the position only in the normal state (ignore the -32000 reported while minimized).
         _generatorWindow.LocationChanged += (_, _) =>
-        { _lastGeneratorX = _generatorWindow.Left; _lastGeneratorY = _generatorWindow.Top; };
+        {
+            if (_generatorWindow.WindowState != FormWindowState.Normal) return;
+            _lastGeneratorX = _generatorWindow.Left;
+            _lastGeneratorY = _generatorWindow.Top;
+        };
         SubscribeGeneratorStateChange();
+    }
+
+    /// <summary>
+    /// True if a usable part of a window placed at <paramref name="location"/> with the given
+    /// <paramref name="size"/> lands on any screen's working area. Guards against off-screen
+    /// restored positions (minimized windows report -32000, an unplugged second monitor, a
+    /// resolution change, etc.). Shared by all windows that persist their position.
+    /// </summary>
+    internal static bool IsOnScreen(Point location, Size size)
+    {
+        var rect = new Rectangle(location, size);
+        foreach (var screen in Screen.AllScreens)
+        {
+            var vis = Rectangle.Intersect(screen.WorkingArea, rect);
+            if (vis.Width >= 100 && vis.Height >= 30) return true;  // enough of the title bar is reachable
+        }
+        return false;
     }
 
     // ── Generator button: right-click = start / stop (no dialog open) ─────────

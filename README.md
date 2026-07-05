@@ -1,4 +1,4 @@
-   <p align="center">
+<p align="center">
   <img src="AudioHexViewer/doc/img/readme_hero.png" alt="AudioHexViewer" width="100%">
 </p>
 
@@ -19,7 +19,7 @@
 
 AudioHexViewer is a real-time audio analyzer for Windows and a measurement tool for the DIY audio and electronics community. It captures audio through WASAPI — including exclusive, bit-perfect mode — and turns a plain sound card or audio interface into a multi-instrument bench for characterizing ADCs, DACs, amplifiers and complete signal chains, with the kind of readouts usually reserved for dedicated lab gear: spectrum, oscilloscope, amplitude histogram, Bode plot and a built-in signal generator, up to **768 kHz**.
 
-It was originally created to test hardware acquisition platforms under development — as a continuation of the **OSVA** audio project — and grew into a general-purpose, high-resolution analyzer, released free and open source. Everything runs locally: **no cloud, no telemetry, no installer** (a self-contained executable).
+It was originally created to test hardware acquisition platforms under development — as a continuation of the **OSVA** audio project — and grew into a general-purpose, high-resolution analyzer, released free and open source. 
 
 ---
 
@@ -27,18 +27,19 @@ It was originally created to test hardware acquisition platforms under developme
 
 | | |
 |---|---|
-| **Up to 768 kHz** — WASAPI exclusive mode for bit-perfect capture | **Professional metrics** — THD, THD+N, SINAD, SNR, SFDR, IMD, noise floor |
+| **Up to 768 kHz** — WASAPI exclusive mode for bit-perfect capture | **Professional metrics** — THD, THD+N, SINAD, SNR, SFDR, IMD, noise floor and more... |
 | **FFT up to 4 Mpts** — linear, exponential or coherent averaging | **Bode plot with reference** — gain & phase, with save/reload of reference responses |
 | **Built-in generator** — 11 signals, a **loopback** self-test mode, voltage-calibratable | **Amplitude histogram** — Gaussian overlay, σ markers, PDF normalization, DNL |
-| **Overlays** — record, save & compare reference traces across sessions | **Offline analysis** — load a WAV file and run the full analysis chain |
+| **Overlays** — record, save & compare reference traces across sessions | **Offline analysis mode** — load a WAV file and run the full analysis chain |
 | **Level calibration** — map dBFS to real volts, for analyzer *and* generator | **Live numeric readout** — sample values in decimal, float, binary and hexadecimal |
 | **Peak & cursors** — MAXI / MINI (max-hold / min-hold) and cursors with in-graph values | **Export & customize** — CSV data & PDF graph export, fully customizable colours |
 
-> Every control has a **context-sensitive tooltip** — enable context help from the toolbar for inline guidance on any button, combo or field.
+
+> Enable **context-sensitive tooltips** from the toolbar and hover over any control — each button, combo and field then shows a short explanation of what it does, so you can get to grips with the program quickly.
 
 ---
 
-## At a glance
+## Screenshots at a glance
 
 <table>
   <tr>
@@ -47,7 +48,7 @@ It was originally created to test hardware acquisition platforms under developme
   </tr>
   <tr>
     <td><img src="AudioHexViewer/doc/img/Gallery_Histogram.png" width="100%"><br><sub><b>Histogram</b> — Gaussian fit &amp; σ markers</sub></td>
-    <td><img src="AudioHexViewer/doc/img/Gallery_BodePlot.png" width="100%"><br><sub><b>Bode plot</b> — gain &amp; phase vs. frequency</sub></td>
+    <td><img src="AudioHexViewer/doc/img/Gallery_BodePlot.png" width="100%"><br><sub><b>Bode plot</b> — gain &amp; phase vs. frequency (Twin-T filter)</sub></td>
   </tr>
 </table>
 
@@ -57,10 +58,10 @@ It was originally created to test hardware acquisition platforms under developme
 
 ## Requirements
 
-**To run** (end users): **Windows 10 or 11, 64-bit**. Two release builds are provided, so you can choose:
+**To run** (end users): **Windows 10 or 11, 64-bit**. Each release provides two builds, each packaged as a ready-to-use folder — executable + documentation + context-help data — inside a ZIP archive:
 
-- **Standalone** (recommended) — nothing else to install. A self-contained single-file executable that bundles the .NET runtime (~115 MB).
-- **Runtime-required** — a much smaller executable (~a few MB) that requires the **[.NET 10 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/10.0)** to be installed on the machine.
+- **Standalone** (recommended) — nothing else to install; the executable bundles the .NET runtime (larger download).
+- **Runtime-required** — a much smaller executable that requires the **[.NET 10 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/10.0)** to be installed on the machine.
 
 If in doubt, take the **standalone** build — it always works.
 
@@ -70,12 +71,14 @@ If in doubt, take the **standalone** build — it always works.
 
 ## Installation (end users)
 
-1. Go to the [**Releases**](https://github.com/OneAudio/AudioHexViewer/releases) page.
-2. Download **one** of the two executables from the latest release:
-   - `AudioHexViewer-vX.Y.Z-win-x64-standalone.exe` — **recommended**, works out of the box.
-   - `AudioHexViewer-vX.Y.Z-win-x64-runtime-required.exe` — smaller, but needs the [.NET 10 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/10.0) installed.
-3. (Recommended) Verify the download against the published **SHA-256** checksum (the matching `.sha256.txt` file is attached to the release).
-4. Run the executable. No installer, no admin rights required.
+1. Go to the [**Releases**](https://github.com/OneAudio/AudioHexViewer/releases) page and download **one** of the two ZIP archives from the latest release:
+   - `AudioHexViewer-vX.Y.Z-win-x64-standalone.zip` — **recommended**, works out of the box.
+   - `AudioHexViewer-vX.Y.Z-win-x64-runtime-required.zip` — smaller, but needs the [.NET 10 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/10.0) installed.
+2. (Recommended) Verify the download against the published **SHA-256** checksum (the matching `.sha256.txt` file is attached to the release).
+3. **Extract the ZIP.** You get an `AudioHexViewer/` folder containing the executable, `ContextHelp.json` (in-app tooltips) and a `doc/` folder (the full HTML documentation).
+4. Run **`AudioHexViewer.exe`** from that folder. No installer, no admin rights required.
+
+> **Keep the folder together.** The executable reads `ContextHelp.json` and the `doc/` folder from beside it — moving the `.exe` out on its own disables the in-app tooltips and the local documentation link. Copy or move the whole folder.
 
 > **SmartScreen / antivirus note.** The executable is **not code-signed** (this is a free, open-source project). On first launch, Windows SmartScreen may show *"Windows protected your PC"* — click **More info → Run anyway**. Some antivirus engines may also flag self-contained single-file executables; this is a known false positive for unsigned bundled-runtime apps. If in doubt, verify the SHA-256 checksum and/or build from source.
 
@@ -105,7 +108,7 @@ dotnet publish AudioHexViewer/AudioHexViewer.csproj -c Release
 dotnet publish AudioHexViewer/AudioHexViewer.csproj -c Release --self-contained false
 ```
 
-The default publish settings (`win-x64`, self-contained, single file) are defined in the `.csproj`; the runtime-required variant simply overrides `--self-contained false`. The output executable is in `AudioHexViewer/bin/Release/net10.0-windows/win-x64/publish/`. (The release workflow produces both variants automatically on a version tag.)
+The default publish settings (`win-x64`, self-contained, single file) are defined in the `.csproj`; the runtime-required variant simply overrides `--self-contained false`. The output is in `AudioHexViewer/bin/Release/net10.0-windows/win-x64/publish/` — the executable alongside `ContextHelp.json` and the `doc/` folder, i.e. the same layout the release ZIP provides. (The release workflow packages both variants automatically on a version tag.)
 
 ---
 

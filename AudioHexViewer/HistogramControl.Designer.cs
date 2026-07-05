@@ -246,7 +246,7 @@ namespace AudioHexViewer
             ((System.ComponentModel.ISupportInitialize)chartHistogram).EndInit();
 
             // ── Context help Name assignments ────────────────────────────────
-            comboChannel.Name    = "comboChannel";
+            comboChannel.Name    = "comboChannelHist";
             btnDcAcHist.Name     = "btnDcAcHist";
             comboRangeLsb.Name   = "comboRangeLsb";
             comboBinLsb.Name     = "comboBinLsb";
@@ -256,7 +256,7 @@ namespace AudioHexViewer
             comboSigma.Name      = "comboSigma";
             btnDiff.Name         = "btnDiff";
             btnLockScale.Name    = "btnLockScale";
-            comboAveraging.Name  = "comboAveraging";
+            comboAveraging.Name = "comboAveragingHist";
             btnResetAvgHist.Name = "btnResetAvgHist";
             // btnRun.Name already set above
             panelTop.ResumeLayout(false);

@@ -659,7 +659,10 @@ namespace AudioHexViewer
             if (_session.DataViewX.HasValue)
             { _lastDataViewX = _session.DataViewX; _lastDataViewY = _session.DataViewY; }
             _dataViewForm.LocationChanged += (_, _) =>
-            { _lastDataViewX = _dataViewForm.Left; _lastDataViewY = _dataViewForm.Top; };
+            {
+                if (_dataViewForm.WindowState != System.Windows.Forms.FormWindowState.Normal) return;
+                _lastDataViewX = _dataViewForm.Left; _lastDataViewY = _dataViewForm.Top;
+            };
 
             _dataViewForm.Hide();
         }
@@ -679,7 +682,8 @@ namespace AudioHexViewer
             // Positionner à gauche de Form1, sous "All data formats"
             if (!_dataViewForm.Visible)
             {
-                if (_lastDataViewX.HasValue && _lastDataViewY.HasValue)
+                if (_lastDataViewX.HasValue && _lastDataViewY.HasValue &&
+                    IsOnScreen(new System.Drawing.Point(_lastDataViewX.Value, _lastDataViewY.Value), _dataViewForm.Size))
                 {
                     _dataViewForm.StartPosition = System.Windows.Forms.FormStartPosition.Manual;
                     _dataViewForm.Location = new System.Drawing.Point(_lastDataViewX.Value, _lastDataViewY.Value);
@@ -1528,9 +1532,13 @@ namespace AudioHexViewer
             if (_lastAllFormatsX == null && _session.AllFormatsX.HasValue)
             { _lastAllFormatsX = _session.AllFormatsX; _lastAllFormatsY = _session.AllFormatsY; }
             dataFormatsWindow.LocationChanged += (_, _) =>
-            { _lastAllFormatsX = dataFormatsWindow.Left; _lastAllFormatsY = dataFormatsWindow.Top; };
+            {
+                if (dataFormatsWindow.WindowState != System.Windows.Forms.FormWindowState.Normal) return;
+                _lastAllFormatsX = dataFormatsWindow.Left; _lastAllFormatsY = dataFormatsWindow.Top;
+            };
             dataFormatsWindow.TopMost = this.TopMost;  // inherit Always-on-Top
-            if (_lastAllFormatsX.HasValue && _lastAllFormatsY.HasValue)
+            if (_lastAllFormatsX.HasValue && _lastAllFormatsY.HasValue &&
+                IsOnScreen(new System.Drawing.Point(_lastAllFormatsX.Value, _lastAllFormatsY.Value), dataFormatsWindow.Size))
             {
                 dataFormatsWindow.StartPosition = System.Windows.Forms.FormStartPosition.Manual;
                 dataFormatsWindow.Location = new System.Drawing.Point(_lastAllFormatsX.Value, _lastAllFormatsY.Value);
